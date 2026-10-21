@@ -37,6 +37,7 @@
    * [Dry-Running Work Requirement Submissions](#dry-running-work-requirement-submissions)
       * [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement)
       * [Submitting 'Raw' JSON Work Requirement Specifications](#submitting-raw-json-work-requirement-specifications)
+   * [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)
    * [Using the YellowDog Data Client](#using-the-yellowdog-data-client)
       * [Specifying Data Client Inputs](#specifying-data-client-inputs)
       * [Automatic Upload of Local Files](#automatic-upload-of-local-files)
@@ -56,7 +57,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:33:39 BST 2026 -->
+<!-- Added by: pwt, at: Wed Oct 21 17:22:44 BST 2026 -->
 
 <!--te-->
 
@@ -430,7 +431,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 #### Obtaining Names/Context from Environment Variables at Task Run Time
 
-When a Task executes, its Task name and number, Task Group name and number, Work Requirement name, Namespace, and Tag can be made automatically available to the Task in the following environment variables, if the `addYDEnvironment` property is set to `true`:
+When a Task executes, its Task name and number, Task Group name and number, Work Requirement name, Namespace, and Tag can be made automatically available to the Task in the following environment variables, if the `addYDEnvironment` property is set to `true` (which adds about 250 to 300 bytes to every Task; see [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)):
 
 - `YD_TASK_NAME`
 - `YD_TASK_NUMBER`
@@ -877,6 +878,19 @@ It's possible to use the JSON output of `yd workrequirement submit --dry-run` (s
 This will submit the Work Requirement, then add all the specified Tasks, using `--parallel-batches` (or the `parallelBatches` configuration property) and following with `--follow` or `--progress` as for any other submission. A batch that fails in a way a retry could cure is retried, as any other submission's are; if the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
 
 Note that variable substitutions **can** be used in the raw JSON file, just as in the other Work Requirement JSON examples, but there is no property inheritance, including from the `[workRequirement]` section of the TOML configuration or from Work Requirement properties supplied on the command line.
+
+## Submitting Large Numbers of Tasks
+
+With tens of thousands of Tasks or more, how the Tasks are sent decides how long a submission takes, and what each Task carries decides how much is sent and stored.
+
+**Sending the Tasks.** Tasks are added to their Task Groups in batches of `taskBatchSize` (1,000 by default, up to 10,000), one batch at a time unless `parallelBatches` (or `--parallel-batches`) sends several at once. A batch that fails in a way a retry could cure is resubmitted.
+
+**Keeping each Task small.** Every byte on a Task is sent and stored once per Task, so:
+
+- Put what the Tasks of a Task Group share — their `taskType`, `taskData` and `environment` — in a [`taskTemplate`](#task-templates), which the Platform applies, rather than on every Task.
+- Leave `addYDEnvironment` off. Its variables ([Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) add about 250 to 300 bytes to every Task, more with long Work Requirement, Task Group or namespace names. Pass a Task what it needs in its arguments instead, with the [Task and Task Group name substitutions](#task-and-task-group-name-substitutions): `"arguments": ["--frame", "{{task_number}}"]` on the Task Group gives each Task its own number at the cost of a few bytes.
+- Consider `setTaskNames: false`, which leaves Tasks without names, saving each Task its name. Two things are lost with the names: a batch whose response times out is then not resubmitted, since the Platform might already have added it and nothing would tell a duplicate (the submission fails instead, saying to check the Work Requirement's Tasks); and a Task can no longer be found by its name (`yd task show wr/tg/task`).
+- Keep `taskData` small: a large input is better fetched by each Task as it runs, with [`taskDataInputs`](#specifying-data-client-inputs), than carried in every Task.
 
 ## Using the YellowDog Data Client
 
