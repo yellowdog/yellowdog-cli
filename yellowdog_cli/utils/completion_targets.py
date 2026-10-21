@@ -59,8 +59,11 @@ def _names(entity: str, statuses: frozenset[str] | None) -> Lookup:
     return Lookup(entity, ids=False, statuses=statuses)
 
 
-def _ids(entity: str, statuses: frozenset[str] | None) -> Lookup:
-    return Lookup(entity, ids=True, statuses=statuses)
+def _task_groups(statuses: frozenset[str] | None) -> Lookup:
+    """
+    Work Requirements by name, then after 'wr/' their Task Groups.
+    """
+    return Lookup(ET_WORK_REQUIREMENTS, ids=False, statuses=statuses, task_groups=True)
 
 
 # '--within' for each type 'yd list' lists within a parent: the parent's
@@ -106,6 +109,7 @@ RESOURCE_TARGETS = frozenset(
 )
 
 _WR = "yd workrequirement"
+_TG = "yd taskgroup"
 _WP = "yd workerpool"
 _CR = "yd computerequirement"
 _SHOWN = "yellowdog_ids"  # yd-show, yd-follow and yd-wait's argument
@@ -127,11 +131,15 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_WR} priority", "priority_targets"): _names(
         ET_WORK_REQUIREMENTS, _WR_UNFINISHED
     ),
-    (f"{_WR} compare", "wr_or_tg_id"): _ids(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
-    (f"{_WR} compare", "worker_pool_ids"): _ids(ET_WORKER_POOLS, _WP_UNFINISHED),
-    (f"{_WR} show", _SHOWN): _ids(ET_WORK_REQUIREMENTS, None),
-    (f"{_WR} follow", _SHOWN): _ids(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
-    (f"{_WR} wait", _SHOWN): _ids(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
+    (f"{_WR} compare", "wr_or_tg_id"): _names(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
+    (f"{_WR} compare", "worker_pool_ids"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    (f"{_WR} show", _SHOWN): _names(ET_WORK_REQUIREMENTS, None),
+    (f"{_WR} follow", _SHOWN): _names(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
+    (f"{_WR} wait", _SHOWN): _names(ET_WORK_REQUIREMENTS, _WR_UNFINISHED),
+    # Task Groups, as 'wr/tg': a Work Requirement's name, then its Task Groups
+    (f"{_TG} show", _SHOWN): _task_groups(None),
+    (f"{_TG} compare", "wr_or_tg_id"): _task_groups(_WR_UNFINISHED),
+    (f"{_TG} compare", "worker_pool_ids"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     # Worker Pools
     (f"{_WP} resize", "worker_pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     (f"{_WP} shutdown", "worker_pool_nodes_list"): _names(
@@ -140,9 +148,9 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_WP} token", "worker_pools"): Lookup(
         ET_WORKER_POOLS, ids=False, statuses=_WP_UNFINISHED, configured_only=True
     ),
-    (f"{_WP} show", _SHOWN): _ids(ET_WORKER_POOLS, None),
-    (f"{_WP} follow", _SHOWN): _ids(ET_WORKER_POOLS, _WP_UNFINISHED),
-    (f"{_WP} wait", _SHOWN): _ids(ET_WORKER_POOLS, _WP_UNFINISHED),
+    (f"{_WP} show", _SHOWN): _names(ET_WORKER_POOLS, None),
+    (f"{_WP} follow", _SHOWN): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    (f"{_WP} wait", _SHOWN): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     # Compute Requirements
     (f"{_CR} resize", "worker_pool"): _names(
         ET_COMPUTE_REQUIREMENTS, frozenset({"RUNNING"})
@@ -159,9 +167,9 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_CR} terminate", "compute_reqs_instances_or_nodes"): _names(
         ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED - {"TERMINATING"}
     ),
-    (f"{_CR} show", _SHOWN): _ids(ET_COMPUTE_REQUIREMENTS, None),
-    (f"{_CR} follow", _SHOWN): _ids(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
-    (f"{_CR} wait", _SHOWN): _ids(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
+    (f"{_CR} show", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, None),
+    (f"{_CR} follow", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
+    (f"{_CR} wait", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
     # The listings within a parent
     ("yd taskgroup list", "--within"): WITHIN_LOOKUPS[ET_TASK_GROUPS],
     ("yd task list", "--within"): WITHIN_LOOKUPS[ET_TASKS],

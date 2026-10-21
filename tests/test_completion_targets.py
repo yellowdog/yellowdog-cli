@@ -108,11 +108,20 @@ def test_an_action_offers_what_the_command_acts_on(verb, statuses):
     assert lookup.statuses == _names(statuses)
 
 
-def test_the_id_only_verbs_offer_ids_and_the_others_names():
+def test_every_verb_offers_names():
+    # Each takes names, as well as IDs: the actions, the listings' '--within',
+    # and show, follow, wait and compare, whose noun gives a name its type
     for (verb, _), lookup in LOOKUPS.items():
-        # The listings' '--within' takes names (or an ID)
-        id_only = verb.split()[-1] in {"show", "follow", "wait", "compare"}
-        assert lookup.ids is id_only, verb
+        assert lookup.ids is False, verb
+
+
+def test_a_task_groups_verbs_offer_wr_slash_tg():
+    for verb, dest in (
+        ("yd taskgroup show", "yellowdog_ids"),
+        ("yd taskgroup compare", "wr_or_tg_id"),
+    ):
+        lookup = LOOKUPS[(verb, dest)]
+        assert lookup.entity == "work-requirements" and lookup.task_groups, verb
 
 
 def test_only_token_is_for_configured_worker_pools():
