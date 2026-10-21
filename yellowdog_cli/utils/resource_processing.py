@@ -1,6 +1,6 @@
 """
 The run yd-create and yd-remove share: each item (a resource specification,
-or with 'yd-remove --ids' a YellowDog ID) processed in turn, a failure
+or for yd-remove a YellowDog ID) processed in turn, a failure
 printed once and recorded, the run carried on past it, and stopped by a
 failure every later request would repeat (an authentication or connection
 failure), the items not attempted then recorded as skipped. The run exits
@@ -76,6 +76,52 @@ def process_each(
         raise ReportedFailure(failures[0] if len(codes) == 1 else RuntimeError(message))
 
 
+def process_specification(
+    specification: dict, process: Callable[[str, dict], None]
+) -> None:
+    """
+    process(resource_type, resource) for one specification, 'resource' being
+    it less its 'resource' property; a specification without one fails.
+    """
+    resource_type = specification.get(PROP_RESOURCE)
+    if resource_type is None:
+        # Without the source directory load_resources.py stamps on it
+        shown = {k: v for k, v in specification.items() if k != RESOURCE_SOURCE_DIR}
+        raise ValueError(
+            f"Missing required '{PROP_RESOURCE}' property in the following"
+            f" resource specification: {shown}"
+        )
+    process(
+        resource_type,
+        {k: v for k, v in specification.items() if k != PROP_RESOURCE},
+    )
+
+
+def describe_specification(specification: dict) -> str:
+    """
+    A specification as a failure names it: its type and name, where it has them.
+    """
+    resource_type = specification.get(PROP_RESOURCE)
+    name = resource_display_name(resource_type, specification)
+    if resource_type is None:
+        return "resource" if name is None else f"resource '{name}'"
+    return resource_type if name is None else f"{resource_type} '{name}'"
+
+
+def record_specification(specification: dict, action: str, error: str) -> None:
+    """
+    Record a specification's resource that failed, or was not attempted.
+    """
+    resource_type = specification.get(PROP_RESOURCE)
+    record_resource(
+        resource_type,
+        resource_display_name(resource_type, specification),
+        None,
+        action,
+        error=error,
+    )
+
+
 def process_resources(
     specifications: Sequence[dict],
     process: Callable[[str, dict], None],
@@ -84,43 +130,19 @@ def process_resources(
 ) -> None:
     """
     process(resource_type, resource) for each resource specification, as
-    process_each(): 'resource' is the specification less its 'resource'
-    property, and a specification without one fails. 'record_outcomes'
-    false (a dry run, whose '--json' document is the specifications) records
+    process_each() and process_specification() do. 'record_outcomes' false
+    (a dry run, whose '--json' document is the specifications) records
     neither failures nor the items not attempted.
     """
 
-    def _act(specification: dict) -> None:
-        resource_type = specification.get(PROP_RESOURCE)
-        if resource_type is None:
-            # Without the source directory load_resources.py stamps on it
-            shown = {k: v for k, v in specification.items() if k != RESOURCE_SOURCE_DIR}
-            raise ValueError(
-                f"Missing required '{PROP_RESOURCE}' property in the following"
-                f" resource specification: {shown}"
-            )
-        process(
-            resource_type,
-            {k: v for k, v in specification.items() if k != PROP_RESOURCE},
-        )
-
-    def _describe(specification: dict) -> str:
-        resource_type = specification.get(PROP_RESOURCE)
-        name = resource_display_name(resource_type, specification)
-        if resource_type is None:
-            return "resource" if name is None else f"resource '{name}'"
-        return resource_type if name is None else f"{resource_type} '{name}'"
-
     def _record(specification: dict, action: str, error: str) -> None:
-        if not record_outcomes:
-            return
-        resource_type = specification.get(PROP_RESOURCE)
-        record_resource(
-            resource_type,
-            resource_display_name(resource_type, specification),
-            None,
-            action,
-            error=error,
-        )
+        if record_outcomes:
+            record_specification(specification, action, error)
 
-    process_each(specifications, _act, _describe, _record, verb)
+    process_each(
+        specifications,
+        lambda specification: process_specification(specification, process),
+        describe_specification,
+        _record,
+        verb,
+    )

@@ -992,8 +992,8 @@ RESOURCE_SPECIFICATIONS = replace(
         type=str,
         help=(
             "the resource specifications to process, '-' reading one from"
-            " standard input as JSON (or resource IDs if used with"
-            " 'yd resource remove --ids')"
+            " standard input as JSON; for 'yd resource remove', YellowDog IDs"
+            " too"
         ),
     ),
     tool_required=True,
@@ -2126,7 +2126,10 @@ IDS = option(
     "--ids",
     action="store_true",
     required=False,
-    help="remove resources using their YellowDog IDs (YDIDs)",
+    help=(
+        "every argument is a YellowDog ID (YDID); optional, since an ID is"
+        " recognised as one"
+    ),
 )
 
 
@@ -2162,14 +2165,36 @@ def _check_removal_by_name(args: Namespace, parser: ArgumentParser) -> None:
 
 def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-remove --ids: each argument the ID of a resource it can remove,
-    checked before anything is removed; and none of the options that act
-    only on specification files.
+    yd-remove: each argument that is a YellowDog ID the ID of a resource it
+    can remove, checked before anything is removed. With --ids, every
+    argument must be one, and none of the options that act only on
+    specification files is taken; with --type, the arguments are names or
+    IDs of that type (_check_removal_by_name()).
     """
     from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
 
     if not args.ids:
-        _check_removal_by_name(args, parser)
+        if args.resource_type:
+            _check_removal_by_name(args, parser)
+            return
+        arguments = args.resource_specifications or []
+        for argument in arguments:
+            ydid_type = get_ydid_type(argument)
+            if ydid_type is not None and ydid_type not in REMOVABLE_YDID_TYPES:
+                parser.error(
+                    f"not the ID of a resource that can be removed: '{argument}'"
+                )
+        # A dry run of IDs alone would remove them: the loader's dry run,
+        # which ends the command, is never reached without a file
+        if (
+            args.jsonnet_dry_run
+            and arguments
+            and all(get_ydid_type(argument) is not None for argument in arguments)
+        ):
+            parser.error(
+                "--jsonnet-dry-run applies to specification files, and every"
+                " argument is a YellowDog ID"
+            )
         return
     if args.resource_type or args.resource_properties:
         parser.error("--type and --set specify a resource, not --ids")

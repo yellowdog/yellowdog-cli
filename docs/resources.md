@@ -87,10 +87,10 @@ yd resource remove resources_1.json <resources_2.json, ...>
 ```
 Destructive operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command-line option.
 
-The `yd resource remove` command can also be used to remove resources by their `ydid` resource IDs, by using the `--ids` option: Compute Source and Compute Requirement Templates, Machine Image Families, Image Groups and Images, Keyrings, Allowances, Groups and Applications can be removed, and Worker Pools shut down. Every ID is checked before anything is removed, and one of another type, or anything that is not an ID, is refused; an ID given twice is removed once. Each resource is fetched before it is removed, so one that does not exist is reported, without a prompt, as not found (exit code 6), and a Worker Pool that has already been shut down is skipped. For example:
+The `yd resource remove` command can also remove resources by their `ydid` resource IDs, given as arguments in place of, or alongside, specification files: Compute Source and Compute Requirement Templates, Machine Image Families, Image Groups and Images, Keyrings, Allowances, Groups and Applications can be removed, and Worker Pools shut down. Every ID is checked before anything is removed, and one of another type is refused; an ID given twice is removed once. Files and IDs given together are removed in one run, ordered so that a resource is removed before those it refers to. The `--ids` option is optional: it says every argument is an ID, refusing anything else. Each resource is fetched before it is removed, so one that does not exist is reported, without a prompt, as not found (exit code 6), and a Worker Pool that has already been shut down is skipped. For example:
 
 ```shell
-yd resource remove --ids ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:imgfam:D9C548:4bc3cc57-1387-49a6-85d4-132bcf3a65fd
+yd resource remove ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:imgfam:D9C548:4bc3cc57-1387-49a6-85d4-132bcf3a65fd
 ```
 
 ### Resource Matching
@@ -499,7 +499,7 @@ Compute Source Template and Compute Requirement Template IDs can use names inste
 
 Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd resource create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, the user is asked which ones to remove (selecting from them when there are several, a selection `--yes` does not skip) and to confirm each removal, all before the new Allowance is created; the chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place, and a run that cannot be asked (no terminal to answer from) fails before anything has changed.
 
-When using `yd resource remove`, Allowances are again matched using their `description` property only if `--match-allowances-by-description`/`-M` is used; a specification without a `description` is skipped, with a warning. As with other resources, Allowances can also be removed by their IDs (`yd resource remove --ids <allowance_id> [<allowance_id>]`).
+When using `yd resource remove`, Allowances are again matched using their `description` property only if `--match-allowances-by-description`/`-M` is used; a specification without a `description` is skipped, with a warning. As with other resources, Allowances can also be removed by their IDs (`yd resource remove <allowance_id> [<allowance_id>]`).
 
 Allowances can be **boosted** (have extra hours added to the Allowance) using the `yd allowance boost` command.
 

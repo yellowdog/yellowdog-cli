@@ -1095,23 +1095,24 @@ See [Creating, Updating and Removing YellowDog Resources](resources.md) for the 
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources.
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring).
 
 ```shell
-yd resource remove [options] <resource-specification> [<resource-specification> ...]
+yd resource remove [options] <resource-specification-or-id> [<resource-specification-or-id> ...]
 yd resource remove [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
 
 Key options:
 - `--type <resource-type>` — with arguments, they are the names or YellowDog IDs of resources of that type to remove, such as `--type Keyring team-keys` (`namespace/name` for a namespaced type, `keyring/credential` for a Credential; see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line) for which types take names and which IDs); with `--set <property=value>` instead, a resource given on the command line, as for `yd resource create`
-- `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
+- `--ids` — optional: says every argument is a YellowDog ID, refusing anything else; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
-- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON, removing nothing (refused when every argument is an ID)
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd resource remove my_compute_templates.jsonnet
-yd resource remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove my_keyring.json ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
 yd resource remove --type Keyring team-keys old-keys
 ```
 

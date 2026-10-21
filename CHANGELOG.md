@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd resource remove` recognises YellowDog IDs without `--ids`**, so specification files and IDs can be given together: `yd resource remove keyring.json ydid:crt:...` removes both in one run, a resource before those it refers to, with one exit code and, under `--json`, one array. `--ids` still works, saying every argument is an ID, and notes that it is optional.
 ## 14.1.0 — 2026-10-20
 
 - **A Platform request whose response stalls fails after 90 seconds** rather than waiting indefinitely, with YellowDog SDK 15.8.0 (now the minimum); the CLI's own requests (`--json-raw`, and the raw provisioning paths) wait 90 seconds too, where they waited five minutes. **`readTimeout` in `[common]`** (or `YD_READ_TIMEOUT`, or `--property common.readTimeout=<seconds>`) changes how long, and `0` waits indefinitely. A request is resent after a timeout, but not one that may have been carried out: a Task batch that times out is resubmitted only when all its Tasks have names, since the Platform refuses duplicate names and an unnamed Task could be added twice; otherwise the command fails, saying to check the Work Requirement's Tasks.
