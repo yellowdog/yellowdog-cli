@@ -51,7 +51,10 @@ def _ls_glob(
     Non-recursive: show matching files and directories as a flat table.
     Recursive: show matching files inline; show matching directories as trees.
     """
-    remote_dir, matches = config_glob_matches(config, remote_path, allow_empty=True)
+    # With their modification times, which the table shows
+    remote_dir, matches = config_glob_matches(
+        config, remote_path, allow_empty=True, modtime=True
+    )
     if not matches:
         print_simple("  (no wildcard matches)")
         return

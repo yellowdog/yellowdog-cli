@@ -142,12 +142,16 @@ def _lsjson(
     remote_path: str,
     recursive: bool = False,
     files_only: bool = False,
+    modtime: bool = False,
 ) -> list[dict]:
     """
     rclone's 'lsjson' entries for 'remote_path' (a directory's contents, or
-    a file itself), raising if it cannot be listed.
+    a file itself), raising if it cannot be listed. Without 'modtime' the
+    entries have no 'ModTime': reading it costs a request per object on
+    S3, which a directory of 100,000 objects does not finish in 30 minutes,
+    so only a listing that shows it ('yd data ls') asks for it.
     """
-    args = ["lsjson", "--no-mimetype"]
+    args = ["lsjson", "--no-mimetype", *_modtime_args(modtime)]
     if recursive:
         args.append("-R")
     if files_only:
@@ -393,6 +397,14 @@ def upload_file(
     return True
 
 
+def _modtime_args(modtime: bool) -> list[str]:
+    """
+    The flag that keeps a listing from reading modification times, unless
+    they are wanted (see _lsjson()).
+    """
+    return [] if modtime else ["--no-modtime"]
+
+
 def _rclone_sync(rclone: Rclone, src: str, dst: str):
     """
     Run 'rclone sync src dst', making dst an exact mirror of src.
@@ -483,7 +495,8 @@ def _report_sync_deletions(
     """
     _, rclone = _rclone_for_config(config)
     result = _run_quietly(
-        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", remote_path]
+        rclone,
+        ["lsjson", "-R", "--files-only", "--no-mimetype", "--no-modtime", remote_path],
     )
     if result.returncode == 3:  # rclone's 'directory not found': nothing there
         return
@@ -717,7 +730,8 @@ def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
     Whether a listing of the directory's first level finds anything in it.
     """
     result = _run_quietly(
-        rclone, ["lsjson", "--no-mimetype", "--max-depth", "1", remote_path]
+        rclone,
+        ["lsjson", "--no-mimetype", "--no-modtime", "--max-depth", "1", remote_path],
     )
     if result.returncode == 3:
         return False
@@ -729,7 +743,7 @@ def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
 
 
 def glob_matches(
-    rclone: Rclone, remote_path: str, allow_empty: bool = False
+    rclone: Rclone, remote_path: str, allow_empty: bool = False, modtime: bool = False
 ) -> tuple[str, list[dict]]:
     """
     (parent directory, matching entries) for a wildcard remote path. An
@@ -739,9 +753,12 @@ def glob_matches(
     existing, or nothing matching, raises FileNotFoundError -- unless
     'allow_empty', for a listing, to which 'nothing matches' is an answer --
     and any other failure to list the parent raises with rclone's message.
+    The entries have 'ModTime' only with 'modtime' (see _lsjson()).
     """
     remote_dir, pattern = split_glob_remote_path(remote_path)
-    check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
+    check = _run_quietly(
+        rclone, ["lsjson", "--no-mimetype", *_modtime_args(modtime), remote_dir]
+    )
     if check.returncode == 3:
         raise FileNotFoundError(f"'{remote_dir}' does not exist")
     if check.returncode != 0:
@@ -758,13 +775,16 @@ def glob_matches(
 
 
 def config_glob_matches(
-    config: ConfigDataClient, remote_path: str, allow_empty: bool = False
+    config: ConfigDataClient,
+    remote_path: str,
+    allow_empty: bool = False,
+    modtime: bool = False,
 ) -> tuple[str, list[dict]]:
     """
     glob_matches() for a data client configuration.
     """
     _, rclone = _rclone_for_config(config)
-    return glob_matches(rclone, remote_path, allow_empty)
+    return glob_matches(rclone, remote_path, allow_empty, modtime)
 
 
 def config_remote_stat(
@@ -1302,9 +1322,11 @@ def lsjson_listing(
     if not is_glob(remote_path):
         if remote_stat(rclone, remote_path, confirm_directory=False) is None:
             raise FileNotFoundError(f"'{remote_path}' does not exist")
-        entries = _lsjson(rclone, remote_path, recursive=recursive)
+        entries = _lsjson(rclone, remote_path, recursive=recursive, modtime=True)
     else:
-        remote_dir, matches = glob_matches(rclone, remote_path, allow_empty=True)
+        remote_dir, matches = glob_matches(
+            rclone, remote_path, allow_empty=True, modtime=True
+        )
         entries = []
         for match in matches:
             entries.append(match)
@@ -1315,6 +1337,7 @@ def lsjson_listing(
                         rclone,
                         _join_remote(remote_dir, match["Name"]),
                         recursive=True,
+                        modtime=True,
                     )
                 )
     return [{key: entry.get(key) for key in LSJSON_KEYS} for entry in entries]
@@ -1443,7 +1466,8 @@ def _report_copy_sync_deletions(
     the sync would delete: those with no counterpart in the source.
     """
     result = _run_quietly(
-        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", dst_path]
+        rclone,
+        ["lsjson", "-R", "--files-only", "--no-mimetype", "--no-modtime", dst_path],
     )
     if result.returncode == 3:  # rclone's 'directory not found': nothing there
         return
