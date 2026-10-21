@@ -231,12 +231,11 @@ class Run:
             ),
         ]
         if self.config.data is not None:
-            # The prefix is written out: its default ('{{namespace}}/{{tag}}')
-            # is applied for the data client commands alone, so a Work
-            # Requirement's {{dataClient.prefix}} would otherwise be undefined
+            # No prefix: its default, '{{namespace}}/{{tag}}', is the run's
+            # (the tag being the run ID), for the data client commands and a
+            # Work Requirement's {{dataClient.prefix}} alike
             bucket = json.dumps(self.config.data["bucket"])
-            prefix = json.dumps(f"{self.namespace}/{self.tag}")
-            lines += ["", "[dataClient]", f"bucket = {bucket}", f"prefix = {prefix}"]
+            lines += ["", "[dataClient]", f"bucket = {bucket}"]
         return "\n".join(lines) + "\n"
 
     def environment(self, inherited: Mapping[str, str]) -> dict[str, str]:

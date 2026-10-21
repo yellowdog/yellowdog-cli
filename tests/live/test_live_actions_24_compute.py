@@ -1,6 +1,7 @@
 """
 Live: a standalone Compute Requirement stopped and started as a whole,
-listed, followed in a thread while it is terminated, and waited for. It
+listed, shown by its name, followed in a thread while it is terminated, and
+waited for by ID and, terminated, by name. It
 runs last of the 'ydst-actions' modules, after the actions pool has ended,
 so its time never counts against the pool's idle timeouts.
 """
@@ -66,6 +67,10 @@ def test_a_requirement_is_stopped_started_followed_and_waited_for(live_run):
             (r.get("id") or {}).get("instanceId") for r in instances
         }
 
+        # By name, in the configured namespace
+        cr_name = yd("cr", "show", cr_id, "--quiet").document["name"]
+        assert yd("cr", "show", cr_name, "--quiet").document["id"] == cr_id
+
         followed = work.follow_alongside(
             yd,
             ("cr", "follow", cr_id),
@@ -75,3 +80,6 @@ def test_a_requirement_is_stopped_started_followed_and_waited_for(live_run):
         work.ended_with(work.follow_events(followed.stdout), {"TERMINATED"})
         (record,) = yd("cr", "wait", cr_id, "--json", "--quiet", ok=(0, 1)).records
         assert record["status"] == "TERMINATED", record
+        # A terminated one is still found by its name
+        (by_name,) = yd("cr", "wait", cr_name, "--json", "--quiet", ok=(0, 1)).records
+        assert by_name["id"] == cr_id, by_name

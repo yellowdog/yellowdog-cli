@@ -4,8 +4,9 @@ compute. Two run-named Keyrings are created, one with '--type' and '--set'
 (a variable substituted in its values) and one read from standard input
 ('-'); shown by name and by ID ('yd resource show --type'); removed by name
 and by ID in one call ('yd resource remove --type'), and removing one again
-skipped; and what is refused as parsed, before the Platform is asked. The
-cases run in order on one worker.
+skipped; two more removed in one call, one by a specification file and one
+by its ID, with no '--ids'; and what is refused as parsed, before the
+Platform is asked. The cases run in order on one worker.
 """
 
 from __future__ import annotations
@@ -130,6 +131,16 @@ def test_a_name_that_names_nothing_is_not_found(live_run):
         ),
         (["show", "--type", "Allowance", "gpu-hours", "--quiet"], "has no name"),
         (["show", "a-name", "--quiet"], "give --type"),
+        # A dry run of IDs alone would remove them: nothing to dry-run
+        (
+            [
+                "remove",
+                "-J",
+                "ydid:keyring:000000:11111111-1111-1111-1111-111111111111",
+                *_ACT,
+            ],
+            "--jsonnet-dry-run applies to specification files",
+        ),
     ],
 )
 def test_refused_as_parsed(live_run, argv, message):
@@ -149,3 +160,31 @@ def test_removed_by_name_and_by_id(live_run, names):
     assert _keyrings(yd, run) == {}
     again = yd("resource", "remove", "--type", "Keyring", first, *_ACT)
     assert [(r["name"], r["action"]) for r in again.records] == [(first, "skipped")]
+
+
+def test_a_file_and_an_id_removed_in_one_call(live_run, names, tmp_path):
+    yd, run = live_run.yd, live_run.run
+    by_file, by_id = run.name("inline-c"), run.name("inline-d")
+    for name in (by_file, by_id):
+        yd(
+            "resource",
+            "create",
+            "--type",
+            "keyring",
+            "--set",
+            f"name={name}",
+            "--set",
+            f"description={_description(live_run)}",
+            *_ACT,
+        )
+    specification = tmp_path / "keyring.json"
+    specification.write_text(
+        json.dumps({"resource": "Keyring", "name": by_file}), encoding="utf-8"
+    )
+    keyring_id = _keyrings(yd, run)[by_id]
+    removed = yd("resource", "remove", str(specification), keyring_id, *_ACT)
+    assert [(r["name"], r["action"]) for r in removed.records] == [
+        (by_file, "removed"),
+        (by_id, "removed"),
+    ]
+    assert _keyrings(yd, run) == {}
