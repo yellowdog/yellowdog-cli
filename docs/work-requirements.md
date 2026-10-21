@@ -222,6 +222,8 @@ Each `TaskErrorSelector` has three optional fields, each itself a Selection of p
 
 `maxRetries` must be `>= 0`, and defaults to `0` when omitted, which defines the policy but retries nothing. `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
 
+A Task can tell which attempt it is from the `YD_RETRY_NUMBER` environment variable, which the YellowDog Agent sets: `0` for its first run, `1` for its first retry, and so on — for example, to resume from a checkpoint rather than start again.
+
 ### `failurePolicy`
 
 When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`), a `failurePolicy` can resubmit the Task in another Task Group within the same Work Requirement:
@@ -453,6 +455,7 @@ In addition to the environment variables above, when a Task is executed by a Wor
 - `YD_INSTANCE_ID`
 - `YD_TASK_GROUP_ID`
 - `YD_TASK_ID`
+- `YD_RETRY_NUMBER` (`0` for a Task's first run, `1` for its first retry, and so on; see [Task Retries and Failure Policies](#task-retries-and-failure-policies))
 - `YD_AGENT_DATA`
 - `YD_AGENT_HOME`
 - `YD_WORKER_SLOT`
