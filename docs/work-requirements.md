@@ -721,12 +721,14 @@ The following naming and numbering substitutions are available for use in TOML a
 
 | Directive               | Description                                       | Task | Task Group |
 |:------------------------|:--------------------------------------------------|:-----|:-----------|
-| `{{task_number}}`       | The current Task number                           | Yes  |            |
+| `{{task_number}}`       | The current Task number, zero-padded              | Yes  |            |
 | `{{task_name}}`         | The current Task name                             | Yes  |            |
 | `{{task_group_name}}`   | The current Task Group name                       | Yes  | Yes        |
 | `{{task_count}}`        | The number of Tasks in the current Task Group     | Yes  | Yes        |
-| `{{task_group_number}}` | The current Task Group number                     | Yes  | Yes        |
+| `{{task_group_number}}` | The current Task Group number, zero-padded        | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
+
+`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way. Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data ls` — where unpadded `task_10` would sort before `task_2`. A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
 The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
 
