@@ -13,7 +13,7 @@ import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from rclone_api import Config, Rclone
 from rclone_api.completed_process import CompletedProcess as RcloneCompletedProcess
@@ -29,6 +29,7 @@ from yellowdog_cli.utils.glob_utils import GLOB_CHARS
 from yellowdog_cli.utils.limits import (
     DATA_CLIENT_LISTING_WORKERS,
     DATA_CLIENT_NAMES_SHOWN,
+    DATA_CLIENT_RCLONE_TRANSFERS,
     DATA_CLIENT_TRANSFER_WORKERS,
 )
 from yellowdog_cli.utils.printing import (
@@ -135,10 +136,13 @@ def _copy_to(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
 
 def _copy(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
     """
-    'rclone copy src dst' (dst is a directory to copy into); see _copy_to().
+    'rclone copy src dst' (dst is a directory to copy into), its files
+    DATA_CLIENT_RCLONE_TRANSFERS at a time; see _copy_to().
     """
     return _without_rclone_api_warnings(
-        lambda: rclone.copy(src=src, dst=dst, check=False)
+        lambda: rclone.copy(
+            src=src, dst=dst, check=False, transfers=DATA_CLIENT_RCLONE_TRANSFERS
+        )
     )
 
 
@@ -183,6 +187,7 @@ def _copy_files(
                 src=src_dir,
                 dst=dst_dir,
                 check=False,
+                transfers=DATA_CLIENT_RCLONE_TRANSFERS,
                 other_args=["--files-from-raw", path],
             )
         ),
@@ -541,7 +546,8 @@ def _rclone_sync(rclone: Rclone, src: str, dst: str):
     """
     Run 'rclone sync src dst', making dst an exact mirror of src.
     rclone_api has no sync wrapper, so we call the underlying _run directly.
-    Performance flags match those hardcoded in rclone_api's copy(). The
+    Performance flags match _copy()'s, which are rclone_api's copy()'s with
+    DATA_CLIENT_RCLONE_TRANSFERS. The
     result is returned for the caller to check, rclone_api's warning silenced
     as in _copy_to().
     """
@@ -554,7 +560,7 @@ def _rclone_sync(rclone: Rclone, src: str, dst: str):
                 "--checkers",
                 "1000",
                 "--transfers",
-                "32",
+                str(DATA_CLIENT_RCLONE_TRANSFERS),
                 "--low-level-retries",
                 "10",
             ],
@@ -897,7 +903,17 @@ def remote_stat(
     rclone says it is, and lists as one: an empty prefix, a namespace's
     before anything is uploaded to it among them, is no error to list.
     """
-    result = _run_quietly(rclone, ["lsjson", "--stat", "--no-mimetype", remote_path])
+    stat_args = ["lsjson", "--stat", "--no-mimetype", remote_path]
+    if confirm_directory:
+        # A bucket-based stat of a directory lists it, as the listing that
+        # confirms it holds anything does, so the two run at once: a
+        # directory costs one listing's time rather than two, and a file or
+        # a missing path no more than its stat, the listing of it as quick
+        result, listing = _run_quietly_together(
+            rclone, stat_args, _first_level_listing_args(remote_path)
+        )
+    else:
+        result, listing = _run_quietly(rclone, stat_args), None
     if result.returncode == 3:
         return None
     if result.returncode != 0:
@@ -906,10 +922,10 @@ def remote_stat(
         )
     entry = json.loads(result.stdout or "null")
     if (
-        confirm_directory
+        listing is not None
         and _is_unnamed_directory(entry)
         and not _can_hold_empty_directories(rclone, remote_path)
-        and not _holds_anything(rclone, remote_path)
+        and not _listing_holds_anything(listing, remote_path)
     ):
         return None
     return entry
@@ -946,14 +962,54 @@ def _can_hold_empty_directories(rclone: Rclone, remote_path: str) -> bool:
         ) from e
 
 
-def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
+def _first_level_listing_args(remote_path: str) -> list[str]:
     """
-    Whether a listing of the directory's first level finds anything in it.
+    The listing of a directory's first level, without reading anything but
+    the names (see _listing_holds_anything()).
     """
-    result = _run_quietly(
-        rclone,
-        ["lsjson", "--no-mimetype", "--no-modtime", "--max-depth", "1", remote_path],
-    )
+    return ["lsjson", "--no-mimetype", "--no-modtime", "--max-depth", "1", remote_path]
+
+
+def _run_quietly_together(
+    rclone: Rclone, first: list[str], second: list[str]
+) -> tuple[subprocess.CompletedProcess, subprocess.CompletedProcess]:
+    """
+    _run_quietly() of two commands at the same time: the first on this
+    thread, the second on a daemon thread, always waited for, so that the
+    filter held here covers it (see _without_rclone_api_warnings()). A daemon
+    thread rather than a pool's, whose threads the interpreter waits for as
+    it exits: yd-doctor abandons a stat that outlasts its timeout, and the
+    process must still end.
+    """
+    box: dict[str, Any] = {}
+
+    def run_second() -> None:
+        _mark_quiet_worker()
+        try:
+            box["result"] = _run_quietly(rclone, second)
+        except BaseException as e:  # handed back to the caller
+            box["error"] = e
+
+    def run_both() -> tuple[subprocess.CompletedProcess, subprocess.CompletedProcess]:
+        thread = threading.Thread(target=run_second, daemon=True)
+        thread.start()
+        try:
+            result = _run_quietly(rclone, first)
+        finally:
+            thread.join()
+        if "error" in box:
+            raise box["error"]
+        return result, box["result"]
+
+    return _without_rclone_api_warnings(run_both)
+
+
+def _listing_holds_anything(
+    result: subprocess.CompletedProcess, remote_path: str
+) -> bool:
+    """
+    Whether a listing of the directory's first level found anything in it.
+    """
     if result.returncode == 3:
         return False
     if result.returncode != 0:

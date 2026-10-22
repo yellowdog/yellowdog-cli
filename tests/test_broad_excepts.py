@@ -145,6 +145,9 @@ ALLOWED: dict[str, str] = {
         "Cloud Wizard setup: counted as an error; a session failure recurs at"
         " setup's next Platform call, which raises it with its own code"
     ),
+    "yellowdog_cli/utils/dataclient/operations.py::_run_quietly_together.run_second#0": (
+        "Hands the failure back to the calling thread, which raises it"
+    ),
     "yellowdog_cli/utils/doctor_checks.py::with_timeout.target#0": (
         "Hands the failure back to the calling thread, which raises or reports it"
     ),

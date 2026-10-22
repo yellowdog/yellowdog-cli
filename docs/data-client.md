@@ -38,6 +38,8 @@ The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` v
 
 > **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target. A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one; without the `/` it is relative to the remote's default directory (for a local remote, the current directory). With no bucket, the same holds for a prefix beginning with `/`.
 
+> **Note on servers that limit connections:** The `yd data` commands copy up to 128 files at a time, which on cloud object storage (S3, Google Cloud Storage, Azure Blob Storage) is what makes many small files quick. On an SFTP or FTP server, each of those can be a connection of its own, and a server that limits how many connections it accepts at once (OpenSSH's `MaxStartups`, an FTP server's per-user or per-IP limit) refuses the rest. rclone retries a refused connection, so the transfer usually completes, more slowly, but it can fail, and a server that bans an address for repeated dropped connections may ban yours. Cap the connections in the remote itself: `connections` for SFTP (`":sftp,host=files.example.com,user=me,connections=8"`, or `connections = 8` in a named remote in `rclone.conf`) and `concurrency` for FTP.
+
 ## Named Profiles
 
 Multiple named profiles can be defined as sub-tables of `[dataClient]`. A named profile overrides only the fields it specifies; any field not set in the profile inherits the corresponding value from the base `[dataClient]` section.
