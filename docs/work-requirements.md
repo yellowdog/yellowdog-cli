@@ -12,7 +12,6 @@
       * [failurePolicy](#failurepolicy)
       * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
          * [Migration](#migration)
-      * [Caveat — agent version](#caveat--agent-version)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
       * [Example — JSON](#example--json)
@@ -57,7 +56,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 21 17:22:44 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 07:25:00 BST 2026 -->
 
 <!--te-->
 
@@ -303,10 +302,6 @@ The minimal replacement for `maximumTaskRetries = N` (with no error filtering) i
 ```
 
 A legacy `retryableErrors` entry's three fields (`errorTypes`, `statusesAtFailure`, `processExitCodes`) all migrate to the corresponding fields on a `TaskErrorSelector`, with each wrapped in a `{"includes": [...]}` Selection. Legacy semantics — a Task retried if **any** entry matched — translate to a single `includes` list of `TaskErrorSelector` entries.
-
-### Caveat — agent version
-
-The retry/failure selection by `errorTypes`/`processExitCodes` depends on the YellowDog Agent recording which error caused the Task to fail. Older Agent versions don't populate that field, so Selection precision is reduced when running against older Workers — `maxRetries` and unconditional resubmission still work, but error-typed selectors won't match precisely. Upgrade Workers to the current Agent release for full behaviour.
 
 ## Merging Additional Environment Variables into Tasks
 
