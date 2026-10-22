@@ -637,6 +637,15 @@ class CLIParser:
         return self.args.terminate
 
     # -----------------------------------------------------------------------
+    # yd-auto-shutdown
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def auto_shutdown_minutes(self) -> float:
+        return self.args.auto_shutdown_minutes
+
+    # -----------------------------------------------------------------------
     # yd-priority
     # -----------------------------------------------------------------------
 

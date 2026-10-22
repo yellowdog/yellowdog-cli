@@ -28,6 +28,7 @@
       * [yd computerequirement stop](#yd-computerequirement-stop)
       * [yd computerequirement start](#yd-computerequirement-start)
       * [yd computerequirement reprovision](#yd-computerequirement-reprovision)
+      * [yd computerequirement autoshutdown](#yd-computerequirement-autoshutdown)
       * [yd computerequirement terminate](#yd-computerequirement-terminate)
    * [yd instance](#yd-instance)
       * [yd instance stop](#yd-instance-stop)
@@ -78,7 +79,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 12:17:53 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 16:43:47 BST 2026 -->
 
 <!--te-->
 
@@ -96,7 +97,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 | [`yd taskgroup`](#yd-taskgroup) | `yd tg` | Task Groups | `priority`, `compare`, `list`, `show` |
 | [`yd task`](#yd-task) | | Tasks | `abort`, `list`, `show` |
 | [`yd workerpool`](#yd-workerpool) | `yd wp` | Worker Pools | `provision`, `resize`, `shutdown`, `token`, `list`, `show`, `follow`, `wait` |
-| [`yd computerequirement`](#yd-computerequirement) | `yd cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `terminate`, `list`, `show`, `follow`, `wait` |
+| [`yd computerequirement`](#yd-computerequirement) | `yd cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `autoshutdown`, `terminate`, `list`, `show`, `follow`, `wait` |
 | [`yd instance`](#yd-instance) | | the Instances of Compute Requirements | `stop`, `start`, `restart`, `deprovision`, `terminate`, `list`, `show` |
 | [`yd node`](#yd-node) | | Worker Pool Nodes | `action`, `shutdown`, `stop`, `start`, `terminate`, `restart`, `deprovision`, `list`, `show` |
 | [`yd worker`](#yd-worker) | | Workers | `list`, `show` |
@@ -602,6 +603,7 @@ Compute Requirements: `yd computerequirement`, or `yd cr` for short.
 | [`stop`](#yd-computerequirement-stop) | Stop Compute Requirements | `yd-compute-stop` |
 | [`start`](#yd-computerequirement-start) | Start stopped Compute Requirements | `yd-compute-start` |
 | [`reprovision`](#yd-computerequirement-reprovision) | Restore Compute Requirements to their target instance counts | `yd-compute-reprovision` |
+| [`autoshutdown`](#yd-computerequirement-autoshutdown) | Set when Compute Requirements are automatically terminated | |
 | [`terminate`](#yd-computerequirement-terminate) | Terminate Compute Requirements | `yd-terminate` |
 | `list` | `yd list compute-requirements` |  |
 | `show` | `yd show`, for Compute Requirement names or IDs and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
@@ -616,7 +618,7 @@ The `yd computerequirement instantiate` command instantiates a Compute Requireme
 yd computerequirement instantiate [options] [<compute-requirement-specification-file>]
 ```
 
-This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd computerequirement instantiate`.
+This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd computerequirement instantiate`, as is `autoShutdownTimeout`, the time in minutes after which the Compute Requirement will be terminated (`0` for never; it is inherited by a JSON specification as `autoShutdown`, with the timeout as an ISO 8601 duration such as `"PT2H"`). The auto shutdown can be changed later with [`yd computerequirement autoshutdown`](#yd-computerequirement-autoshutdown).
 
 Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifications, supplied as the positional argument or by using the `computeRequirementData` property in the `workerPool`/`computeRequirement` section. The properties listed above will be inherited from the `config.toml` `workerPool` specification if they are not present in the JSON file.
 
@@ -773,6 +775,26 @@ Key options:
 ```shell
 yd computerequirement reprovision my-compute-requirement --follow
 yd computerequirement reprovision my-compute-requirement --wait --timeout 600
+```
+
+### yd computerequirement autoshutdown
+
+The `yd computerequirement autoshutdown` command sets when Compute Requirements are automatically terminated: `--minutes` from now, replacing whatever auto shutdown each had, or with `--minutes 0` never. Running it again restarts the clock, so the same command extends a Compute Requirement's life. A Compute Requirement is given an auto shutdown when it is instantiated by the `autoShutdownTimeout` configuration property (see [Worker Pool Properties](worker-pools.md#worker-pool-properties)), or by `autoShutdown` in its specification; `yd computerequirement show` shows its `autoShutdown` and the `autoShutdownTime` at which it will be terminated.
+
+```shell
+yd computerequirement autoshutdown [options] --minutes <minutes> [<compute-requirement-name-or-ID> ...]
+```
+
+It selects Compute Requirements as `yd computerequirement terminate` does: if no arguments are supplied, Compute Requirements that match the `namespace` and `tag` are candidates; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is already terminating or terminated is skipped with a warning. Each one updated is reported with the time at which it will now be terminated.
+
+Key options:
+- `--minutes <minutes>` — required: terminate the Compute Requirements this many minutes from now (a fraction is allowed), or with `0` never automatically
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md)); each record adds the `autoShutdownTime` set, `null` when there is none
+
+```shell
+yd computerequirement autoshutdown my-compute-requirement --minutes 120
+yd computerequirement autoshutdown my-compute-requirement --minutes 0
+yd computerequirement autoshutdown 'batch-*' --minutes 30
 ```
 
 ### yd computerequirement terminate
@@ -1882,7 +1904,7 @@ yd completion powershell --names | Out-String | Invoke-Expression    # in $PROFI
 
 [`yd doctor`](#yd-doctor) says whether the start-up file's line has `--names`.
 
-Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show` and `yd taskgroup compare` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`. An ID is still taken wherever a name is.
+Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show` and `yd taskgroup compare` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`. An ID is still taken wherever a name is.
 
 What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. Only the statuses the verb applies to are offered (for example, running Work Requirements for `hold` and held ones for `start`), except by `show`, which offers every status. At most the 200 newest are offered, in whatever order the shell lists them. A verb that takes no `--tag`, such as `show`, uses the configuration's tag.
 

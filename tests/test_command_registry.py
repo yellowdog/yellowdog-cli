@@ -185,10 +185,16 @@ def _entry_points() -> set[str]:
 
 class TestRegistryMatchesEntryPoints:
     def test_every_entry_point_is_registered_and_vice_versa(self):
-        # yd-completion has no script: it is 'yd completion' alone
-        assert set(COMMANDS) - {"yd-completion"} == (
+        # A command with no script is its 'yd' word or noun verb alone
+        assert {name for name, command in COMMANDS.items() if command.script} == (
             _entry_points() - {"yd", "yd-commander", "yd-mcp"}
         )
+
+    def test_the_commands_with_no_script(self):
+        assert {n for n, c in COMMANDS.items() if not c.script} == {
+            "yd-completion",
+            "yd-auto-shutdown",
+        }
 
     def test_every_command_is_registered_under_its_own_name(self):
         # No aliases: one name per command
@@ -465,6 +471,7 @@ class TestToolKinds:
             "yd-compute-restart",
             "yd-compute-deprovision",
             "yd-compute-reprovision",
+            "yd-auto-shutdown",
             "yd-nodeaction",
             "yd-priority",
             "yd-token",

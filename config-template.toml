@@ -464,6 +464,13 @@
     # Optional — default: 10.0
     # nodeBootTimeout = 10.0
 
+    # How long after it is created a Compute Requirement is terminated; 0 means
+    # never. 'yd computerequirement autoshutdown' changes it later.
+    # Optional — applies to yd computerequirement instantiate only (a Worker
+    # Pool shuts down when idle instead); default: unset (the Platform's
+    # default applies)
+    # autoShutdownTimeout = 120.0
+
     # --------------------------------------------------------------------------
     # Images and instance configuration
     # --------------------------------------------------------------------------

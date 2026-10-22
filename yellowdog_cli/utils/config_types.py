@@ -94,6 +94,7 @@ class ConfigWorkRequirement:
 
 @dataclass
 class ConfigWorkerPool:
+    auto_shutdown_timeout: float | None = None  # Only for yd-instantiate
     compute_requirement_batch_size: int = CR_MAX_INSTANCES
     compute_requirement_data_file: str | None = None
     cr_tag: str | None = None

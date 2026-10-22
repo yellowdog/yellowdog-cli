@@ -665,6 +665,13 @@ NOUNS: tuple[Noun, ...] = (
                 " until their target counts are met",
             ),
             _cr_action(
+                "autoshutdown",
+                "yd-auto-shutdown",
+                "Set when Compute Requirements are automatically terminated",
+                "setting when Compute Requirements are automatically"
+                " terminated, or that they never are",
+            ),
+            _cr_action(
                 "terminate",
                 "yd-terminate",
                 "Terminate Compute Requirements",
@@ -1030,7 +1037,9 @@ def noun_forms(command_name: str) -> list[str]:
 
 
 # The registry commands the noun verbs replace, each with its noun forms
-# (every deprecated script, these included, is top_level.SCRIPT_FORMS)
+# (every deprecated script, these included, is top_level.SCRIPT_FORMS); a
+# command with no script (Command.script) is here too, being typed only as
+# its noun forms
 REPLACED_BY_VERBS: dict[str, list[str]] = {
     name: noun_forms(name)
     for name in COMMANDS

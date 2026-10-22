@@ -692,6 +692,12 @@ class TestSpecificationFileExclusionsAreTheirCommandsOwn:
         )
 
 
+# The arguments a scope tool needs whatever its targets
+_SCOPE_REQUIRED: dict[str, dict] = {
+    "yd_computerequirement_autoshutdown": {"auto_shutdown_minutes": 60}
+}
+
+
 class TestActingOnTheWholeScopeIsOptedInto:
     """
     The server passes --yes, so an action tool given no targets would act on
@@ -734,11 +740,15 @@ class TestActingOnTheWholeScopeIsOptedInto:
     @pytest.mark.parametrize("tool", SCOPE_TOOLS)
     def test_no_targets_is_refused(self, tool, tmp_path):
         with pytest.raises(ToolArgumentError, match="all_in_scope"):
-            to_argv(TOOLS[tool], {}, str(tmp_path))
+            to_argv(TOOLS[tool], {**_SCOPE_REQUIRED.get(tool, {})}, str(tmp_path))
 
     @pytest.mark.parametrize("tool", SCOPE_TOOLS)
     def test_no_targets_with_the_opt_in_runs_over_the_scope(self, tool, tmp_path):
-        argv, _ = to_argv(TOOLS[tool], {"all_in_scope": True}, str(tmp_path))
+        argv, _ = to_argv(
+            TOOLS[tool],
+            {**_SCOPE_REQUIRED.get(tool, {}), "all_in_scope": True},
+            str(tmp_path),
+        )
         assert not any("all_in_scope" in arg for arg in argv)
         assert "--" not in argv  # No targets: no positionals
 
@@ -750,7 +760,11 @@ class TestActingOnTheWholeScopeIsOptedInto:
             )
         )
         with pytest.raises(ToolArgumentError, match="not both"):
-            to_argv(TOOLS[tool], {target: ["x"], "all_in_scope": True}, str(tmp_path))
+            to_argv(
+                TOOLS[tool],
+                {**_SCOPE_REQUIRED.get(tool, {}), target: ["x"], "all_in_scope": True},
+                str(tmp_path),
+            )
 
     @pytest.mark.parametrize("tool", SCOPE_TOOLS)
     def test_the_description_says_so(self, tool):

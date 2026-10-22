@@ -8,6 +8,7 @@ from argparse import SUPPRESS
 
 import pytest
 from yellowdog_client.model import (
+    AutoShutdown,
     ComputeRequirementStatus,
     WorkerPoolStatus,
     WorkRequirementStatus,
@@ -100,6 +101,12 @@ def test_the_statuses_are_the_entitys(key):
         (
             "yd computerequirement reprovision",
             compute_action_common.COMPUTE_REPROVISION.valid_cr_statuses,
+        ),
+        (
+            "yd computerequirement autoshutdown",
+            compute_action_common.compute_auto_shutdown(
+                AutoShutdown(enabled=False)
+            ).valid_cr_statuses,
         ),
     ],
 )

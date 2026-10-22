@@ -167,6 +167,9 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_CR} terminate", "compute_reqs_instances_or_nodes"): _names(
         ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED - {"TERMINATING"}
     ),
+    (f"{_CR} autoshutdown", "compute_reqs_instances_or_nodes"): _names(
+        ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED - {"TERMINATING"}
+    ),
     (f"{_CR} show", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, None),
     (f"{_CR} follow", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
     (f"{_CR} wait", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),

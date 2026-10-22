@@ -1379,6 +1379,9 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         cr_batch_size = _wp_batch_size(wp_section)
 
         return ConfigWorkerPool(
+            auto_shutdown_timeout=cast(
+                float | None, _number(wp_section, AUTO_SHUTDOWN_TIMEOUT, float)
+            ),
             compute_requirement_batch_size=cr_batch_size,
             compute_requirement_data_file=compute_requirement_data_file,
             cr_tag=wp_section.get(CR_TAG),

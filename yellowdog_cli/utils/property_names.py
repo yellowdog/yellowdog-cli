@@ -14,6 +14,7 @@ ADD_YD_ENV_VARS = "addYDEnvironment"  # Boolean
 ARGS = "arguments"  # List
 ARGS_PREFIX = "argumentsPrefix"  # List
 ARGS_POSTFIX = "argumentsPostfix"  # List
+AUTO_SHUTDOWN_TIMEOUT = "autoShutdownTimeout"  # Float
 CERTIFICATES = "certificates"  # String - path to a CA bundle
 COMMON_SECTION = "common"  # No value
 COMPLETED_TASK_TTL = "completedTaskTtl"  # Float
@@ -144,6 +145,7 @@ ALL_KEYS = [
     ARGS,
     ARGS_POSTFIX,
     ARGS_PREFIX,
+    AUTO_SHUTDOWN_TIMEOUT,
     CERTIFICATES,
     COMMON_SECTION,
     COMPLETED_TASK_TTL,

@@ -213,6 +213,10 @@ class Command:
     # The registry command a noun verb's derived command runs
     # (noun_registry.py); None for a registry command itself
     runs: str | None = None
+    # False for a command released after 'yd' (yd-completion, yd-auto-shutdown):
+    # it has no 'yd-*' entry point, so nothing to deprecate, and is typed only
+    # as its 'yd' word or noun verb
+    script: bool = True
 
     @property
     def internal_name(self) -> str:
@@ -490,6 +494,17 @@ def finite_float(value: str) -> float:
         raise ArgumentTypeError(f"invalid number: '{value}'") from None
     if not math.isfinite(number):
         raise ArgumentTypeError(f"must be a finite number, not {value}")
+    return number
+
+
+def non_negative_float(value: str) -> float:
+    """
+    An argparse type for a duration in minutes, where 0 means none: a finite
+    number, not less than zero.
+    """
+    number = finite_float(value)
+    if number < 0:
+        raise ArgumentTypeError(f"must be zero or more, not {value}")
     return number
 
 
@@ -1989,6 +2004,50 @@ COMMANDS["yd-compute-reprovision"] = Command(
     validators=(check_glob_and_literal_names, check_wait_options),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
+)
+AUTO_SHUTDOWN_MINUTES = option(
+    "--minutes",
+    dest="auto_shutdown_minutes",
+    required=True,
+    type=non_negative_float,
+    metavar="<minutes>",
+    help=(
+        "terminate the compute requirement(s) this many minutes from now,"
+        " replacing any auto shutdown already set; 0 never terminates them"
+        " automatically"
+    ),
+)
+COMMANDS["yd-auto-shutdown"] = Command(
+    name="yd-auto-shutdown",
+    purpose=(
+        "setting when Compute Requirements are automatically terminated, or"
+        " that they never are"
+    ),
+    summary="Set when Compute Requirements are automatically terminated",
+    kind=CommandKind.API,
+    # Compute Requirement-level only, and nothing to follow: the requirement
+    # runs on until the time set
+    options=(
+        SORT,
+        REVERSE,
+        VARIABLE,
+        NAMESPACE,
+        TAG,
+        INTERACTIVE,
+        YES,
+        ACTIONS_JSON,
+        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+            help=(
+                "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                " a name may be a glob pattern (e.g. 'cr-*')"
+            ),
+        ),
+        AUTO_SHUTDOWN_MINUTES,
+    ),
+    validators=(check_glob_and_literal_names,),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+    script=False,
 )
 COMMANDS["yd-compute-start"] = Command(
     name="yd-compute-start",
@@ -4216,6 +4275,7 @@ COMMANDS["yd-completion"] = Command(
     kind=CommandKind.STANDALONE,
     options=(COMPLETION_SHELL, COMPLETION_NAMES),
     tool=ToolKind.NONE,
+    script=False,
 )
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",

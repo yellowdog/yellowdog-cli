@@ -211,7 +211,8 @@ class TestCommandSections:
         assert unknown == [], f"{name} bullets name options it does not take: {unknown}"
 
     def test_no_deprecated_script_has_a_section(self):
-        for name in [*SCRIPT_FORMS, "yd-completion"]:
+        unscripted = [name for name, command in COMMANDS.items() if not command.script]
+        for name in [*SCRIPT_FORMS, *unscripted]:
             assert _heading(self.text, f"### {name}") is None, name
 
 

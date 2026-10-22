@@ -2,14 +2,17 @@
 Utility functions for provisioning and instantiating.
 """
 
+from datetime import timedelta
 from json import dumps as json_dumps
 from json import loads as json_loads
 from os.path import join
-from typing import Any
+from typing import Any, cast
 
 import requests
 from yellowdog_client import PlatformClient
+from yellowdog_client.common.iso_datetime import iso_timedelta_format
 from yellowdog_client.model import (
+    AutoShutdown,
     ComputeRequirementTemplateTestResult,
     ComputeRequirementTemplateUsage,
 )
@@ -209,6 +212,29 @@ def shown_value(value: object) -> str:
     (so 'true' and '{"enabled": true}', never Python's 'True').
     """
     return value if isinstance(value, str) else json_dumps(value)
+
+
+def auto_shutdown(timeout_minutes: float) -> AutoShutdown:
+    """
+    A shutdown after the given number of minutes (a Worker Pool's idle
+    nodes or idle pool, or a Compute Requirement's life); 0 disables it.
+    """
+    if timeout_minutes == 0:
+        return AutoShutdown(enabled=False)
+    return AutoShutdown(enabled=True, timeout=timedelta(minutes=timeout_minutes))
+
+
+def auto_shutdown_json(shutdown: AutoShutdown) -> dict:
+    """
+    An AutoShutdown as a specification writes it, the timeout as an ISO 8601
+    duration.
+    """
+    if not shutdown.enabled:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "timeout": iso_timedelta_format(cast(timedelta, shutdown.timeout)),
+    }
 
 
 def get_template_id(client: PlatformClient, template_id_or_name: str) -> str:

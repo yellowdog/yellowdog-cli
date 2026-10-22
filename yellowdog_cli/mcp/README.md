@@ -93,6 +93,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_cloudinfo_prices` | read-only | `yd cloudinfo prices` | List instance prices |
 | `yd_cloudinfo_regions` | read-only | `yd cloudinfo regions` | List cloud regions |
 | `yd_cloudinfo_sub_regions` | read-only | `yd cloudinfo sub-regions` | List cloud sub-regions |
+| `yd_computerequirement_autoshutdown` | destructive | `yd computerequirement autoshutdown` | Set when Compute Requirements are automatically terminated |
 | `yd_computerequirement_instantiate` | acting | `yd computerequirement instantiate` | Instantiate a Compute Requirement |
 | `yd_computerequirement_reprovision` | destructive | `yd computerequirement reprovision` | Reprovision Compute Requirements, restoring their target instance counts |
 | `yd_computerequirement_resize` | destructive | `yd computerequirement resize` | Resize a Compute Requirement |
@@ -165,7 +166,7 @@ Destructive tools run with `--yes`, since there is no terminal for the CLI to pr
 
 Acting tools set `destructiveHint: false` explicitly, since the protocol's own default for a tool with no annotation is `true`.
 
-The CLI's action commands act on everything matching the namespace and tag when given no targets, and `yd data delete --recursive` on the whole default prefix. Since the server passes `--yes`, a tool call leaving its targets out would do that without anyone having asked for it, so the tools for those commands (`yd_task_abort`, `yd_workrequirement_cancel`, `yd_computerequirement_reprovision`, `yd_computerequirement_start`, `yd_computerequirement_stop`, `yd_computerequirement_terminate`, `yd_data_delete`, `yd_workrequirement_finish`, `yd_workrequirement_hold`, `yd_workrequirement_start` and `yd_workerpool_shutdown`) refuse a call with no targets unless it sets `all_in_scope` to `true`, and refuse one that sets both. The tools that take Instance or Node IDs alone (`yd_instance_terminate`, `yd_node_shutdown` and the rest) need at least one.
+The CLI's action commands act on everything matching the namespace and tag when given no targets, and `yd data delete --recursive` on the whole default prefix. Since the server passes `--yes`, a tool call leaving its targets out would do that without anyone having asked for it, so the tools for those commands (`yd_task_abort`, `yd_workrequirement_cancel`, `yd_computerequirement_autoshutdown`, `yd_computerequirement_reprovision`, `yd_computerequirement_start`, `yd_computerequirement_stop`, `yd_computerequirement_terminate`, `yd_data_delete`, `yd_workrequirement_finish`, `yd_workrequirement_hold`, `yd_workrequirement_start` and `yd_workerpool_shutdown`) refuse a call with no targets unless it sets `all_in_scope` to `true`, and refuse one that sets both. The tools that take Instance or Node IDs alone (`yd_instance_terminate`, `yd_node_shutdown` and the rest) need at least one.
 
 A tool with a `dry_run` argument enumerates what it would do without doing it, exactly as the CLI's own `--dry-run` does, which an agent can call first as a lighter-weight check of what a destructive or acting call would affect.
 

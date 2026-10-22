@@ -17,8 +17,11 @@ Covers:
     glob pattern refused as parsed), and skipping an Instance already
     terminating
   - reprovisioning taking Compute Requirements only, and RUNNING ones
+  - setting the auto shutdown (yd-auto-shutdown) of any live Compute
+    Requirement, its record carrying the time the Platform set
 """
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import ANY, MagicMock
@@ -27,6 +30,8 @@ import pytest
 from requests import ConnectionError as RequestsConnectionError
 from requests import HTTPError, Response
 from yellowdog_client.model import (
+    AutoShutdown,
+    ComputeRequirement,
     ComputeRequirementStatus,
     ConfiguredWorkerPool,
     InstanceStatus,
@@ -46,6 +51,7 @@ from yellowdog_cli.utils.compute_action_common import (
     COMPUTE_STOP,
     COMPUTE_TERMINATE,
     apply_compute_action,
+    compute_auto_shutdown,
 )
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
@@ -63,6 +69,8 @@ OCI_INSTANCE_ID = (
     "ocid1.instance.oc1.uk-london-1."
     "anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa"
 )
+
+SHUTDOWN_TIME = datetime(2026, 10, 22, 16, 4, 12, tzinfo=timezone.utc)
 
 RUNNING = ComputeRequirementStatus.RUNNING
 STOPPED = ComputeRequirementStatus.STOPPED
@@ -130,11 +138,32 @@ class FakePlatform:
             "reprovision_compute_requirement_by_id",
         ):
             getattr(compute, method).side_effect = self._action(method)
+        compute.update_compute_requirement_auto_shutdown.side_effect = (
+            self._update_auto_shutdown
+        )
         client.worker_pool_client.get_node_by_id.side_effect = self._lookup(self.nodes)
         client.worker_pool_client.get_worker_pool_by_id.side_effect = self._lookup(
             self.pools
         )
         self.client = client
+
+    def _update_auto_shutdown(self, cr_id, shutdown):
+        method = "update_compute_requirement_auto_shutdown"
+        if method in self.failures:
+            raise self.failures[method]
+        self.calls.append((method, cr_id, shutdown))
+        # The SDK's own model, as the Platform's answer is
+        cr = self.crs[cr_id]
+        updated = ComputeRequirement(
+            namespace=cr.namespace,
+            name=cr.name,
+            provisionStrategy=MagicMock(),
+            autoShutdown=shutdown,
+        )
+        updated.id = cr.id
+        updated.status = cr.status
+        updated.autoShutdownTime = SHUTDOWN_TIME if shutdown.enabled else None
+        return updated
 
     def _get_cr(self, cr_id):
         if self.lookup_failure is not None:
@@ -203,7 +232,14 @@ def platform(monkeypatch):
         elif not isinstance(entity, dict):
             entity = {"id": entity.id, "name": entity.name}
         fake.records.append(
-            {**entity, "type": entity_type, "outcome": outcome, "error": error}
+            {
+                **entity,
+                "type": entity_type,
+                "action": action,
+                "outcome": outcome,
+                "error": error,
+                **extra,
+            }
         )
 
     monkeypatch.setattr(cac_module, "record_action", record_action)
@@ -783,6 +819,124 @@ class TestReprovision:
         assert isinstance(ctx, RunContext) and action == COMPUTE_REPROVISION
 
 
+class TestAutoShutdown:
+    TWO_HOURS = AutoShutdown(enabled=True, timeout=timedelta(minutes=120))
+    NEVER = AutoShutdown(enabled=False)
+    METHOD = "update_compute_requirement_auto_shutdown"
+
+    def test_it_sets_the_time_and_records_it(self, platform, monkeypatch):
+        printed = []
+        monkeypatch.setattr(cac_module, "print_info", printed.append)
+        monkeypatch.setattr(cac_module, "link_entity", lambda url, cr: f"[{cr.name}]")
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.calls == [(self.METHOD, CR_ID, self.TWO_HOURS)]
+        (record,) = platform.records
+        assert record["action"] == "autoshutdown"
+        assert record["outcome"] == "updated"
+        assert record["autoShutdownTime"] == SHUTDOWN_TIME.isoformat()
+        assert "Updated [cr-a]: it will be terminated at 2026-10-22 16:04:12+00:00" in (
+            printed
+        )
+
+    def test_zero_disables_it(self, platform, monkeypatch):
+        printed = []
+        monkeypatch.setattr(cac_module, "print_info", printed.append)
+        monkeypatch.setattr(cac_module, "link_entity", lambda url, cr: f"[{cr.name}]")
+        _run(platform, compute_auto_shutdown(self.NEVER), [CR_ID])
+        assert platform.calls == [(self.METHOD, CR_ID, self.NEVER)]
+        assert platform.records[0]["autoShutdownTime"] is None
+        assert "Updated [cr-a]: it will not be terminated automatically" in printed
+
+    @pytest.mark.parametrize(
+        "shutdown, prompt",
+        [
+            (TWO_HOURS, "Terminate, 120 minute(s) from now, 1 Compute Requirement(s)"),
+            (
+                AutoShutdown(enabled=True, timeout=timedelta(seconds=90)),
+                "Terminate, 1.5 minute(s) from now, 1 Compute Requirement(s)",
+            ),
+            (NEVER, "Disable the auto shutdown of 1 Compute Requirement(s)"),
+        ],
+    )
+    def test_the_confirmation_says_what_it_does(
+        self, platform, monkeypatch, shutdown, prompt
+    ):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        _run(platform, compute_auto_shutdown(shutdown), [CR_ID])
+        assert prompts == [f"{prompt} ('cr-a')?"]
+
+    @pytest.mark.parametrize(
+        "status",
+        [ComputeRequirementStatus.PROVISIONING, RUNNING, STOPPED],
+    )
+    def test_any_live_cr(self, platform, monkeypatch, status):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", status)
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [])
+        assert platform.calls == [(self.METHOD, CR_ID, self.TWO_HOURS)]
+
+    def test_a_terminated_cr_is_skipped(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.calls == []
+        assert platform.outcomes() == [(CR_ID, "compute-requirements", "skipped")]
+
+    @pytest.mark.parametrize("target", ["cr-a", "cr-*"])
+    def test_by_name_or_glob(self, platform, monkeypatch, target):
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [target])
+        assert platform.calls == [(self.METHOD, CR_ID, self.TWO_HOURS)]
+
+    def test_instances_are_refused(self, platform, monkeypatch):
+        _run(
+            platform, compute_auto_shutdown(self.TWO_HOURS), [f"{CR_ID}.{INSTANCE_ID}"]
+        )
+        assert platform.calls == []
+        assert platform.records[0]["outcome"] == "failed"
+
+    def test_a_failure_is_recorded(self, platform, monkeypatch):
+        platform.failures[self.METHOD] = _http_error(400)
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.records[0]["outcome"] == "failed"
+        assert platform.records[0]["action"] == "autoshutdown"
+
+    def test_nothing_is_followed(self, platform, monkeypatch):
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        cac_module.follow_ids.assert_not_called()
+
+    def test_a_reply_without_the_time_is_still_enabled(self, platform, monkeypatch):
+        printed = []
+        monkeypatch.setattr(cac_module, "print_info", printed.append)
+        monkeypatch.setattr(cac_module, "link_entity", lambda url, cr: f"[{cr.name}]")
+        update = platform._update_auto_shutdown
+
+        def without_time(cr_id, shutdown):
+            updated = update(cr_id, shutdown)
+            updated.autoShutdownTime = None
+            return updated
+
+        platform.client.compute_client.update_compute_requirement_auto_shutdown.side_effect = without_time
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.records[0]["autoShutdownTime"] is None
+        assert "Updated [cr-a]: it will be terminated in 120 minute(s)" in printed
+
+    def test_the_command_is_the_action_built_from_minutes(self, monkeypatch):
+        import yellowdog_cli.auto_shutdown as yd_auto_shutdown
+
+        apply = MagicMock()
+        monkeypatch.setattr(yd_auto_shutdown, "apply_compute_action", apply)
+        monkeypatch.setattr(
+            "yellowdog_cli.utils.wrapper.ARGS_PARSER",
+            MagicMock(debug=True, print_pid=True, auto_shutdown_minutes=120.0),
+        )
+        with pytest.raises(SystemExit):
+            yd_auto_shutdown.main()
+        (ctx, action), _ = apply.call_args
+        assert isinstance(ctx, RunContext)
+        assert action.cr_arguments == (self.TWO_HOURS,)
+
+
 # ---------------------------------------------------------------------------
 # The command line
 # ---------------------------------------------------------------------------
@@ -815,12 +969,35 @@ class TestCommandLine:
         assert not {"--sort", "--interactive", "--namespace", "--tag"} & flags
 
     @pytest.mark.parametrize(
-        "command", ["yd-compute-stop", "yd-compute-start", "yd-compute-reprovision"]
+        "command",
+        [
+            "yd-compute-stop",
+            "yd-compute-start",
+            "yd-compute-reprovision",
+            "yd-auto-shutdown",
+        ],
     )
     def test_globs_and_explicit_names_do_not_mix(self, command):
         from yellowdog_cli.utils.command_registry import check_glob_and_literal_names
 
         assert check_glob_and_literal_names in COMMANDS[command].validators
+
+    def test_auto_shutdown_requires_minutes(self, capsys):
+        with pytest.raises(SystemExit) as raised:
+            CLIParser("yd-auto-shutdown", [CR_ID])
+        assert raised.value.code == 2
+        assert "--minutes" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("minutes", ["-1", "nan", "inf", "soon"])
+    def test_auto_shutdown_refuses_a_bad_number(self, capsys, minutes):
+        with pytest.raises(SystemExit) as raised:
+            CLIParser("yd-auto-shutdown", [CR_ID, "--minutes", minutes])
+        assert raised.value.code == 2
+
+    def test_auto_shutdown_takes_a_fraction_and_runs_without_a_target(self):
+        parsed = CLIParser("yd-auto-shutdown", ["--minutes", "0.5"])
+        assert parsed.auto_shutdown_minutes == 0.5
+        assert parsed.compute_requirements_instances_or_nodes == []
 
     def test_reprovision_runs_without_a_target(self):
         parser = build_parser(
