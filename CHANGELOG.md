@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 14.2.0 — 2026-10-22
+
 - **A Compute Requirement can be terminated automatically**, with YellowDog SDK 15.9.0 (now the minimum): `autoShutdownTimeout` in `[workerPool]` or `[computeRequirement]` gives `yd computerequirement instantiate` the minutes after which the Compute Requirement it creates is terminated (`0` for never), and a JSON specification can set `autoShutdown` itself (`{"enabled": true, "timeout": "PT2H"}`). `yd workerpool provision` ignores the property, with a warning. `yd computerequirement show` shows the `autoShutdownTime`.
 - **`yd computerequirement autoshutdown` sets when Compute Requirements are terminated**: `--minutes 120` terminates them two hours from now, replacing any auto shutdown already set, so running it again extends a Compute Requirement's life, and `--minutes 0` means never. It selects Compute Requirements as `yd computerequirement terminate` does, by name, glob, YDID, or namespace and tag; under `--json` each record adds the `autoShutdownTime` set. It has no `yd-*` command.
 - **`addEnvironment` accumulates down the levels, and a Task's `environment` takes precedence over it**: the TOML file's, the Work Requirement's and a Task Group's `addEnvironment` tables are added together, a lower level winning a shared key (`null` clears what came from above), where the lowest level's used to replace the others; and once the Task's `environment` is inherited, a key in both keeps the `environment` value, where `addEnvironment` used to override it, so a Task Group's `addEnvironment` could override a variable a Task set for itself.
