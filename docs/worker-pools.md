@@ -25,7 +25,7 @@
       * [Following Progress](#following-progress)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:33:40 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 16:43:50 BST 2026 -->
 
 <!--te-->
 
@@ -55,6 +55,7 @@ The following properties are available:
 
 | Property                | Description                                                                                                                                       | Default                 |
 |:------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------|
+| `autoShutdownTimeout`   | Only used when instantiating Compute Requirements; the time in minutes after which the Compute Requirement will be terminated. Set this to `0` to disable it. `yd computerequirement autoshutdown` changes it later (see [yd computerequirement autoshutdown](commands.md#yd-computerequirement-autoshutdown)). A Worker Pool ignores it, with a warning: it shuts down when idle instead. |                         |
 | `computeRequirementBatchSize` | The maximum number of instances per Compute Requirement batch (see [Large-Scale Provisioning](#large-scale-provisioning)). Values above 10,000 are clamped to 10,000; a value below 1 is an error. | `10000` |
 | `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd computerequirement instantiate` (see [yd computerequirement instantiate](commands.md#yd-computerequirement-instantiate)).  |                         |
 | `idleNodeTimeout`       | The timeout in minutes after which an idle node will be shut down. Set this to `0` to disable the timeout.                                        | `5.0`                   |

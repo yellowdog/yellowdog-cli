@@ -28,6 +28,7 @@
       * [yd computerequirement stop](#yd-computerequirement-stop)
       * [yd computerequirement start](#yd-computerequirement-start)
       * [yd computerequirement reprovision](#yd-computerequirement-reprovision)
+      * [yd computerequirement autoshutdown](#yd-computerequirement-autoshutdown)
       * [yd computerequirement terminate](#yd-computerequirement-terminate)
    * [yd instance](#yd-instance)
       * [yd instance stop](#yd-instance-stop)
@@ -78,7 +79,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 12:17:53 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 16:43:47 BST 2026 -->
 
 <!--te-->
 
@@ -96,7 +97,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 | [`yd taskgroup`](#yd-taskgroup) | `yd tg` | Task Groups | `priority`, `compare`, `list`, `show` |
 | [`yd task`](#yd-task) | | Tasks | `abort`, `list`, `show` |
 | [`yd workerpool`](#yd-workerpool) | `yd wp` | Worker Pools | `provision`, `resize`, `shutdown`, `token`, `list`, `show`, `follow`, `wait` |
-| [`yd computerequirement`](#yd-computerequirement) | `yd cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `terminate`, `list`, `show`, `follow`, `wait` |
+| [`yd computerequirement`](#yd-computerequirement) | `yd cr` | Compute Requirements | `instantiate`, `resize`, `stop`, `start`, `reprovision`, `autoshutdown`, `terminate`, `list`, `show`, `follow`, `wait` |
 | [`yd instance`](#yd-instance) | | the Instances of Compute Requirements | `stop`, `start`, `restart`, `deprovision`, `terminate`, `list`, `show` |
 | [`yd node`](#yd-node) | | Worker Pool Nodes | `action`, `shutdown`, `stop`, `start`, `terminate`, `restart`, `deprovision`, `list`, `show` |
 | [`yd worker`](#yd-worker) | | Workers | `list`, `show` |
@@ -107,7 +108,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 
 `yd <noun> --help` lists a noun's verbs, and `yd <noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd instance terminate`.
 
-The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs alone. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
+The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs. Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished. Every name is looked up before anything else is done, and a name that finds nothing is reported and exits 6. `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
 The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
@@ -181,9 +182,9 @@ Work Requirements: `yd workrequirement`, or `yd wr` for short.
 | [`priority`](#yd-workrequirement-priority) | Change the priority of Work Requirements and Task Groups | `yd-priority` |
 | [`compare`](#yd-workrequirement-compare) | Compare a Work Requirement against Worker Pools | `yd-compare` |
 | `list` | `yd list work-requirements` |  |
-| `show` | `yd show`, for Work Requirement IDs |  |
-| `follow` | `yd follow`, for Work Requirement IDs |  |
-| `wait` | `yd wait`, for Work Requirement IDs |  |
+| `show` | `yd show`, for Work Requirement names or IDs |  |
+| `follow` | `yd follow`, for Work Requirement names or IDs |  |
+| `wait` | `yd wait`, for Work Requirement names or IDs |  |
 
 ### yd workrequirement submit
 
@@ -203,7 +204,7 @@ Key options:
 - `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
-- `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group
+- `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group, overriding `taskCount` or `taskGroupCount` in the specification
 - `--csv-file`/`-V <data.csv>` — read Task data from one or more CSV files; `--process-csv-only`/`-p` outputs the intermediate JSON specification without submitting
 - `--task-batch-size`/`-b <n>` — the batch size for Task submission, between 1 and 10,000
 - `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential); once a batch fails, those not yet started are not submitted
@@ -346,10 +347,10 @@ yd workrequirement priority -1 ydid:workreq:000000:...
 
 ### yd workrequirement compare
 
-The `yd workrequirement compare` command takes a Work Requirement ID and one or more Worker Pool IDs, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd taskgroup compare`](#yd-taskgroup-compare).
+The `yd workrequirement compare` command takes a Work Requirement and one or more Worker Pools, each by name or ID, and compares every Task Group in the Work Requirement against the available Nodes/Workers in the Worker Pool(s). To compare a single Task Group, use [`yd taskgroup compare`](#yd-taskgroup-compare).
 
 ```shell
-yd workrequirement compare [options] <work-requirement-ID> <provisioned-worker-pool-ID> ...
+yd workrequirement compare [options] <work-requirement-name-or-ID> <provisioned-worker-pool-name-or-ID> ...
 ```
 
 The command checks if the **Run Specification** of a Task Group matches the properties of the Worker Pools and their registered Nodes and Workers, meaning there are Workers in the Worker Pool that could be claimed by the Task Group and that the Worker Pool would be a candidate for scaling up to meet the demands of the Task Group.
@@ -361,11 +362,13 @@ A Worker Pool that cannot be compared — its Compute Requirement or its Nodes c
 By default every Node registered to a Worker Pool is included in the comparison, whatever its state. The `--running-nodes-only` option restricts the comparison to Nodes in the `RUNNING` state, which gives a more accurate picture of current capacity when a pool contains Nodes that are still provisioning or have been terminated.
 
 Key options:
+- `--namespace` — the namespace the names are looked up in; the configured one if not given
 - `--running-nodes-only` — compare against Nodes in the `RUNNING` state only
 - `--json` — emit the comparison as a JSON array, one object per Worker Pool compared with each Task Group (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd workrequirement compare ydid:workreq:000000:83587010-5e26-4174-92a7-c7cc2612638d ydid:wrkrpool:000000:3666e4c5-382e-4512-a2c7-33dbb839f75
+yd workrequirement compare nightly-run gpu-pool
 ```
 
 The properties are compared as follows. A property the Task Group leaves unset, or sets to an empty list, places no constraint on the Worker Pool.
@@ -401,7 +404,7 @@ Task Groups: `yd taskgroup`, or `yd tg` for short.
 | [`priority`](#yd-taskgroup-priority) | Change the priority of Task Groups and Work Requirements | `yd-priority` |
 | [`compare`](#yd-taskgroup-compare) | Compare a Task Group against Worker Pools | `yd-compare` |
 | `list` | `yd list task-groups` |  |
-| `show` | `yd show`, for Task Group IDs |  |
+| `show` | `yd show`, for Task Group IDs, or names as `wr/tg` |  |
 
 ### yd taskgroup priority
 
@@ -420,7 +423,7 @@ yd taskgroup priority 5 my-analysis-run/render
 The `yd taskgroup compare` command compares one Task Group against one or more Worker Pools, as [`yd workrequirement compare`](#yd-workrequirement-compare) compares each of a Work Requirement's Task Groups, and reports in the same way.
 
 ```shell
-yd taskgroup compare [options] <task-group-ID> <provisioned-worker-pool-ID> ...
+yd taskgroup compare [options] <wr/task-group-name-or-ID> <provisioned-worker-pool-name-or-ID> ...
 ```
 
 Key options:
@@ -439,7 +442,7 @@ Tasks.
 |---|---|---|
 | [`abort`](#yd-task-abort) | Abort running Tasks | `yd-abort` |
 | `list` | `yd list tasks` |  |
-| `show` | `yd show`, for Task IDs |  |
+| `show` | `yd show`, for Task IDs, or names as `wr/tg/task` |  |
 
 ### yd task abort
 
@@ -485,9 +488,9 @@ Worker Pools: `yd workerpool`, or `yd wp` for short.
 | [`shutdown`](#yd-workerpool-shutdown) | Shut down Worker Pools | `yd-shutdown` |
 | [`token`](#yd-workerpool-token) | Refresh or regenerate the tokens of Configured Worker Pools | `yd-token` |
 | `list` | `yd list worker-pools` |  |
-| `show` | `yd show`, for Worker Pool IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd follow`, for Worker Pool IDs |  |
-| `wait` | `yd wait`, for Worker Pool IDs |  |
+| `show` | `yd show`, for Worker Pool names or IDs, with `--show-token`, `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Worker Pool names or IDs |  |
+| `wait` | `yd wait`, for Worker Pool names or IDs |  |
 
 ### yd workerpool provision
 
@@ -600,11 +603,12 @@ Compute Requirements: `yd computerequirement`, or `yd cr` for short.
 | [`stop`](#yd-computerequirement-stop) | Stop Compute Requirements | `yd-compute-stop` |
 | [`start`](#yd-computerequirement-start) | Start stopped Compute Requirements | `yd-compute-start` |
 | [`reprovision`](#yd-computerequirement-reprovision) | Restore Compute Requirements to their target instance counts | `yd-compute-reprovision` |
+| [`autoshutdown`](#yd-computerequirement-autoshutdown) | Set when Compute Requirements are automatically terminated | |
 | [`terminate`](#yd-computerequirement-terminate) | Terminate Compute Requirements | `yd-terminate` |
 | `list` | `yd list compute-requirements` |  |
-| `show` | `yd show`, for Compute Requirement and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
-| `follow` | `yd follow`, for Compute Requirement IDs |  |
-| `wait` | `yd wait`, for Compute Requirement IDs |  |
+| `show` | `yd show`, for Compute Requirement names or IDs and Compute Source IDs, with `--show-source-report` and `--show-exhaustion` |  |
+| `follow` | `yd follow`, for Compute Requirement names or IDs |  |
+| `wait` | `yd wait`, for Compute Requirement names or IDs |  |
 
 ### yd computerequirement instantiate
 
@@ -614,7 +618,7 @@ The `yd computerequirement instantiate` command instantiates a Compute Requireme
 yd computerequirement instantiate [options] [<compute-requirement-specification-file>]
 ```
 
-This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd computerequirement instantiate`.
+This command uses the data from the `workerPool` configuration section (or, synonymously, the `computeRequirement` section), but only uses the `name`, `templateId`, `targetInstanceCount`, `instanceTags`, `userData`, `requirementTag`, and `imagesId` properties. In addition, the Boolean property `maintainInstanceCount` (default = `false`) is available for use with `yd computerequirement instantiate`, as is `autoShutdownTimeout`, the time in minutes after which the Compute Requirement will be terminated (`0` for never; it is inherited by a JSON specification as `autoShutdown`, with the timeout as an ISO 8601 duration such as `"PT2H"`). The auto shutdown can be changed later with [`yd computerequirement autoshutdown`](#yd-computerequirement-autoshutdown).
 
 Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifications, supplied as the positional argument or by using the `computeRequirementData` property in the `workerPool`/`computeRequirement` section. The properties listed above will be inherited from the `config.toml` `workerPool` specification if they are not present in the JSON file.
 
@@ -771,6 +775,26 @@ Key options:
 ```shell
 yd computerequirement reprovision my-compute-requirement --follow
 yd computerequirement reprovision my-compute-requirement --wait --timeout 600
+```
+
+### yd computerequirement autoshutdown
+
+The `yd computerequirement autoshutdown` command sets when Compute Requirements are automatically terminated: `--minutes` from now, replacing whatever auto shutdown each had, or with `--minutes 0` never. Running it again restarts the clock, so the same command extends a Compute Requirement's life. A Compute Requirement is given an auto shutdown when it is instantiated by the `autoShutdownTimeout` configuration property (see [Worker Pool Properties](worker-pools.md#worker-pool-properties)), or by `autoShutdown` in its specification; `yd computerequirement show` shows its `autoShutdown` and the `autoShutdownTime` at which it will be terminated.
+
+```shell
+yd computerequirement autoshutdown [options] --minutes <minutes> [<compute-requirement-name-or-ID> ...]
+```
+
+It selects Compute Requirements as `yd computerequirement terminate` does: if no arguments are supplied, Compute Requirements that match the `namespace` and `tag` are candidates; otherwise, supply a list of Compute Requirement names (or glob patterns) or YDIDs. A Compute Requirement that is already terminating or terminated is skipped with a warning. Each one updated is reported with the time at which it will now be terminated.
+
+Key options:
+- `--minutes <minutes>` — required: terminate the Compute Requirements this many minutes from now (a fraction is allowed), or with `0` never automatically
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md)); each record adds the `autoShutdownTime` set, `null` when there is none
+
+```shell
+yd computerequirement autoshutdown my-compute-requirement --minutes 120
+yd computerequirement autoshutdown my-compute-requirement --minutes 0
+yd computerequirement autoshutdown 'batch-*' --minutes 30
 ```
 
 ### yd computerequirement terminate
@@ -1095,23 +1119,24 @@ See [Creating, Updating and Removing YellowDog Resources](resources.md) for the 
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources.
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring).
 
 ```shell
-yd resource remove [options] <resource-specification> [<resource-specification> ...]
+yd resource remove [options] <resource-specification-or-id> [<resource-specification-or-id> ...]
 yd resource remove [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
 
 Key options:
 - `--type <resource-type>` — with arguments, they are the names or YellowDog IDs of resources of that type to remove, such as `--type Keyring team-keys` (`namespace/name` for a namespaced type, `keyring/credential` for a Credential; see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line) for which types take names and which IDs); with `--set <property=value>` instead, a resource given on the command line, as for `yd resource create`
-- `--ids` — supply YellowDog IDs (YDIDs) as the positional arguments, instead of resource specification files; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
+- `--ids` — optional: says every argument is a YellowDog ID, refusing anything else; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
-- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON, removing nothing (refused when every argument is an ID)
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd resource remove my_compute_templates.jsonnet
-yd resource remove --ids ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
+yd resource remove my_keyring.json ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4
 yd resource remove --type Keyring team-keys old-keys
 ```
 
@@ -1521,6 +1546,7 @@ It supports IDs referring to:
 Instances have no YellowDog ID of their own: they're identified by the combination of their Compute Requirement and their provider-assigned instance ID. An Instance is therefore supplied in `<compute-requirement-ydid>.<instance-id>` form, the same format the `yd instance` verbs take. Only the first `.` separates the two parts, so instance IDs that contain dots of their own (OCI's OCIDs, for example) need no special treatment.
 
 Key options:
+- `--namespace` — the namespace a name is looked up in, with `--type` or by a noun's `show` verb (`yd workrequirement show my-wr`); the configured one if not given
 - `--show-token` — include the Worker Pool token when showing the details of a Configured Worker Pool
 - `--show-source-report` — follow a Compute Requirement with the Platform's report of how its sources were chosen: the Compute Source Templates considered, selected and rejected, each source's rank and score, and the constraints and preferences applied. Only a Compute Requirement provisioned from a dynamic template has one, and it is kept after the Compute Requirement has been terminated; for any other, a warning says so and the Compute Requirement is still shown
 - `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))
@@ -1878,9 +1904,9 @@ yd completion powershell --names | Out-String | Invoke-Expression    # in $PROFI
 
 [`yd doctor`](#yd-doctor) says whether the start-up file's line has `--names`.
 
-Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. A verb that acts on them by name offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, and `yd computerequirement resize`, `stop`, `start`, `reprovision` and `terminate`. A verb that takes only IDs offers their IDs, each shown with its name and status where the shell shows descriptions: `show`, `follow` and `wait` on each of the three, and `yd workrequirement compare`.
+Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show` and `yd taskgroup compare` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`. An ID is still taken wherever a name is.
 
-What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. Only the statuses the verb applies to are offered (for example, running Work Requirements for `hold` and held ones for `start`), except by `show`, which offers every status. At most the 200 newest are offered, in whatever order the shell lists them. A verb that takes no `--namespace` or `--tag`, such as `show`, uses the configuration's.
+What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. Only the statuses the verb applies to are offered (for example, running Work Requirements for `hold` and held ones for `start`), except by `show`, which offers every status. At most the 200 newest are offered, in whatever order the shell lists them. A verb that takes no `--tag`, such as `show`, uses the configuration's tag.
 
 A Tab waits at most two seconds for the Platform; past that, or if there is no configuration, no credentials or no connection, nothing is offered and nothing is printed. Where nothing is found after a verb with nothing yet typed, its options are offered instead. What is found is kept for 30 seconds, so the Tabs that follow answer at once (finding nothing is not kept, so a Work Requirement just submitted is offered on the next Tab); an entity that changed in that time may still be offered, and the command reports it when run. The cache is a file per lookup in a directory of your own (readable only by you) under the system's temporary directory, holding names, IDs and statuses but no credentials, and each new lookup removes those older than 30 seconds, so there is nothing to clear.
 

@@ -12,7 +12,6 @@
       * [failurePolicy](#failurepolicy)
       * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
          * [Migration](#migration)
-      * [Caveat — agent version](#caveat--agent-version)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
       * [Example — JSON](#example--json)
@@ -37,6 +36,7 @@
    * [Dry-Running Work Requirement Submissions](#dry-running-work-requirement-submissions)
       * [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement)
       * [Submitting 'Raw' JSON Work Requirement Specifications](#submitting-raw-json-work-requirement-specifications)
+   * [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)
    * [Using the YellowDog Data Client](#using-the-yellowdog-data-client)
       * [Specifying Data Client Inputs](#specifying-data-client-inputs)
       * [Automatic Upload of Local Files](#automatic-upload-of-local-files)
@@ -56,7 +56,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:33:39 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 16:43:50 BST 2026 -->
 
 <!--te-->
 
@@ -221,6 +221,8 @@ Each `TaskErrorSelector` has three optional fields, each itself a Selection of p
 
 `maxRetries` must be `>= 0`, and defaults to `0` when omitted, which defines the policy but retries nothing. `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
 
+A Task can tell which attempt it is from the `YD_RETRY_NUMBER` environment variable, which the YellowDog Agent sets: `0` for its first run, `1` for its first retry, and so on — for example, to resume from a checkpoint rather than start again.
+
 ### `failurePolicy`
 
 When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`), a `failurePolicy` can resubmit the Task in another Task Group within the same Work Requirement:
@@ -301,23 +303,19 @@ The minimal replacement for `maximumTaskRetries = N` (with no error filtering) i
 
 A legacy `retryableErrors` entry's three fields (`errorTypes`, `statusesAtFailure`, `processExitCodes`) all migrate to the corresponding fields on a `TaskErrorSelector`, with each wrapped in a `{"includes": [...]}` Selection. Legacy semantics — a Task retried if **any** entry matched — translate to a single `includes` list of `TaskErrorSelector` entries.
 
-### Caveat — agent version
-
-The retry/failure selection by `errorTypes`/`processExitCodes` depends on the YellowDog Agent recording which error caused the Task to fail. Older Agent versions don't populate that field, so Selection precision is reduced when running against older Workers — `maxRetries` and unconditional resubmission still work, but error-typed selectors won't match precisely. Upgrade Workers to the current Agent release for full behaviour.
-
 ## Merging Additional Environment Variables into Tasks
 
-The `addEnvironment` property allows a fixed set of environment variable key-value pairs to be merged into the `environment` of every Task, without replacing the entire `environment` property. Any key in `addEnvironment` that also exists in the Task's `environment` is **overridden** by the value from `addEnvironment`.
+The `addEnvironment` property allows a fixed set of environment variable key-value pairs to be merged into the `environment` of every Task, without replacing the entire `environment` property. The Task's `environment` is inherited as usual; then a key in both keeps the value from the `environment`, so `addEnvironment` only adds the keys the `environment` lacks.
 
-`addEnvironment` follows the same inheritance hierarchy as `argumentsPrefix` and `argumentsPostfix`: it can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), with lower levels taking precedence.
+`addEnvironment` can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), and it **accumulates** down those levels rather than being replaced: each level's table is added to those above it, and a key set at more than one level takes its value from the lowest. Setting it to `null` at a level clears what came from above, as `null` stops inheritance elsewhere.
 
 ### Example — TOML
 
 ```toml
 [workRequirement]
     environment = {MY_VAR = "original", KEEP = "kept"}
-    addEnvironment = {MY_VAR = "overridden", EXTRA = "new"}
-    # Effective environment for each task: {MY_VAR = "overridden", KEEP = "kept", EXTRA = "new"}
+    addEnvironment = {MY_VAR = "ignored", EXTRA = "new"}
+    # Effective environment for each task: {MY_VAR = "original", KEEP = "kept", EXTRA = "new"}
 ```
 
 ### Example — JSON
@@ -327,7 +325,7 @@ The `addEnvironment` property allows a fixed set of environment variable key-val
   "taskGroups": [
     {
       "environment": {"MY_VAR": "original", "KEEP": "kept"},
-      "addEnvironment": {"MY_VAR": "overridden", "EXTRA": "new"},
+      "addEnvironment": {"MY_VAR": "ignored", "EXTRA": "new"},
       "tasks": [{}]
     }
   ]
@@ -430,7 +428,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 #### Obtaining Names/Context from Environment Variables at Task Run Time
 
-When a Task executes, its Task name and number, Task Group name and number, Work Requirement name, Namespace, and Tag can be made automatically available to the Task in the following environment variables, if the `addYDEnvironment` property is set to `true`:
+When a Task executes, its Task name and number, Task Group name and number, Work Requirement name, Namespace, and Tag can be made automatically available to the Task in the following environment variables, if the `addYDEnvironment` property is set to `true` (which adds about 250 to 300 bytes to every Task; see [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)):
 
 - `YD_TASK_NAME`
 - `YD_TASK_NUMBER`
@@ -452,15 +450,16 @@ In addition to the environment variables above, when a Task is executed by a Wor
 - `YD_INSTANCE_ID`
 - `YD_TASK_GROUP_ID`
 - `YD_TASK_ID`
+- `YD_RETRY_NUMBER` (`0` for a Task's first run, `1` for its first retry, and so on; see [Task Retries and Failure Policies](#task-retries-and-failure-policies))
 - `YD_AGENT_DATA`
 - `YD_AGENT_HOME`
 - `YD_WORKER_SLOT`
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. This property can also be set on the command line using the `--task-count`/`-C` option of `yd workrequirement submit` followed by the required number of Tasks.
+The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
 
-Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
+Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
 ## Examples
 
@@ -721,12 +720,14 @@ The following naming and numbering substitutions are available for use in TOML a
 
 | Directive               | Description                                       | Task | Task Group |
 |:------------------------|:--------------------------------------------------|:-----|:-----------|
-| `{{task_number}}`       | The current Task number                           | Yes  |            |
+| `{{task_number}}`       | The current Task number, zero-padded              | Yes  |            |
 | `{{task_name}}`         | The current Task name                             | Yes  |            |
 | `{{task_group_name}}`   | The current Task Group name                       | Yes  | Yes        |
 | `{{task_count}}`        | The number of Tasks in the current Task Group     | Yes  | Yes        |
-| `{{task_group_number}}` | The current Task Group number                     | Yes  | Yes        |
+| `{{task_group_number}}` | The current Task Group number, zero-padded        | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
+
+`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way. Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data ls` — where unpadded `task_10` would sort before `task_2`. A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
 The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
 
@@ -875,6 +876,19 @@ It's possible to use the JSON output of `yd workrequirement submit --dry-run` (s
 This will submit the Work Requirement, then add all the specified Tasks, using `--parallel-batches` (or the `parallelBatches` configuration property) and following with `--follow` or `--progress` as for any other submission. A batch that fails in a way a retry could cure is retried, as any other submission's are; if the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
 
 Note that variable substitutions **can** be used in the raw JSON file, just as in the other Work Requirement JSON examples, but there is no property inheritance, including from the `[workRequirement]` section of the TOML configuration or from Work Requirement properties supplied on the command line.
+
+## Submitting Large Numbers of Tasks
+
+With tens of thousands of Tasks or more, how the Tasks are sent decides how long a submission takes, and what each Task carries decides how much is sent and stored.
+
+**Sending the Tasks.** Tasks are added to their Task Groups in batches of `taskBatchSize` (1,000 by default, up to 10,000), one batch at a time unless `parallelBatches` (or `--parallel-batches`) sends several at once. A batch that fails in a way a retry could cure is resubmitted.
+
+**Keeping each Task small.** Every byte on a Task is sent and stored once per Task, so:
+
+- Put what the Tasks of a Task Group share — their `taskType`, `taskData` and `environment` — in a [`taskTemplate`](#task-templates), which the Platform applies, rather than on every Task.
+- Leave `addYDEnvironment` off. Its variables ([Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) add about 250 to 300 bytes to every Task, more with long Work Requirement, Task Group or namespace names. Pass a Task what it needs in its arguments instead, with the [Task and Task Group name substitutions](#task-and-task-group-name-substitutions): `"arguments": ["--frame", "{{task_number}}"]` on the Task Group gives each Task its own number at the cost of a few bytes.
+- Consider `setTaskNames: false`, which leaves Tasks without names, saving each Task its name. Two things are lost with the names: a batch whose response times out is then not resubmitted, since the Platform might already have added it and nothing would tell a duplicate (the submission fails instead, saying to check the Work Requirement's Tasks); and a Task can no longer be found by its name (`yd task show wr/tg/task`).
+- Keep `taskData` small: a large input is better fetched by each Task as it runs, with [`taskDataInputs`](#specifying-data-client-inputs), than carried in every Task.
 
 ## Using the YellowDog Data Client
 
@@ -1079,7 +1093,7 @@ G,     H,     I,     E-3
 
 Note that the (optional) leading spaces after each comma are ignored, but trailing spaces are not and will form part of the imported data.
 
-If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` script:
+If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` command:
 
 ```json
 {

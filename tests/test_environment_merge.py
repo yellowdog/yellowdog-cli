@@ -11,8 +11,9 @@ from yellowdog_cli.utils.submit_utils import merge_environment
 
 class TestMergeEnvironment:
     """
-    merge_environment(base, additions) merges additions into base.
-    Keys in additions override matching keys in base.
+    merge_environment(base, additions) merges additions into base, the
+    Task's environment as inheritance gives it: a key in both keeps the
+    environment's value, so additions only add the keys it lacks.
     Returns base unchanged when additions is empty/None.
     """
 
@@ -62,24 +63,22 @@ class TestMergeEnvironment:
         }
 
     # ------------------------------------------------------------------
-    # Overlapping keys — additions override base
+    # Overlapping keys — the environment's value kept
     # ------------------------------------------------------------------
 
-    def test_overlapping_key_overridden(self):
-        assert merge_environment({"A": "original"}, {"A": "override"}) == {
-            "A": "override"
-        }
+    def test_an_overlapping_key_keeps_the_environments_value(self):
+        assert merge_environment({"A": "original"}, {"A": "added"}) == {"A": "original"}
 
-    def test_partial_overlap_override(self):
+    def test_partial_overlap_adds_only_the_missing_keys(self):
         base = {"A": "original", "B": "kept"}
-        additions = {"A": "overridden", "C": "new"}
+        additions = {"A": "ignored", "C": "new"}
         result = merge_environment(base, additions)
-        assert result == {"A": "overridden", "B": "kept", "C": "new"}
+        assert result == {"A": "original", "B": "kept", "C": "new"}
 
-    def test_all_keys_overridden(self):
+    def test_all_keys_overlapping_change_nothing(self):
         base = {"A": "1", "B": "2"}
         additions = {"A": "x", "B": "y"}
-        assert merge_environment(base, additions) == {"A": "x", "B": "y"}
+        assert merge_environment(base, additions) == {"A": "1", "B": "2"}
 
     # ------------------------------------------------------------------
     # Base is not mutated
@@ -87,10 +86,10 @@ class TestMergeEnvironment:
 
     def test_base_dict_not_mutated(self):
         base = {"A": "original"}
-        additions = {"A": "override", "B": "new"}
+        additions = {"A": "ignored", "B": "new"}
         result = merge_environment(base, additions)
         assert base == {"A": "original"}
-        assert result == {"A": "override", "B": "new"}
+        assert result == {"A": "original", "B": "new"}
 
     # ------------------------------------------------------------------
     # Return type is always a new dict when additions are applied
@@ -108,10 +107,10 @@ class TestMergeEnvironment:
 
     def test_realistic_task_environment_merge(self):
         base = {"MY_VAR": "original", "KEEP": "kept", "LOG_LEVEL": "INFO"}
-        additions = {"MY_VAR": "overridden", "EXTRA": "new_value"}
+        additions = {"MY_VAR": "ignored", "EXTRA": "new_value"}
         result = merge_environment(base, additions)
         assert result == {
-            "MY_VAR": "overridden",
+            "MY_VAR": "original",
             "KEEP": "kept",
             "LOG_LEVEL": "INFO",
             "EXTRA": "new_value",
@@ -121,12 +120,12 @@ class TestMergeEnvironment:
         "base, additions, expected",
         [
             ({"A": "1"}, {"B": "2"}, {"A": "1", "B": "2"}),
-            ({"A": "1"}, {"A": "2"}, {"A": "2"}),
+            ({"A": "1"}, {"A": "2"}, {"A": "1"}),
             ({}, {"A": "1"}, {"A": "1"}),
             (
                 {"A": "1", "B": "2"},
                 {"B": "x", "C": "3"},
-                {"A": "1", "B": "x", "C": "3"},
+                {"A": "1", "B": "2", "C": "3"},
             ),
         ],
     )

@@ -35,6 +35,8 @@ from yellowdog_cli.utils.printing import (
     print_yd_object,
 )
 from yellowdog_cli.utils.provision_utils import (
+    auto_shutdown,
+    auto_shutdown_json,
     get_image_id,
     get_template_id,
     get_user_data_property,
@@ -180,6 +182,11 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
                 instanceTags=CONFIG_WP.instance_tags,
                 imagesId=CONFIG_WP.images_id,
                 userData=user_data,
+                autoShutdown=(
+                    None
+                    if CONFIG_WP.auto_shutdown_timeout is None
+                    else auto_shutdown(CONFIG_WP.auto_shutdown_timeout)
+                ),
             )
             if ctx.args.report:
                 _report_on(ctx, compute_requirement_template_usage, batches)
@@ -343,6 +350,14 @@ def _create_compute_requirement_from_json(
             ),
         ),
         ("maintainInstanceCount", CONFIG_WP.maintain_instance_count),
+        (
+            "autoShutdown",
+            (
+                None
+                if CONFIG_WP.auto_shutdown_timeout is None
+                else auto_shutdown_json(auto_shutdown(CONFIG_WP.auto_shutdown_timeout))
+            ),
+        ),
     ]:
         if cr_data.get(key) is None and value is not None:
             print_info(f"Setting '{key}' to '{shown_value(value)}'")

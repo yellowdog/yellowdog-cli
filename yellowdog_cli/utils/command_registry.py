@@ -213,6 +213,10 @@ class Command:
     # The registry command a noun verb's derived command runs
     # (noun_registry.py); None for a registry command itself
     runs: str | None = None
+    # False for a command released after 'yd' (yd-completion, yd-auto-shutdown):
+    # it has no 'yd-*' entry point, so nothing to deprecate, and is typed only
+    # as its 'yd' word or noun verb
+    script: bool = True
 
     @property
     def internal_name(self) -> str:
@@ -490,6 +494,17 @@ def finite_float(value: str) -> float:
         raise ArgumentTypeError(f"invalid number: '{value}'") from None
     if not math.isfinite(number):
         raise ArgumentTypeError(f"must be a finite number, not {value}")
+    return number
+
+
+def non_negative_float(value: str) -> float:
+    """
+    An argparse type for a duration in minutes, where 0 means none: a finite
+    number, not less than zero.
+    """
+    number = finite_float(value)
+    if number < 0:
+        raise ArgumentTypeError(f"must be zero or more, not {value}")
     return number
 
 
@@ -820,6 +835,29 @@ NAMESPACE = option(
     ),
     metavar="<namespace>",
 )
+# The namespace a target given by name is looked up in (yd-show, yd-follow,
+# yd-wait, yd-compare); 'namespace/name' names another
+NAME_NAMESPACE = NAMESPACE.variant(
+    help=(
+        "the namespace a target given by name is looked up in ('namespace/name'"
+        " names another); the configured namespace if not given"
+    )
+)
+
+# Where a noun verb's target check records the YDID type a name among its
+# targets stands for (noun_registry.Targets.named), for the registry
+# command's own checks and utils/named_targets.py: None for a verb, or a
+# command, that takes IDs alone
+NAMED_TARGET_TYPE_DEST = "named_target_type"
+
+
+def named_target_type(args: Namespace) -> Any:
+    """
+    The YDID type a name among the targets stands for, or None.
+    """
+    return getattr(args, NAMED_TARGET_TYPE_DEST, None)
+
+
 TAG = option(
     "--tag",
     "-t",
@@ -992,8 +1030,8 @@ RESOURCE_SPECIFICATIONS = replace(
         type=str,
         help=(
             "the resource specifications to process, '-' reading one from"
-            " standard input as JSON (or resource IDs if used with"
-            " 'yd resource remove --ids')"
+            " standard input as JSON; for 'yd resource remove', YellowDog IDs"
+            " too"
         ),
     ),
     tool_required=True,
@@ -1754,16 +1792,19 @@ COMMANDS["yd-cloudwizard"] = Command(
 
 WR_OR_TG_ID = option(
     "wr_or_tg_id",
-    metavar="<work-requirement-or-task-group-ID>",
+    metavar="<work-requirement-or-task-group-name-or-ID>",
     type=str,
-    help=("the YellowDog ID of the work requirement or task group to be compared"),
+    help=(
+        "the name ('wr', or 'wr/tg' for a task group) or YellowDog ID of the"
+        " work requirement or task group to be compared"
+    ),
 )
 WORKER_POOL_IDS = option(
     "worker_pool_ids",
-    metavar="<provisioned-worker-pool-ID>",
+    metavar="<provisioned-worker-pool-name-or-ID>",
     type=str,
     nargs="+",
-    help="the YellowDog ID(s) of the provisioned worker pool(s) to compare",
+    help="the name(s) or YellowDog ID(s) of the provisioned worker pool(s) to compare",
 )
 RUNNING_NODES_ONLY = option(
     "--running-nodes-only",
@@ -1775,23 +1816,38 @@ RUNNING_NODES_ONLY = option(
 
 def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-compare's positional IDs, by type, before anything is fetched: a Work
-    Requirement or Task Group ID, then Worker Pool IDs. The YDID parser is
+    yd-compare's positional targets, by type, before anything is fetched: a
+    Work Requirement or Task Group ID or name ('wr', 'wr/tg'), then Worker
+    Pool IDs or names. The YDID parser is
     imported here, so this module still imports nothing at load beyond
     the constants modules and glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
-    if get_ydid_type(args.wr_or_tg_id) not in (
+    def kind(target: str) -> YDIDType | str | None:
+        # Anything not shaped as a YellowDog ID is a name, looked up as it
+        # runs; one shaped as an ID that does not parse is neither
+        ydid_type = get_ydid_type(target)
+        return (
+            "malformed"
+            if ydid_type is None and target.startswith("ydid:")
+            else ydid_type
+        )
+
+    if kind(args.wr_or_tg_id) not in (
+        None,
         YDIDType.WORK_REQUIREMENT,
         YDIDType.TASK_GROUP,
     ):
         parser.error(
-            f"not a YellowDog Work Requirement or Task Group ID: '{args.wr_or_tg_id}'"
+            "not a YellowDog Work Requirement or Task Group ID, or a name:"
+            f" '{args.wr_or_tg_id}'"
         )
     for worker_pool_id in args.worker_pool_ids:
-        if get_ydid_type(worker_pool_id) != YDIDType.WORKER_POOL:
-            parser.error(f"not a YellowDog Worker Pool ID: '{worker_pool_id}'")
+        if kind(worker_pool_id) not in (None, YDIDType.WORKER_POOL):
+            parser.error(
+                f"not a YellowDog Worker Pool ID, or a name: '{worker_pool_id}'"
+            )
 
 
 COMMANDS["yd-compare"] = Command(
@@ -1803,6 +1859,7 @@ COMMANDS["yd-compare"] = Command(
     summary="Compare a Work Requirement or Task Group against Worker Pool(s)",
     kind=CommandKind.API,
     options=(
+        NAME_NAMESPACE,
         WR_OR_TG_ID,
         WORKER_POOL_IDS,
         RUNNING_NODES_ONLY,
@@ -1947,6 +2004,50 @@ COMMANDS["yd-compute-reprovision"] = Command(
     validators=(check_glob_and_literal_names, check_wait_options),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
+)
+AUTO_SHUTDOWN_MINUTES = option(
+    "--minutes",
+    dest="auto_shutdown_minutes",
+    required=True,
+    type=non_negative_float,
+    metavar="<minutes>",
+    help=(
+        "terminate the compute requirement(s) this many minutes from now,"
+        " replacing any auto shutdown already set; 0 never terminates them"
+        " automatically"
+    ),
+)
+COMMANDS["yd-auto-shutdown"] = Command(
+    name="yd-auto-shutdown",
+    purpose=(
+        "setting when Compute Requirements are automatically terminated, or"
+        " that they never are"
+    ),
+    summary="Set when Compute Requirements are automatically terminated",
+    kind=CommandKind.API,
+    # Compute Requirement-level only, and nothing to follow: the requirement
+    # runs on until the time set
+    options=(
+        SORT,
+        REVERSE,
+        VARIABLE,
+        NAMESPACE,
+        TAG,
+        INTERACTIVE,
+        YES,
+        ACTIONS_JSON,
+        COMPUTE_REQS_INSTANCES_OR_NODES.variant(
+            help=(
+                "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                " a name may be a glob pattern (e.g. 'cr-*')"
+            ),
+        ),
+        AUTO_SHUTDOWN_MINUTES,
+    ),
+    validators=(check_glob_and_literal_names,),
+    requires_namespace_and_tag=True,
+    tool=ToolKind.DESTRUCTIVE,
+    script=False,
 )
 COMMANDS["yd-compute-start"] = Command(
     name="yd-compute-start",
@@ -2126,7 +2227,10 @@ IDS = option(
     "--ids",
     action="store_true",
     required=False,
-    help="remove resources using their YellowDog IDs (YDIDs)",
+    help=(
+        "every argument is a YellowDog ID (YDID); optional, since an ID is"
+        " recognised as one"
+    ),
 )
 
 
@@ -2162,14 +2266,36 @@ def _check_removal_by_name(args: Namespace, parser: ArgumentParser) -> None:
 
 def check_remove_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-remove --ids: each argument the ID of a resource it can remove,
-    checked before anything is removed; and none of the options that act
-    only on specification files.
+    yd-remove: each argument that is a YellowDog ID the ID of a resource it
+    can remove, checked before anything is removed. With --ids, every
+    argument must be one, and none of the options that act only on
+    specification files is taken; with --type, the arguments are names or
+    IDs of that type (_check_removal_by_name()).
     """
     from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES, get_ydid_type
 
     if not args.ids:
-        _check_removal_by_name(args, parser)
+        if args.resource_type:
+            _check_removal_by_name(args, parser)
+            return
+        arguments = args.resource_specifications or []
+        for argument in arguments:
+            ydid_type = get_ydid_type(argument)
+            if ydid_type is not None and ydid_type not in REMOVABLE_YDID_TYPES:
+                parser.error(
+                    f"not the ID of a resource that can be removed: '{argument}'"
+                )
+        # A dry run of IDs alone would remove them: the loader's dry run,
+        # which ends the command, is never reached without a file
+        if (
+            args.jsonnet_dry_run
+            and arguments
+            and all(get_ydid_type(argument) is not None for argument in arguments)
+        ):
+            parser.error(
+                "--jsonnet-dry-run applies to specification files, and every"
+                " argument is a YellowDog ID"
+            )
         return
     if args.resource_type or args.resource_properties:
         parser.error("--type and --set specify a resource, not --ids")
@@ -2425,8 +2551,12 @@ def check_follow_ids(args: Namespace, parser: ArgumentParser) -> None:
         YDIDType.WORKER_POOL,
         YDIDType.COMPUTE_REQUIREMENT,
     )
+    named = named_target_type(args)
     for ydid in args.yellowdog_ids:
-        if get_ydid_type(ydid) not in followable:
+        ydid_type = get_ydid_type(ydid)
+        if ydid_type is None and named is not None:
+            continue  # A name of the noun verb's type, looked up as it runs
+        if ydid_type not in followable:
             parser.error(
                 f"not a Work Requirement, Worker Pool or Compute Requirement ID:"
                 f" '{ydid}'"
@@ -2440,6 +2570,7 @@ COMMANDS["yd-follow"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(nargs="+"),
         PROGRESS,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
@@ -2531,9 +2662,13 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     )
     article = "an" if (resource_type or "x")[0] in "AEIOU" else "a"
     kinds = []
+    named = named_target_type(args)
     for target in args.yellowdog_ids:
         ydid_type = get_ydid_type(target)
-        if resource_type is None:
+        if resource_type is None and ydid_type is None and named is not None:
+            # A name of the noun verb's type, looked up as it runs
+            ydid_type = named
+        elif resource_type is None:
             # A word that is plainly a name; a malformed ID is reported as
             # the run reaches it
             if (
@@ -2592,10 +2727,11 @@ COMMANDS["yd-show"] = Command(
     purpose="showing the JSON details of entities referenced by their YDIDs",
     summary="Show the JSON details of entities referenced by their YDIDs",
     kind=CommandKind.API,
-    # A YDID names its entity in whatever namespace it is in: no namespace
-    # or tag is used
+    # A YDID names its entity in whatever namespace it is in; the namespace
+    # is where a name is looked up (a noun verb's, or with --type)
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(
             nargs="+",
             help=(
@@ -2635,6 +2771,7 @@ COMMANDS["yd-wait"] = Command(
     kind=CommandKind.API,
     options=(
         VARIABLE,
+        NAME_NAMESPACE,
         YELLOWDOG_IDS.variant(
             nargs="+", help="the YellowDog ID(s) of the item(s) to wait for"
         ),
@@ -2770,6 +2907,7 @@ COMMANDS["yd-provision"] = Command(
 # --- yd-list -------------------------------------------------------------
 
 LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
+
 # Tag attribute is defaulted to "" when using 'yd-list'
 LIST_TAG = TAG.variant(
     help=(
@@ -4137,6 +4275,7 @@ COMMANDS["yd-completion"] = Command(
     kind=CommandKind.STANDALONE,
     options=(COMPLETION_SHELL, COMPLETION_NAMES),
     tool=ToolKind.NONE,
+    script=False,
 )
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",

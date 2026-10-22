@@ -1,7 +1,8 @@
 """
 Live: following a Work Requirement's events as JSON (yd wr follow, yd
-follow), waiting for it (yd wr wait, yd wait), and a failing one: 'yd wr
-submit -E' exits 1, and waiting for it records it as not succeeded.
+follow), waiting for it (yd wr wait, yd wait), each by ID and the noun's
+verbs by name too, and a failing one: 'yd wr submit -E' exits 1, and
+waiting for it records it as not succeeded.
 """
 
 import pytest
@@ -34,6 +35,15 @@ def test_following_and_waiting_for_a_completed_work_requirement(live_run, action
             assert record["succeeded"] is True and record["status"] == "COMPLETED", (
                 record
             )
+
+        # By name, finished, in the configured namespace
+        name = work.work_requirement(yd, wr["id"])["name"]
+        assert yd("wr", "show", name, "--quiet").document["id"] == wr["id"]
+        (record,) = yd("wr", "wait", name, "--json", "--quiet").records
+        assert record["id"] == wr["id"] and record["succeeded"] is True, record
+        work.follow_events(
+            yd("wr", "follow", name, "--json", "--quiet", timeout=minutes * 60).stdout
+        )
 
 
 def test_a_failing_work_requirement_exits_1_and_waits_as_failed(live_run, actions_pool):

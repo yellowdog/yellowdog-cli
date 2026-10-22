@@ -33,6 +33,7 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.named_targets import resolve_compare_targets
 from yellowdog_cli.utils.printing import indent, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
 from yellowdog_cli.utils.tables import print_table_core
@@ -790,8 +791,10 @@ def _compare_task_group(
 @main_wrapper
 def main(ctx: RunContext):
     # The IDs' types are checked as the command line is parsed
-    # ('check_compare_ids' in the command registry)
-    worker_pool_ids: list[str] = ctx.args.worker_pool_ids or []
+    # ('check_compare_ids' in the command registry); names are looked up first
+    wr_or_tg_id, worker_pool_ids = resolve_compare_targets(
+        ctx, ctx.args.wr_or_tg_id or "", ctx.args.worker_pool_ids or []
+    )
     for wp_id in {i for i in worker_pool_ids if worker_pool_ids.count(i) > 1}:
         print_warning(f"Worker Pool ID '{wp_id}' was given more than once")
     worker_pools = WorkerPools(
@@ -801,8 +804,6 @@ def main(ctx: RunContext):
             for wp_id in dict.fromkeys(worker_pool_ids)
         ],
     )
-
-    wr_or_tg_id: str = ctx.args.wr_or_tg_id or ""
 
     failures: list[Exception] = []
 

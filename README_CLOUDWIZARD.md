@@ -512,7 +512,7 @@ The following actions are taken in the **YellowDog account**:
 1. All Compute Source Templates and Compute Requirement Templates with names starting with `cloudwizard-azure` are removed.
 2. The `cloudwizard-azure` Keyring is removed.
 
-In the **Azure account**, all resource groups with names starting with **yellowdog-cloudwizard-rg-** are removed. This will remove all resources contained within these resource groups. Note that this action is asynchronous, so it might take a few minutes after the Cloud Wizard script has ended for Azure to conclude its deletions.
+In the **Azure account**, all resource groups with names starting with **yellowdog-cloudwizard-rg-** are removed. This will remove all resources contained within these resource groups. Note that this action is asynchronous, so it might take a few minutes after the Cloud Wizard command has ended for Azure to conclude its deletions.
 
 ### Idempotency
 

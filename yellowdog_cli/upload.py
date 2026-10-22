@@ -21,7 +21,7 @@ from yellowdog_cli.utils.dataclient.operations import (
     resolve_remote_path,
     sync_destination_problem,
     upload_directory,
-    upload_file,
+    upload_files,
 )
 from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.dataclient.wrapper import dataclient_wrapper
@@ -65,6 +65,13 @@ def main(ctx: DataClientContext):
     if sync:
         _refuse_unsafe_syncs(uploads)
 
+    # The files given are uploaded together, a directory's at a time in one
+    # rclone run, rather than one rclone run each
+    failed += upload_files(
+        CONFIG_DATA_CLIENT,
+        [(u.local_path, u.remote_path) for u in uploads if not u.is_dir],
+        dry_run,
+    )
     for upload in uploads:
         if upload.is_dir:
             succeeded = upload_directory(
@@ -75,11 +82,7 @@ def main(ctx: DataClientContext):
                 sync=sync,
                 dry_run=dry_run,
             )
-        else:
-            succeeded = upload_file(
-                CONFIG_DATA_CLIENT, upload.local_path, upload.remote_path, dry_run
-            )
-        failed += 0 if succeeded else 1
+            failed += 0 if succeeded else 1
 
     if failed:
         print_error(f"{failed} item(s) failed to upload")

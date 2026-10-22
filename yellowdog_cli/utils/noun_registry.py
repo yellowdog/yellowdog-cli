@@ -36,6 +36,7 @@ from yellowdog_cli.utils.command_registry import (
     LIST_UNHEALTHY_TYPES,
     LIST_WITH_ERRORS_TYPES,
     LIST_WITHIN_TYPES,
+    NAMED_TARGET_TYPE_DEST,
     Command,
     Exclusive,
     Option,
@@ -138,12 +139,16 @@ RESOURCE_YDID_TYPES = frozenset(
 class Targets:
     """
     The targets a verb accepts: the positional ('dest') whose values are
-    held to 'kinds', described as 'described' in a refusal.
+    held to 'kinds', described as 'described' in a refusal; 'named', the
+    YDID type a name among them stands for, where the verb looks names up
+    itself (utils/named_targets.py), recorded on the parsed arguments as
+    NAMED_TARGET_TYPE_DEST for the command's own checks.
     """
 
     dest: str
     kinds: frozenset[TargetKind]
     described: str
+    named: YDIDType | None = None
 
 
 @dataclass(frozen=True)
@@ -251,10 +256,15 @@ def _show(
     kinds: frozenset[TargetKind],
     described: str,
     keep: tuple[str, ...] = (),
+    named: YDIDType | None = None,
 ) -> Verb:
     """
-    yd-show for one kind of object, the options for other kinds hidden.
+    yd-show for one kind of object, the options for other kinds hidden; with
+    'named', a name stands for one of that type, and without names
+    '--namespace' is hidden.
     """
+    if named is not None:
+        kinds = frozenset({*kinds, NAME})
     specific = (
         "--show-token",
         "--show-source-report",
@@ -267,14 +277,17 @@ def _show(
         "yd-show",
         f"Show the details of {noun_plural}",
         f"showing the JSON details of {noun_plural}",
-        hidden=tuple(flag for flag in specific if flag not in keep),
+        hidden=(
+            *(flag for flag in specific if flag not in keep),
+            *(() if NAME in kinds else ("--namespace",)),
+        ),
         overrides={
             "yellowdog_ids": {
                 "metavar": f"<{described}>",
                 "help": f"the {described.replace('-', ' ')}(s) to show",
             }
         },
-        targets=Targets("yellowdog_ids", kinds, described),
+        targets=Targets("yellowdog_ids", kinds, described, named),
     )
 
 
@@ -294,7 +307,7 @@ def _follow(
                 "help": f"the {described.replace('-', ' ')}(s) to follow",
             }
         },
-        targets=Targets("yellowdog_ids", _ids(ydid_type), described),
+        targets=Targets("yellowdog_ids", _named(ydid_type), described, ydid_type),
     )
 
 
@@ -310,7 +323,7 @@ def _wait(noun_plural: str, ydid_type: YDIDType, described: str) -> Verb:
                 "help": f"the {described.replace('-', ' ')}(s) to wait for",
             }
         },
-        targets=Targets("yellowdog_ids", _ids(ydid_type), described),
+        targets=Targets("yellowdog_ids", _named(ydid_type), described, ydid_type),
     )
 
 
@@ -391,10 +404,13 @@ def _compare(noun_singular: str, ydid_type: YDIDType, described: str) -> Verb:
         overrides={
             "wr_or_tg_id": {
                 "metavar": f"<{described}>",
-                "help": f"the YellowDog ID of the {noun_singular.lower()} to compare",
+                "help": (
+                    f"the name or YellowDog ID of the {noun_singular.lower()} to"
+                    " compare"
+                ),
             }
         },
-        targets=Targets("wr_or_tg_id", _ids(ydid_type), described),
+        targets=Targets("wr_or_tg_id", _named(ydid_type), described, ydid_type),
     )
 
 
@@ -428,10 +444,11 @@ def _check_resource_type(args: Namespace, parser: ArgumentParser) -> None:
 
 # --- The nouns -------------------------------------------------------------
 
-_WR_DESCRIBED = "work-requirement-ID"
-_TG_DESCRIBED = "task-group-ID"
-_WP_DESCRIBED = "worker-pool-ID"
-_CR_ID_DESCRIBED = "compute-requirement-ID"
+_WR_DESCRIBED = "work-requirement-name-or-ID"
+# A Task Group's name is its Work Requirement's and its own: 'wr/tg'
+_TG_DESCRIBED = "wr/task-group-name-or-ID"
+_WP_DESCRIBED = "worker-pool-name-or-ID"
+_CR_ID_DESCRIBED = "compute-requirement-name-or-ID"
 
 NOUNS: tuple[Noun, ...] = (
     Noun(
@@ -471,7 +488,12 @@ NOUNS: tuple[Noun, ...] = (
             _priority("Work Requirements and Task Groups"),
             _compare("Work Requirement", YDIDType.WORK_REQUIREMENT, _WR_DESCRIBED),
             _list(ET_WORK_REQUIREMENTS, "Work Requirements"),
-            _show("Work Requirements", _ids(YDIDType.WORK_REQUIREMENT), _WR_DESCRIBED),
+            _show(
+                "Work Requirements",
+                _ids(YDIDType.WORK_REQUIREMENT),
+                _WR_DESCRIBED,
+                named=YDIDType.WORK_REQUIREMENT,
+            ),
             _follow(
                 "Work Requirements",
                 YDIDType.WORK_REQUIREMENT,
@@ -489,7 +511,12 @@ NOUNS: tuple[Noun, ...] = (
             _priority("Task Groups and Work Requirements"),
             _compare("Task Group", YDIDType.TASK_GROUP, _TG_DESCRIBED),
             _list(ET_TASK_GROUPS, "Task Groups"),
-            _show("Task Groups", _ids(YDIDType.TASK_GROUP), _TG_DESCRIBED),
+            _show(
+                "Task Groups",
+                _ids(YDIDType.TASK_GROUP),
+                _TG_DESCRIBED,
+                named=YDIDType.TASK_GROUP,
+            ),
         ),
         alias="tg",
     ),
@@ -504,7 +531,13 @@ NOUNS: tuple[Noun, ...] = (
                 "aborting Tasks individually, or in Work Requirements or Task Groups",
             ),
             _list(ET_TASKS, "Tasks"),
-            _show("Tasks", _ids(YDIDType.TASK), "task-ID"),
+            # A Task's name is its Task Group's and its own: 'wr/tg/task'
+            _show(
+                "Tasks",
+                _ids(YDIDType.TASK),
+                "wr/tg/task-name-or-ID",
+                named=YDIDType.TASK,
+            ),
         ),
     ),
     Noun(
@@ -567,6 +600,7 @@ NOUNS: tuple[Noun, ...] = (
                 _ids(YDIDType.WORKER_POOL),
                 _WP_DESCRIBED,
                 keep=("--show-token", "--show-source-report", "--show-exhaustion"),
+                named=YDIDType.WORKER_POOL,
             ),
             _follow(
                 "Worker Pools",
@@ -631,6 +665,13 @@ NOUNS: tuple[Noun, ...] = (
                 " until their target counts are met",
             ),
             _cr_action(
+                "autoshutdown",
+                "yd-auto-shutdown",
+                "Set when Compute Requirements are automatically terminated",
+                "setting when Compute Requirements are automatically"
+                " terminated, or that they never are",
+            ),
+            _cr_action(
                 "terminate",
                 "yd-terminate",
                 "Terminate Compute Requirements",
@@ -642,6 +683,7 @@ NOUNS: tuple[Noun, ...] = (
                 _ids(YDIDType.COMPUTE_REQUIREMENT, YDIDType.COMPUTE_SOURCE),
                 _CR_ID_DESCRIBED,
                 keep=("--show-source-report", "--show-exhaustion"),
+                named=YDIDType.COMPUTE_REQUIREMENT,
             ),
             _follow(
                 "Compute Requirements", YDIDType.COMPUTE_REQUIREMENT, _CR_ID_DESCRIBED
@@ -866,6 +908,7 @@ def _check_targets(targets: Targets) -> Validator:
     """
 
     def check(args: Namespace, parser: ArgumentParser) -> None:
+        setattr(args, NAMED_TARGET_TYPE_DEST, targets.named)
         values = getattr(args, targets.dest, None)
         if values is None:
             return
@@ -994,7 +1037,9 @@ def noun_forms(command_name: str) -> list[str]:
 
 
 # The registry commands the noun verbs replace, each with its noun forms
-# (every deprecated script, these included, is top_level.SCRIPT_FORMS)
+# (every deprecated script, these included, is top_level.SCRIPT_FORMS); a
+# command with no script (Command.script) is here too, being typed only as
+# its noun forms
 REPLACED_BY_VERBS: dict[str, list[str]] = {
     name: noun_forms(name)
     for name in COMMANDS

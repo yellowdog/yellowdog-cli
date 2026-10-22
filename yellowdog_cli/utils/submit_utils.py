@@ -112,13 +112,14 @@ def merge_environment(
     additions: dict | None,
 ) -> dict | None:
     """
-    Merge addEnvironment entries into the task's environment dict.
-    Keys in additions override existing keys in base.
-    Returns base unchanged if additions is empty/None.
+    Merge a Task's addEnvironment into its environment, each as inheritance
+    gives it: a key in both keeps the environment's value, so the additions
+    only add keys it lacks. Returns base unchanged if additions is
+    empty/None.
     """
     if not additions:
         return base
-    return {**(base or {}), **additions}
+    return {**additions, **(base or {})}
 
 
 def update_config_work_requirement_object(

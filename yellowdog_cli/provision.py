@@ -11,7 +11,6 @@ from typing import cast
 
 from yellowdog_client.common.iso_datetime import iso_timedelta_format
 from yellowdog_client.model import (
-    AutoShutdown,
     ComputeRequirementTemplateUsage,
     NodeWorkerTarget,
     NodeWorkerTargetType,
@@ -39,6 +38,8 @@ from yellowdog_cli.utils.printing import (
     worker_pool_specification,
 )
 from yellowdog_cli.utils.property_names import (
+    AUTO_SHUTDOWN_TIMEOUT,
+    IDLE_POOL_TIMEOUT,
     IMAGES_ID,
     INSTANCE_TAGS,
     MAINTAIN_INSTANCE_COUNT,
@@ -51,6 +52,8 @@ from yellowdog_cli.utils.property_names import (
     WORKER_TAG,
 )
 from yellowdog_cli.utils.provision_utils import (
+    auto_shutdown,
+    auto_shutdown_json,
     get_image_id,
     get_template_id,
     get_user_data_property,
@@ -96,6 +99,12 @@ def main(ctx: RunContext) -> None:
     if ctx.args.target is not None:
         CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
+
+    if CONFIG_WP.auto_shutdown_timeout is not None:
+        print_warning(
+            f"Property '{AUTO_SHUTDOWN_TIMEOUT}' is ignored when creating a"
+            f" Worker Pool, which shuts down when idle ('{IDLE_POOL_TIMEOUT}')"
+        )
 
     # Direct file > file supplied using '-p' > file supplied in config file
     wp_json_file = (
@@ -147,24 +156,6 @@ def _node_workers_json(node_workers: NodeWorkerTarget) -> dict:
     return {
         "targetCount": node_workers.targetCount,
         "targetType": node_workers.targetType.value,
-    }
-
-
-def _auto_shutdown(timeout_minutes: float) -> AutoShutdown:
-    """
-    An idle shutdown after the given number of minutes; 0 disables it.
-    """
-    if timeout_minutes == 0:
-        return AutoShutdown(enabled=False)
-    return AutoShutdown(enabled=True, timeout=timedelta(minutes=timeout_minutes))
-
-
-def _auto_shutdown_json(auto_shutdown: AutoShutdown) -> dict:
-    if not auto_shutdown.enabled:
-        return {"enabled": False}
-    return {
-        "enabled": True,
-        "timeout": iso_timedelta_format(cast(timedelta, auto_shutdown.timeout)),
     }
 
 
@@ -327,11 +318,11 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
         ),
         (
             "idleNodeShutdown",
-            _auto_shutdown_json(_auto_shutdown(CONFIG_WP.idle_node_timeout)),
+            auto_shutdown_json(auto_shutdown(CONFIG_WP.idle_node_timeout)),
         ),
         (
             "idlePoolShutdown",
-            _auto_shutdown_json(_auto_shutdown(CONFIG_WP.idle_pool_timeout)),
+            auto_shutdown_json(auto_shutdown(CONFIG_WP.idle_pool_timeout)),
         ),
         ("createNodeWorkers", _node_workers_json(_node_workers())),
         ("metricsEnabled", CONFIG_WP.metrics_enabled),
@@ -545,8 +536,8 @@ def _provision_batch(
         minNodes=batch.min_nodes,
         maxNodes=batch.max_nodes,
         workerTag=CONFIG_WP.worker_tag,
-        idleNodeShutdown=_auto_shutdown(CONFIG_WP.idle_node_timeout),
-        idlePoolShutdown=_auto_shutdown(CONFIG_WP.idle_pool_timeout),
+        idleNodeShutdown=auto_shutdown(CONFIG_WP.idle_node_timeout),
+        idlePoolShutdown=auto_shutdown(CONFIG_WP.idle_pool_timeout),
         nodeBootTimeout=timedelta(minutes=CONFIG_WP.node_boot_timeout),
         metricsEnabled=CONFIG_WP.metrics_enabled,
     )

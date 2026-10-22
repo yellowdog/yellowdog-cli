@@ -13,7 +13,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd workrequirement`** (short form `yd wr`)
 - **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and aborting running Tasks with **`yd task`**
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
-- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning and terminating them with **`yd computerequirement`** (`yd cr`)
+- **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
 - **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
 - **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**

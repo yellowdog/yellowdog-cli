@@ -64,13 +64,18 @@ TOP_LEVEL: dict[str, Entry] = _entries()
 
 # Every 'yd-*' script released before 'yd', with what replaces it: a noun
 # verb's forms, or the command's 'yd' form. Kept for a release, with a
-# warning, then removed. yd-completion was never released.
+# warning, then removed. A command with no script (Command.script) has none.
 SCRIPT_FORMS: dict[str, list[str]] = {
-    **REPLACED_BY_VERBS,
+    **{
+        name: forms
+        for name, forms in REPLACED_BY_VERBS.items()
+        if COMMANDS[name].script
+    },
     **{
         name: [yd_form(name)]
         for name in [*COMMANDS, *OTHER_COMMANDS]
-        if name not in REPLACED_BY_VERBS and name != "yd-completion"
+        if name not in REPLACED_BY_VERBS
+        and (name not in COMMANDS or COMMANDS[name].script)
     },
 }
 

@@ -7,6 +7,7 @@ import fnmatch
 import json
 import os
 import subprocess
+import tempfile
 import threading
 import warnings
 from collections.abc import Callable
@@ -25,7 +26,11 @@ from yellowdog_cli.utils.dataclient.rclone import (
     parse_rclone_config,
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
-from yellowdog_cli.utils.limits import DATA_CLIENT_LISTING_WORKERS
+from yellowdog_cli.utils.limits import (
+    DATA_CLIENT_LISTING_WORKERS,
+    DATA_CLIENT_NAMES_SHOWN,
+    DATA_CLIENT_TRANSFER_WORKERS,
+)
 from yellowdog_cli.utils.printing import (
     print_dry_run,
     print_error,
@@ -137,17 +142,148 @@ def _copy(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
     )
 
 
+def listable(name: str) -> bool:
+    """
+    Whether a name can go in an rclone '--files-from-raw' list, which reads
+    one name a line, exactly as written: any name but one holding a newline.
+    """
+    return "\n" not in name
+
+
+def _with_names_file(names: list[str], call: Callable[[str], _T]) -> _T:
+    """
+    call(path) with the names written one a line (see listable()) to a
+    private temporary file at 'path', removed afterwards.
+    """
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", suffix=".txt", delete=False
+    ) as listing:
+        listing.write("".join(f"{name}\n" for name in names))
+    try:
+        return call(listing.name)
+    finally:
+        os.unlink(listing.name)
+
+
+def _copy_files(
+    rclone: Rclone, src_dir: str, dst_dir: str, names: list[str]
+) -> RcloneCompletedProcess:
+    """
+    'rclone copy src_dir dst_dir' of the named files alone, each keeping its
+    name, in one rclone process with rclone_api's parallel transfers, where
+    one 'rclone copyto' per file costs a process start each, one after
+    another (a tenth of a second or more apiece). The names are listed with
+    '--files-from-raw', which, unlike '--files-from', reads a name beginning
+    with '#' or ';', or with spaces, as it is.
+    """
+    return _with_names_file(
+        names,
+        lambda path: _without_rclone_api_warnings(
+            lambda: rclone.copy(
+                src=src_dir,
+                dst=dst_dir,
+                check=False,
+                other_args=["--files-from-raw", path],
+            )
+        ),
+    )
+
+
+def _delete_files(
+    rclone: Rclone, remote_dir: str, names: list[str]
+) -> subprocess.CompletedProcess:
+    """
+    'rclone delete remote_dir' of the named files alone, in one rclone
+    process (see _copy_files()).
+    """
+    return _with_names_file(
+        names,
+        lambda path: _run_quietly(
+            rclone, ["delete", remote_dir, "--files-from-raw", path]
+        ),
+    )
+
+
+def _copy_each(
+    rclone: Rclone, pairs: list[tuple[str, str]]
+) -> list[RcloneCompletedProcess]:
+    """
+    'rclone copyto source destination' for each pair, results in order,
+    DATA_CLIENT_TRANSFER_WORKERS at a time: for files each renamed on the
+    way (flattened), which one 'rclone copy' cannot do. Pairs sharing a
+    destination (same-named files flattened together) are copied one after
+    another, in order, so the later still wins.
+    """
+    by_destination: dict[str, list[int]] = {}
+    for index, (_, destination) in enumerate(pairs):
+        by_destination.setdefault(destination, []).append(index)
+
+    def copy_in_turn(indexes: list[int]) -> list[tuple[int, RcloneCompletedProcess]]:
+        return [(index, _copy_to(rclone, *pairs[index])) for index in indexes]
+
+    def copy_all() -> list[RcloneCompletedProcess]:
+        with ThreadPoolExecutor(
+            max_workers=DATA_CLIENT_TRANSFER_WORKERS, initializer=_mark_quiet_worker
+        ) as pool:
+            done = [
+                result
+                for results in pool.map(copy_in_turn, by_destination.values())
+                for result in results
+            ]
+        return [result for _, result in sorted(done, key=lambda item: item[0])]
+
+    # As for the listing workers (see _files_of_matches())
+    return _without_rclone_api_warnings(copy_all)
+
+
+def _arrived(local_path: Path, size: int | None) -> bool:
+    """
+    Whether a downloaded file is in place at its expected size (any size,
+    where the size is not known).
+    """
+    if not local_path.is_file():
+        return False
+    return size is None or size < 0 or local_path.stat().st_size == size
+
+
+def _remote_sizes(rclone: Rclone, remote_dir: str) -> dict[str, int | None]:
+    """
+    The files directly in a remote directory, by name, with their sizes; none
+    if it cannot be listed (it is then taken to hold none of them).
+    """
+    try:
+        entries = _lsjson(rclone, remote_dir, files_only=True)
+    except RuntimeError:
+        return {}
+    return {entry["Name"]: entry.get("Size") for entry in entries}
+
+
+def summarise_names(names: list[str]) -> str:
+    """
+    Quoted names for a summary line: all of them, or the first
+    DATA_CLIENT_NAMES_SHOWN and how many more, so that a wildcard matching
+    100,000 files does not print 100,000 names.
+    """
+    shown = ", ".join(f"'{name}'" for name in names[:DATA_CLIENT_NAMES_SHOWN])
+    more = len(names) - DATA_CLIENT_NAMES_SHOWN
+    return shown if more <= 0 else f"{shown} and {more:,d} more"
+
+
 def _lsjson(
     rclone: Rclone,
     remote_path: str,
     recursive: bool = False,
     files_only: bool = False,
+    modtime: bool = False,
 ) -> list[dict]:
     """
     rclone's 'lsjson' entries for 'remote_path' (a directory's contents, or
-    a file itself), raising if it cannot be listed.
+    a file itself), raising if it cannot be listed. Without 'modtime' the
+    entries have no 'ModTime': reading it costs a request per object on
+    S3, which a directory of 100,000 objects does not finish in 30 minutes,
+    so only a listing that shows it ('yd data ls') asks for it.
     """
-    args = ["lsjson", "--no-mimetype"]
+    args = ["lsjson", "--no-mimetype", *_modtime_args(modtime)]
     if recursive:
         args.append("-R")
     if files_only:
@@ -393,6 +529,14 @@ def upload_file(
     return True
 
 
+def _modtime_args(modtime: bool) -> list[str]:
+    """
+    The flag that keeps a listing from reading modification times, unless
+    they are wanted (see _lsjson()).
+    """
+    return [] if modtime else ["--no-modtime"]
+
+
 def _rclone_sync(rclone: Rclone, src: str, dst: str):
     """
     Run 'rclone sync src dst', making dst an exact mirror of src.
@@ -483,7 +627,8 @@ def _report_sync_deletions(
     """
     _, rclone = _rclone_for_config(config)
     result = _run_quietly(
-        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", remote_path]
+        rclone,
+        ["lsjson", "-R", "--files-only", "--no-mimetype", "--no-modtime", remote_path],
     )
     if result.returncode == 3:  # rclone's 'directory not found': nothing there
         return
@@ -586,11 +731,97 @@ def _upload_directory_flat(
         else:
             seen[local_file.name] = local_file
 
+    destinations = [f"{remote_path.rstrip('/')}/{f.name}" for f in files]
+    if dry_run:
+        return all(
+            [
+                upload_file(config, f, dest, dry_run=True)
+                for f, dest in zip(files, destinations)
+            ]
+        )
+    # Each file renamed to its own name directly under 'remote_path', which
+    # one 'rclone copy' cannot do: copied several at once instead
+    _, rclone = _rclone_for_config(config)
+    print_info(
+        f"Uploading (flat) {len(files):,d} file(s) '{local_path}' → '{remote_path}'"
+    )
+    results = _copy_each(
+        rclone, [(str(f.resolve()), dest) for f, dest in zip(files, destinations)]
+    )
     succeeded = True
-    for local_file in files:
-        dest = f"{remote_path.rstrip('/')}/{local_file.name}"
-        succeeded = upload_file(config, local_file, dest, dry_run=dry_run) and succeeded
+    for local_file, dest, result in zip(files, destinations, results):
+        size = local_file.stat().st_size
+        if result.returncode != 0:
+            error = f"Upload of '{local_file}' failed: {_rclone_error_detail(result)}"
+            print_error(error)
+            record_transfer(str(local_file), dest, size, "failed", error=error)
+            succeeded = False
+            continue
+        record_transfer(str(local_file), dest, size, "uploaded")
     return succeeded
+
+
+def upload_files(
+    config: ConfigDataClient, uploads: list[tuple[Path, str]], dry_run: bool = False
+) -> int:
+    """
+    Upload each (local file, remote path), recording each, and return how
+    many failed. The files of one local directory going under their own
+    names to one remote directory are uploaded in one rclone run
+    (_copy_files()), and checked against a listing of the remote directory
+    when it fails, since it may have uploaded some; any other file, as
+    upload_file() uploads it.
+    """
+    if dry_run:
+        return sum(
+            0 if upload_file(config, local, remote, dry_run=True) else 1
+            for local, remote in uploads
+        )
+    groups: dict[tuple[Path, str], list[Path]] = {}
+    singles: list[tuple[Path, str]] = []
+    for local, remote in uploads:
+        remote_dir, _, remote_name = remote.rpartition("/")
+        if remote_dir and remote_name == local.name and listable(local.name):
+            groups.setdefault((local.resolve().parent, remote_dir), []).append(local)
+        else:
+            singles.append((local, remote))
+    # A file alone in its directory is uploaded on its own
+    for (_, remote_dir), files in list(groups.items()):
+        if len(files) == 1:
+            singles.append((files[0], f"{remote_dir}/{files[0].name}"))
+    groups = {key: files for key, files in groups.items() if len(files) > 1}
+    failed = 0
+    if groups:
+        _, rclone = _rclone_for_config(config)
+    for (local_dir, remote_dir), files in groups.items():
+        print_info(
+            f"Uploading {len(files):,d} file(s) from '{local_dir}' → '{remote_dir}'"
+        )
+        result = _copy_files(
+            rclone, str(local_dir), remote_dir, [f.name for f in files]
+        )
+        present = {} if result.returncode == 0 else _remote_sizes(rclone, remote_dir)
+        error = None
+        for local in files:
+            size = local.stat().st_size
+            arrived = result.returncode == 0 or present.get(local.name) == size
+            if not arrived and error is None:
+                error = (
+                    f"Upload from '{local_dir}' to '{remote_dir}' failed:"
+                    f" {_rclone_error_detail(result)}"
+                )
+                print_error(error)
+            record_transfer(
+                str(local),
+                f"{remote_dir}/{local.name}",
+                size,
+                "uploaded" if arrived else "failed",
+                error=None if arrived else error,
+            )
+            failed += 0 if arrived else 1
+    for local, remote in singles:
+        failed += 0 if upload_file(config, local, remote) else 1
+    return failed
 
 
 def entry_to_name(entry: dict) -> str:
@@ -635,11 +866,14 @@ def split_glob_remote_path(remote_path: str) -> tuple[str, str]:
 
 def _format_glob_matches(remote_path: str, matches: list[dict]) -> str:
     """
-    Format a one-line summary of the entries matched by a glob pattern.
-    Directory names are suffixed with '/'.
+    Format a one-line summary of the entries matched by a glob pattern, the
+    first few named (summarise_names()). Directory names are suffixed with '/'.
     """
-    names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
-    return f"Wildcard '{remote_path}' matches: {', '.join(names)}"
+    names = [e["Name"] + ("/" if e["IsDir"] else "") for e in matches]
+    return (
+        f"Wildcard '{remote_path}' matches {len(names):,d} item(s):"
+        f" {summarise_names(names)}"
+    )
 
 
 def remote_stat(
@@ -717,7 +951,8 @@ def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
     Whether a listing of the directory's first level finds anything in it.
     """
     result = _run_quietly(
-        rclone, ["lsjson", "--no-mimetype", "--max-depth", "1", remote_path]
+        rclone,
+        ["lsjson", "--no-mimetype", "--no-modtime", "--max-depth", "1", remote_path],
     )
     if result.returncode == 3:
         return False
@@ -729,7 +964,7 @@ def _holds_anything(rclone: Rclone, remote_path: str) -> bool:
 
 
 def glob_matches(
-    rclone: Rclone, remote_path: str, allow_empty: bool = False
+    rclone: Rclone, remote_path: str, allow_empty: bool = False, modtime: bool = False
 ) -> tuple[str, list[dict]]:
     """
     (parent directory, matching entries) for a wildcard remote path. An
@@ -739,9 +974,12 @@ def glob_matches(
     existing, or nothing matching, raises FileNotFoundError -- unless
     'allow_empty', for a listing, to which 'nothing matches' is an answer --
     and any other failure to list the parent raises with rclone's message.
+    The entries have 'ModTime' only with 'modtime' (see _lsjson()).
     """
     remote_dir, pattern = split_glob_remote_path(remote_path)
-    check = _run_quietly(rclone, ["lsjson", "--no-mimetype", remote_dir])
+    check = _run_quietly(
+        rclone, ["lsjson", "--no-mimetype", *_modtime_args(modtime), remote_dir]
+    )
     if check.returncode == 3:
         raise FileNotFoundError(f"'{remote_dir}' does not exist")
     if check.returncode != 0:
@@ -758,13 +996,16 @@ def glob_matches(
 
 
 def config_glob_matches(
-    config: ConfigDataClient, remote_path: str, allow_empty: bool = False
+    config: ConfigDataClient,
+    remote_path: str,
+    allow_empty: bool = False,
+    modtime: bool = False,
 ) -> tuple[str, list[dict]]:
     """
     glob_matches() for a data client configuration.
     """
     _, rclone = _rclone_for_config(config)
-    return glob_matches(rclone, remote_path, allow_empty)
+    return glob_matches(rclone, remote_path, allow_empty, modtime)
 
 
 def config_remote_stat(
@@ -816,7 +1057,17 @@ def _download_with_glob(
     )
     flattened = {} if flattened is None else flattened
     succeeded = True
+    # The matched files all go in one rclone run, each keeping its name
+    batched = [e for e in matches if not e["IsDir"] and listable(e["Name"])]
+    if batched:
+        if flatten:
+            for entry, files in zip(matches, files_of_matches):
+                if not entry["IsDir"] and listable(entry["Name"]):
+                    _warn_of_flattened_collisions(files, flattened)
+        succeeded = _download_batch(rclone, remote_dir, batched, local_destination)
     for entry, files in zip(matches, files_of_matches):
+        if not entry["IsDir"] and listable(entry["Name"]):
+            continue
         src = _join_remote(remote_dir, entry["Name"])
         if flatten:
             _warn_of_flattened_collisions(files, flattened)
@@ -834,6 +1085,52 @@ def _download_with_glob(
             continue
         _record_downloads(files, src, "downloaded")
     return succeeded
+
+
+def _download_batch(
+    rclone: Rclone, remote_dir: str, entries: list[dict], local_destination: Path
+) -> bool:
+    """
+    Download the files of 'remote_dir' its lsjson entries name to
+    'local_destination', each by its name, in one rclone run (_copy_files()),
+    recording each. A run that fails may have fetched some of them, so each
+    is recorded by whether it arrived at its size; False if any did not.
+    """
+    names = [entry["Name"] for entry in entries]
+    print_info(
+        f"Downloading {len(names):,d} matched file(s) from '{remote_dir}'"
+        f" → '{local_destination}'"
+    )
+    result = _copy_files(rclone, remote_dir, str(local_destination), names)
+    missing = (
+        []
+        if result.returncode == 0
+        else [
+            entry
+            for entry in entries
+            if not _arrived(local_destination / entry["Name"], entry.get("Size"))
+        ]
+    )
+    error = None
+    if missing:
+        error = (
+            f"Download of {len(missing):,d} file(s) from '{remote_dir}' failed:"
+            f" {_rclone_error_detail(result)}"
+        )
+        print_error(error)
+    missing_names = {entry["Name"] for entry in missing}
+    for entry in entries:
+        src = _join_remote(remote_dir, entry["Name"])
+        failed = entry["Name"] in missing_names
+        record_transfer(
+            src,
+            str(local_destination / entry["Name"]),
+            entry.get("Size"),
+            "failed" if failed else "downloaded",
+            error=error if failed else None,
+            match=src.rstrip("/"),
+        )
+    return not missing
 
 
 def _download_failed(
@@ -974,12 +1271,12 @@ def _download_each(
 ) -> bool:
     """
     Download each (source, destination, size) to its own destination with
-    'rclone copyto', recording each; every file is tried, and False is
-    returned if any failed.
+    'rclone copyto', several at once (_copy_each()), recording each in order;
+    every file is tried, and False is returned if any failed.
     """
     succeeded = True
-    for source, destination, size in files:
-        result = _copy_to(rclone, source, destination)
+    results = _copy_each(rclone, [(source, dst) for source, dst, _ in files])
+    for (source, destination, size), result in zip(files, results):
         if result.returncode != 0:
             error = f"Download of '{source}' failed: {_rclone_error_detail(result)}"
             print_error(error)
@@ -1286,6 +1583,55 @@ def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
     return True
 
 
+def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> int:
+    """
+    Delete each (remote path, is a directory), recording each, and return
+    how many failed. The files of one remote directory are deleted in one
+    rclone run (_delete_files()), checked against a listing of the directory
+    when it fails, since it may have deleted some; a directory, and a file
+    alone in its directory, as delete_item() deletes it.
+    """
+    groups: dict[str, list[str]] = {}
+    singles: list[tuple[str, bool]] = []
+    for path, is_dir in targets:
+        remote_dir, _, name = path.rstrip("/").rpartition("/")
+        if not is_dir and remote_dir and listable(name):
+            groups.setdefault(remote_dir, []).append(name)
+        else:
+            singles.append((path, is_dir))
+    # A file alone in its directory is deleted on its own
+    for remote_dir, names in list(groups.items()):
+        if len(names) == 1:
+            singles.append((f"{remote_dir}/{names[0]}", False))
+    groups = {key: names for key, names in groups.items() if len(names) > 1}
+    failed = 0
+    if groups:
+        _, rclone = _rclone_for_config(config)
+    for remote_dir, names in groups.items():
+        print_info(f"Deleting {len(names):,d} file(s) in '{remote_dir}'")
+        result = _delete_files(rclone, remote_dir, names)
+        left = (
+            set() if result.returncode == 0 else set(_remote_sizes(rclone, remote_dir))
+        )
+        error = None
+        for name in names:
+            path = f"{remote_dir}/{name}"
+            if name in left:
+                if error is None:
+                    error = (
+                        f"Deletion of files in '{remote_dir}' failed:"
+                        f" {_rclone_error_detail(result)}"
+                    )
+                    print_error(error)
+                record_deletion(path, False, "failed", error=error)
+                failed += 1
+            else:
+                record_deletion(path, False, "deleted")
+    for path, is_dir in singles:
+        failed += 0 if delete_item(config, path, is_dir) else 1
+    return failed
+
+
 def lsjson_listing(
     config: ConfigDataClient, remote_path: str, recursive: bool = False
 ) -> list[dict]:
@@ -1302,9 +1648,11 @@ def lsjson_listing(
     if not is_glob(remote_path):
         if remote_stat(rclone, remote_path, confirm_directory=False) is None:
             raise FileNotFoundError(f"'{remote_path}' does not exist")
-        entries = _lsjson(rclone, remote_path, recursive=recursive)
+        entries = _lsjson(rclone, remote_path, recursive=recursive, modtime=True)
     else:
-        remote_dir, matches = glob_matches(rclone, remote_path, allow_empty=True)
+        remote_dir, matches = glob_matches(
+            rclone, remote_path, allow_empty=True, modtime=True
+        )
         entries = []
         for match in matches:
             entries.append(match)
@@ -1315,6 +1663,7 @@ def lsjson_listing(
                         rclone,
                         _join_remote(remote_dir, match["Name"]),
                         recursive=True,
+                        modtime=True,
                     )
                 )
     return [{key: entry.get(key) for key in LSJSON_KEYS} for entry in entries]
@@ -1443,7 +1792,8 @@ def _report_copy_sync_deletions(
     the sync would delete: those with no counterpart in the source.
     """
     result = _run_quietly(
-        rclone, ["lsjson", "-R", "--files-only", "--no-mimetype", dst_path]
+        rclone,
+        ["lsjson", "-R", "--files-only", "--no-mimetype", "--no-modtime", dst_path],
     )
     if result.returncode == 3:  # rclone's 'directory not found': nothing there
         return

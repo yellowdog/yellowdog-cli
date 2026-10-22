@@ -32,6 +32,7 @@ from yellowdog_cli.utils.command_registry import (
     ToolKind,
     finite_float,
     mcp_excluded,
+    non_negative_float,
     non_negative_int,
     positive_int,
     resolve_cloud_info_type,
@@ -58,6 +59,7 @@ TIMEOUT_ARGUMENT = "timeout_seconds"
 # omission. It must say so with ALL_IN_SCOPE_ARGUMENT instead (_validate()).
 SCOPE_TARGETS: dict[str, str] = {
     "yd-abort": "task_id_list",
+    "yd-auto-shutdown": "compute_reqs_instances_or_nodes",
     "yd-cancel": "work_requirements",
     "yd-compute-reprovision": "compute_reqs_instances_or_nodes",
     "yd-compute-start": "compute_reqs_instances_or_nodes",
@@ -211,6 +213,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
         schema["minimum"] = 0
     elif kind is finite_float:
         schema["type"] = "number"
+    elif kind is non_negative_float:
+        schema["type"] = "number"
+        schema["minimum"] = 0
     elif kind is resolve_entity_type:
         schema["type"] = "string"
         schema["enum"] = list(ENTITY_TYPES)

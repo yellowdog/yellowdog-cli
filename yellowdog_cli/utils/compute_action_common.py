@@ -2,9 +2,10 @@
 
 """
 Core functionality for stopping, starting, restarting, terminating,
-deprovisioning and reprovisioning Compute Requirements and Instances:
-yd-compute-stop, yd-compute-start, yd-compute-restart, yd-terminate,
-yd-compute-deprovision and yd-compute-reprovision.
+deprovisioning and reprovisioning Compute Requirements and Instances, and
+setting when Compute Requirements are terminated: yd-compute-stop,
+yd-compute-start, yd-compute-restart, yd-terminate, yd-compute-deprovision,
+yd-compute-reprovision and yd-auto-shutdown.
 
 Explicit targets are handled in two passes. Each argument is first resolved,
 in the order given, to a Compute Requirement or to an Instance (a Node
@@ -15,10 +16,12 @@ Instances, which the SDK takes as a list. The rules for what cannot be acted
 on, confirming and stopping on a session failure are action_runner.py's.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from yellowdog_client.model import (
+    AutoShutdown,
     ComputeRequirement,
     ComputeRequirementStatus,
     ComputeRequirementSummary,
@@ -67,7 +70,11 @@ from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
-from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
+from yellowdog_cli.utils.misc_utils import (
+    is_http_not_found,
+    link_entity,
+    shown_expiry,
+)
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import (
@@ -91,6 +98,13 @@ class ComputeAction:
     # When '--follow' is done, the Compute Requirement being left alive (its
     # stream never closes); None to follow it to its end, as a terminate does
     done_when: DoneWhen | None = None
+    # The '--json' record's 'action', where the name is a phrase
+    record_name: str | None = None
+    # Passed to the Compute Requirement method after the ID
+    cr_arguments: tuple[Any, ...] = ()
+    # What the Compute Requirement the method returns adds to the line
+    # printed for it, and the fields it adds to its record
+    reported: Callable[[ComputeRequirement], tuple[str, dict[str, Any]]] | None = None
 
     @property
     def prompt(self) -> str:
@@ -102,6 +116,7 @@ class ComputeAction:
         outcome: str | None = None,
         error: str | None = None,
         entity_type: str = ET_COMPUTE_REQUIREMENTS,
+        **extra: Any,
     ) -> None:
         """
         Record the action's outcome for '--json': by default, that it was
@@ -110,9 +125,10 @@ class ComputeAction:
         record_action(
             entity,
             entity_type,
-            self.name.lower(),
+            self.record_name or self.name.lower(),
             outcome or self.past_tense.lower(),
             error,
+            **extra,
         )
 
     def recorder(self) -> Record:
@@ -212,6 +228,55 @@ COMPUTE_REPROVISION = ComputeAction(
     confirmation_verb="Reprovision (restore to their target instance counts)",
     done_when=until_settled,
 )
+
+
+def compute_auto_shutdown(shutdown: AutoShutdown) -> ComputeAction:
+    """
+    Setting when Compute Requirements are terminated (yd-auto-shutdown), or
+    with the shutdown disabled that they never are: an action built for the
+    run, since its confirmation and the call it makes carry the shutdown.
+    Each record adds the 'autoShutdownTime' the Platform set, null for none.
+    """
+    minutes = (
+        None
+        if not shutdown.enabled or shutdown.timeout is None
+        else shutdown.timeout.total_seconds() / 60
+    )
+    return ComputeAction(
+        name="Set the auto shutdown of",
+        gerund="Setting the auto shutdown of",
+        past_tense="Updated",
+        cr_method_name="update_compute_requirement_auto_shutdown",
+        instance_method_name=None,
+        valid_cr_statuses=COMPUTE_TERMINATE.valid_cr_statuses,
+        valid_instance_statuses=[],
+        confirmation_verb=(
+            "Disable the auto shutdown of"
+            if minutes is None
+            else f"Terminate, {minutes:g} minute(s) from now,"
+        ),
+        record_name="autoshutdown",
+        cr_arguments=(shutdown,),
+        reported=_auto_shutdown_reported,
+    )
+
+
+def _auto_shutdown_reported(
+    compute_requirement: ComputeRequirement,
+) -> tuple[str, dict[str, Any]]:
+    # Enabled or not by the shutdown itself, the time added where the
+    # Platform gives one, so that a reply without it is not reported as never
+    shutdown = compute_requirement.autoShutdown
+    when = compute_requirement.autoShutdownTime
+    fields = {"autoShutdownTime": None if when is None else when.isoformat()}
+    if shutdown is None or not shutdown.enabled:
+        return ": it will not be terminated automatically", fields
+    if when is not None:
+        return f": it will be terminated at {shown_expiry(when)}", fields
+    if shutdown.timeout is not None:
+        minutes = shutdown.timeout.total_seconds() / 60
+        return f": it will be terminated in {minutes:g} minute(s)", fields
+    return ": it will be terminated automatically", fields
 
 
 # A Compute Requirement to act on: fetched by its ID, or found by its name
@@ -396,13 +461,18 @@ def _act_on_compute_requirement(
     Raises on failure, for the caller to record.
     """
     result = getattr(ctx.client.compute_client, cast(str, action.cr_method_name))(
-        compute_requirement.id
+        compute_requirement.id, *action.cr_arguments
     )
-    action.record(compute_requirement)
+    added, fields = (
+        action.reported(result)
+        if action.reported is not None and isinstance(result, ComputeRequirement)
+        else ("", {})
+    )
+    action.record(compute_requirement, **fields)
     if isinstance(result, ComputeRequirement):
-        print_info(f"{action.past_tense} {link_entity(ctx.config.url, result)}")
+        print_info(f"{action.past_tense} {link_entity(ctx.config.url, result)}{added}")
     else:
-        print_info(f"{action.past_tense} '{compute_requirement.name}'")
+        print_info(f"{action.past_tense} '{compute_requirement.name}'{added}")
 
 
 def _target_entity(target: str) -> tuple[object, str]:

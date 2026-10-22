@@ -39,14 +39,29 @@ def test_the_forms():
 
 def test_no_unreleased_script_is_installed():
     scripts = _scripts()
-    for gone in ("yd-wr", "yd-workrequirement", "yd-data", "yd-completion"):
+    for gone in (
+        "yd-wr",
+        "yd-workrequirement",
+        "yd-data",
+        "yd-completion",
+        "yd-auto-shutdown",
+    ):
         assert gone not in scripts
 
 
 def test_every_registry_and_other_command_is_covered():
+    # Bar the commands with no script, which have nothing to deprecate
     for name in [*COMMANDS, *OTHER_COMMANDS]:
-        assert name in SCRIPT_FORMS or name == "yd-completion", name
-    assert set(REPLACED_BY_VERBS) <= set(SCRIPT_FORMS)
+        scripted = name not in COMMANDS or COMMANDS[name].script
+        assert (name in SCRIPT_FORMS) == scripted, name
+    assert {name for name in REPLACED_BY_VERBS if COMMANDS[name].script} <= set(
+        SCRIPT_FORMS
+    )
+
+
+def test_a_command_with_no_script_has_no_deprecated_form():
+    assert "yd-auto-shutdown" in REPLACED_BY_VERBS
+    assert "yd-auto-shutdown" not in SCRIPT_FORMS
 
 
 def test_the_message():

@@ -3,6 +3,7 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
+import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
@@ -72,7 +73,10 @@ from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
-from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
+from yellowdog_cli.utils.settings import (
+    NAMESPACE_PREFIX_SEPARATOR,
+    PROVIDER_IMAGE_ID_PATTERNS,
+)
 from yellowdog_cli.utils.ydid_utils import (
     TYPE_IMGFAM,
     TYPE_IMGGRP,
@@ -559,8 +563,13 @@ def get_image_name_or_id(
 
     match = _image_match(client, image_family_summaries, parts, original)
     if match is None:
-        # Probably a provider-specific image ID
-        print_info(f"No Images ID substitution possible for '{original}'")
+        # A provider's own image ID; said, unless it plainly is one, since a
+        # misspelt Image Family name would otherwise reach the provider unremarked
+        if not is_provider_image_id(original):
+            print_info(
+                f"'{original}' is not the name of an Image Family or Group; it is"
+                " passed on as the provider's image ID"
+            )
         return original
 
     if match.family.access == ImageAccess.PUBLIC or always_return_ydid:
@@ -570,6 +579,14 @@ def get_image_name_or_id(
     if match.name != original:
         print_info(f"Images ID '{original}' -> '{match.name}'")
     return match.name
+
+
+def is_provider_image_id(value: str) -> bool:
+    """
+    Whether a value has the shape of a cloud provider's own image ID
+    (PROVIDER_IMAGE_ID_PATTERNS): an AWS AMI ID, say.
+    """
+    return any(re.fullmatch(pattern, value) for pattern in PROVIDER_IMAGE_ID_PATTERNS)
 
 
 @dataclass(frozen=True)

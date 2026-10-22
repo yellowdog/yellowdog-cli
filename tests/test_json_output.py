@@ -2766,14 +2766,17 @@ class TestUpload:
 
         (remote / "one.txt").write_text("1")
         (remote / "two.txt").write_text("2")
-        real_copy_to = dcu._copy_to
+        real_copy_files = dcu._copy_files
 
-        def copy_to(rclone, src, dst):
-            if src.endswith("one.txt"):
-                return SimpleNamespace(returncode=1, stderr="refused")
-            return real_copy_to(rclone, src, dst)
+        def copy_files(rclone, src_dir, dst_dir, names):
+            # One rclone run for both, failing having copied 'two.txt' alone:
+            # which arrived is read back from the remote
+            real_copy_files(
+                rclone, src_dir, dst_dir, [n for n in names if n != "one.txt"]
+            )
+            return SimpleNamespace(returncode=1, stderr="refused")
 
-        monkeypatch.setattr(dcu, "_copy_to", copy_to)
+        monkeypatch.setattr(dcu, "_copy_files", copy_files)
         out, err, code = run_dc(yd_upload, local_paths=["one.txt", "two.txt"])
         assert [(r["source"], r["action"]) for r in out] == [
             ("one.txt", "failed"),
@@ -3360,7 +3363,7 @@ class TestDelete:
                 return False
             return real(config, path, is_dir)
 
-        monkeypatch.setattr(yd_delete, "delete_item", delete_item)
+        monkeypatch.setattr(dcu, "delete_item", delete_item)
         out, err, code = run_dc(
             yd_delete,
             remote_paths=["loc:remote/a.txt", "loc:remote/sub"],
@@ -3921,3 +3924,95 @@ class TestNamesWithWildcardCharacters:
         out, _, code = run_dc(yd_ls, remote_paths=["loc:remote/file[ab].txt"])
         assert code == 0
         assert sorted(entry["Name"] for entry in out) == ["filea.txt", "fileb.txt"]
+
+
+# The names a '--files-from' list would misread, among ordinary ones: a
+# '--files-from-raw' list takes each as written
+_MANY = ["f1.txt", "f2.txt", "f3.txt", "#notes.txt", ";semi.txt", " lead.txt"]
+
+
+class TestOneRcloneRunForManyFiles:
+    """
+    Many files are transferred or deleted in one rclone run, not one each:
+    a wildcard's matched files downloaded, the files given to upload, a
+    wildcard's files deleted. Each is still recorded, a failed run's by
+    whether it arrived (or went).
+    """
+
+    @pytest.fixture
+    def many(self, remote):
+        (remote / "remote" / "many").mkdir()
+        for name in _MANY:
+            (remote / "remote" / "many" / name).write_text(name, encoding="utf-8")
+        return remote
+
+    @pytest.fixture
+    def counted(self, monkeypatch):
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        calls = {"_copy_to": 0, "_copy_files": 0, "_delete_files": 0}
+        for name in calls:
+            real = getattr(dcu, name)
+
+            def counting(*args, _real=real, _name=name, **kwargs):
+                calls[_name] += 1
+                return _real(*args, **kwargs)
+
+            monkeypatch.setattr(dcu, name, counting)
+        return calls
+
+    def test_a_wildcards_files_download_in_one_run(self, many, run_dc, counted):
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:remote/many/*.txt"], into="got"
+        )
+        assert code == 0
+        assert counted["_copy_files"] == 1 and counted["_copy_to"] == 0
+        assert sorted(r["action"] for r in out) == ["downloaded"] * len(_MANY)
+        for name in _MANY:
+            assert (many / "got" / name).read_text(encoding="utf-8") == name
+
+    def test_a_failed_run_records_each_file_by_whether_it_arrived(
+        self, many, run_dc, monkeypatch
+    ):
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        real = dcu._copy_files
+
+        def partly(rclone, src_dir, dst_dir, names):
+            real(rclone, src_dir, dst_dir, [n for n in names if n != "f2.txt"])
+            return SimpleNamespace(returncode=1, stderr="interrupted")
+
+        monkeypatch.setattr(dcu, "_copy_files", partly)
+        out, _, code = run_dc(
+            yd_download, remote_paths=["loc:remote/many/*.txt"], into="got"
+        )
+        assert code == 1
+        failed = [r["source"] for r in out if r["action"] == "failed"]
+        assert failed == ["loc:remote/many/f2.txt"]
+
+    def test_the_files_given_upload_in_one_run(self, many, run_dc, counted):
+        for name in _MANY:
+            (many / name).write_text(name, encoding="utf-8")
+        out, _, code = run_dc(yd_upload, local_paths=_MANY, destination="up/")
+        assert code == 0
+        assert counted["_copy_files"] == 1 and counted["_copy_to"] == 0
+        assert [r["action"] for r in out] == ["uploaded"] * len(_MANY)
+        for name in _MANY:
+            assert (many / "remote" / "up" / name).read_text(encoding="utf-8") == name
+
+    def test_a_wildcards_files_delete_in_one_run(self, many, run_dc, counted):
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/many/*.txt"])
+        assert code == 0
+        assert counted["_delete_files"] == 1
+        assert sorted(r["action"] for r in out) == ["deleted"] * len(_MANY)
+        assert list((many / "remote" / "many").iterdir()) == []
+
+
+def test_a_long_list_of_names_is_summarised():
+    from yellowdog_cli.utils.dataclient.operations import summarise_names
+
+    names = [f"f{i}" for i in range(15)]
+    assert summarise_names(names) == (
+        ", ".join(f"'f{i}'" for i in range(10)) + " and 5 more"
+    )
+    assert summarise_names(["a", "b"]) == "'a', 'b'"

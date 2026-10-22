@@ -1,6 +1,7 @@
 """
 Live: reading the run's own objects, by 'yd list' and 'yd show' and by the
-resource noun's 'list' and 'show'.
+resource noun's 'list' and 'show'; and reading with [common] readTimeout set,
+and set to 0 (no limit), as the SDK client and the CLI's own requests take it.
 """
 
 import pytest
@@ -58,3 +59,22 @@ def test_resource_list_finds_the_runs_requirement_templates(live_run):
         "--quiet",
     ).records
     assert run.requirement_template(run.config.primary) in {r["name"] for r in listed}
+
+
+@pytest.mark.parametrize("seconds", ["30", "0"])
+def test_a_read_timeout_set_or_switched_off_still_reads(live_run, seconds):
+    run, yd = live_run.run, live_run.yd
+    listed = yd(
+        "resource",
+        "list",
+        "keyrings",
+        "--namespace",
+        "",
+        "--name",
+        run.keyring,
+        "--property",
+        f"common.readTimeout={seconds}",
+        "--json",
+        "--quiet",
+    ).records
+    assert [keyring["name"] for keyring in listed] == [run.keyring]

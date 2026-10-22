@@ -110,9 +110,9 @@
     # environment = {MY_VAR = "value", ANOTHER = "42"}
 
     # Extra environment variables merged into each task's environment.
-    # Keys override any matching keys already present in 'environment'.
+    # A key also in 'environment' keeps the value from 'environment'.
     # Optional
-    # addEnvironment = {EXTRA_VAR = "extra_value", ANOTHER = "override"}
+    # addEnvironment = {EXTRA_VAR = "extra_value"}
 
     # Inject YellowDog environment variables into the task (YD_TASK_NAME,
     # YD_WORK_REQUIREMENT_NAME, etc.; see docs/work-requirements.md).
@@ -463,6 +463,13 @@
     # Maximum time allowed for a node to boot and register.
     # Optional — default: 10.0
     # nodeBootTimeout = 10.0
+
+    # How long after it is created a Compute Requirement is terminated; 0 means
+    # never. 'yd computerequirement autoshutdown' changes it later.
+    # Optional — applies to yd computerequirement instantiate only (a Worker
+    # Pool shuts down when idle instead); default: unset (the Platform's
+    # default applies)
+    # autoShutdownTimeout = 120.0
 
     # --------------------------------------------------------------------------
     # Images and instance configuration

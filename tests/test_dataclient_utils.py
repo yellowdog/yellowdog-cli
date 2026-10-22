@@ -738,6 +738,13 @@ class TestRemoteStatOnBucketStorage:
         # One level only, so that a large tree is not walked to find one item
         assert calls[-1][-3:] == ["--max-depth", "1", "s3:b/dir"]
 
+    def test_the_existence_check_reads_no_modification_times(self, monkeypatch):
+        # On S3 each object's time is a HEAD request of its own: a directory
+        # of 100,000 objects took longer than 30 minutes to confirm
+        calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [{"Name": "a.txt"}])
+        dcu_module.remote_stat(MagicMock(), "s3:b/dir")
+        assert "--no-modtime" in calls[-1]
+
     def test_an_empty_directory_where_one_can_be_held_is_a_directory(self, monkeypatch):
         # Local and SFTP: a missing path would have been rclone's exit 3
         calls = self._rclone(
@@ -836,3 +843,36 @@ class TestResolveRemotePathCurrentDirectorySegments:
 )
 def test_remote_basename_splits_off_the_remote_first(remote_path, name):
     assert dcu_module.remote_basename(remote_path) == name
+
+
+class TestListingsReadModificationTimesOnlyWhereShown:
+    """
+    rclone reads an S3 object's modification time with a request of its own,
+    so a listing asks for it only where 'yd data ls' shows it.
+    """
+
+    def _calls(self, monkeypatch, listing=None) -> list[list[str]]:
+        calls: list[list[str]] = []
+
+        def run(_rclone, args):
+            calls.append(args)
+            return MagicMock(returncode=0, stdout=json.dumps(listing or []))
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        return calls
+
+    def test_a_download_listing_reads_none(self, monkeypatch):
+        calls = self._calls(monkeypatch)
+        dcu_module._lsjson(MagicMock(), "s3:b/dir", recursive=True, files_only=True)
+        assert "--no-modtime" in calls[0]
+
+    def test_a_wildcard_match_for_a_transfer_reads_none(self, monkeypatch):
+        calls = self._calls(monkeypatch, [{"Name": "a.txt", "IsDir": False}])
+        dcu_module.glob_matches(MagicMock(), "s3:b/dir/*.txt")
+        assert "--no-modtime" in calls[0]
+
+    def test_ls_reads_them_for_its_wildcards_and_listings(self, monkeypatch):
+        calls = self._calls(monkeypatch, [{"Name": "a.txt", "IsDir": False}])
+        dcu_module.glob_matches(MagicMock(), "s3:b/dir/*.txt", modtime=True)
+        dcu_module._lsjson(MagicMock(), "s3:b/dir", modtime=True)
+        assert all("--no-modtime" not in call for call in calls)

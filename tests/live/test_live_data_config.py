@@ -69,6 +69,8 @@ def test_the_run_gives_yd_the_bucket_the_task_remote_and_the_local_remote(tmp_pa
     run = Run.start(config, tmp_path / "runs")
     text = run.cli_config.read_text(encoding="utf-8")
     assert '[dataClient]\nbucket = "yd-dummy-bucket"' in text
+    # The prefix is the default, the run's '{{namespace}}/{{tag}}'
+    assert "prefix" not in text
     assert "secret_access_key" not in text
     assert run.variables()["task_data_remote"] == data.task_remote(config)
     assert run.environment({})["YD_DATA_CLIENT_REMOTE"] == data.local_remote(config)

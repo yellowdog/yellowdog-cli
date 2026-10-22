@@ -90,7 +90,9 @@ def _offered(monkeypatch, lookup, summaries, current=""):
 
 
 CANCEL = LOOKUPS[("yd workrequirement cancel", "work_requirements")]
-SHOW = LOOKUPS[("yd workrequirement show", "yellowdog_ids")]
+# IDs described by name and status, as an Allowance is offered: no verb of
+# this type offers them, so the lookup is made here
+SHOW = Lookup(ET_WORK_REQUIREMENTS, ids=True, statuses=None)
 SHUTDOWN = LOOKUPS[("yd workerpool shutdown", "worker_pool_nodes_list")]
 TOKEN = LOOKUPS[("yd workerpool token", "worker_pools")]
 TERMINATE = LOOKUPS[

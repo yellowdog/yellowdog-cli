@@ -2,8 +2,9 @@
 yd-remove (utils/resource_removal.py, and the run it shares with yd-create in
 utils/resource_processing.py): the behaviour its review changed. A run exits
 with its failures' shared code and stops at a session failure, each failure
-printed once naming the resource; '--ids' is checked as it is parsed, each
-ID removed once, fetched before anything is asked, and one that does not
+printed once naming the resource; an ID is recognised without '--ids',
+files and IDs removed in one run in removal order; IDs are checked as they
+are parsed, each ID removed once, fetched before anything is asked, and one that does not
 exist is not found (exit 6); a Configured Worker Pool's name shuts down only
 its unfinished pools; Allowances removed by description are recorded each
 with its ID; Attribute Definitions carry a timeout, a 404 skipped; a Keyring
@@ -169,6 +170,124 @@ def test_ids_are_checked_as_they_are_parsed(argv, message, capsys):
 
 def test_removable_ids_are_accepted():
     CLIParser(command="yd-remove", argv=["--ids", GROUP_ID, POOL_ID])
+
+
+def test_an_id_needs_no_ids_option():
+    CLIParser(command="yd-remove", argv=[GROUP_ID, POOL_ID])
+
+
+def test_files_and_ids_mix_with_the_file_options():
+    CLIParser(command="yd-remove", argv=["groups.json", GROUP_ID, "-M"])
+
+
+def test_a_jsonnet_dry_run_of_ids_alone_is_refused(capsys):
+    # Nothing to show: without a file, the IDs would be removed for real
+    with pytest.raises(SystemExit) as raised:
+        CLIParser(command="yd-remove", argv=["-J", GROUP_ID])
+    assert raised.value.code == 2
+    assert "--jsonnet-dry-run applies to specification files" in capsys.readouterr().err
+
+
+def test_an_id_of_a_type_not_removed_is_refused_without_ids_too(capsys):
+    with pytest.raises(SystemExit) as raised:
+        CLIParser(command="yd-remove", argv=["groups.json", TASK_ID])
+    assert raised.value.code == 2
+    assert "not the ID of a resource that can be removed" in capsys.readouterr().err
+
+
+APPLICATION_ID = "ydid:app:000000:99999999-9999-9999-9999-999999999999"
+
+
+def test_files_and_ids_are_removed_in_one_run_in_removal_order(env, monkeypatch):
+    # An Application is created after a Group, so removed before it, though
+    # its ID was given after the Group's file
+    monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
+    env.client.account_client.get_application.return_value = SimpleNamespace(name="app")
+    yd_remove.remove_resources_and_ids(
+        _ctx(), [{"resource": "Group", "name": "g"}], [APPLICATION_ID, APPLICATION_ID]
+    )
+    assert [(r["resource"], r["action"]) for r in env.records] == [
+        ("Application", "removed"),
+        ("Group", "removed"),
+    ]
+    env.client.account_client.delete_application.assert_called_once_with(APPLICATION_ID)
+
+
+def test_a_failure_among_files_and_ids_fails_the_run_once(env, monkeypatch):
+    monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
+    env.client.account_client.get_application.side_effect = _http_error(404)
+    with pytest.raises(ReportedFailure) as raised:
+        yd_remove.remove_resources_and_ids(
+            _ctx(), [{"resource": "Group", "name": "g"}], [APPLICATION_ID]
+        )
+    assert classify(raised.value) == ExitCode.NOT_FOUND
+    assert [(r["resource"], r["action"]) for r in env.records] == [
+        ("Application", "failed"),
+        ("Group", "removed"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# The command line: remove.py's routing
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def routed(monkeypatch):
+    import yellowdog_cli.remove as remove_module
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        remove_module,
+        "remove_resources_by_id",
+        lambda ctx, ids: calls.append(("ids", ids)),
+    )
+    monkeypatch.setattr(
+        remove_module,
+        "remove_resources",
+        lambda ctx, specs, options: calls.append(("files", specs)),
+    )
+    monkeypatch.setattr(
+        remove_module,
+        "remove_resources_and_ids",
+        lambda ctx, specs, ids, options: calls.append(("both", specs, ids)),
+    )
+    monkeypatch.setattr(
+        remove_module,
+        "load_resource_specifications",
+        lambda args, creation_or_update, files=None: [{"from": files}],
+    )
+
+    def run(*arguments: str, ids: bool = False) -> list[tuple]:
+        args = SimpleNamespace(
+            ids=ids,
+            resource_type=None,
+            resource_specifications=list(arguments),
+            match_allowances_by_description=False,
+        )
+        remove_module.remove(RunContext(args=args, config=None, client=None))
+        return calls
+
+    return run
+
+
+def test_ids_alone_are_removed_by_id(routed):
+    assert routed(GROUP_ID, POOL_ID) == [("ids", [GROUP_ID, POOL_ID])]
+
+
+def test_files_alone_are_removed_as_specifications(routed):
+    assert routed("a.json") == [("files", [{"from": ["a.json"]}])]
+
+
+def test_files_and_ids_go_to_one_run(routed):
+    assert routed("a.json", GROUP_ID) == [("both", [{"from": ["a.json"]}], [GROUP_ID])]
+
+
+def test_the_ids_option_still_works_and_says_it_is_optional(routed, capsys):
+    assert routed(GROUP_ID, ids=True) == [("ids", [GROUP_ID])]
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--ids is optional" in out
+    assert "WARNING" not in out
 
 
 def test_every_removable_type_has_a_removal(env):

@@ -88,24 +88,26 @@ RESOURCE_CREATION_ORDER: tuple[str, ...] = (
 
 
 def load_resource_specifications(
-    args: Any, creation_or_update: bool = True
+    args: Any, creation_or_update: bool = True, files: list[str] | None = None
 ) -> list[dict]:
     """
     Load and return a list of resource specifications assembled from the
     resources described in a set of resource description files: those the
-    command line 'args' names ('-' standard input's), and the resource it
-    gives with '--type' and '--set', with its '--jsonnet-dry-run',
-    '--validate' and '--no-resequence'.
+    command line 'args' names ('-' standard input's), or 'files' in their
+    place (yd-remove's arguments less its IDs), and the resource it gives
+    with '--type' and '--set', with its '--jsonnet-dry-run', '--validate'
+    and '--no-resequence'.
     """
     resources = []
     to_validate: list[tuple[object, str]] = []  # Under '--validate'
+    named = args.resource_specifications if files is None else files
     sources = [
-        *args.resource_specifications,
+        *named,
         *([_COMMAND_LINE_SOURCE] if getattr(args, "resource_type", None) else []),
     ]
     for position, resource_spec in enumerate(sources):
         shown = resource_spec
-        if position == len(args.resource_specifications):
+        if position == len(named):
             # The resource '--type' and '--set' give
             resources_loaded = _inline_resource(
                 args.resource_type, getattr(args, "resource_properties", None) or []
@@ -138,7 +140,9 @@ def load_resource_specifications(
                 "'.json' or '.jsonnet'"
             )
             if get_ydid_type(resource_spec) is not None:
-                exception_message += "; did you mean to use the '--ids' option?"
+                exception_message += (
+                    "; a YellowDog ID is removed with 'yd resource remove'"
+                )
             raise ValueError(exception_message)
 
         # Transform single resource items into lists

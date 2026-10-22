@@ -645,6 +645,14 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
             " only; a Worker Pool's is always false)"
         ),
     ),
+    Property(
+        "autoShutdownTimeout",
+        FLOAT_CAST,
+        description=(
+            "minutes until the Compute Requirement is terminated; 0 never (yd"
+            " computerequirement instantiate only)"
+        ),
+    ),
 )
 
 # Read from [workRequirement] as a one-tag 'workerTags' when that is absent

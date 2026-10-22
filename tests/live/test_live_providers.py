@@ -16,6 +16,7 @@ cleanly instead, and one recorded as a known fault must show its symptom
 from __future__ import annotations
 
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from harness import compute
@@ -26,6 +27,9 @@ from live_chain import Chain
 pytestmark = [pytest.mark.live]
 
 _ACT = ("--yes", "--json", "--quiet")
+# The standalone Compute Requirement's auto shutdown: a crash guard, the
+# Platform terminating it even if the run is killed
+_STANDALONE_LIFETIME_MINUTES = 120
 _GONE = frozenset({"TERMINATED", compute.GONE})
 
 
@@ -259,6 +263,8 @@ def test_instantiate_standalone(chain, live_run):
             f"workerPool.templateId={run.namespace}/{run.requirement_template(chain.provider)}",
             "--property",
             f"workerPool.name={run.standalone_name(chain.provider)}",
+            "--property",
+            f"workerPool.autoShutdownTimeout={_STANDALONE_LIFETIME_MINUTES}",
             "--target",
             "1",
             "--json",
@@ -269,6 +275,38 @@ def test_instantiate_standalone(chain, live_run):
             yd, run.namespace, run.run_id, chain.standalone_cr, _minutes(live_run)
         )
         (chain.standalone,) = [n for n, s in states.items() if s == "RUNNING"]
+        shown = compute.compute_requirement(yd, chain.standalone_cr)
+        assert shown.get("autoShutdownTime") is not None, shown
+
+
+def test_auto_shutdown(chain, live_run):
+    """
+    The standalone requirement's auto shutdown disabled, then set again
+    (which also restarts it), each as the record and 'yd cr show' report it.
+    """
+    yd = live_run.yd
+    with chain.step("autoshutdown"):
+        (record,) = yd(
+            "cr", "autoshutdown", chain.standalone_cr, "--minutes", "0", *_ACT
+        ).records
+        assert record["outcome"] == "updated", record
+        assert record["autoShutdownTime"] is None, record
+        shown = compute.compute_requirement(yd, chain.standalone_cr)
+        assert shown.get("autoShutdownTime") is None, shown
+
+        asked = datetime.now(timezone.utc)
+        (record,) = yd(
+            "cr",
+            "autoshutdown",
+            chain.standalone_cr,
+            "--minutes",
+            str(_STANDALONE_LIFETIME_MINUTES),
+            *_ACT,
+        ).records
+        assert record["outcome"] == "updated", record
+        when = datetime.fromisoformat(record["autoShutdownTime"])
+        expected = asked + timedelta(minutes=_STANDALONE_LIFETIME_MINUTES)
+        assert abs(when - expected) < timedelta(minutes=5), (when, expected)
 
 
 def test_stop(chain, live_run):

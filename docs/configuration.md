@@ -11,7 +11,7 @@
       * [Variable Substitutions in Common Properties](#variable-substitutions-in-common-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:33:37 BST 2026 -->
+<!-- Added by: pwt, at: Thu Oct 22 16:43:48 BST 2026 -->
 
 <!--te-->
 
@@ -45,7 +45,7 @@ All entity names used within the YellowDog Platform must comply with the followi
 - Names must end with a letter or digit
 - Name length must be 60 characters or fewer
 
-These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these scripts, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
+These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these commands, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
 Work Requirement, Task Group and Task names supplied to `yd workrequirement submit` are automatically adjusted to comply with these rules: characters are switched to lower case, spaces and full stops become underscores, forward slashes become hyphens, any remaining invalid characters are discarded, and the result is truncated to 60 characters. Discarding characters and truncating are each warned of the first time they change a name in a run (Task names, formatted one per Task, would otherwise give a warning each); the other adjustments are not. Task Group names must be unique once adjusted: with `taskGroupCount`, include `{{task_group_number}}` in the name. If the adjusted name doesn't start with a letter it is prefixed with `yd_` — e.g. `2024-run` becomes `yd_2024-run` — and a warning is printed naming both the supplied name and the one that will be used in its place. A name left with no usable characters at all is an error rather than something to correct, as is a name that isn't a string: `name = 123` is reported as a configuration error.
 

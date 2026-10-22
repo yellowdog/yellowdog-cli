@@ -14,6 +14,7 @@ from cli_test_helpers import shell
 from yellowdog_cli.utils import property_names
 from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
+    ADD_ENVIRONMENT,
     ARGS,
     ARGS_PREFIX,
     NAME,
@@ -57,6 +58,35 @@ class TestLevels:
         # whatever its value
         assert Cascade({PRIORITY: 5}, {PRIORITY: None}).get(PRIORITY, 1) is None
 
+    def test_a_merged_property_accumulates_lower_levels_winning(self):
+        # 'addEnvironment': each level's table added to those above, a key
+        # set at a lower level taking its value from there
+        merged = Cascade(
+            {ADD_ENVIRONMENT: {"A": "wr", "B": "wr"}},
+            {ADD_ENVIRONMENT: {"B": "tg", "C": "tg"}},
+        ).merged(ADD_ENVIRONMENT, {"T": "toml", "A": "toml"})
+        assert merged == {"T": "toml", "A": "wr", "B": "tg", "C": "tg"}
+
+    def test_a_merged_property_skips_levels_the_dictionary_disallows(self):
+        # Not a Task's: a Task's table is ignored
+        task = {ADD_ENVIRONMENT: {"X": "task"}}
+        assert Cascade({}, {ADD_ENVIRONMENT: {"X": "tg"}}, task).merged(
+            ADD_ENVIRONMENT
+        ) == {"X": "tg"}
+
+    def test_a_null_clears_what_came_from_above(self):
+        merged = Cascade(
+            {ADD_ENVIRONMENT: None}, {ADD_ENVIRONMENT: {"C": "tg"}}
+        ).merged(ADD_ENVIRONMENT, {"T": "toml"})
+        assert merged == {"C": "tg"}
+        assert (
+            Cascade({}, {ADD_ENVIRONMENT: None}).merged(ADD_ENVIRONMENT, {"T": "x"})
+            is None
+        )
+
+    def test_nothing_set_anywhere_is_none(self):
+        assert Cascade({}, {}).merged(ADD_ENVIRONMENT) is None
+
     def test_the_levels_are_the_specification_itself(self):
         # A substitution made in place after the Cascade is built is seen
         task: dict = {}
@@ -82,7 +112,7 @@ class TestRefusals:
 
 def _cascade_lookups() -> list[tuple[str, int, str]]:
     """
-    (file, line, property name) for every Cascade(...).get()/checked() call in
+    (file, line, property name) for every Cascade(...).get()/checked()/merged() call in
     the package whose property is a property_names constant, which is how
     every one of them is written.
     """
@@ -93,7 +123,7 @@ def _cascade_lookups() -> list[tuple[str, int, str]]:
             if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr in ("get", "checked")
+                and node.func.attr in ("get", "checked", "merged")
                 and node.args
                 and isinstance(node.args[0], ast.Name)
             ):
@@ -144,11 +174,13 @@ taskData = "from-toml"
 """
 
 
-def _dry_run(tmp_path: Path, specification: dict) -> tuple[dict, str]:
+def _dry_run(
+    tmp_path: Path, specification: dict, config: str = _CONFIG
+) -> tuple[dict, str]:
     """
     The Work Requirement yd-submit would submit, and what it printed.
     """
-    (tmp_path / "config.toml").write_text(_CONFIG, encoding="utf-8")
+    (tmp_path / "config.toml").write_text(config, encoding="utf-8")
     (tmp_path / "wr.json").write_text(json.dumps(specification), encoding="utf-8")
     result = shell(
         f"cd {tmp_path} && yd workrequirement submit -c config.toml wr.json --dry-run"
@@ -156,6 +188,35 @@ def _dry_run(tmp_path: Path, specification: dict) -> tuple[dict, str]:
     assert result.exit_code == 0, result.stdout + result.stderr
     out = result.stdout
     return json.loads(out[out.index("{") : out.rindex("}") + 1]), out + result.stderr
+
+
+class TestAddEnvironment:
+    """
+    'addEnvironment' accumulates down the levels, a lower level winning a key;
+    a Task's 'environment', as inherited, wins a key over the additions.
+    """
+
+    def test_additions_accumulate_and_the_environment_wins(self, tmp_path):
+        config = _CONFIG + 'addEnvironment = {T = "toml", A = "toml"}\n'
+        wr, _ = _dry_run(
+            tmp_path,
+            {
+                "addEnvironment": {"A": "wr", "B": "wr"},
+                "taskGroups": [
+                    {
+                        "addEnvironment": {"B": "tg"},
+                        "environment": {"KEEP": "tg-env", "A": "env"},
+                        "tasks": [{"environment": {"OWN": "task"}}, {}],
+                    }
+                ],
+            },
+            config,
+        )
+        own, inherited = (task["environment"] for task in wr["taskGroups"][0]["tasks"])
+        # The Task's own environment, and every level's additions
+        assert own == {"OWN": "task", "T": "toml", "A": "wr", "B": "tg"}
+        # The Task Group's environment, its 'A' kept over the additions'
+        assert inherited == {"KEEP": "tg-env", "A": "env", "T": "toml", "B": "tg"}
 
 
 class TestNullStopsInheritance:

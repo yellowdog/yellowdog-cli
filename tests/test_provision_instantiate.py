@@ -14,6 +14,7 @@ Each test drives the command's real main() through main_wrapper, with the
 client mocked.
 """
 
+from datetime import timedelta
 from json import dumps as json_dumps
 from json import loads as json_loads
 from types import SimpleNamespace
@@ -23,6 +24,7 @@ import pytest
 import requests
 from requests import HTTPError, Response
 from yellowdog_client.common.json import Json
+from yellowdog_client.model import AutoShutdown
 
 import yellowdog_cli.instantiate as yd_instantiate
 import yellowdog_cli.provision as yd_provision
@@ -890,6 +892,90 @@ class TestProvisionReport:
 # ---------------------------------------------------------------------------
 # yd-instantiate: what is merged and reported
 # ---------------------------------------------------------------------------
+
+
+class TestAutoShutdown:
+    """
+    'autoShutdownTimeout' gives yd-instantiate's Compute Requirement its auto
+    shutdown, in minutes, 0 disabling it; yd-provision ignores it, warning.
+    """
+
+    def _provisioned(self, run, config_wp: ConfigWorkerPool, **values):
+        client = MagicMock()
+        client.compute_client.provision_compute_requirement_template.return_value = (
+            MagicMock(id="ydid:compreq:000000:1", name="cr")
+        )
+        run(yd_instantiate, config_wp, client=client, **values)
+        assert run.exit_code == ExitCode.SUCCESS
+        (usage,), _ = (
+            client.compute_client.provision_compute_requirement_template.call_args
+        )
+        return usage
+
+    def test_the_configuration_sets_it(self, run):
+        usage = self._provisioned(
+            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=90)
+        )
+        assert usage.autoShutdown == AutoShutdown(
+            enabled=True, timeout=timedelta(minutes=90)
+        )
+
+    def test_zero_disables_it(self, run):
+        usage = self._provisioned(
+            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=0)
+        )
+        assert usage.autoShutdown == AutoShutdown(enabled=False)
+
+    def test_unset_sends_none(self, run):
+        usage = self._provisioned(run, ConfigWorkerPool(template_id=CRT_ID))
+        assert usage.autoShutdown is None
+
+    def test_a_specification_inherits_it(self, run, cr_file):
+        usage = self._provisioned(
+            run,
+            ConfigWorkerPool(auto_shutdown_timeout=90),
+            compute_requirement_file_positional=cr_file({}),
+        )
+        assert usage.autoShutdown == AutoShutdown(
+            enabled=True, timeout=timedelta(minutes=90)
+        )
+
+    def test_a_specifications_own_wins(self, run, cr_file):
+        usage = self._provisioned(
+            run,
+            ConfigWorkerPool(auto_shutdown_timeout=90),
+            compute_requirement_file_positional=cr_file(
+                {"autoShutdown": {"enabled": True, "timeout": "PT10M"}}
+            ),
+        )
+        assert usage.autoShutdown == AutoShutdown(
+            enabled=True, timeout=timedelta(minutes=10)
+        )
+
+    def test_a_dry_run_shows_it_as_a_specification_writes_it(self, run, cr_file):
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(auto_shutdown_timeout=90),
+            dry_run=True,
+            json_output=True,
+            compute_requirement_file_positional=cr_file({}),
+        )
+        assert json_loads(out)["autoShutdown"] == {
+            "enabled": True,
+            "timeout": "PT1H30M",
+        }
+
+    def test_provision_ignores_it_and_says_so(self, run):
+        run(
+            yd_provision,
+            ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=90),
+            dry_run=True,
+            json_output=True,
+        )
+        assert run.exit_code == ExitCode.SUCCESS
+        assert "'autoShutdownTimeout' is ignored when creating a Worker Pool" in (
+            run.err
+        )
 
 
 class TestInstantiateReporting:

@@ -384,6 +384,32 @@ class TestNoTasks:
 # ---------------------------------------------------------------------------
 
 
+class TestTaskCountFromTheCommandLine:
+    """
+    '--task-count' overrides a 'taskCount' set anywhere in the specification;
+    without it, the specification's applies over the TOML file's.
+    """
+
+    def _count(self, config_wr, wr_data: dict, task_group_data: dict):
+        return submit_module.task_count_for(config_wr, wr_data, task_group_data)
+
+    def test_the_command_line_beats_the_specification(self):
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+
+        config_wr = ConfigWorkRequirement(
+            task_count=7, task_count_from_command_line=True
+        )
+        assert self._count(config_wr, {"taskCount": 3}, {"taskCount": 5}) == 7
+
+    def test_without_it_the_specification_beats_the_toml_file(self):
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+
+        config_wr = ConfigWorkRequirement(task_count=2)
+        assert self._count(config_wr, {"taskCount": 3}, {"taskCount": 5}) == 5
+        assert self._count(config_wr, {"taskCount": 3}, {}) == 3
+        assert self._count(config_wr, {}, {}) == 2
+
+
 class TestTaskCountExpansion:
     """
     With 'task_count' given (no specification file), every Task is generated

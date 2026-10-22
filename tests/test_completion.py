@@ -300,10 +300,16 @@ class TestLookups:
         assert result.lookup.current == "my"
         assert result.candidates == ()
 
-    def test_an_id_only_verb_looks_up_ids(self):
-        result = complete(["yd", "wr", "show"], "ydid:")
+    def test_a_show_verb_looks_up_names(self):
+        # Its noun gives a name its type, so names are offered, as an action's are
+        result = complete(["yd", "wr", "show"], "")
         assert result.lookup is not None
-        assert result.lookup.lookup.ids is True
+        assert result.lookup.lookup.ids is False
+
+    def test_a_task_groups_show_looks_up_wr_slash_tg(self):
+        result = complete(["yd", "tg", "show"], "")
+        assert result.lookup is not None
+        assert result.lookup.lookup.task_groups is True
 
     def test_token_looks_up_configured_worker_pools(self):
         result = complete(["yd", "wp", "token"], "")

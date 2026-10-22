@@ -59,6 +59,7 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.interactive import confirmed
+from yellowdog_cli.utils.load_resources import RESOURCE_CREATION_ORDER
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import (
@@ -73,9 +74,12 @@ from yellowdog_cli.utils.property_names import (
     PROP_USERNAME,
 )
 from yellowdog_cli.utils.resource_processing import (
+    describe_specification,
     missing_property,
     process_each,
     process_resources,
+    process_specification,
+    record_specification,
 )
 from yellowdog_cli.utils.resource_targets import specification_for_name
 from yellowdog_cli.utils.results import record_resource
@@ -126,6 +130,64 @@ def remove_resources_by_id(ctx: RunContext, resource_ids: list[str]):
         functools.partial(_record_by_id, ctx),
         "remove",
     )
+
+
+def remove_resources_and_ids(
+    ctx: RunContext,
+    resources: list[dict],
+    resource_ids: list[str],
+    options: RemoveOptions | None = None,
+):
+    """
+    Remove the resources a list of specifications describes and those the
+    YellowDog IDs name, in one run, as remove_resources() and
+    remove_resources_by_id() remove each: one confirmation each, one tally
+    of failures and one exit code. They are removed together in removal
+    order (RESOURCE_CREATION_ORDER reversed), an ID ranked by the type of
+    resource it names, so that a template goes before the Keyring it uses
+    however each was given; within a type, specifications and IDs keep the
+    order given. An ID given twice is removed once.
+    """
+    global _OPTIONS
+
+    def _rank(item: dict | str) -> int:
+        resource_type = (
+            _removable_by_id(ctx, cast(YDIDType, get_ydid_type(item))).resource_type
+            if isinstance(item, str)
+            else item.get(PROP_RESOURCE)
+        )
+        try:
+            return RESOURCE_CREATION_ORDER.index(str(resource_type))
+        except ValueError:
+            # Unknown or missing types first, as on creation they go last
+            return len(RESOURCE_CREATION_ORDER)
+
+    def _act(item: dict | str) -> None:
+        if isinstance(item, str):
+            _remove_and_record_by_id(ctx, item)
+        else:
+            process_specification(item, functools.partial(_remove_resource, ctx))
+
+    def _describe(item: dict | str) -> str:
+        return item if isinstance(item, str) else describe_specification(item)
+
+    def _record(item: dict | str, action: str, error: str) -> None:
+        if isinstance(item, str):
+            _record_by_id(ctx, item, action, error)
+        else:
+            record_specification(item, action, error)
+
+    items: list[dict | str] = [
+        *deepcopy(resources),
+        *dict.fromkeys(resource_ids),
+    ]
+    # Stable, reverse included: the order given survives within a type
+    items.sort(key=_rank, reverse=True)
+    previous, _OPTIONS = _OPTIONS, options or RemoveOptions()
+    try:
+        process_each(items, _act, _describe, _record, "remove")
+    finally:
+        _OPTIONS = previous
 
 
 def remove_resources_by_name_or_id(

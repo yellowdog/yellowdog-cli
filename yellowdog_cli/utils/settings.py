@@ -39,6 +39,17 @@ YD_URL_ALT = "YD_API_URL"
 # The MCP server's name to its clients (yellowdog_cli/mcp/)
 MCP_SERVER_NAME = "yellowdog-cli"
 
+# The shapes of the cloud providers' own image IDs, matched whole: an image
+# value of one of these that names no Image Family or Group is passed on
+# without a word, being plainly what it was meant to be
+PROVIDER_IMAGE_ID_PATTERNS = (
+    r"ami-[0-9a-f]{8,17}",  # AWS
+    r"(market|gallery):.+",  # Azure, as the Platform takes them
+    r"/subscriptions/.+",  # Azure resource IDs
+    r"projects/[^/]+/global/images/.+",  # GCP
+    r"ocid1\.image\..+",  # OCI
+)
+
 # yd-doctor
 PYTHON_MIN_VERSION = (
     3,
