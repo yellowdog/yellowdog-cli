@@ -110,9 +110,9 @@
     # environment = {MY_VAR = "value", ANOTHER = "42"}
 
     # Extra environment variables merged into each task's environment.
-    # Keys override any matching keys already present in 'environment'.
+    # A key also in 'environment' keeps the value from 'environment'.
     # Optional
-    # addEnvironment = {EXTRA_VAR = "extra_value", ANOTHER = "override"}
+    # addEnvironment = {EXTRA_VAR = "extra_value"}
 
     # Inject YellowDog environment variables into the task (YD_TASK_NAME,
     # YD_WORK_REQUIREMENT_NAME, etc.; see docs/work-requirements.md).

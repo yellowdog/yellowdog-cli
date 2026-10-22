@@ -1,5 +1,5 @@
 {
-  "addEnvironment": "A table of environment variable key-value pairs merged into each Task's environment. Keys in addEnvironment override any matching keys already present in environment. E.g. {EXTRA = \"val\", X = \"1\"}.",
+  "addEnvironment": "A table of environment variable key-value pairs merged into each Task's environment. The tables set at each level are added together, the most specific level winning a shared key; a key also in environment keeps the value from environment. E.g. {EXTRA = \"val\", X = \"1\"}.",
   "addYDEnvironment": "Automatically add YellowDog environment variables to each Task's environment.",
   "arguments": "The list of arguments to be passed to the Task when it is executed. E.g. [1, \"Two\"].",
   "argumentsPostfix": "A fixed list of arguments appended after arguments for every Task. Combined result is argumentsPrefix + arguments + argumentsPostfix. E.g. [\"--output\", \"results/\"].",

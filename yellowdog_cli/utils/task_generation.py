@@ -150,7 +150,9 @@ def _generate_task(source: TaskSource, task_number: int) -> Task:
     )
     env = merge_environment(
         levels.checked(ENV, check_dict, config_wr.env),
-        levels.checked(ADD_ENVIRONMENT, check_dict, config_wr.add_environment),
+        check_dict(
+            levels.merged(ADD_ENVIRONMENT, config_wr.add_environment), ADD_ENVIRONMENT
+        ),
     )
 
     add_yd_env_vars = (
@@ -229,6 +231,10 @@ class _TaskLevels(Cascade):
     def get(self, name: str, default: Any = None) -> Any:
         value = super().get(name, default)
         return value if name in self._task else _for_task(value)
+
+    def _value(self, data: dict, name: str) -> Any:
+        value = data[name]
+        return value if data is self._task else _for_task(value)
 
 
 def _for_task(value: T) -> T:

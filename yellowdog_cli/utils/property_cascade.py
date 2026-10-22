@@ -23,6 +23,7 @@ from yellowdog_cli.utils.specs.properties import (
     Level,
     Property,
 )
+from yellowdog_cli.utils.type_check import check_dict
 
 _PROPERTIES: dict[str, Property] = {
     prop.name: prop for prop in WORK_REQUIREMENT_PROPERTIES
@@ -67,6 +68,33 @@ class Cascade:
             if data is not None and level in prop.levels and name in data:
                 return data[name]
         return default
+
+    def merged(self, name: str, default: dict | None = None) -> dict | None:
+        """
+        A table-valued property accumulated down the levels, as
+        'addEnvironment' is: the configuration's ('default'), then each
+        level's of those the dictionary allows it at, from the Work
+        Requirement down, a key set at a lower level taking its value from
+        there. A level setting it to None (JSON's null) clears what came from
+        above. None when nothing is left.
+        """
+        prop = _PROPERTIES.get(name)
+        if prop is None:
+            raise ValueError(f"'{name}' is not a Work Requirement property")
+        if not prop.inherited:
+            raise ValueError(f"'{name}' is not inherited: read it at its own level")
+        merged: dict = dict(default or {})
+        for level, data in reversed(self._levels):
+            if data is not None and level in prop.levels and name in data:
+                value = self._value(data, name)
+                merged = {} if value is None else {**merged, **check_dict(value, name)}
+        return merged or None
+
+    def _value(self, data: dict, name: str) -> Any:
+        """
+        A level's own value of a property, as merged() reads it.
+        """
+        return data[name]
 
     def checked(
         self, name: str, check: Callable[[Any, str], T], default: Any = None

@@ -305,17 +305,17 @@ A legacy `retryableErrors` entry's three fields (`errorTypes`, `statusesAtFailur
 
 ## Merging Additional Environment Variables into Tasks
 
-The `addEnvironment` property allows a fixed set of environment variable key-value pairs to be merged into the `environment` of every Task, without replacing the entire `environment` property. Any key in `addEnvironment` that also exists in the Task's `environment` is **overridden** by the value from `addEnvironment`.
+The `addEnvironment` property allows a fixed set of environment variable key-value pairs to be merged into the `environment` of every Task, without replacing the entire `environment` property. The Task's `environment` is inherited as usual; then a key in both keeps the value from the `environment`, so `addEnvironment` only adds the keys the `environment` lacks.
 
-`addEnvironment` follows the same inheritance hierarchy as `argumentsPrefix` and `argumentsPostfix`: it can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), with lower levels taking precedence.
+`addEnvironment` can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), and it **accumulates** down those levels rather than being replaced: each level's table is added to those above it, and a key set at more than one level takes its value from the lowest. Setting it to `null` at a level clears what came from above, as `null` stops inheritance elsewhere.
 
 ### Example — TOML
 
 ```toml
 [workRequirement]
     environment = {MY_VAR = "original", KEEP = "kept"}
-    addEnvironment = {MY_VAR = "overridden", EXTRA = "new"}
-    # Effective environment for each task: {MY_VAR = "overridden", KEEP = "kept", EXTRA = "new"}
+    addEnvironment = {MY_VAR = "ignored", EXTRA = "new"}
+    # Effective environment for each task: {MY_VAR = "original", KEEP = "kept", EXTRA = "new"}
 ```
 
 ### Example — JSON
@@ -325,7 +325,7 @@ The `addEnvironment` property allows a fixed set of environment variable key-val
   "taskGroups": [
     {
       "environment": {"MY_VAR": "original", "KEEP": "kept"},
-      "addEnvironment": {"MY_VAR": "overridden", "EXTRA": "new"},
+      "addEnvironment": {"MY_VAR": "ignored", "EXTRA": "new"},
       "tasks": [{}]
     }
   ]
