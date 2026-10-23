@@ -22,8 +22,15 @@ jobs:
         with:
           python-version: "3.13"
 
+      # uv installs several times faster than pip, and keeps its cache
+      # between runs, keyed on pyproject.toml
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
       - name: Install the CLI
-        run: python -m pip install -e ".[dev]"
+        run: uv pip install --system -e ".[dev]"
 
       # Both must be present, or the tests would quietly cover one alone
       - name: The PowerShells
