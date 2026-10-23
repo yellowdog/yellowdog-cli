@@ -131,7 +131,7 @@ def test_the_paired_rows_align_across_the_two_columns(qapp):
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="on a Windows runner the offscreen fonts ask for a far wider window"
-    " (1567px); to be measured on a real Windows desktop",
+    " (1567px); on a real Windows desktop it opens wide enough, checked by hand",
 )
 def test_the_window_opens_big_enough_for_its_own_layout(qapp):
     # It opened 720 tall against a layout that needed 822, so Qt compressed the

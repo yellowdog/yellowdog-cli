@@ -13,7 +13,7 @@
       * [Commander GUI Tests](#commander-gui-tests)
       * [Testing Across Python Versions](#testing-across-python-versions)
          * [Python Pre-Releases](#python-pre-releases)
-      * [Windows PowerShell on GitHub Actions](#windows-powershell-on-github-actions)
+      * [Windows on GitHub Actions](#windows-on-github-actions)
    * [Type Checking](#type-checking)
    * [Building](#building)
    * [Commander](#commander)
@@ -33,7 +33,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 11:19:40 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 12:04:22 BST 2026 -->
 
 <!--te-->
 
@@ -43,7 +43,7 @@
 - `git`
 - `make` — for formatting, building, and other development tasks
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
-- `zsh`, `fish` and PowerShell (`pwsh`) — optional: the shell completion tests run each shell's completion script where the shell is installed, and skip it otherwise (on macOS, `brew install fish powershell`; zsh is built in). Windows PowerShell 5.1 runs on GitHub Actions (see [Windows PowerShell on GitHub Actions](#windows-powershell-on-github-actions))
+- `zsh`, `fish` and PowerShell (`pwsh`) — optional: the shell completion tests run each shell's completion script where the shell is installed, and skip it otherwise (on macOS, `brew install fish powershell`; zsh is built in). Windows PowerShell 5.1 runs on GitHub Actions (see [Windows on GitHub Actions](#windows-on-github-actions))
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
 - On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
 
@@ -226,11 +226,12 @@ tox -e py310,py315 -- --run-system tests/test_system_resources.py -n 4
 
 A Python pre-release needs no configuration: tox builds an environment it has no entry for from its name, with the same extras and command as the others, so `tox -e py316` runs the suite on 3.16 once uv offers it, and `make tox` neither runs it nor is broken by it. Add it to `env_list`, and its version to the classifiers in `pyproject.toml`, when the release is final and the environment passes — `pyyaml`, which `pre-commit` in the `dev` extra needs, and PyQt6 are typically the last to work on a new version.
 
-### Windows PowerShell on GitHub Actions
+### Windows on GitHub Actions
 
-Windows PowerShell 5.1, the version built into Windows, exists on Windows alone, so the shell completion tests cannot run it on macOS or Linux. [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs them on a GitHub-hosted Windows runner, which has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`): `tests/test_completion.py`'s PowerShell tests run under each PowerShell present, so there they run under both. It runs on every push to `next-version`, and by hand from the repository's Actions tab ("Run workflow") once the workflow is on `main`, since GitHub offers that only for a workflow on the default branch.
+Two workflows run the tests on a GitHub-hosted Windows runner on every push to `next-version`. Both are advisory: no branch requires them to pass, and a failure shows as a cross on the commit. Both install the CLI with uv, whose cache GitHub keeps between successful runs on the same branch, and both can be run by hand from the repository's Actions tab ("Run workflow") once they are on `main`, since GitHub offers that only for a workflow on the default branch.
 
-[`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs the whole unit suite on Windows, with every extra installed, on demand only: push the commit to test to the `windows-tests` branch (`git push -f origin next-version:windows-tests`), or, once the workflow is on `main`, use "Run workflow". Its results are in the run's log and in `windows-tests.xml`, kept with the run. It is advisory, like the PowerShell job. It is advisory: no branch requires it to pass, and a failure shows as a cross on the commit.
+- [`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs the whole unit suite, with every extra installed, as `make tox` does elsewhere. A test that assumes Linux or macOS is fixed to run on Windows where it can, or skipped there with the reason; the skip reasons are in the run's log, and the results in `windows-tests.xml`, kept with the run.
+- [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs the shell completion tests under Windows PowerShell 5.1, the version built into Windows, which exists on Windows alone, so no test can run it on macOS or Linux. The runner has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`), and `tests/test_completion.py`'s PowerShell tests run under each PowerShell present; the job checks both are there first, so it cannot quietly cover one alone.
 
 ## Type Checking
 
@@ -375,7 +376,7 @@ yellowdog_cli/commander/  # yd commander: the PyQt6 GUI, its .ui layout, images,
 yellowdog_cli/mcp/        # yd mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
-.github/workflows/        # GitHub Actions, advisory: the PowerShell completion tests on Windows (5.1 and 7), and the whole suite on Windows on demand
+.github/workflows/        # GitHub Actions, advisory: the whole suite on Windows, and the PowerShell completion tests under 5.1 and 7
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)

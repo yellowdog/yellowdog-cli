@@ -1,14 +1,12 @@
 # The whole unit suite on Windows, with every extra installed, as 'make tox'
-# runs it elsewhere. Run on demand only, until the failures it finds are fixed
-# or skipped with their reasons: by pushing the commit to test to the
-# 'windows-tests' branch ('git push -f origin next-version:windows-tests'),
-# or with the Actions tab's "Run workflow", which GitHub offers only once the
-# workflow is on the default branch, 'main'. Advisory: no branch requires it.
+# runs it elsewhere: on every push to next-version, and by hand with the
+# Actions tab's "Run workflow", which GitHub offers only once the workflow is
+# on the default branch, 'main'. Advisory: no branch requires it.
 name: Windows tests
 
 on:
   push:
-    branches: [windows-tests]
+    branches: [next-version]
   workflow_dispatch:
 
 permissions:
