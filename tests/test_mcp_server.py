@@ -260,7 +260,7 @@ def test_a_data_client_call_on_the_local_backend(
     monkeypatch.setenv("YD_DATA_CLIENT_REMOTE", "loc,type=local")
     monkeypatch.setenv("YD_NAMESPACE", "ns")
     monkeypatch.setenv("YD_TAG", "tag")
-    result = call_tool("yd_data_ls", {}, settings, dict(os.environ))
+    result = call_tool("yd_data_list", {}, settings, dict(os.environ))
     assert result.is_error is False, result.content[0].text
     assert [e["Name"] for e in result.structured_content["result"]] == ["a.txt"]
 
@@ -301,7 +301,7 @@ def test_a_failed_data_client_run_is_an_error_with_its_stderr(settings, clean_en
     # The wrapper flushes '[]' on its failure path: an empty document is not
     # a per-item failure, so this is an error, and the stderr is kept
     result = call_tool(
-        "yd_data_ls", {"remote": "x,type=nosuchbackend"}, settings, dict(os.environ)
+        "yd_data_list", {"remote": "x,type=nosuchbackend"}, settings, dict(os.environ)
     )
     assert result.is_error is True
     assert result.structured_content["exitCode"] == 1

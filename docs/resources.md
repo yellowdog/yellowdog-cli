@@ -30,7 +30,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct 22 16:43:49 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 06:49:13 BST 2026 -->
 
 <!--te-->
 
@@ -60,7 +60,7 @@ Each resource specification file can contain a single resource specification or 
 
 The complete list of resource specifications is re-sequenced on processing to ensure that possibly dependent resources are dealt with in a suitable order. For example, all Compute Source Templates are always processed before any Compute Requirement Templates on resource creation, and the reverse sequencing is used on resource removal.
 
-The `--no-resequence` option (`yd resource create` only) disables this, processing the resources strictly in the order in which they appear. This is occasionally useful when the supplied order is deliberate and the automatic sequencing would disturb it; note that dependent resources will then fail to be created if they are listed before the resources they depend on.
+The `--no-resequence` option disables this, on `yd resource create` and `yd resource remove` alike, processing the resources strictly in the order in which they appear (for `yd resource remove`, files' resources and YellowDog IDs together, in the order given). This is occasionally useful when the supplied order is deliberate and the automatic sequencing would disturb it; note that dependent resources will then fail to be created if they are listed before the resources they depend on.
 
 Resource specification files can use all forms of **variable substitution** just as in the case of Work Requirements, etc.
 

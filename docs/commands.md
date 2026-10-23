@@ -53,7 +53,7 @@
    * [yd data](#yd-data)
       * [yd data upload](#yd-data-upload)
       * [yd data download](#yd-data-download)
-      * [yd data ls](#yd-data-ls)
+      * [yd data list](#yd-data-list)
       * [yd data delete](#yd-data-delete)
       * [yd data copy](#yd-data-copy)
    * [yd cloudinfo](#yd-cloudinfo)
@@ -79,7 +79,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct 22 16:43:47 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 06:49:11 BST 2026 -->
 
 <!--te-->
 
@@ -103,7 +103,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 | [`yd worker`](#yd-worker) | | Workers | `list`, `show` |
 | [`yd resource`](#yd-resource) | | resources: templates, keyrings, namespaces, users and the rest | `create`, `remove`, `list`, `show` |
 | [`yd allowance`](#yd-allowance) | | Allowances | `boost`, `list`, `show` |
-| [`yd data`](#yd-data) | | files in a remote data client location | `upload`, `download`, `ls`, `delete`, `copy` |
+| [`yd data`](#yd-data) | | files in a remote data client location | `upload`, `download`, `list`, `delete`, `copy` |
 | [`yd cloudinfo`](#yd-cloudinfo) | | the cloud providers' regions, instance types and prices | `regions`, `sub-regions`, `instance-types`, `prices` |
 
 `yd <noun> --help` lists a noun's verbs, and `yd <noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd instance terminate`.
@@ -1119,7 +1119,7 @@ See [Creating, Updating and Removing YellowDog Resources](resources.md) for the 
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring).
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together. Whatever is given, files, IDs or both, is removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring), or with `--no-resequence` in the order given.
 
 ```shell
 yd resource remove [options] <resource-specification-or-id> [<resource-specification-or-id> ...]
@@ -1131,6 +1131,7 @@ Key options:
 - `--ids` — optional: says every argument is a YellowDog ID, refusing anything else; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON, removing nothing (refused when every argument is an ID)
+- `--no-resequence` — remove the resources strictly in the order supplied, files' resources and IDs alike, rather than in dependency order
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -1180,7 +1181,7 @@ The five `yd data` verbs provide direct access to remote data stores via rclone,
 
 They share a further set of options — `--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`, `--no-prefix`, `--data-client-profile`/`--profile`, `--upgrade-rclone` and `--which-rclone` — which are described under [Data Client](data-client.md), along with the `[dataClient]` configuration section and named profiles.
 
-A remote path given to `yd data upload` (as `--destination`), `yd data download`, `yd data delete` or `yd data copy` cannot contain a `..` segment: it would climb out of the prefix, or the bucket, past the checks that keep these commands from deleting or syncing over the remote's root or the bucket, and object stores do not resolve it as a local disk does. It is refused as the command line is read (exit 2); to reach a path outside the prefix, use `--no-prefix` or `--bucket`. A `.` segment names the directory it is in, so `.` alone is the configured prefix itself. `yd data ls`, which only reads, accepts `..`, and a local path may contain it anywhere.
+A remote path given to `yd data upload` (as `--destination`), `yd data download`, `yd data delete` or `yd data copy` cannot contain a `..` segment: it would climb out of the prefix, or the bucket, past the checks that keep these commands from deleting or syncing over the remote's root or the bucket, and object stores do not resolve it as a local disk does. It is refused as the command line is read (exit 2); to reach a path outside the prefix, use `--no-prefix` or `--bucket`. A `.` segment names the directory it is in, so `.` alone is the configured prefix itself. `yd data list`, which only reads, accepts `..`, and a local path may contain it anywhere.
 
 A wildcard (`*`, `?`, `[…]`) is matched against the names in the last part of a remote path only. An entry whose name is exactly the path's last part is taken as itself rather than as a pattern, so a file named `data[1].csv` can be listed, downloaded and deleted by its name, and deleting `file[ab].txt` deletes that file alone, not `filea.txt` and `fileb.txt`.
 
@@ -1190,7 +1191,7 @@ An inline remote's configuration, which carries its credentials, is passed to rc
 |---|---|---|
 | [`upload`](#yd-data-upload) | Upload files to a remote data client | `yd-upload` |
 | [`download`](#yd-data-download) | Download files from a remote data client | `yd-download` |
-| [`ls`](#yd-data-ls) | List remote data client files and directories | `yd-ls` |
+| [`list`](#yd-data-list) | List remote data client files and directories | `yd-ls` |
 | [`delete`](#yd-data-delete) | Delete remote data client files and directories | `yd-delete` |
 | [`copy`](#yd-data-copy) | Copy files between remote data client locations | `yd-copy` |
 
@@ -1248,12 +1249,12 @@ A remote path that does not exist, or a wildcard that matches nothing, is an err
 yd data download 'results_*'
 ```
 
-### yd data ls
+### yd data list
 
-The `yd data ls` command lists files and directories in a remote data store.
+The `yd data list` command lists files and directories in a remote data store.
 
 ```shell
-yd data ls [options] [<remote-path> ...]
+yd data list [options] [<remote-path> ...]
 ```
 
 If no remote paths are specified, the configured prefix is listed.
@@ -1268,7 +1269,7 @@ Key options:
 - `--json` — emit the listing as a JSON array of rclone `lsjson` entries; not with `--long`, since the entries carry sizes and times anyway (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd data ls -Rl 'results_*'
+yd data list -Rl 'results_*'
 ```
 
 ### yd data delete
@@ -1956,7 +1957,7 @@ Where a command acts on more than one kind of object, each kind has a verb of it
 | `yd-instantiate` | `yd computerequirement instantiate` |
 | `yd-jsonnet2json` | `yd jsonnet2json` |
 | `yd-list` | `yd list` |
-| `yd-ls` | `yd data ls` |
+| `yd-ls` | `yd data list` |
 | `yd-mcp` | `yd mcp` |
 | `yd-nodeaction` | `yd node action` |
 | `yd-priority` | `yd workrequirement priority`, `yd taskgroup priority` |

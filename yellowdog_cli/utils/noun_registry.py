@@ -866,7 +866,7 @@ NOUNS: tuple[Noun, ...] = (
                 "downloading files from a remote data client",
             ),
             Verb(
-                "ls",
+                "list",
                 "yd-ls",
                 "List remote data client files and directories",
                 "listing remote data client files and directories",

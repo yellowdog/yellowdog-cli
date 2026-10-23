@@ -10,6 +10,11 @@ DATA_CLIENT_LISTING_WORKERS = 8
 # Files a data client command copies one by one, because each is renamed on
 # the way (a flattened download or upload), are copied this many at a time
 DATA_CLIENT_TRANSFER_WORKERS = 16
+# rclone's '--transfers' for a run copying or syncing many files: on S3 a
+# small file's transfer is mostly request latency, so the rate rises with the
+# number at once (20,000 1 KB files: 686 a second at 32, 1,354 at 64, 2,269 at
+# 128), and stops rising beyond 128
+DATA_CLIENT_RCLONE_TRANSFERS = 128
 # How many names a wildcard's summary line shows before 'and N more'
 DATA_CLIENT_NAMES_SHOWN = 10
 

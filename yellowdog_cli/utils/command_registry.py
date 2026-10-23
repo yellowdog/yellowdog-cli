@@ -2184,8 +2184,9 @@ NO_RESEQUENCE = option(
     action="store_true",
     required=False,
     help=(
-        "don't re-sequence resources prior to creation (e.g., "
-        "putting source templates before requirement templates)"
+        "process the resources in the order given, rather than in dependency"
+        " order (e.g., source templates before requirement templates when"
+        " creating, after them when removing)"
     ),
 )
 
@@ -2329,6 +2330,7 @@ COMMANDS["yd-remove"] = Command(
         YES.variant(help="remove without user confirmation"),
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         IDS,
+        NO_RESEQUENCE,
     ),
     validators=(check_resource_inputs, check_remove_ids),
     requires_namespace_and_tag=True,

@@ -29,7 +29,7 @@ def test_upload_list_download_copy_delete(data_run, tmp_path):
     source.write_bytes(payload)
 
     yd("data", "upload", str(source), "--json", "--quiet")
-    listed = yd("data", "ls", "--json", "--quiet").records
+    listed = yd("data", "list", "--json", "--quiet").records
     assert "payload.bin" in {r.get("Name") for r in listed}
 
     into = tmp_path / "down"
@@ -38,12 +38,12 @@ def test_upload_list_download_copy_delete(data_run, tmp_path):
     assert (into / "payload.bin").read_bytes() == payload
 
     yd("data", "copy", "payload.bin", "copied.bin", "--json", "--quiet")
-    names = {r.get("Name") for r in yd("data", "ls", "--json", "--quiet").records}
+    names = {r.get("Name") for r in yd("data", "list", "--json", "--quiet").records}
     assert {"payload.bin", "copied.bin"} <= names
 
     yd("data", "delete", "payload.bin", "copied.bin", "--yes", "--json", "--quiet")
-    # An emptied prefix may no longer exist, which 'ls' reports as exit 1
-    left = yd("data", "ls", "--json", "--quiet", ok=(0, 1)).records
+    # An emptied prefix may no longer exist, which 'list' reports as exit 1
+    left = yd("data", "list", "--json", "--quiet", ok=(0, 1)).records
     assert not {"payload.bin", "copied.bin"} & {r.get("Name") for r in left}, left
 
 
@@ -58,7 +58,7 @@ def test_a_missing_path_on_the_bucket(data_run, tmp_path):
     yd = data_run.yd
     missing = f"no-such-path-{secrets.token_hex(4)}"
 
-    assert yd("data", "ls", missing, "--json", "--quiet").records == []
+    assert yd("data", "list", missing, "--json", "--quiet").records == []
 
     into = tmp_path / "down"
     into.mkdir()

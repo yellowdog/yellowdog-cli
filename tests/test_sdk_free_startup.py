@@ -122,9 +122,9 @@ class TestDataClient:
             ("yellowdog_cli.delete", ["yd-delete", "--json", "-y", "a.txt"]),
             ("yellowdog_cli.copy", ["yd-copy", "--json", "a.txt", "b.txt"]),
             # The noun form, as 'python -m' runs it
-            ("yellowdog_cli.nouns.data", ["data.py", "ls", "--json"]),
+            ("yellowdog_cli.nouns.data", ["data.py", "list", "--json"]),
             # And through 'yd'
-            ("yellowdog_cli.yd", ["yd", "data", "ls", "--json"]),
+            ("yellowdog_cli.yd", ["yd", "data", "list", "--json"]),
         ],
     )
     def test_a_command_loads_no_sdk(self, store, module, argv):

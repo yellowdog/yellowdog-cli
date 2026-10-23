@@ -4,6 +4,20 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 15.0.0 — 2026-10-23
+
+### Upgrading
+
+These changes alter what an existing script or habit will see:
+
+- **`yd resource remove` removes IDs given alone in dependency order**, as it removes files and IDs given together: a resource before those it refers to (an Application before a Group, a template before its Keyring), where IDs alone were removed in the order given. A script that lists IDs in a deliberate order of its own gives `--no-resequence` to keep it.
+- **`yd data ls` is now `yd data list`**, as every other noun's listing is named; `yd data ls` is refused (`unknown verb 'ls'`, exit 2). Its options are unchanged. The deprecated `yd-ls` command points to `yd data list`, and the MCP server's `yd_data_ls` tool is `yd_data_list`, so an MCP client's saved permission for it needs granting again.
+
+### Changes
+
+- **`yd resource remove --no-resequence`** removes the resources in the order given, as `yd resource create --no-resequence` creates them, rather than in dependency order; with files and YellowDog IDs given together, each file's resources are removed where the file was given among the IDs.
+- **`yd data` transfers many files about three times faster**: a directory's download, upload or `--sync`, and the files a wildcard matches, are copied 128 at a time rather than 32, since on S3 a small file's transfer is mostly waiting for the request. With 20,000 1 KB files on S3, `yd data download --sync` took 11 s (was 34 s) and `yd data upload --recursive` 22 s (was 52 s). Before the transfer starts, a directory on S3 or other bucket storage is listed once rather than twice, which for 100,000 files saves as long as one listing of them takes. An SFTP or FTP server that limits how many connections it accepts may refuse some of the 128; cap them with the remote's `connections` (SFTP) or `concurrency` (FTP) option (see [Data Client](docs/data-client.md#data-client)).
+
 ## 14.2.0 — 2026-10-22
 
 - **A Compute Requirement can be terminated automatically**, with YellowDog SDK 15.9.0 (now the minimum): `autoShutdownTimeout` in `[workerPool]` or `[computeRequirement]` gives `yd computerequirement instantiate` the minutes after which the Compute Requirement it creates is terminated (`0` for never), and a JSON specification can set `autoShutdown` itself (`{"enabled": true, "timeout": "PT2H"}`). `yd workerpool provision` ignores the property, with a warning. `yd computerequirement show` shows the `autoShutdownTime`.

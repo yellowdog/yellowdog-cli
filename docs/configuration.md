@@ -11,7 +11,7 @@
       * [Variable Substitutions in Common Properties](#variable-substitutions-in-common-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Oct 22 16:43:48 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 06:49:12 BST 2026 -->
 
 <!--te-->
 
@@ -23,7 +23,7 @@ The configuration file has four possible sections:
 1. A `common` section that contains required security properties for interacting with the YellowDog platform, sets the Namespace in which YellowDog assets and objects are created, and a Tag that is used for tagging and naming assets and objects.
 2. A `workRequirement` section that defines the properties of Work Requirements to be submitted to the YellowDog platform.
 3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required.)
-4. A `dataClient` section that configures the remote data store used by the `yd data upload`, `yd data download`, `yd data delete`, `yd data ls`, and `yd data copy` commands.
+4. A `dataClient` section that configures the remote data store used by the `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` commands.
 
 There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured.
 
@@ -34,7 +34,7 @@ The name of the configuration file can be supplied in two different ways:
 
 Run `yd doctor` to see which configuration file was found and where each value came from.
 
-Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is an error. The data client commands (`yd data upload`, `yd data download`, `yd data delete`, `yd data ls`, `yd data copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd schema config` prints the schema itself. `yd doctor` reports the same problems in its `Config schema` row.
+Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is an error. The data client commands (`yd data upload`, `yd data download`, `yd data delete`, `yd data list`, `yd data copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd schema config` prints the schema itself. `yd doctor` reports the same problems in its `Config schema` row.
 
 ## Naming Rules
 

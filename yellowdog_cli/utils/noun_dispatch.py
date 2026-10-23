@@ -6,7 +6,7 @@ invoked, its options narrowed to the object, the verb's fixed arguments
 supplied ahead of the user's.
 
 Only the verb's command module is imported, so a noun imports nothing the
-command it runs would not: 'yd data ls' loads no SDK, as yd-ls does not.
+command it runs would not: 'yd data list' loads no SDK, as yd-ls does not.
 """
 
 import sys

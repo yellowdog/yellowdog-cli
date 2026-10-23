@@ -88,7 +88,10 @@ RESOURCE_CREATION_ORDER: tuple[str, ...] = (
 
 
 def load_resource_specifications(
-    args: Any, creation_or_update: bool = True, files: list[str] | None = None
+    args: Any,
+    creation_or_update: bool = True,
+    files: list[str] | None = None,
+    per_source: list[list[dict]] | None = None,
 ) -> list[dict]:
     """
     Load and return a list of resource specifications assembled from the
@@ -96,7 +99,9 @@ def load_resource_specifications(
     command line 'args' names ('-' standard input's), or 'files' in their
     place (yd-remove's arguments less its IDs), and the resource it gives
     with '--type' and '--set', with its '--jsonnet-dry-run', '--validate'
-    and '--no-resequence'.
+    and '--no-resequence'. 'per_source', when given, is appended with each
+    source's resources in turn, for yd-remove to put them among its IDs in
+    the order given.
     """
     resources = []
     to_validate: list[tuple[object, str]] = []  # Under '--validate'
@@ -180,6 +185,8 @@ def load_resource_specifications(
             + (f"'{shown}'" if shown == resource_spec else shown)
         )
         resources += resources_loaded
+        if per_source is not None:
+            per_source.append(resources_loaded)
 
     if creation_or_update and args.validate:
         validate_all_and_exit(Family.RESOURCES, to_validate)

@@ -16,7 +16,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:18:31 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 06:49:15 BST 2026 -->
 
 <!--te-->
 
@@ -103,7 +103,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_data_copy` | acting | `yd data copy` | Copy files between remote data client locations |
 | `yd_data_delete` | destructive | `yd data delete` | Delete remote data client files and directories |
 | `yd_data_download` | acting | `yd data download` | Download files from a remote data client |
-| `yd_data_ls` | read-only | `yd data ls` | List remote data client files and directories |
+| `yd_data_list` | read-only | `yd data list` | List remote data client files and directories |
 | `yd_data_upload` | acting | `yd data upload` | Upload files to a remote data client |
 | `yd_doctor` | read-only | `yd doctor` | Check the installation, configuration and platform connection |
 | `yd_follow` | acting | `yd follow` | Follow event streams |
@@ -186,7 +186,7 @@ Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s defaul
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
-Each command runs in a process group of its own, and stopping it at the timeout stops the whole group: a data-client command's (`yd_data_upload`, `yd_data_download`, `yd_data_copy`, `yd_data_delete`, `yd_data_ls`) `rclone` process stops with it, so nothing goes on transferring after the call has returned. A transfer stopped that way may leave a partly written file behind.
+Each command runs in a process group of its own, and stopping it at the timeout stops the whole group: a data-client command's (`yd_data_upload`, `yd_data_download`, `yd_data_copy`, `yd_data_delete`, `yd_data_list`) `rclone` process stops with it, so nothing goes on transferring after the call has returned. A transfer stopped that way may leave a partly written file behind.
 
 ## What Is Not Exposed, and Why
 

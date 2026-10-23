@@ -7474,7 +7474,7 @@
       "type": null
     }
   ],
-  "yd data ls": [
+  "yd data list": [
     {
       "choices": null,
       "const": true,
@@ -14886,6 +14886,19 @@
       "nargs": 0,
       "option_strings": [
         "--ids"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_resequence",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-resequence"
       ],
       "required": false,
       "type": null
@@ -34301,6 +34314,19 @@
       "nargs": 0,
       "option_strings": [
         "--ids"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_resequence",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-resequence"
       ],
       "required": false,
       "type": null

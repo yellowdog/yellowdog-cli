@@ -5,6 +5,8 @@ Unit tests for yellowdog_cli.utils.dataclient.operations
 import json
 import re
 import shutil
+import subprocess
+import sys
 import threading
 import time
 import warnings
@@ -690,8 +692,14 @@ class TestRemoteStatOnBucketStorage:
     yd-copy find a missing path missing; a listing (yd-ls) takes it as the
     empty directory rclone says it is. A backend that can hold an empty
     directory answers a missing path with exit 3, so there the entry is
-    taken as it is.
+    taken as it is. The listing runs alongside the stat, which on bucket
+    storage lists a directory too, and is read only where it is needed.
     """
+
+    @staticmethod
+    def _listing(calls: list) -> list[str]:
+        (listing,) = [c for c in calls if c[0] == "lsjson" and "--stat" not in c]
+        return listing
 
     def _rclone(
         self,
@@ -736,22 +744,20 @@ class TestRemoteStatOnBucketStorage:
         calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [{"Name": "a.txt"}])
         assert dcu_module.remote_stat(MagicMock(), "s3:b/dir") == _UNNAMED_DIRECTORY
         # One level only, so that a large tree is not walked to find one item
-        assert calls[-1][-3:] == ["--max-depth", "1", "s3:b/dir"]
+        assert self._listing(calls)[-3:] == ["--max-depth", "1", "s3:b/dir"]
 
     def test_the_existence_check_reads_no_modification_times(self, monkeypatch):
         # On S3 each object's time is a HEAD request of its own: a directory
         # of 100,000 objects took longer than 30 minutes to confirm
         calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [{"Name": "a.txt"}])
         dcu_module.remote_stat(MagicMock(), "s3:b/dir")
-        assert "--no-modtime" in calls[-1]
+        assert "--no-modtime" in self._listing(calls)
 
     def test_an_empty_directory_where_one_can_be_held_is_a_directory(self, monkeypatch):
-        # Local and SFTP: a missing path would have been rclone's exit 3
-        calls = self._rclone(
-            monkeypatch, _UNNAMED_DIRECTORY, [], empty_directories=True
-        )
+        # Local and SFTP: a missing path would have been rclone's exit 3, so
+        # the listing's finding nothing does not make it missing
+        self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [], empty_directories=True)
         assert dcu_module.remote_stat(MagicMock(), "/tmp/empty") == _UNNAMED_DIRECTORY
-        assert not any(call[0] == "lsjson" and "--stat" not in call for call in calls)
 
     def test_a_listing_takes_it_as_an_empty_directory(self, monkeypatch):
         calls = self._rclone(monkeypatch, _UNNAMED_DIRECTORY, [])
@@ -769,9 +775,66 @@ class TestRemoteStatOnBucketStorage:
         ids=["file", "named-directory"],
     )
     def test_a_named_entry_is_taken_as_it_is(self, monkeypatch, stat):
+        # The listing found nothing, and is not read: the entry is named
         calls = self._rclone(monkeypatch, stat, [])
         assert dcu_module.remote_stat(MagicMock(), "r:x") == stat
-        assert len(calls) == 1
+        assert not any(call[:2] == ["backend", "features"] for call in calls)
+
+    def test_a_named_entry_ignores_a_failed_listing(self, monkeypatch):
+        entry = {"Path": "a.txt", "Name": "a.txt", "Size": 6, "IsDir": False}
+
+        def run(_rclone, args):
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(entry))
+            return MagicMock(returncode=1, stdout="", stderr="not a directory")
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/a.txt") == entry
+
+    def test_the_stat_and_the_listing_run_at_once(self, monkeypatch):
+        # Each waits for the other to start: run one after the other, the
+        # first would wait out its timeout
+        started = {"stat": threading.Event(), "listing": threading.Event()}
+
+        def run(_rclone, args):
+            mine, other = (
+                ("stat", "listing") if "--stat" in args else ("listing", "stat")
+            )
+            if args[:2] == ["backend", "features"]:
+                return MagicMock(
+                    returncode=0,
+                    stdout=json.dumps({"Features": {"CanHaveEmptyDirectories": False}}),
+                )
+            started[mine].set()
+            assert started[other].wait(5), f"the {other} never started"
+            if "--stat" in args:
+                return MagicMock(returncode=0, stdout=json.dumps(_UNNAMED_DIRECTORY))
+            return MagicMock(returncode=0, stdout=json.dumps([{"Name": "a.txt"}]))
+
+        monkeypatch.setattr(dcu_module, "_run_quietly", run)
+        assert dcu_module.remote_stat(MagicMock(), "s3:b/dir") == _UNNAMED_DIRECTORY
+
+    def test_an_abandoned_stat_does_not_hold_up_the_exit(self, tmp_path):
+        # yd-doctor gives up on a stat that outlasts its timeout, and exits:
+        # a listing still running must not keep the process alive
+        script = tmp_path / "abandon.py"
+        script.write_text(
+            "import time\n"
+            "from unittest.mock import MagicMock\n"
+            "from yellowdog_cli.utils.dataclient import operations\n"
+            "from yellowdog_cli.utils.doctor_checks import with_timeout\n"
+            "operations._run_quietly = lambda rclone, args: time.sleep(60)\n"
+            "with_timeout(lambda: operations.remote_stat(MagicMock(), 's3:b/x'), 0.2)\n",
+            encoding="utf-8",
+        )
+        started = time.monotonic()
+        subprocess.run(
+            [sys.executable, str(script)],
+            cwd=Path(__file__).parent.parent,
+            timeout=30,
+            check=True,
+        )
+        assert time.monotonic() - started < 20
 
     def test_a_listing_that_fails_raises(self, monkeypatch):
         def run(_rclone, args):
@@ -848,7 +911,7 @@ def test_remote_basename_splits_off_the_remote_first(remote_path, name):
 class TestListingsReadModificationTimesOnlyWhereShown:
     """
     rclone reads an S3 object's modification time with a request of its own,
-    so a listing asks for it only where 'yd data ls' shows it.
+    so a listing asks for it only where 'yd data list' shows it.
     """
 
     def _calls(self, monkeypatch, listing=None) -> list[list[str]]:
