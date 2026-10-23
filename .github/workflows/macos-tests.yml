@@ -54,6 +54,14 @@ jobs:
           print("Qt is usable offscreen")
           '
 
+      # rclone, downloaded by rclone_api as 'yd data list --upgrade-rclone'
+      # downloads it, so the data client tests run rather than skip; checked
+      # found as they look for it
+      - name: rclone
+        run: |
+          .venv/bin/python -c "from rclone_api import Rclone; Rclone.upgrade_rclone()"
+          .venv/bin/python -c "from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version_line; found = find_rclone(); assert found, 'rclone not found'; print(*found, rclone_version_line(found[0]))"
+
       # In the activated environment, since tests run the yd-* commands as
       # programs; a test still running after 5 minutes fails with its stack in
       # its report (pytest-timeout), which pytest-xdist passes on, so a hang
