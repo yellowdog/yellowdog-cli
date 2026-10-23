@@ -286,8 +286,9 @@ def check_install_kind(ctx: Context) -> Result:
     return Result(
         Status.WARN,
         f"system Python ({exe})",
-        "Install with pipx or uv so the CLI's dependencies cannot collide with"
-        " the system's: see the README's Installation section",
+        "Install it into an environment of its own (uv tool install, or a virtual"
+        " environment) so its dependencies cannot collide with the system's:"
+        " see the README's Installation section",
     )
 
 
@@ -311,7 +312,8 @@ def check_sdk_imports(ctx: Context) -> Result:
             Status.FAIL,
             ctx.sdk_error,
             "Reinstall the CLI with the command you installed it with (e.g."
-            " pipx reinstall yellowdog-cli), which reinstalls the SDK it needs",
+            " uv tool install --reinstall yellowdog-cli), which reinstalls the SDK"
+            " it needs",
         )
     return Result(Status.OK, "imports")
 
@@ -335,7 +337,8 @@ def check_newer_cli_on_pypi(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             f"{latest} available, {CLI_VERSION} installed",
-            "Update with the command you installed with, e.g. pipx upgrade yellowdog-cli",
+            "Update with the command you installed with, e.g. uv tool upgrade"
+            " yellowdog-cli, or pip install -U yellowdog-cli in its environment",
         )
     return Result(Status.OK, f"up to date ({CLI_VERSION})")
 

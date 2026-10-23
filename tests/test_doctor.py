@@ -530,7 +530,7 @@ class TestInstallation:
         monkeypatch.setattr(dc.sys, "base_prefix", "/usr")
         monkeypatch.setattr(dc.sys, "executable", "/usr/bin/python3")
         r = dc.check_install_kind(_ctx())
-        assert r.status is dc.Status.WARN and "pipx" in (r.remedy or "")
+        assert r.status is dc.Status.WARN and "uv tool install" in (r.remedy or "")
 
     def test_extra_absent_is_ok_optional(self, monkeypatch):
         monkeypatch.setattr(dc, "_module_is_installed", lambda name: False)
