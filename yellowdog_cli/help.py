@@ -8,7 +8,6 @@ List the yd commands: the nouns with their verbs, the other commands, and
 import json
 import re
 import sys
-from argparse import ArgumentParser
 from importlib.util import find_spec
 
 from rich.console import Console
@@ -17,7 +16,7 @@ from rich.theme import Theme
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.check_imports import EXTRA_PROBES
-from yellowdog_cli.utils.command_registry import COMMANDS, OTHER_COMMANDS
+from yellowdog_cli.utils.command_registry import COMMANDS, OTHER_COMMANDS, build_parser
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.noun_registry import NOUNS, REPLACED_BY_VERBS, Noun
@@ -189,29 +188,7 @@ def _deprecation_note() -> str:
 def main():
     use_utf8_output()
     warn_if_deprecated_script("yd-help")
-    parser = ArgumentParser(
-        prog=selected_prog("yd-help"),
-        description="List the yd commands and their purposes.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help=(
-            "print the commands as a JSON array: the nouns with their verbs,"
-            " the other commands, and the deprecated ones"
-        ),
-    )
-    parser.add_argument(
-        "--deprecated",
-        action="store_true",
-        help="list the deprecated yd-* commands and the yd forms that replace them",
-    )
-    parser.add_argument(
-        "--no-format",
-        "--nf",
-        action="store_true",
-        help="print the listing, or the --json array, without colouring",
-    )
+    parser = build_parser(COMMANDS["yd-help"], prog=selected_prog("yd-help"))
     args = parser.parse_args()
 
     if args.json:

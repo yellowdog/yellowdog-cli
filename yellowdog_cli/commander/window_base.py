@@ -37,6 +37,7 @@ from yellowdog_cli.commander.selection import path_would_be_globbed
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     NAMESPACE,
+    NO_FORMAT,
     PROPERTY,
     TAG,
     VARIABLE,
@@ -56,12 +57,12 @@ UNDECORATED_YD_COMMANDS = frozenset(
     for spelling in (name, yd_form(name))
 )
 # Those of them that take '--nf', which Commander adds as it does to the rest,
-# since the output window shows no colour. Kept by hand because three of them
-# parse their own arguments outside the registry; a test holds it to each
-# command's '--help'
+# since the output window shows no colour; a test holds it to each command's
+# '--help'
 NO_FORMAT_UNDECORATED_YD_COMMANDS = frozenset(
     spelling
-    for name in ("yd-help", "yd-jsonnet2json", "yd-schema", "yd-version")
+    for name, command in COMMANDS.items()
+    if command.kind is CommandKind.STANDALONE and command.has(NO_FORMAT)
     for spelling in (name, yd_form(name))
 )
 NO_FORMAT_FLAGS = ("--nf", "--no-format")

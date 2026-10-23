@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Tab completes the options of `yd version`, `yd help`, `yd format-json` and `yd jsonnet2json`**, as it does every other command's: `yd version --j` offered nothing, and now offers `--jsonnet` and `--json`. Their files still complete as files. Their `--help` describes each in the same form as every other command ("YellowDog command-line utility for ..."), its options unchanged.
+
 ## 15.1.0 — 2026-10-23
 
 ### Upgrading

@@ -16,11 +16,11 @@ specific.
 import json
 import os
 import sys
-from argparse import ArgumentParser
 from glob import glob
 
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
+from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
 from yellowdog_cli.utils.invocation import selected_prog
@@ -49,30 +49,8 @@ def _as_json(json_text: str) -> str:
 
 def main():
     use_utf8_output()
-    parser = ArgumentParser(
-        prog=selected_prog("yd-jsonnet2json"),
-        description=(
-            "Convert Jsonnet files to JSON: one file to stdout, or several (or"
-            " a glob pattern) each to <name>.json beside it."
-        ),
-    )
-    parser.add_argument(
-        "files",
-        nargs="+",
-        metavar="<file.jsonnet>",
-        help="the Jsonnet file(s), or quoted glob pattern(s), to convert",
-    )
-    parser.add_argument(
-        "--no-format",
-        "--nf",
-        action="store_true",
-        help="print a single file's JSON without colouring",
-    )
-    parser.add_argument(
-        "--yes",
-        "-y",
-        action="store_true",
-        help="overwrite existing .json files without asking",
+    parser = build_parser(
+        COMMANDS["yd-jsonnet2json"], prog=selected_prog("yd-jsonnet2json")
     )
     args = parser.parse_args()
     # --no-format, for print_json_text(), and --yes, for confirmed()

@@ -485,8 +485,7 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
         )
     if command.option_named("--no-format") is not None:
         args.append("--nf")
-    if command.option_named("--json") is not None or command.name == "yd-version":
-        # yd-version's parser is its own and not in the registry
+    if command.option_named("--json") is not None:
         args.append("--json")
     if command.internal_name in SELF_PRINTING_COMMANDS:
         args.append("--quiet")

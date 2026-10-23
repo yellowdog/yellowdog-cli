@@ -740,6 +740,14 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         # Machine maintenance, not platform work
         "--upgrade-rclone",
         "--which-rclone",
+        # yd-version's single-version flags, exclusive with the '--json' the
+        # server passes
+        "--cli",
+        "--sdk",
+        "--python",
+        "--jsonnet",
+        "--rclone",
+        "--mcp",
         # A credential in a tool result is a credential in the conversation
         "--show-keyring-passwords",
         "--show-secrets",
@@ -4279,31 +4287,139 @@ COMMANDS["yd-completion"] = Command(
     tool=ToolKind.NONE,
     script=False,
 )
+FORMAT_JSON_FILES = option(
+    "files",
+    nargs="+",
+    metavar="<file.json>",
+    help="the JSON file(s) to reformat",
+    completes=Completes.FILE,
+)
+FORMAT_JSON_CHECK = option(
+    "--check",
+    action="store_true",
+    required=False,
+    help=(
+        "report the files that would be reformatted, without writing"
+        " anything, and exit 1 if there are any"
+    ),
+)
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
-    purpose="formatting JSON files using a compact encoder",
+    purpose=(
+        "reformatting JSON files in place with the CLI's compact layout (small"
+        " containers on one line), changing nothing but the layout"
+    ),
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,
+    options=(FORMAT_JSON_FILES, FORMAT_JSON_CHECK),
     tool=ToolKind.NONE,
+)
+HELP_JSON = ACTIONS_JSON.variant(
+    help=(
+        "print the commands as a JSON array: the nouns with their verbs,"
+        " the other commands, and the deprecated ones"
+    )
+)
+HELP_DEPRECATED = option(
+    "--deprecated",
+    action="store_true",
+    required=False,
+    help="list the deprecated yd-* commands and the yd forms that replace them",
 )
 COMMANDS["yd-help"] = Command(
     name="yd-help",
-    purpose="listing available yd-* commands and their purposes",
+    purpose="listing the yd commands and their purposes",
     summary="List available yd-* commands and their purposes",
     kind=CommandKind.STANDALONE,
+    options=(
+        HELP_JSON,
+        HELP_DEPRECATED,
+        NO_FORMAT.variant(
+            help="print the listing, or the --json array, without colouring"
+        ),
+    ),
     tool=ToolKind.NONE,
+)
+JSONNET2JSON_FILES = option(
+    "files",
+    nargs="+",
+    metavar="<file.jsonnet>",
+    help="the Jsonnet file(s), or quoted glob pattern(s), to convert",
+    completes=Completes.FILE,
 )
 COMMANDS["yd-jsonnet2json"] = Command(
     name="yd-jsonnet2json",
-    purpose="converting a Jsonnet file to JSON",
+    purpose=(
+        "converting Jsonnet files to JSON: one file to stdout, or several (or"
+        " a glob pattern) each to <name>.json beside it"
+    ),
     summary="Convert a Jsonnet file to JSON",
     kind=CommandKind.STANDALONE,
+    options=(
+        JSONNET2JSON_FILES,
+        NO_FORMAT.variant(help="print a single file's JSON without colouring"),
+        YES.variant(help="overwrite existing .json files without asking"),
+    ),
     tool=ToolKind.NONE,
+)
+# yd-version's single-version flags, each printing one version number alone,
+# exclusive with one another and with its '--json'
+VERSION_CLI = option(
+    "--cli", action="store_true", required=False, help="print CLI version number only"
+)
+VERSION_SDK = option(
+    "--sdk", action="store_true", required=False, help="print SDK version number only"
+)
+VERSION_PYTHON = option(
+    "--python",
+    action="store_true",
+    required=False,
+    help="print Python version number only",
+)
+VERSION_JSONNET = option(
+    "--jsonnet",
+    action="store_true",
+    required=False,
+    help="print Jsonnet version number only",
+)
+VERSION_RCLONE = option(
+    "--rclone",
+    action="store_true",
+    required=False,
+    help="print rclone version number only",
+)
+VERSION_MCP = option(
+    "--mcp",
+    action="store_true",
+    required=False,
+    help="print the MCP SDK version number only",
+)
+VERSION_JSON = ACTIONS_JSON.variant(
+    help=(
+        "print the version numbers, author and licence as a JSON object,"
+        " null for a version not installed; with --debug, the Python"
+        " executable and path too"
+    )
 )
 COMMANDS["yd-version"] = Command(
     name="yd-version",
-    purpose="reporting version information",
+    purpose="reporting YellowDog CLI and related version numbers",
     summary="Report version information",
     kind=CommandKind.STANDALONE,
+    options=(
+        Exclusive(
+            (
+                VERSION_CLI,
+                VERSION_SDK,
+                VERSION_PYTHON,
+                VERSION_JSONNET,
+                VERSION_RCLONE,
+                VERSION_MCP,
+                VERSION_JSON,
+            )
+        ),
+        DEBUG.variant(help="print Python path and executable details"),
+        NO_FORMAT.variant(help="print the report without colouring"),
+    ),
     tool=ToolKind.READ_ONLY,
 )

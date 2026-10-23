@@ -311,13 +311,13 @@ class TestFixedArgs:
             config_file=None, namespace="ns", tag="t", variables=("a=1",)
         )
         # yd-show has no --yes; yd-show and yd-variables print JSON without
-        # a flag; yd-wait has no namespace or tag; yd-version parses its own
-        # command line and takes --json alone
+        # a flag; yd-wait has no namespace or tag; yd-version, standalone,
+        # takes --json and --nf alone
         assert "--yes" not in fixed_args(COMMANDS["yd-show"], settings)
         assert "--json" not in fixed_args(COMMANDS["yd-show"], settings)
         assert "--json" not in fixed_args(COMMANDS["yd-variables"], settings)
         assert "-n" not in fixed_args(COMMANDS["yd-wait"], settings)
-        assert fixed_args(COMMANDS["yd-version"], settings) == ["--json"]
+        assert fixed_args(COMMANDS["yd-version"], settings) == ["--nf", "--json"]
 
     def test_the_self_printing_commands_are_quiet(self):
         # yd-show and yd-variables print their own JSON with no --json option,

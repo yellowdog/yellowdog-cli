@@ -1012,8 +1012,8 @@ def test_a_typed_nf_is_not_given_twice(window, typed):
 
 @pytest.mark.parametrize("command", sorted(UNDECORATED_YD_COMMANDS))
 def test_the_standalone_commands_given_nf_are_those_taking_it(command):
-    # Three of them parse their own arguments outside the registry, so the
-    # list is kept by hand; held here to what each one's '--help' offers
+    # The list is derived from the registry; held here to what each one's
+    # '--help' actually offers
     program, args = cli_program(command, ["--help"])
     result = subprocess.run(
         [program, *args], capture_output=True, text=True, timeout=60, check=False

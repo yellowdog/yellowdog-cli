@@ -15,10 +15,10 @@ the Platform, but not here: complete() returns a LookupRequest naming the
 lookup and the configuration options typed on the line, and the
 yd completion command makes it (utils/completion_lookups.py), so this
 module stays local and SDK-free.
-A command whose arguments the registry does not describe (yd commander,
-yd mcp, and the standalone commands that parse their own) is left to the
-shell's own completion of files, which is what it had before the stubs
-claimed its name, with '--help' for a word starting with '-'.
+A command whose arguments the registry does not describe (yd commander and
+yd mcp, the launchers) is left to the shell's own completion of files, which
+is what it had before the stubs claimed its name, with '--help' for a word
+starting with '-'.
 
 The stubs register 'yd' alone: a deprecated 'yd-*' script is not
 completed.

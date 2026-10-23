@@ -72,9 +72,7 @@ class TestNounsAndVerbs:
         assert _values(["yd", "nonesuch"], "--") == []
         assert _values([], "") == []
 
-    @pytest.mark.parametrize(
-        "word", ["commander", "mcp", "format-json", "jsonnet2json"]
-    )
+    @pytest.mark.parametrize("word", ["commander", "mcp"])
     def test_a_command_the_registry_does_not_describe_completes_files(self, word):
         # Before the stubs claimed its name, the shell completed files for it
         assert complete(["yd", word], "").mode is Mode.FILES
@@ -83,6 +81,21 @@ class TestNounsAndVerbs:
 
     def test_a_described_standalone_command_is_not_left_to_the_shell(self):
         assert _values(["yd", "completion"], "z") == ["zsh"]
+
+    @pytest.mark.parametrize(
+        "word, options",
+        [
+            ("format-json", ["--check", "--help"]),
+            ("jsonnet2json", ["--no-format", "--yes", "--help"]),
+        ],
+    )
+    def test_a_standalone_command_completes_its_files_and_options(self, word, options):
+        # Its files positional is marked as files, so the shell completes them
+        assert complete(["yd", word], "").mode is Mode.FILES
+        assert sorted(_values(["yd", word], "-")) == sorted(options)
+
+    def test_yd_versions_options_complete(self):
+        assert _values(["yd", "version"], "--j") == ["--jsonnet", "--json"]
 
     def test_the_command_may_be_a_path_or_an_exe(self):
         assert _values(["/usr/local/bin/yd", "wr"], "s") == ["submit", "start", "show"]
