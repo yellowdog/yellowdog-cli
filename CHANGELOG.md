@@ -4,6 +4,14 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or habit will see:
+
+- **On Windows, a script reading `yd`'s output through a pipe or a file decodes it as UTF-8**, which `yd` now writes there (see below), where it wrote the Windows code page: Python's `subprocess.run(..., text=True)` decodes in the code page by default, and should be given `encoding="utf-8"`; output that is all ASCII, which most is, reads the same either way.
+
+### Changes
+
 - **On Windows, `yd` writes UTF-8 when its output goes to a file or a pipe**, as it does to a console: `yd version > versions.txt`, or any output holding a character outside the Windows code page, failed with a `UnicodeEncodeError`, and the rest of the output reached the file in the Windows code page, garbling characters such as the em dash. `--json` output is now always UTF-8, as JSON exchanged between programs must be.
 - **On Windows, `yd data download` refuses an item whose own name no Windows file name can hold** (one containing `:`, `<`, `>`, `"`, `|`, `?` or `*`), saying so and suggesting `--destination` to name the local file, where a `:` sent the item somewhere else (`--into results` wrote `a:b.txt` to the drive-relative path `a:b.txt`); the other items still download, and files inside a downloaded directory are named by rclone, as before.
 
