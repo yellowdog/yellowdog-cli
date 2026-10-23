@@ -1119,7 +1119,7 @@ See [Creating, Updating and Removing YellowDog Resources](resources.md) for the 
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring), or with `--no-resequence` in the order given.
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together. Whatever is given, files, IDs or both, is removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring), or with `--no-resequence` in the order given.
 
 ```shell
 yd resource remove [options] <resource-specification-or-id> [<resource-specification-or-id> ...]

@@ -42,7 +42,7 @@ def remove(ctx: RunContext) -> None:
         print_info(
             "--ids is optional: an argument that is a YellowDog ID is removed by its ID"
         )
-        remove_resources_by_id(ctx, arguments)
+        remove_resources_by_id(ctx, arguments, options.resequence)
         return
     if ctx.args.resource_type and arguments:
         remove_resources_by_name_or_id(ctx, ctx.args.resource_type, arguments, options)
@@ -50,7 +50,7 @@ def remove(ctx: RunContext) -> None:
     ids = [argument for argument in arguments if get_ydid_type(argument) is not None]
     files = [argument for argument in arguments if get_ydid_type(argument) is None]
     if ids and not files and not ctx.args.resource_type:
-        remove_resources_by_id(ctx, ids)
+        remove_resources_by_id(ctx, ids, options.resequence)
         return
     per_file: list[list[dict]] = []
     resources = load_resource_specifications(

@@ -255,7 +255,7 @@ def routed(monkeypatch):
     monkeypatch.setattr(
         remove_module,
         "remove_resources_by_id",
-        lambda ctx, ids: calls.append(("ids", ids)),
+        lambda ctx, ids, resequence: calls.append(("ids", ids, resequence)),
     )
     monkeypatch.setattr(
         remove_module,
@@ -294,7 +294,16 @@ def routed(monkeypatch):
 
 
 def test_ids_alone_are_removed_by_id(routed):
-    assert routed(GROUP_ID, POOL_ID) == [("ids", [GROUP_ID, POOL_ID])]
+    assert routed(GROUP_ID, POOL_ID) == [("ids", [GROUP_ID, POOL_ID], True)]
+
+
+def test_no_resequence_reaches_ids_alone(routed):
+    assert routed(GROUP_ID, no_resequence=True) == [("ids", [GROUP_ID], False)]
+    assert routed(GROUP_ID, ids=True, no_resequence=True)[-1] == (
+        "ids",
+        [GROUP_ID],
+        False,
+    )
 
 
 def test_files_alone_are_removed_as_specifications(routed):
@@ -320,7 +329,7 @@ def test_remove_takes_no_resequence():
 
 
 def test_the_ids_option_still_works_and_says_it_is_optional(routed, capsys):
-    assert routed(GROUP_ID, ids=True) == [("ids", [GROUP_ID])]
+    assert routed(GROUP_ID, ids=True) == [("ids", [GROUP_ID], True)]
     out = " ".join(capsys.readouterr().out.split())
     assert "--ids is optional" in out
     assert "WARNING" not in out
@@ -340,6 +349,19 @@ def test_a_repeated_id_is_removed_once(env):
     assert env.records == [
         {"resource": "Group", "name": "g", "id": GROUP_ID, "action": "removed"}
     ]
+
+
+@pytest.mark.parametrize(
+    "resequence, expected",
+    [(True, ["Application", "Group"]), (False, ["Group", "Application"])],
+)
+def test_ids_alone_are_removed_in_removal_order(env, resequence, expected):
+    # An Application is created after a Group, so removed before it, though
+    # its ID was given after the Group's; '--no-resequence' keeps the order
+    env.client.account_client.get_group.return_value = SimpleNamespace(name="g")
+    env.client.account_client.get_application.return_value = SimpleNamespace(name="a")
+    yd_remove.remove_resources_by_id(_ctx(), [GROUP_ID, APPLICATION_ID], resequence)
+    assert [r["resource"] for r in env.records] == expected
 
 
 def test_an_id_that_does_not_exist_is_not_found_before_anything_is_asked(env):

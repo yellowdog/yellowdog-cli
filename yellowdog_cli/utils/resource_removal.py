@@ -121,13 +121,22 @@ def remove_resources(
         _OPTIONS = previous
 
 
-def remove_resources_by_id(ctx: RunContext, resource_ids: list[str]):
+def remove_resources_by_id(
+    ctx: RunContext, resource_ids: list[str], resequence: bool = True
+):
     """
-    Remove resources by their YellowDog IDs, each once, in the order given;
-    the IDs are of the types REMOVABLE_YDID_TYPES names.
+    Remove resources by their YellowDog IDs, each once, in removal order
+    (RESOURCE_CREATION_ORDER reversed, each ranked by the type of resource
+    it names), IDs of one type in the order given; without 'resequence'
+    ('--no-resequence'), in the order given. The IDs are of the types
+    REMOVABLE_YDID_TYPES names.
     """
+    ids = list(dict.fromkeys(resource_ids))
+    if resequence:
+        # Stable, reverse included: the order given survives within a type
+        ids.sort(key=lambda resource_id: _removal_rank(ctx, resource_id), reverse=True)
     process_each(
-        list(dict.fromkeys(resource_ids)),
+        ids,
         functools.partial(_remove_and_record_by_id, ctx),
         lambda resource_id: resource_id,
         functools.partial(_record_by_id, ctx),
@@ -154,18 +163,6 @@ def remove_resources_and_ids(
     where it was first given.
     """
     global _OPTIONS
-
-    def _rank(item: dict | str) -> int:
-        resource_type = (
-            _removable_by_id(ctx, cast(YDIDType, get_ydid_type(item))).resource_type
-            if isinstance(item, str)
-            else item.get(PROP_RESOURCE)
-        )
-        try:
-            return RESOURCE_CREATION_ORDER.index(str(resource_type))
-        except ValueError:
-            # Unknown or missing types first, as on creation they go last
-            return len(RESOURCE_CREATION_ORDER)
 
     def _act(item: dict | str) -> None:
         if isinstance(item, str):
@@ -195,12 +192,29 @@ def remove_resources_and_ids(
             items.append(deepcopy(item))
     if options.resequence:
         # Stable, reverse included: the order given survives within a type
-        items.sort(key=_rank, reverse=True)
+        items.sort(key=lambda item: _removal_rank(ctx, item), reverse=True)
     previous, _OPTIONS = _OPTIONS, options
     try:
         process_each(items, _act, _describe, _record, "remove")
     finally:
         _OPTIONS = previous
+
+
+def _removal_rank(ctx: RunContext, item: dict | str) -> int:
+    """
+    Where a specification, or the resource a YellowDog ID names, comes in
+    RESOURCE_CREATION_ORDER; sorted in reverse, the order of removal.
+    """
+    resource_type = (
+        _removable_by_id(ctx, cast(YDIDType, get_ydid_type(item))).resource_type
+        if isinstance(item, str)
+        else item.get(PROP_RESOURCE)
+    )
+    try:
+        return RESOURCE_CREATION_ORDER.index(str(resource_type))
+    except ValueError:
+        # Unknown or missing types first, as on creation they go last
+        return len(RESOURCE_CREATION_ORDER)
 
 
 def remove_resources_by_name_or_id(
