@@ -133,3 +133,30 @@ def test_every_resource_type_is_dispatched(module_name, dispatch, monkeypatch):
             run(ctx, "NoSuchType", {}, None, False)
         else:
             run(ctx, "NoSuchType", {})
+
+
+def test_per_source_gives_each_files_resources_in_file_order(tmp_path, monkeypatch):
+    # For yd-remove to place each file's resources among its IDs; the whole
+    # list is still re-sequenced (a Keyring is removed after a template)
+    monkeypatch.setattr(load_resources, "warn_of_violations", lambda *a: None)
+    first, second = tmp_path / "a.json", tmp_path / "b.json"
+    first.write_text('{"resource": "Keyring", "name": "k"}', encoding="utf-8")
+    second.write_text(
+        '[{"resource": "ComputeRequirementTemplate", "name": "t"},'
+        ' {"resource": "Keyring", "name": "k2"}]',
+        encoding="utf-8",
+    )
+    per_source: list[list[dict]] = []
+    resources = load_resources.load_resource_specifications(
+        SimpleNamespace(
+            resource_specifications=[],
+            jsonnet_dry_run=False,
+            validate=False,
+            no_resequence=False,
+        ),
+        creation_or_update=False,
+        files=[str(first), str(second)],
+        per_source=per_source,
+    )
+    assert [[r["name"] for r in group] for group in per_source] == [["k"], ["t", "k2"]]
+    assert [r["name"] for r in resources] == ["t", "k", "k2"]

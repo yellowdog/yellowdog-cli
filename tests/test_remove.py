@@ -204,11 +204,26 @@ def test_files_and_ids_are_removed_in_one_run_in_removal_order(env, monkeypatch)
     monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
     env.client.account_client.get_application.return_value = SimpleNamespace(name="app")
     yd_remove.remove_resources_and_ids(
-        _ctx(), [{"resource": "Group", "name": "g"}], [APPLICATION_ID, APPLICATION_ID]
+        _ctx(), [{"resource": "Group", "name": "g"}, APPLICATION_ID, APPLICATION_ID]
     )
     assert [(r["resource"], r["action"]) for r in env.records] == [
         ("Application", "removed"),
         ("Group", "removed"),
+    ]
+    env.client.account_client.delete_application.assert_called_once_with(APPLICATION_ID)
+
+
+def test_no_resequence_removes_files_and_ids_in_the_order_given(env, monkeypatch):
+    monkeypatch.setattr(yd_remove, "get_group_id_by_name", lambda *a: GROUP_ID)
+    env.client.account_client.get_application.return_value = SimpleNamespace(name="app")
+    yd_remove.remove_resources_and_ids(
+        _ctx(),
+        [{"resource": "Group", "name": "g"}, APPLICATION_ID, APPLICATION_ID],
+        yd_remove.RemoveOptions(resequence=False),
+    )
+    assert [(r["resource"], r["action"]) for r in env.records] == [
+        ("Group", "removed"),
+        ("Application", "removed"),
     ]
     env.client.account_client.delete_application.assert_called_once_with(APPLICATION_ID)
 
@@ -218,7 +233,7 @@ def test_a_failure_among_files_and_ids_fails_the_run_once(env, monkeypatch):
     env.client.account_client.get_application.side_effect = _http_error(404)
     with pytest.raises(ReportedFailure) as raised:
         yd_remove.remove_resources_and_ids(
-            _ctx(), [{"resource": "Group", "name": "g"}], [APPLICATION_ID]
+            _ctx(), [{"resource": "Group", "name": "g"}, APPLICATION_ID]
         )
     assert classify(raised.value) == ExitCode.NOT_FOUND
     assert [(r["resource"], r["action"]) for r in env.records] == [
@@ -250,20 +265,27 @@ def routed(monkeypatch):
     monkeypatch.setattr(
         remove_module,
         "remove_resources_and_ids",
-        lambda ctx, specs, ids, options: calls.append(("both", specs, ids)),
-    )
-    monkeypatch.setattr(
-        remove_module,
-        "load_resource_specifications",
-        lambda args, creation_or_update, files=None: [{"from": files}],
+        lambda ctx, given, options: calls.append(("both", given, options.resequence)),
     )
 
-    def run(*arguments: str, ids: bool = False) -> list[tuple]:
+    def load(args, creation_or_update, files=None, per_source=None):
+        # One resource per file, named for it
+        loaded = [[{"from": name}] for name in files or []]
+        if per_source is not None:
+            per_source.extend(loaded)
+        return [resource for group in loaded for resource in group]
+
+    monkeypatch.setattr(remove_module, "load_resource_specifications", load)
+
+    def run(
+        *arguments: str, ids: bool = False, no_resequence: bool = False
+    ) -> list[tuple]:
         args = SimpleNamespace(
             ids=ids,
             resource_type=None,
             resource_specifications=list(arguments),
             match_allowances_by_description=False,
+            no_resequence=no_resequence,
         )
         remove_module.remove(RunContext(args=args, config=None, client=None))
         return calls
@@ -276,11 +298,25 @@ def test_ids_alone_are_removed_by_id(routed):
 
 
 def test_files_alone_are_removed_as_specifications(routed):
-    assert routed("a.json") == [("files", [{"from": ["a.json"]}])]
+    assert routed("a.json") == [("files", [{"from": "a.json"}])]
 
 
-def test_files_and_ids_go_to_one_run(routed):
-    assert routed("a.json", GROUP_ID) == [("both", [{"from": ["a.json"]}], [GROUP_ID])]
+def test_files_and_ids_go_to_one_run_in_the_order_given(routed):
+    # Each file's resources where the file was given, among the IDs
+    assert routed("a.json", GROUP_ID, "b.json") == [
+        ("both", [{"from": "a.json"}, GROUP_ID, {"from": "b.json"}], True)
+    ]
+
+
+def test_no_resequence_reaches_the_run(routed):
+    assert routed("a.json", GROUP_ID, no_resequence=True) == [
+        ("both", [{"from": "a.json"}, GROUP_ID], False)
+    ]
+
+
+def test_remove_takes_no_resequence():
+    parsed = CLIParser(command="yd-remove", argv=["groups.json", "--no-resequence"])
+    assert parsed.no_resequence is True
 
 
 def test_the_ids_option_still_works_and_says_it_is_optional(routed, capsys):

@@ -34,7 +34,8 @@ def remove(ctx: RunContext) -> None:
     they were parsed.
     """
     options = RemoveOptions(
-        match_allowances_by_description=bool(ctx.args.match_allowances_by_description)
+        match_allowances_by_description=bool(ctx.args.match_allowances_by_description),
+        resequence=not ctx.args.no_resequence,
     )
     arguments = ctx.args.resource_specifications or []
     if ctx.args.ids:
@@ -51,11 +52,20 @@ def remove(ctx: RunContext) -> None:
     if ids and not files and not ctx.args.resource_type:
         remove_resources_by_id(ctx, ids)
         return
+    per_file: list[list[dict]] = []
     resources = load_resource_specifications(
-        ctx.args, creation_or_update=False, files=files
+        ctx.args, creation_or_update=False, files=files, per_source=per_file
     )
     if ids:
-        remove_resources_and_ids(ctx, resources, ids, options)
+        # Each file's resources where the file was given, among the IDs
+        loaded = iter(per_file)
+        given: list[dict | str] = []
+        for argument in arguments:
+            if get_ydid_type(argument) is not None:
+                given.append(argument)
+            else:
+                given.extend(next(loaded))
+        remove_resources_and_ids(ctx, given, options)
     else:
         remove_resources(ctx, resources, options)
 

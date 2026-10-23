@@ -1119,7 +1119,7 @@ See [Creating, Updating and Removing YellowDog Resources](resources.md) for the 
 
 ### yd resource remove
 
-The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring).
+The `yd resource remove` command removes YellowDog resources, specified in one or more JSON (or Jsonnet) files supplied on the command line, `-` for one read from standard input as JSON, or a resource given on the command line with `--type` and `--set`. Each file can contain one or more resources. An argument that is a YellowDog ID (YDID) is removed by its ID, so files and IDs can be given together; they are removed in one run, in the order that removes a resource before those it refers to (a template before its Keyring), or with `--no-resequence` in the order given.
 
 ```shell
 yd resource remove [options] <resource-specification-or-id> [<resource-specification-or-id> ...]
@@ -1131,6 +1131,7 @@ Key options:
 - `--ids` — optional: says every argument is a YellowDog ID, refusing anything else; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON, removing nothing (refused when every argument is an ID)
+- `--no-resequence` — remove the resources strictly in the order supplied, files' resources and IDs alike, rather than in dependency order
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell

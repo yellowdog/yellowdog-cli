@@ -94,6 +94,9 @@ class RemoveOptions:
     """
 
     match_allowances_by_description: bool = False
+    # False ('--no-resequence'): specifications and IDs are removed in the
+    # order given, not in removal order
+    resequence: bool = True
 
 
 # The options of the run in progress, set by remove_resources() and
@@ -134,19 +137,21 @@ def remove_resources_by_id(ctx: RunContext, resource_ids: list[str]):
 
 def remove_resources_and_ids(
     ctx: RunContext,
-    resources: list[dict],
-    resource_ids: list[str],
+    given: list[dict | str],
     options: RemoveOptions | None = None,
 ):
     """
-    Remove the resources a list of specifications describes and those the
-    YellowDog IDs name, in one run, as remove_resources() and
+    Remove the resources specifications describe and those YellowDog IDs
+    name, given together ('given': each a specification or an ID, in the
+    order given), in one run, as remove_resources() and
     remove_resources_by_id() remove each: one confirmation each, one tally
     of failures and one exit code. They are removed together in removal
     order (RESOURCE_CREATION_ORDER reversed), an ID ranked by the type of
     resource it names, so that a template goes before the Keyring it uses
     however each was given; within a type, specifications and IDs keep the
-    order given. An ID given twice is removed once.
+    order given. With the options' 'resequence' false ('--no-resequence'),
+    they are removed in the order given. An ID given twice is removed once,
+    where it was first given.
     """
     global _OPTIONS
 
@@ -177,13 +182,21 @@ def remove_resources_and_ids(
         else:
             record_specification(item, action, error)
 
-    items: list[dict | str] = [
-        *deepcopy(resources),
-        *dict.fromkeys(resource_ids),
-    ]
-    # Stable, reverse included: the order given survives within a type
-    items.sort(key=_rank, reverse=True)
-    previous, _OPTIONS = _OPTIONS, options or RemoveOptions()
+    options = options or RemoveOptions()
+    seen: set[str] = set()
+    items: list[dict | str] = []
+    for item in given:
+        if isinstance(item, str):
+            if item in seen:
+                continue
+            seen.add(item)
+            items.append(item)
+        else:
+            items.append(deepcopy(item))
+    if options.resequence:
+        # Stable, reverse included: the order given survives within a type
+        items.sort(key=_rank, reverse=True)
+    previous, _OPTIONS = _OPTIONS, options
     try:
         process_each(items, _act, _describe, _record, "remove")
     finally:
