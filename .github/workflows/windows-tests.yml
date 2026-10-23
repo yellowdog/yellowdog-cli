@@ -41,12 +41,13 @@ jobs:
           powershell -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
           pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
 
-      # A test still running after 5 minutes dumps every thread's stack, so a
-      # hang shows where it is
+      # A test still running after 5 minutes fails with its stack in its report
+      # (pytest-timeout), which pytest-xdist passes on, so a hang names the
+      # test and where it is, and the run goes on
       - name: The unit tests
         run: >
           python -m pytest -n auto -rs -p no:cacheprovider
-          -o faulthandler_timeout=300 --junitxml=windows-tests.xml
+          --timeout=300 --junitxml=windows-tests.xml
 
       - name: Keep the results
         if: always()

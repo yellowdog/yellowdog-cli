@@ -46,13 +46,14 @@ jobs:
           ${{ matrix.python == '3.14' && '--pyright' || '' }}
 
       # In the activated environment, since tests run the yd-* commands as
-      # programs; a test still running after 5 minutes dumps every thread's
-      # stack, so a hang shows where it is
+      # programs; a test still running after 5 minutes fails with its stack in
+      # its report (pytest-timeout), which pytest-xdist passes on, so a hang
+      # names the test and where it is, and the run goes on
       - name: The unit tests
         run: |
           source .venv/bin/activate
           python -m pytest -n auto -rs -p no:cacheprovider \
-            -o faulthandler_timeout=300 --junitxml=linux-tests.xml
+            --timeout=300 --junitxml=linux-tests.xml
 
       - name: Keep the results
         if: always()
