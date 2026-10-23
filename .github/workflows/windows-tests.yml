@@ -1,0 +1,43 @@
+# The whole unit suite on Windows, with every extra installed, as 'make tox'
+# runs it elsewhere. Run on demand only, until the failures it finds are fixed
+# or skipped with their reasons: by pushing the commit to test to the
+# 'windows-tests' branch ('git push -f origin next-version:windows-tests'),
+# or with the Actions tab's "Run workflow", which GitHub offers only once the
+# workflow is on the default branch, 'main'. Advisory: no branch requires it.
+name: Windows tests
+
+on:
+  push:
+    branches: [windows-tests]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the CLI with every extra
+        run: python -m pip install -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+
+      # A test still running after 5 minutes dumps every thread's stack, so a
+      # hang shows where it is
+      - name: The unit tests
+        run: >
+          python -m pytest -n auto -rs -p no:cacheprovider
+          -o faulthandler_timeout=300 --junitxml=windows-tests.xml
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-tests
+          path: windows-tests.xml

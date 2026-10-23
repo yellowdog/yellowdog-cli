@@ -33,7 +33,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 11:15:15 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 11:19:40 BST 2026 -->
 
 <!--te-->
 
@@ -228,7 +228,9 @@ A Python pre-release needs no configuration: tox builds an environment it has no
 
 ### Windows PowerShell on GitHub Actions
 
-Windows PowerShell 5.1, the version built into Windows, exists on Windows alone, so the shell completion tests cannot run it on macOS or Linux. [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs them on a GitHub-hosted Windows runner, which has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`): `tests/test_completion.py`'s PowerShell tests run under each PowerShell present, so there they run under both. It runs on every push to `next-version`, and by hand from the repository's Actions tab ("Run workflow"). It is advisory: no branch requires it to pass, and a failure shows as a cross on the commit.
+Windows PowerShell 5.1, the version built into Windows, exists on Windows alone, so the shell completion tests cannot run it on macOS or Linux. [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs them on a GitHub-hosted Windows runner, which has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`): `tests/test_completion.py`'s PowerShell tests run under each PowerShell present, so there they run under both. It runs on every push to `next-version`, and by hand from the repository's Actions tab ("Run workflow") once the workflow is on `main`, since GitHub offers that only for a workflow on the default branch.
+
+[`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs the whole unit suite on Windows, with every extra installed, on demand only: push the commit to test to the `windows-tests` branch (`git push -f origin next-version:windows-tests`), or, once the workflow is on `main`, use "Run workflow". Its results are in the run's log and in `windows-tests.xml`, kept with the run. It is advisory, like the PowerShell job. It is advisory: no branch requires it to pass, and a failure shows as a cross on the commit.
 
 ## Type Checking
 
@@ -373,7 +375,7 @@ yellowdog_cli/commander/  # yd commander: the PyQt6 GUI, its .ui layout, images,
 yellowdog_cli/mcp/        # yd mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
-.github/workflows/        # GitHub Actions: the PowerShell completion tests on Windows (5.1 and 7), advisory
+.github/workflows/        # GitHub Actions, advisory: the PowerShell completion tests on Windows (5.1 and 7), and the whole suite on Windows on demand
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)
