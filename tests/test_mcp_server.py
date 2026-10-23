@@ -269,6 +269,11 @@ def test_a_data_client_call_on_the_local_backend(
     hasattr(os, "geteuid") and os.geteuid() == 0,
     reason="a directory's mode does not bind root",
 )
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="on Windows a directory's read-only attribute does not stop files"
+    " being created in it",
+)
 def test_an_unwritable_working_directory_is_a_tool_error(
     clean_env, tmp_path, monkeypatch
 ):

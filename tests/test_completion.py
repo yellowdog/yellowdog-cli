@@ -762,6 +762,10 @@ def _run_shell(shell: str, script: str, tmp_path) -> str:
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="on Windows 'bash' may be WSL's launcher with no Linux installed",
+)
 class TestBashScript:
     @pytest.mark.parametrize("names", [False, True])
     def test_the_script_parses(self, tmp_path, names):

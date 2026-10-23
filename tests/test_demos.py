@@ -4,6 +4,7 @@ Use 'pytest --run-demos', otherwise these will be skipped.
 """
 
 import shutil
+import sys
 
 import pytest
 from cli_test_helpers import shell
@@ -112,6 +113,11 @@ _needs_timeout = pytest.mark.skipif(
 )
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the demos' commands are POSIX shell; Windows' cmd is another"
+    " language, with a 'timeout' of its own",
+)
 class TestDemoCommandHarness:
     """
     The shell idioms the demo commands are built from, exercised with stub

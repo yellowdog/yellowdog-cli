@@ -51,7 +51,8 @@ def test_selected_work_requirement_is_shown_on_its_button(win):
 
     assert win.select_work_requirement.text() == f"{SELECTED_WR_PREFIX}mytasks.jsonnet"
     # The full path is available on hover
-    assert win.select_work_requirement.toolTip().endswith("definitions/mytasks.jsonnet")
+    tooltip = win.select_work_requirement.toolTip().replace("\\", "/")
+    assert tooltip.endswith("definitions/mytasks.jsonnet")
     # The Worker Pool button is untouched
     assert win.select_worker_pool.text() == "Select Worker Pool JSON"
 

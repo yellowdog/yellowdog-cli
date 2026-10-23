@@ -21,6 +21,7 @@ again from the configuration. The CLI's own registration of them is unaffected.
 
 import os
 import subprocess
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -169,7 +170,8 @@ class TestCommandSources:
     def test_environment(self, tmp_path):
         result = _yd_variables("--nc", cwd=tmp_path, env={"YD_VAR_my.var!": "1"})
         assert result.returncode == ExitCode.CONFIGURATION
-        assert "YD_VAR_my.var!" in result.stdout + result.stderr
+        # Windows capitalises environment variable names (YD_VAR_MY.VAR!)
+        assert "YD_VAR_MY.VAR!" in (result.stdout + result.stderr).upper()
 
     def test_property_override(self, tmp_path):
         result = _yd_variables(
@@ -209,6 +211,11 @@ class TestReservedNamesAtTheCommandSources:
             _yd_variables("--nc", "-v", "namespace=x", cwd=tmp_path), "namespace"
         )
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Windows capitalises environment variable names, so YD_VAR_url"
+        " defines URL, which is not reserved",
+    )
     def test_environment(self, tmp_path):
         self._refused(
             _yd_variables("--nc", cwd=tmp_path, env={"YD_VAR_url": "x"}), "url"

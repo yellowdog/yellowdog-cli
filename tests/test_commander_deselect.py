@@ -92,7 +92,8 @@ def test_dialog_checkboxes_start_checked(all_selected):
 
 def test_dialog_checkboxes_carry_the_full_path_as_a_tooltip(all_selected):
     _, checkboxes = all_selected._build_deselect_dialog([("Work Requirement", WR)])
-    assert checkboxes[0].toolTip().endswith(WR)
+    # The full path, with Windows' separators there
+    assert checkboxes[0].toolTip().replace("\\", "/").endswith(WR)
     assert checkboxes[0].toolTip().startswith("/")  # absolute
 
 
@@ -105,7 +106,8 @@ def test_dialog_elides_a_very_long_path(all_selected):
     text = checkboxes[0].text()
     assert len(text) < len(f"Deselect Work Requirement: {long_path}")
     assert text.endswith("definition.jsonnet")
-    assert checkboxes[0].toolTip().endswith(long_path)  # full path still available
+    # The full path is still available
+    assert checkboxes[0].toolTip().replace("\\", "/").endswith(long_path)
 
 
 def test_dialog_offers_cancel_and_deselect_with_deselect_default(all_selected):
