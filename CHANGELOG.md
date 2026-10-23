@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+## 15.0.0 — 2026-10-23
+
 ### Upgrading
 
 These changes alter what an existing script or habit will see:
