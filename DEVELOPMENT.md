@@ -13,6 +13,7 @@
       * [Commander GUI Tests](#commander-gui-tests)
       * [Testing Across Python Versions](#testing-across-python-versions)
          * [Python Pre-Releases](#python-pre-releases)
+      * [Windows PowerShell on GitHub Actions](#windows-powershell-on-github-actions)
    * [Type Checking](#type-checking)
    * [Building](#building)
    * [Commander](#commander)
@@ -32,7 +33,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Oct 17 11:05:37 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 11:15:15 BST 2026 -->
 
 <!--te-->
 
@@ -42,7 +43,7 @@
 - `git`
 - `make` — for formatting, building, and other development tasks
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
-- `zsh`, `fish` and PowerShell (`pwsh`) — optional: the shell completion tests run each shell's completion script where the shell is installed, and skip it otherwise (on macOS, `brew install fish powershell`; zsh is built in)
+- `zsh`, `fish` and PowerShell (`pwsh`) — optional: the shell completion tests run each shell's completion script where the shell is installed, and skip it otherwise (on macOS, `brew install fish powershell`; zsh is built in). Windows PowerShell 5.1 runs on GitHub Actions (see [Windows PowerShell on GitHub Actions](#windows-powershell-on-github-actions))
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
 - On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
 
@@ -225,6 +226,10 @@ tox -e py310,py315 -- --run-system tests/test_system_resources.py -n 4
 
 A Python pre-release needs no configuration: tox builds an environment it has no entry for from its name, with the same extras and command as the others, so `tox -e py316` runs the suite on 3.16 once uv offers it, and `make tox` neither runs it nor is broken by it. Add it to `env_list`, and its version to the classifiers in `pyproject.toml`, when the release is final and the environment passes — `pyyaml`, which `pre-commit` in the `dev` extra needs, and PyQt6 are typically the last to work on a new version.
 
+### Windows PowerShell on GitHub Actions
+
+Windows PowerShell 5.1, the version built into Windows, exists on Windows alone, so the shell completion tests cannot run it on macOS or Linux. [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs them on a GitHub-hosted Windows runner, which has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`): `tests/test_completion.py`'s PowerShell tests run under each PowerShell present, so there they run under both. It runs on every push to `next-version`, and by hand from the repository's Actions tab ("Run workflow"). It is advisory: no branch requires it to pass, and a failure shows as a cross on the commit.
+
 ## Type Checking
 
 Static type checking is done with [pyright](https://github.com/microsoft/pyright) in basic mode:
@@ -368,6 +373,7 @@ yellowdog_cli/commander/  # yd commander: the PyQt6 GUI, its .ui layout, images,
 yellowdog_cli/mcp/        # yd mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
+.github/workflows/        # GitHub Actions: the PowerShell completion tests on Windows (5.1 and 7), advisory
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)

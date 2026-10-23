@@ -1,0 +1,35 @@
+# The shell completion script under Windows PowerShell 5.1, which exists on
+# Windows alone, and PowerShell 7: tests/test_completion.py's PowerShell tests,
+# run under each PowerShell present. Advisory: no branch requires it.
+name: Windows PowerShell completion
+
+on:
+  push:
+    branches: [next-version]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-completion:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the CLI
+        run: python -m pip install -e ".[dev]"
+
+      # Both must be present, or the tests would quietly cover one alone
+      - name: The PowerShells
+        run: |
+          powershell -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+
+      - name: The PowerShell completion tests
+        run: python -m pytest -v -rs -p no:cacheprovider tests/test_completion.py -k PowerShell

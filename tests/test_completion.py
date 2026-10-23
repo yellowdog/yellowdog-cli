@@ -882,10 +882,17 @@ class TestFishScript:
         ]
 
 
-@pytest.mark.skipif(shutil.which("pwsh") is None, reason="needs PowerShell (pwsh)")
+# Each PowerShell present: PowerShell 7 ('pwsh', anywhere) and Windows
+# PowerShell 5.1 ('powershell', Windows alone), which drops an empty argument
+# passed to a program; the Windows workflow (.github/workflows) runs both
+POWERSHELLS = [shell for shell in ("pwsh", "powershell") if shutil.which(shell)]
+
+
+@pytest.mark.skipif(not POWERSHELLS, reason="needs PowerShell (pwsh or powershell)")
+@pytest.mark.parametrize("powershell", POWERSHELLS)
 class TestPowerShellScript:
     @pytest.mark.parametrize("names", [False, True])
-    def test_the_script_parses(self, tmp_path, names):
+    def test_the_script_parses(self, tmp_path, powershell, names):
         stub = tmp_path / "yd.ps1"
         stub.write_text(
             yd_completion.completion_script("powershell", names=names), encoding="utf-8"
@@ -896,12 +903,14 @@ class TestPowerShellScript:
             " if ($errors) { $errors; exit 1 }"
         )
         result = subprocess.run(
-            ["pwsh", "-NoProfile", "-Command", check], capture_output=True, text=True
+            [powershell, "-NoProfile", "-Command", check],
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
 
     @pytest.mark.parametrize("names", [False, True])
-    def test_the_script_completes(self, tmp_path, names):
+    def test_the_script_completes(self, tmp_path, powershell, names):
         # PowerShell's own completion of a command line (TabExpansion2), so
         # its tokenising and path completion are the real ones; each match
         # with its tooltip where that says more than the match itself
@@ -939,7 +948,7 @@ class TestPowerShellScript:
         path = tmp_path / "check.ps1"
         path.write_text(script, encoding="utf-8")
         result = subprocess.run(
-            ["pwsh", "-NoProfile", "-NonInteractive", "-File", str(path)],
+            [powershell, "-NoProfile", "-NonInteractive", "-File", str(path)],
             capture_output=True,
             text=True,
             cwd=tmp_path,
