@@ -42,6 +42,7 @@
 - `git`
 - `make` — for formatting, building, and other development tasks
 - `bash` — required to run the release script (see [`RELEASING.md`](RELEASING.md))
+- `zsh`, `fish` and PowerShell (`pwsh`) — optional: the shell completion tests run each shell's completion script where the shell is installed, and skip it otherwise (on macOS, `brew install fish powershell`; zsh is built in)
 - On a minimal Linux image, `libatomic` — needed only by `make pyright` (see [Type Checking](#type-checking)); `libatomic1` on Debian/Ubuntu, `libatomic` on the RHEL family
 - On a minimal Linux image, Qt's runtime libraries — needed only to run [Commander](#commander) or its tests (see [Commander GUI Tests](#commander-gui-tests)); on Debian/Ubuntu, `libgl1` is the one PyQt6 asks for first
 
