@@ -8,10 +8,14 @@ names the container behaviour explicitly, so each literal item, as Commander
 passes them, keeps its own directory.
 """
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from cli_test_helpers import shell
 
+import yellowdog_cli.download as download_module
 from yellowdog_cli.download import destination_is_item, local_destination_for
 
 # --- '--into': a container, each item keeps its name --------------------------
@@ -82,6 +86,9 @@ def test_an_item_at_the_remotes_root_is_named_without_the_remote():
     assert local_destination_for("loc:a.txt", names_remote=True) == Path("a.txt")
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows file names cannot hold a ':'"
+)
 def test_a_colon_in_the_items_own_name_is_kept():
     assert local_destination_for(
         "S3:bucket/a:b.txt", into_dir="results", names_remote=True
@@ -89,6 +96,34 @@ def test_a_colon_in_the_items_own_name_is_kept():
     assert local_destination_for("a:b.txt", into_dir="results") == Path(
         "results/a:b.txt"
     )
+
+
+def _on_windows(monkeypatch) -> None:
+    # download.py's own platform alone: the real one stays as it is for
+    # everything else
+    monkeypatch.setattr(download_module, "sys", SimpleNamespace(platform="win32"))
+
+
+@pytest.mark.parametrize(
+    "remote, into", [("S3:bucket/a:b.txt", "results"), ("a|b.txt", None)]
+)
+def test_on_windows_a_name_no_file_can_have_is_refused(monkeypatch, remote, into):
+    _on_windows(monkeypatch)
+    with pytest.raises(ValueError, match="cannot be a file name on Windows"):
+        local_destination_for(remote, into_dir=into, names_remote=":" in remote)
+
+
+def test_on_windows_a_destination_names_it_instead(monkeypatch):
+    _on_windows(monkeypatch)
+    assert local_destination_for(
+        "S3:bucket/a:b.txt", explicit_destination="a-b.txt", names_remote=True
+    ) == Path("a-b.txt")
+
+
+def test_on_windows_a_pattern_is_rclones_to_name(monkeypatch):
+    # The matches are placed by rclone, which encodes such names itself
+    _on_windows(monkeypatch)
+    assert local_destination_for("a:*", into_dir="results") == Path("results")
 
 
 def test_no_destination_expands_a_pattern_into_the_current_directory():

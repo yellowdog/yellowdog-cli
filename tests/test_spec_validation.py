@@ -419,7 +419,9 @@ def run(monkeypatch, capsys):
             monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
         else:
             monkeypatch.setattr(wrapper_module, "CLIENT", client)
-        config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
+        config = MagicMock(
+            namespace="ns", name_tag="tag", url="https://u", use_pac=False
+        )
         monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
         if hasattr(module, "CONFIG_COMMON"):
             monkeypatch.setattr(module, "CONFIG_COMMON", config)

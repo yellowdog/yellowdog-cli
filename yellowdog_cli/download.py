@@ -4,6 +4,7 @@
 Download files from a remote data client.
 """
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import load_config_data_client
 from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.settings import WINDOWS_RESERVED_CHARACTERS
 
 CONFIG_DATA_CLIENT: ConfigDataClient = lazy(load_config_data_client)
 
@@ -62,13 +64,29 @@ def local_destination_for(
         else remote_path_str.rstrip("/").rsplit("/", 1)[-1]
     )
 
-    if into_dir:
-        return Path(into_dir) if is_pattern else Path(into_dir) / basename
     if explicit_destination:
         return Path(explicit_destination)
     if is_pattern:
-        return Path(".")
-    return Path(basename)
+        return Path(into_dir) if into_dir else Path(".")
+    _check_local_name(basename)
+    return Path(into_dir) / basename if into_dir else Path(basename)
+
+
+def _check_local_name(name: str) -> None:
+    """
+    Refuse, on Windows, a remote item's own name that no Windows file name
+    may hold; '--destination' names the local path instead. The files inside
+    a directory downloaded are rclone's to name, which it does.
+    """
+    if sys.platform != "win32":
+        return
+    reserved = sorted({c for c in name if c in WINDOWS_RESERVED_CHARACTERS})
+    if reserved:
+        raise ValueError(
+            f"'{name}' cannot be a file name on Windows, which does not allow"
+            f" {', '.join(repr(c) for c in reserved)} in one; give"
+            " '--destination' to name the local file"
+        )
 
 
 def destination_is_item(
@@ -117,30 +135,49 @@ def main(ctx: DataClientContext):
     explicit_destination = ctx.args.destination
     into_dir = ctx.args.into
 
-    downloads = [
-        _Download(
-            remote_path_str,
-            resolve_remote_path(CONFIG_DATA_CLIENT, relative_path=remote_path_str),
-            local_destination_for(
+    failed = 0
+    downloads: list[_Download] = []
+    for remote_path_str in dict.fromkeys(ctx.args.remote_paths):
+        remote_path = resolve_remote_path(
+            CONFIG_DATA_CLIENT, relative_path=remote_path_str
+        )
+        try:
+            destination = local_destination_for(
                 remote_path_str,
                 into_dir=into_dir,
                 explicit_destination=explicit_destination,
                 names_remote=names_remote(CONFIG_DATA_CLIENT, remote_path_str),
-            ),
-            destination_is_item(
+            )
+        except ValueError as e:
+            # A name no local file can have: that item alone fails
+            print_error(str(e))
+            record_transfer(
+                remote_path,
+                "",
+                None,
+                "failed",
+                error=str(e),
+                match=remote_path.rstrip("/"),
+            )
+            failed += 1
+            continue
+        downloads.append(
+            _Download(
                 remote_path_str,
-                into_dir=into_dir,
-                explicit_destination=explicit_destination,
-            ),
+                remote_path,
+                destination,
+                destination_is_item(
+                    remote_path_str,
+                    into_dir=into_dir,
+                    explicit_destination=explicit_destination,
+                ),
+            )
         )
-        for remote_path_str in dict.fromkeys(ctx.args.remote_paths)
-    ]
     unchecked = _refuse_unsafe_syncs(downloads, explicit_destination) if sync else {}
 
     # Shared by every argument, so that a flattened file landing on one an
     # earlier argument fetched is warned of, as one within an argument is
     flattened: dict[str, str] = {}
-    failed = 0
     for download in downloads:
         if (error := unchecked.get(download.argument)) is not None:
             # Never synced unchecked: its listing could succeed the second time

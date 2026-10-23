@@ -1,0 +1,65 @@
+# The whole unit suite on Windows, with every extra installed, as 'make tox'
+# runs it elsewhere: on every push to next-version, and by hand with the
+# Actions tab's "Run workflow", which GitHub offers only once the workflow is
+# on the default branch, 'main'. Advisory: no branch requires it.
+name: Windows tests
+
+on:
+  push:
+    branches: [next-version]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # uv installs several times faster than pip, and keeps its cache
+      # between runs, keyed on pyproject.toml
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+
+      - name: Install the CLI with every extra
+        run: uv pip install --system -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+
+      # The shell completion tests run under each PowerShell present: both
+      # must be, Windows PowerShell 5.1 (on Windows alone) and PowerShell 7, or
+      # they would quietly cover one alone
+      - name: The PowerShells
+        run: |
+          powershell -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+
+      # rclone, downloaded by rclone_api as 'yd data list --upgrade-rclone'
+      # downloads it, so the data client tests run rather than skip; checked
+      # found as they look for it
+      - name: rclone
+        run: |
+          python -c "from rclone_api import Rclone; Rclone.upgrade_rclone()"
+          python -c "from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version_line; found = find_rclone(); assert found, 'rclone not found'; print(*found, rclone_version_line(found[0]))"
+
+      # A test still running after 5 minutes fails with its stack in its report
+      # (pytest-timeout), which pytest-xdist passes on, so a hang names the
+      # test and where it is, and the run goes on
+      - name: The unit tests
+        run: >
+          python -m pytest -n auto -rs -p no:cacheprovider
+          --timeout=300 --junitxml=windows-tests.xml
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-tests
+          path: windows-tests.xml

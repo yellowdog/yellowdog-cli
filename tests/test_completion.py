@@ -1,8 +1,9 @@
 """
 Shell completion: utils/completion.py's complete() over the registries, the
 'yd completion --complete' protocol the stubs speak, the stubs themselves
-(run in bash, zsh and fish where those are installed, parsed by PowerShell
-where it is), and the registry's Completes markings held to the metavars.
+(run in bash, zsh, fish and PowerShell where those are installed: fish's
+'complete -C' and PowerShell's TabExpansion2 completing a command line as a
+Tab would), and the registry's Completes markings held to the metavars.
 """
 
 import os
@@ -761,6 +762,10 @@ def _run_shell(shell: str, script: str, tmp_path) -> str:
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="on Windows 'bash' may be WSL's launcher with no Linux installed",
+)
 class TestBashScript:
     @pytest.mark.parametrize("names", [False, True])
     def test_the_script_parses(self, tmp_path, names):
@@ -881,10 +886,17 @@ class TestFishScript:
         ]
 
 
-@pytest.mark.skipif(shutil.which("pwsh") is None, reason="needs PowerShell (pwsh)")
+# Each PowerShell present: PowerShell 7 ('pwsh', anywhere) and Windows
+# PowerShell 5.1 ('powershell', Windows alone), which drops an empty argument
+# passed to a program; the Windows workflow (.github/workflows) runs both
+POWERSHELLS = [shell for shell in ("pwsh", "powershell") if shutil.which(shell)]
+
+
+@pytest.mark.skipif(not POWERSHELLS, reason="needs PowerShell (pwsh or powershell)")
+@pytest.mark.parametrize("powershell", POWERSHELLS)
 class TestPowerShellScript:
     @pytest.mark.parametrize("names", [False, True])
-    def test_the_script_parses(self, tmp_path, names):
+    def test_the_script_parses(self, tmp_path, powershell, names):
         stub = tmp_path / "yd.ps1"
         stub.write_text(
             yd_completion.completion_script("powershell", names=names), encoding="utf-8"
@@ -895,9 +907,75 @@ class TestPowerShellScript:
             " if ($errors) { $errors; exit 1 }"
         )
         result = subprocess.run(
-            ["pwsh", "-NoProfile", "-Command", check], capture_output=True, text=True
+            [powershell, "-NoProfile", "-Command", check],
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+    @pytest.mark.parametrize("names", [False, True])
+    def test_the_script_completes(self, tmp_path, powershell, names):
+        # PowerShell's own completion of a command line (TabExpansion2), so
+        # its tokenising and path completion are the real ones; each match
+        # with its tooltip where that says more than the match itself
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "specs" / "wr.json").write_text("{}", encoding="utf-8")
+        lines = [
+            "yd wr s",
+            "yd wr cancel --sort=cr",
+            "yd wr submit specs/w",
+            "yd schema --write sp",
+            "yd-submit --f",
+        ]
+        quoted = ", ".join(f"'{line}'" for line in lines)
+        script = "\n".join(
+            [
+                f"function yd {{ & '{sys.executable}' -m yellowdog_cli.yd @args }}",
+                yd_completion.completion_script("powershell", names=names),
+                f"foreach ($line in @({quoted})) {{",
+                "    '[' + $line + ']'",
+                "    $found = TabExpansion2 -inputScript $line"
+                " -cursorColumn $line.Length",
+                "    foreach ($match in $found.CompletionMatches) {",
+                "        $text = $match.CompletionText -replace '\\\\', '/'",
+                "        if ($match.ResultType -like 'Parameter*' -and"
+                " $match.ToolTip -ne $match.CompletionText) {",
+                '            $text + "`t" + $match.ToolTip',
+                "        } else { $text }",
+                "    }",
+                "}",
+                "'[yd wr ]'",
+                "(TabExpansion2 -inputScript 'yd wr ' -cursorColumn 6)"
+                ".CompletionMatches.Count",
+            ]
+        )
+        path = tmp_path / "check.ps1"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-File", str(path)],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines() == [
+            "[yd wr s]",
+            "submit\tSubmit a Work Requirement",
+            "start\tStart held (paused) Work Requirements",
+            "show\tShow the details of Work Requirements",
+            "[yd wr cancel --sort=cr]",
+            "--sort=created",
+            "[yd wr submit specs/w]",
+            "./specs/wr.json",
+            "[yd schema --write sp]",
+            "./specs",
+            # A deprecated command has no completion
+            "[yd-submit --f]",
+            # An empty current word, which PowerShell 5.1 would drop
+            "[yd wr ]",
+            str(len(next(n for n in NOUNS if n.name == "workrequirement").verbs)),
+        ]
 
 
 class TestMarkings:

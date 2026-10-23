@@ -21,6 +21,7 @@ from yellowdog_cli.utils.command_registry import COMMANDS, OTHER_COMMANDS
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.noun_registry import NOUNS, REPLACED_BY_VERBS, Noun
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import DEFAULT_THEME, JSON_INDENT
 from yellowdog_cli.utils.printing import print_json_text
@@ -186,6 +187,7 @@ def _deprecation_note() -> str:
 
 
 def main():
+    use_utf8_output()
     warn_if_deprecated_script("yd-help")
     parser = ArgumentParser(
         prog=selected_prog("yd-help"),

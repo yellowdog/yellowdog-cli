@@ -1408,7 +1408,8 @@ class TestDataClientUnderTest:
         (tmp_path / "abs" / "pfx").mkdir(parents=True)
         config = (
             f'[dataClient]\nremote = "loc,type=local"\n'
-            f'bucket = "{tmp_path / "abs"}"\nprefix = "pfx"\n'
+            # A literal string, so a Windows path's backslashes are not escapes
+            f"bucket = '{tmp_path / 'abs'}'\nprefix = \"pfx\"\n"
         )
         # Run from elsewhere: the bucket must not be taken relative to it
         (tmp_path / "elsewhere").mkdir()
@@ -1417,7 +1418,8 @@ class TestDataClientUnderTest:
         assert row["status"] == "OK", row
         assert (
             row["detail"]
-            == f"loc:{tmp_path / 'abs' / 'pfx'} reachable (profile [dataClient])"
+            # The prefix joined with '/', which rclone takes on Windows too
+            == f"loc:{tmp_path / 'abs'}/pfx reachable (profile [dataClient])"
         )
 
     def test_a_missing_bucket_fails(self, tmp_path):
@@ -1702,7 +1704,9 @@ class TestShellCompletion:
     @pytest.fixture
     def home(self, tmp_path, monkeypatch):
         monkeypatch.setattr(dc, "_on_windows", lambda: False)
+        # Python reads the home directory from USERPROFILE on Windows
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         monkeypatch.delenv("ZDOTDIR", raising=False)
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         return tmp_path

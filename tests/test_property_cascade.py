@@ -182,8 +182,10 @@ def _dry_run(
     """
     (tmp_path / "config.toml").write_text(config, encoding="utf-8")
     (tmp_path / "wr.json").write_text(json.dumps(specification), encoding="utf-8")
+    # The directory given to the run, not 'cd' in the command, which in
+    # Windows' cmd changes no drive
     result = shell(
-        f"cd {tmp_path} && yd workrequirement submit -c config.toml wr.json --dry-run"
+        "yd workrequirement submit -c config.toml wr.json --dry-run", cwd=tmp_path
     )
     assert result.exit_code == 0, result.stdout + result.stderr
     out = result.stdout

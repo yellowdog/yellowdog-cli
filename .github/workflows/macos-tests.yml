@@ -1,0 +1,80 @@
+# The whole unit suite on macOS (Apple silicon), under the oldest and newest
+# supported Python, on a clean machine with uv's own Python builds: on every
+# push to next-version, and by hand with the Actions tab's "Run workflow",
+# which GitHub offers only once the workflow is on the default branch,
+# 'main'. The versions between are left to 'make tox', run on macOS before
+# each release. Advisory: no branch requires it.
+name: macOS tests
+
+on:
+  push:
+    branches: [next-version]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (Python ${{ matrix.python }})
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      # One version failing does not stop the other, whose result says
+      # whether the failure is that version's alone
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.15"]
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv's cache kept between successful runs, one per Python version
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          cache-suffix: py${{ matrix.python }}
+
+      - name: Install the CLI with every extra
+        run: |
+          uv venv --python ${{ matrix.python }} .venv
+          VIRTUAL_ENV=.venv uv pip install -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+
+      # An unusable Qt does not fail the Commander tests, it skips them, and a
+      # run testing a few hundred fewer things than it should reads as a pass
+      - name: Qt can be used
+        run: |
+          QT_QPA_PLATFORM=offscreen .venv/bin/python -c '
+          from PyQt6.QtWidgets import QApplication, QListWidget
+          app = QApplication([])
+          listing = QListWidget()
+          listing.addItem("row")
+          listing.show()
+          assert listing.viewport().height() > 0, "a shown list has no visible height"
+          print("Qt is usable offscreen")
+          '
+
+      # rclone, downloaded by rclone_api as 'yd data list --upgrade-rclone'
+      # downloads it, so the data client tests run rather than skip; checked
+      # found as they look for it
+      - name: rclone
+        run: |
+          .venv/bin/python -c "from rclone_api import Rclone; Rclone.upgrade_rclone()"
+          .venv/bin/python -c "from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version_line; found = find_rclone(); assert found, 'rclone not found'; print(*found, rclone_version_line(found[0]))"
+
+      # In the activated environment, since tests run the yd-* commands as
+      # programs; a test still running after 5 minutes fails with its stack in
+      # its report (pytest-timeout), which pytest-xdist passes on, so a hang
+      # names the test and where it is, and the run goes on
+      - name: The unit tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest -n auto -rs -p no:cacheprovider \
+            --timeout=300 --junitxml=macos-tests.xml
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-tests-py${{ matrix.python }}
+          path: macos-tests.xml

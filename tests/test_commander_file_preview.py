@@ -27,7 +27,7 @@ qt_guard.require_qt()
 # set in pyproject.toml's addopts) keeps them from overlapping.
 pytestmark = pytest.mark.xdist_group("qt_file_dialog_settings")
 
-from os.path import realpath
+from os.path import normpath, realpath
 from pathlib import Path
 from time import monotonic
 
@@ -721,7 +721,8 @@ def test_the_file_the_user_opens_is_handed_to_the_default_application(
 
     window._open_file_viewer(str(tmp_path))
 
-    assert opened == [str(tmp_path / "task_2.log")]
+    # Qt gives '/' separators, which Windows takes as well as its own
+    assert [normpath(path) for path in opened] == [normpath(tmp_path / "task_2.log")]
 
 
 def test_dismissing_the_dialog_opens_nothing(window, tmp_path, monkeypatch):
@@ -814,7 +815,7 @@ def test_the_file_selector_returns_the_file_the_user_selected(
 
     chosen = window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
-    assert chosen == str(tmp_path / "wr.jsonnet")
+    assert normpath(chosen) == normpath(tmp_path / "wr.jsonnet")
 
 
 def test_the_file_selector_accepts_with_select_not_open(window, tmp_path, monkeypatch):
@@ -881,7 +882,7 @@ def test_the_save_dialog_has_no_preview_and_still_suggests_its_name(
 
     assert seen["pane"] is None, "the save dialog should carry no preview pane"
     assert seen["prefilled"] == suggested.name
-    assert chosen == str(suggested)
+    assert normpath(chosen) == normpath(suggested)
 
 
 def test_the_pane_opens_at_its_default_width_and_cannot_be_dragged_shut(
@@ -1169,7 +1170,7 @@ def test_a_file_inside_an_expanded_directory_is_opened_by_its_full_path(
     drive_file_dialog(window, monkeypatch, interact)
     window._open_file_viewer(str(tmp_path))
 
-    assert opened == [realpath(str(output))]
+    assert [normpath(path) for path in opened] == [normpath(realpath(str(output)))]
 
 
 def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(

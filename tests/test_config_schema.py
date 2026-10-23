@@ -379,8 +379,15 @@ def _run(command: list[str], config: str, cwd) -> subprocess.CompletedProcess:
     (cwd / "config.toml").write_text(config)
     env = {k: v for k, v in os.environ.items() if not k.startswith("YD_")}
     env.update({"YD_KEY": "a-key", "YD_SECRET": "a-secret"})
+    # yd writes UTF-8 to a pipe on Windows too, where text=True alone would
+    # decode in the Windows code page
     return subprocess.run(
-        command, capture_output=True, text=True, env=env, cwd=cwd, timeout=120
+        command,
+        capture_output=True,
+        encoding="utf-8",
+        env=env,
+        cwd=cwd,
+        timeout=120,
     )
 
 

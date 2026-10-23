@@ -1,0 +1,71 @@
+# The whole unit suite on Linux, on each supported Python, as 'make tox' runs
+# it: on every push to next-version, and by hand with the Actions tab's "Run
+# workflow", which GitHub offers only once the workflow is on the default
+# branch, 'main'. Advisory: no branch requires it.
+#
+# Each machine is set up by setup-ubuntu.sh, so this also tests that script:
+# the system packages it installs, its virtual environment with every extra,
+# and its check that Qt can be used, which fails rather than letting the
+# Commander tests skip. The 3.14 job also runs 'make pyright', which needs
+# the script's libatomic.
+name: Linux tests
+
+on:
+  push:
+    branches: [next-version]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      # One version failing does not stop the others, whose results say
+      # whether the failure is that version's alone
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv for setup-ubuntu.sh, which uses one already on PATH, with its cache
+      # kept between successful runs, one per Python version
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          cache-suffix: py${{ matrix.python }}
+
+      - name: Set up the machine with setup-ubuntu.sh
+        run: >
+          ./setup-ubuntu.sh --python ${{ matrix.python }} --no-test
+          ${{ matrix.python == '3.14' && '--pyright' || '' }}
+
+      # rclone, downloaded by rclone_api as 'yd data list --upgrade-rclone'
+      # downloads it, so the data client tests run rather than skip; checked
+      # found as they look for it
+      - name: rclone
+        run: |
+          .venv/bin/python -c "from rclone_api import Rclone; Rclone.upgrade_rclone()"
+          .venv/bin/python -c "from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version_line; found = find_rclone(); assert found, 'rclone not found'; print(*found, rclone_version_line(found[0]))"
+
+      # In the activated environment, since tests run the yd-* commands as
+      # programs; a test still running after 5 minutes fails with its stack in
+      # its report (pytest-timeout), which pytest-xdist passes on, so a hang
+      # names the test and where it is, and the run goes on
+      - name: The unit tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest -n auto -rs -p no:cacheprovider \
+            --timeout=300 --junitxml=linux-tests.xml
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tests-py${{ matrix.python }}
+          path: linux-tests.xml

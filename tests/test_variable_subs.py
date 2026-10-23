@@ -1998,7 +1998,7 @@ class TestStringResolution:
             str(path.relative_to(package))
             for path in package.rglob("*.py")
             if path.name not in ("variable_substitution.py", "file_substitution.py")
-            and "process_variable_substitutions(" in path.read_text()
+            and "process_variable_substitutions(" in path.read_text(encoding="utf-8")
         ]
         assert callers == []
 

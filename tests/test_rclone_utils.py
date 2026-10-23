@@ -2,6 +2,7 @@
 Unit tests for yellowdog_cli.utils.dataclient.rclone
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -365,7 +366,11 @@ class TestInlineConfigIsKeptPrivate:
         path = rclone_module._private_config_file(self.INLINE)
         try:
             assert path.read_text(encoding="utf-8") == self.INLINE
-            assert path.stat().st_mode & 0o777 == 0o600
+            # Windows has no POSIX mode bits (it reports 0o666 whatever the
+            # file's permissions): there the file is private by being in the
+            # user's own temporary directory, which the next check holds
+            if sys.platform != "win32":
+                assert path.stat().st_mode & 0o777 == 0o600
             assert tmp_path not in path.parents
         finally:
             path.unlink()

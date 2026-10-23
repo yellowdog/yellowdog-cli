@@ -18,6 +18,7 @@ from yellowdog_cli._version import __version__ as cli_version
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.command_runner import warn_if_deprecated
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_error,
@@ -130,6 +131,7 @@ def _check(directory: str) -> int:
 
 
 def main() -> None:
+    use_utf8_output()
     configure_output(ARGS_PARSER)
     warn_if_deprecated(ARGS_PARSER)
     try:

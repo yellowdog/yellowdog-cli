@@ -108,7 +108,10 @@ def test_undecodable_output_is_replaced_not_raised(tmp_path):
 
 def test_a_missing_executable_is_a_run_that_failed(tmp_path):
     result = run(["/no/such/yd-command"], str(tmp_path), _clean_env(), 10)
-    assert result.exit_code != 0 and "No such file" in result.stderr
+    # The operating system's own words: 'No such file or directory' on POSIX,
+    # 'The system cannot find the file specified' on Windows
+    assert result.exit_code != 0
+    assert "No such file" in result.stderr or "cannot find the file" in result.stderr
 
 
 class TestEventDocuments:

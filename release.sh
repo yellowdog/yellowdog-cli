@@ -7,9 +7,11 @@
 #
 # Must be run from the root of the repository on the 'next-version' branch
 # with a clean working tree, and with this release's notes under
-# '## Unreleased' in CHANGELOG.md, which the version bump stamps with the
-# version and date; they are the release tag's message, and are printed at
-# the end for the release ticket. It asks whether 'make tox' has passed and
+# '## Unreleased' in CHANGELOG.md, which the version bump replaces with the
+# version and date, so that 'main' never carries '## Unreleased'; they are
+# the release tag's message, and are printed at the end for the release
+# ticket. Once 'main' is pushed, a fresh, empty '## Unreleased' is committed
+# to 'next-version' alone, for the next release's notes. It asks whether 'make tox' has passed and
 # whether to run the tests, carrying on without either if told to, and
 # refuses to release unsigned commits, which 'main' requires to be signed.
 
@@ -182,17 +184,19 @@ if ! $DRY_RUN; then
     grep "__version__" "$VERSION_FILE"
 fi
 
-# The notes under '## Unreleased' become this version's, and a fresh,
-# empty '## Unreleased' takes their place
+# The notes under '## Unreleased' become this version's: the heading is
+# replaced, so that what is merged to 'main' has no '## Unreleased' (a fresh
+# one goes back on 'next-version' after the release)
 RELEASE_HEADING="$NEW_VERSION — $(date +%Y-%m-%d)"
 echo
-echo "--- Stamping $CHANGELOG: '## $RELEASE_HEADING' ---"
+echo "--- Stamping $CHANGELOG: '## Unreleased' becomes '## $RELEASE_HEADING' ---"
 if ! $DRY_RUN; then
     awk -v heading="## $RELEASE_HEADING" '
-        !done && $0 == "## Unreleased" { print; print ""; print heading; done = 1; next }
+        !done && $0 == "## Unreleased" { print heading; done = 1; next }
         { print }
     ' "$CHANGELOG" > "$CHANGELOG.new"
     mv "$CHANGELOG.new" "$CHANGELOG"
+    grep -qx "## Unreleased" "$CHANGELOG" && _die "'## Unreleased' is still in $CHANGELOG after stamping"
 fi
 
 # This version's notes, for the tag's message and the release ticket
@@ -273,6 +277,20 @@ _run make pypi_upload
 echo
 echo "--- Returning to next-version ---"
 _run git checkout next-version
+
+# A fresh, empty '## Unreleased' for the next release's notes, on
+# 'next-version' alone: ahead of the first version heading
+echo
+echo "--- Opening '## Unreleased' in $CHANGELOG on next-version ---"
+if ! $DRY_RUN; then
+    awk '
+        !done && /^## / { print "## Unreleased"; print ""; done = 1 }
+        { print }
+    ' "$CHANGELOG" > "$CHANGELOG.new"
+    mv "$CHANGELOG.new" "$CHANGELOG"
+fi
+_run git add "$CHANGELOG"
+_run git commit -m "CHANGELOG: an empty '## Unreleased' for the next release's notes"
 _run git push origin next-version
 
 # ---------------------------------------------------------------------------

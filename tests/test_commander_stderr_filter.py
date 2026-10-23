@@ -31,7 +31,9 @@ def _stderr_of(body: str) -> str:
         timeout=30,
         check=False,
     )
-    return result.stderr.decode("utf-8")
+    # Windows' text streams end a printed line with '\r\n'; the filter's
+    # business is which lines arrive, not how they end
+    return result.stderr.decode("utf-8").replace("\r\n", "\n")
 
 
 def test_the_tsm_line_is_dropped_and_the_rest_kept():

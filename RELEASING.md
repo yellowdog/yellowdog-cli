@@ -18,7 +18,7 @@ feature/xyz   ───────────────●──────
 
 ## Release Notes
 
-The release notes are kept in `CHANGELOG.md`, written as the changes land rather than on the day: a user-visible change adds its line under `## Unreleased`, in the same commit as the change. At release, `## Unreleased` becomes `## X.Y.Z — YYYY-MM-DD` and a fresh, empty `## Unreleased` takes its place; that version's notes are the release tag's message, and are pasted into the release ticket. `release.sh` does all of this, and refuses to release with nothing under `## Unreleased`.
+The release notes are kept in `CHANGELOG.md`, written as the changes land rather than on the day: a user-visible change adds its line under `## Unreleased`, in the same commit as the change. `## Unreleased` belongs to work in progress, on `next-version` and the branches merged into it, and never reaches `main`: at release, its heading is replaced by `## X.Y.Z — YYYY-MM-DD`, which is what is merged to `main`, and once `main` is pushed a fresh, empty `## Unreleased` is committed to `next-version` for the next release's notes. That version's notes are the release tag's message, and are pasted into the release ticket. `release.sh` does all of this, and refuses to release with nothing under `## Unreleased`.
 
 ## Quick Release (Automated)
 
@@ -55,7 +55,7 @@ Edit `yellowdog_cli/_version.py`:
 __version__ = "X.Y.Z"
 ```
 
-In `CHANGELOG.md`, add `## X.Y.Z — YYYY-MM-DD` under `## Unreleased`, so that the notes become this version's and `## Unreleased` is left empty.
+In `CHANGELOG.md`, replace the `## Unreleased` heading with `## X.Y.Z — YYYY-MM-DD`, so that the notes become this version's and no `## Unreleased` is merged to `main`.
 
 ### 3. Format, check, and test
 
@@ -94,10 +94,17 @@ make pypi_upload
 
 Requires a `~/.pypirc` entry named `yellowdog-cli` with the appropriate API token.
 
-### 8. Return to `next-version`
+### 8. Return to `next-version`, and open `## Unreleased` there
 
 ```shell
 git checkout next-version
+```
+
+Add an empty `## Unreleased` heading to `CHANGELOG.md` above the version just released, then:
+
+```shell
+git add CHANGELOG.md
+git commit -m "CHANGELOG: an empty '## Unreleased' for the next release's notes"
 git push origin next-version
 ```
 

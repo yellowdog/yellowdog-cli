@@ -120,7 +120,9 @@ def run(monkeypatch, capsys):
     def _run(module, main_module=None, confirm=True, client=None, also=(), **values):
         args = MagicMock(**{**_DEFAULTS, **values})
         client = client or MagicMock()
-        config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
+        config = MagicMock(
+            namespace="ns", name_tag="tag", url="https://u", use_pac=False
+        )
         for target in (
             module,
             results_module,
@@ -2899,6 +2901,24 @@ class TestDownload:
                 "match": "loc:remote/a.txt",
             }
         ]
+        assert (remote / "got" / "a.txt").read_text() == "hello"
+
+    def test_on_windows_an_item_no_file_can_be_named_fails_alone(
+        self, remote, run_dc, monkeypatch
+    ):
+        # download.py's own platform alone, so rclone is still found as here
+        monkeypatch.setattr(yd_download, "sys", SimpleNamespace(platform="win32"))
+        out, _, code = run_dc(
+            yd_download,
+            remote_paths=["loc:remote/x:y.txt", "loc:remote/a.txt"],
+            into="got",
+        )
+        assert code == 1
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/x:y.txt", "failed"),
+            ("loc:remote/a.txt", "downloaded"),
+        ]
+        assert "cannot be a file name on Windows" in out[0]["error"]
         assert (remote / "got" / "a.txt").read_text() == "hello"
 
     def test_a_file_dry_run_names_the_same_destination(self, remote, run_dc):

@@ -717,7 +717,8 @@ class TestLateSubstitutionPasses:
             str(path.relative_to(package))
             for path in package.rglob("*.py")
             if path.name != "variable_substitution.py"
-            and "process_variable_substitutions_insitu" in path.read_text()
+            and "process_variable_substitutions_insitu"
+            in path.read_text(encoding="utf-8")
         ]
         assert callers == []
 

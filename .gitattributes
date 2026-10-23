@@ -1,0 +1,8 @@
+# Unix line endings wherever these are checked out, Windows included: each is
+# run by a Unix shell (on a Linux instance, in Git Bash or WSL), which a
+# carriage return breaks, and the live tests pin the Agent installer's checksum
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+*.fish text eol=lf
+scripts/pre-push text eol=lf

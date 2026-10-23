@@ -232,11 +232,22 @@ class WindowBase(QMainWindow):
         available = (
             button.width() - BUTTON_TEXT_MARGIN - metrics.horizontalAdvance(prefix)
         )
-        if available > 0:
-            name = metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, available)
-        else:  # not yet laid out, so fall back to a character cap
-            name = elide_middle(name)
-        button.setText(f"{prefix}{name}")
+        if available <= 0:  # not yet laid out, so fall back to a character cap
+            button.setText(f"{prefix}{elide_middle(name)}")
+        else:
+            # BUTTON_TEXT_MARGIN is a first guess at the style's padding, which
+            # some styles exceed (Fusion, on Linux): what the button then asks
+            # for beyond its width comes off the name, so the label never
+            # widens the column
+            for _ in range(3):
+                elided = metrics.elidedText(
+                    name, Qt.TextElideMode.ElideMiddle, available
+                )
+                button.setText(f"{prefix}{elided}")
+                excess = button.sizeHint().width() - button.width()
+                if excess <= 0:
+                    break
+                available -= excess
         button.setToolTip(abspath(file))
 
     def _scope_phrase(self, match_word: str) -> str:

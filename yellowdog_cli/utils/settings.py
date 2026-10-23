@@ -87,3 +87,7 @@ MIB_PER_GIB = 1024
 # The sub-region the Cloud Info service gives a price that applies to the
 # whole region, as every on-demand price does
 CLOUD_INFO_NO_SUB_REGION = "N/A"
+
+# The characters no Windows file name may hold, besides the path separators:
+# a ':' would even make 'results/a:b.txt' the drive-relative path 'a:b.txt'
+WINDOWS_RESERVED_CHARACTERS = '<>:"|?*'

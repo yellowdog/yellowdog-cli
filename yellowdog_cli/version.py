@@ -29,6 +29,7 @@ from yellowdog_cli.utils.dataclient.rclone_version import (
     rclone_version as _rclone_version,
 )
 from yellowdog_cli.utils.invocation import selected_prog
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import JSON_INDENT
 from yellowdog_cli.utils.printing import (
@@ -93,6 +94,7 @@ def _mcp_version() -> str:
 
 
 def main():
+    use_utf8_output()
     parser = ArgumentParser(
         prog=selected_prog("yd-version"),
         description="Report YellowDog CLI and related version numbers.",

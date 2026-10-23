@@ -673,7 +673,8 @@ def test_an_upload_to_an_absolute_local_bucket_lands_there(tmp_path, monkeypatch
 
     assert upload_file(config, source, resolve_remote_path(config, filename="a.txt"))
     assert (bucket / "p" / "a.txt").read_text(encoding="utf-8") == "a"
-    assert not (elsewhere / str(bucket).lstrip("/")).exists()
+    # Nothing written relative to the working directory instead
+    assert not any(elsewhere.iterdir())
 
 
 # What a bucket-based remote answers 'lsjson --stat' with for a path that is

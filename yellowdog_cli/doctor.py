@@ -17,6 +17,7 @@ from rich.markup import escape
 from yellowdog_cli.utils.args import ARGS_PARSER
 from yellowdog_cli.utils.command_runner import warn_if_deprecated
 from yellowdog_cli.utils.doctor_checks import Check, Context, Result, Status, run_checks
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, print_json, print_simple
 
@@ -155,6 +156,7 @@ def _keep_logging_off_stdout() -> None:
 
 
 def main() -> None:
+    use_utf8_output()
     _keep_logging_off_stdout()
     timeout = ARGS_PARSER.timeout
     assert timeout is not None  # the option has a default; argparse refuses < 1
