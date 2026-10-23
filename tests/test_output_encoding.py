@@ -12,8 +12,12 @@ from importlib import import_module
 from inspect import getsource
 from pathlib import Path
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # Python 3.10: tomli, which the CLI already depends on
+    import tomli as tomllib
+
 import pytest
-import tomllib
 
 from yellowdog_cli.utils import output_encoding
 from yellowdog_cli.utils.output_encoding import use_utf8_output
