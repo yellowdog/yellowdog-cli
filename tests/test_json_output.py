@@ -120,7 +120,9 @@ def run(monkeypatch, capsys):
     def _run(module, main_module=None, confirm=True, client=None, also=(), **values):
         args = MagicMock(**{**_DEFAULTS, **values})
         client = client or MagicMock()
-        config = MagicMock(namespace="ns", name_tag="tag", url="https://u")
+        config = MagicMock(
+            namespace="ns", name_tag="tag", url="https://u", use_pac=False
+        )
         for target in (
             module,
             results_module,

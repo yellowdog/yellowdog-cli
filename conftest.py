@@ -177,6 +177,28 @@ def _output_settings_restored():
 
 
 @pytest.fixture(autouse=True)
+def _no_real_proxy_auto_configuration(monkeypatch):
+    """
+    Fail a test that reaches pypac's real proxy auto-configuration, which
+    consults the system's proxy settings and the network (WPAD) and on a CI
+    runner can wait minutes on each call: it means the test's fake
+    configuration left 'use_pac' unset, which a MagicMock reads as true. A
+    test about PAC patches pac_context_for_url itself, inside the test, so
+    after this.
+    """
+    import pypac
+
+    def refuse(url, *args, **kwargs):
+        raise AssertionError(
+            f"proxy auto-configuration was attempted for {url!r}: give the"
+            " test's configuration use_pac=False, or patch"
+            " pypac.pac_context_for_url in a test about PAC"
+        )
+
+    monkeypatch.setattr(pypac, "pac_context_for_url", refuse)
+
+
+@pytest.fixture(autouse=True)
 def _no_config_snapshot(monkeypatch):
     """
     Start every test with no configuration file snapshot (load_config's

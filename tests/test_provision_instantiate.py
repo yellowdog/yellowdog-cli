@@ -110,7 +110,7 @@ def run(monkeypatch, capsys):
         monkeypatch.setattr(
             wrapper_module,
             "CONFIG_COMMON",
-            MagicMock(namespace="ns", name_tag="tag", url="https://u"),
+            MagicMock(namespace="ns", name_tag="tag", url="https://u", use_pac=False),
         )
         monkeypatch.setattr(module, "CONFIG_WP", config_wp)
         monkeypatch.setattr(

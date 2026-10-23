@@ -143,7 +143,7 @@ class TestRealPathRecordsThroughARealParse:
         monkeypatch.setattr(
             wrapper_module,
             "CONFIG_COMMON",
-            MagicMock(namespace="ns", name_tag="tag", url="https://u"),
+            MagicMock(namespace="ns", name_tag="tag", url="https://u", use_pac=False),
         )
         # A literal name/ID with no glob chars takes the exact-name path,
         # which looks the Work Requirement up and records a failure when
