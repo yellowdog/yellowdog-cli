@@ -911,7 +911,7 @@ def test_remote_basename_splits_off_the_remote_first(remote_path, name):
 class TestListingsReadModificationTimesOnlyWhereShown:
     """
     rclone reads an S3 object's modification time with a request of its own,
-    so a listing asks for it only where 'yd data ls' shows it.
+    so a listing asks for it only where 'yd data list' shows it.
     """
 
     def _calls(self, monkeypatch, listing=None) -> list[list[str]]:

@@ -108,7 +108,7 @@ NOT_EXERCISED: dict[str, str] = {
 }
 
 DATA_COMMANDS = frozenset(
-    f"yd data {verb}" for verb in ("upload", "download", "ls", "delete", "copy")
+    f"yd data {verb}" for verb in ("upload", "download", "list", "delete", "copy")
 )
 
 

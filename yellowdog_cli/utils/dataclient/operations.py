@@ -286,7 +286,7 @@ def _lsjson(
     a file itself), raising if it cannot be listed. Without 'modtime' the
     entries have no 'ModTime': reading it costs a request per object on
     S3, which a directory of 100,000 objects does not finish in 30 minutes,
-    so only a listing that shows it ('yd data ls') asks for it.
+    so only a listing that shows it ('yd data list') asks for it.
     """
     args = ["lsjson", "--no-mimetype", *_modtime_args(modtime)]
     if recursive:

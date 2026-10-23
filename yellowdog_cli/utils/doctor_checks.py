@@ -376,7 +376,7 @@ def check_rclone(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             "not found",
-            "the yd data commands need it; run 'yd data ls --upgrade-rclone'"
+            "the yd data commands need it; run 'yd data list --upgrade-rclone'"
             " or install rclone on PATH",
         )
     path, source = found
