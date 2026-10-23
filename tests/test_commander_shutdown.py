@@ -11,6 +11,7 @@ well before it would finish on its own.
 """
 
 import os
+import sys
 
 import pytest
 import qt_guard
@@ -28,11 +29,38 @@ SLEEP_SECONDS = "30"  # long enough that finishing on its own would be a bug
 
 
 def alive(pid: int) -> bool:
+    """
+    Whether a process is still running. On Windows os.kill(pid, 0) is no
+    probe: it terminates the process, with exit code 0, so the process is
+    asked for its exit code instead (STILL_ACTIVE while it runs).
+    """
+    if sys.platform == "win32":
+        return _alive_on_windows(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     return True
+
+
+def _alive_on_windows(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        return False  # No such process (or none any more)
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 @pytest.fixture

@@ -20,6 +20,7 @@ from yellowdog_cli.utils.load_config import (
     warn_of_config_violations,
     warn_of_undefined_config_variables,
 )
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_debug,
@@ -49,6 +50,7 @@ def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
     a broken configuration is reported, and exits, before the command starts.
     A test's stand-in is left alone.
     """
+    use_utf8_output()
     prepare(args)
     configure_output(args)
     warn_if_deprecated(args)

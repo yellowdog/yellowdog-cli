@@ -21,6 +21,7 @@ from yellowdog_cli.utils.compact_json import (
     IntAsWritten,
 )
 from yellowdog_cli.utils.invocation import selected_prog
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 
@@ -57,6 +58,7 @@ def _error(message: str) -> None:
 
 
 def main():
+    use_utf8_output()
     warn_if_deprecated_script("yd-format-json")
     parser = ArgumentParser(
         prog=selected_prog("yd-format-json"),

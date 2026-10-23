@@ -78,6 +78,7 @@ yellowdog_cli/
     ├── args.py                  # CLIParser and ARGS_PARSER (lazy): parses via the registry, runs validators; the properties over the parsed values
     ├── config_types.py          # Configuration dataclasses
     ├── load_config.py           # Config loading on first use via ensure_config_loaded(args); importing it reads nothing
+    ├── output_encoding.py       # use_utf8_output(): on Windows, stdout and stderr to a pipe or a file switched to UTF-8 (a console is already); every entry point calls it before printing (prepare_run() for the wrapped commands, the first statement of yd.py's and each standalone command's main()), held by tests/test_output_encoding.py; stdlib only
     ├── output_settings.py       # OUTPUT: how output looks and asks; libraries read it, never ARGS_PARSER
     ├── settings.py              # Config/environment constants and anything without a better home
     ├── limits.py                # Sizes, retries, timeouts, concurrency; imports nothing. PLATFORM_READ_TIMEOUT, the default of [common] readTimeout (ConfigCommon.read_timeout, None for 0: no limit), which sets the SDK client's ServicesSchema.readTimeout and, through ConfigCommon.request_timeout, the direct requests' read; yd-doctor's and the Tab lookups' clients take their own shorter ones

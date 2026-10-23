@@ -24,6 +24,7 @@ from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
 from yellowdog_cli.utils.invocation import selected_prog
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.printing import print_json_text
@@ -47,6 +48,7 @@ def _as_json(json_text: str) -> str:
 
 
 def main():
+    use_utf8_output()
     parser = ArgumentParser(
         prog=selected_prog("yd-jsonnet2json"),
         description=(

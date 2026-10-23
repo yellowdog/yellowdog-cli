@@ -14,6 +14,7 @@ from yellowdog_cli.utils.command_registry import command_module
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.invocation import select_command
 from yellowdog_cli.utils.noun_dispatch import run_noun
+from yellowdog_cli.utils.output_encoding import use_utf8_output
 from yellowdog_cli.utils.top_level import TOP_LEVEL, Kind
 
 _USAGE = "usage: yd <command> [<verb>] [options]"
@@ -36,6 +37,7 @@ def _listing(stderr: bool) -> None:
 
 
 def main() -> None:
+    use_utf8_output()
     arguments = sys.argv[1:]
     if not arguments:
         _listing(stderr=True)
