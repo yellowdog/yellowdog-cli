@@ -73,16 +73,17 @@ def test_only_the_basename_is_shown(win):
 
 
 def test_long_filename_does_not_widen_the_column(win):
-    # The column's width is set by its widest button, so the label must not
-    # need more room than that one does
-    widest = win.cancel_work_requirements_and_abort.sizeHint().width()
+    # The label must fit the width the column gives the button, whichever of
+    # its rows sets that (not always the same one: on Linux the column is
+    # wider than Cancel & Abort asks for), so the column stays as it was
+    width = win.select_work_requirement.width()
     container = win.select_work_requirement.parentWidget()
     baseline = container.sizeHint().width()
 
     for name in [LONG_NAME, "x" * 200 + ".jsonnet"]:
         win._wr_file = f"definitions/{name}"
         win._show_wr_selection()
-        assert win.select_work_requirement.sizeHint().width() <= widest, name
+        assert win.select_work_requirement.sizeHint().width() <= width, name
         assert container.sizeHint().width() == baseline, f"column widened for {name}"
 
 
