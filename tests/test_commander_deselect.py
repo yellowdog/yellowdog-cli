@@ -5,6 +5,8 @@ The dialog is built and inspected directly; the action itself is driven with
 the chooser stubbed out, so no test blocks on a modal dialog.
 """
 
+import os
+
 import pytest
 import qt_guard
 
@@ -94,7 +96,7 @@ def test_dialog_checkboxes_carry_the_full_path_as_a_tooltip(all_selected):
     _, checkboxes = all_selected._build_deselect_dialog([("Work Requirement", WR)])
     # The full path, with Windows' separators there
     assert checkboxes[0].toolTip().replace("\\", "/").endswith(WR)
-    assert checkboxes[0].toolTip().startswith("/")  # absolute
+    assert os.path.isabs(checkboxes[0].toolTip())
 
 
 def test_dialog_elides_a_very_long_path(all_selected):

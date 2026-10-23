@@ -1418,7 +1418,8 @@ class TestDataClientUnderTest:
         assert row["status"] == "OK", row
         assert (
             row["detail"]
-            == f"loc:{tmp_path / 'abs' / 'pfx'} reachable (profile [dataClient])"
+            # The prefix joined with '/', which rclone takes on Windows too
+            == f"loc:{tmp_path / 'abs'}/pfx reachable (profile [dataClient])"
         )
 
     def test_a_missing_bucket_fails(self, tmp_path):
