@@ -33,6 +33,14 @@ jobs:
       - name: Install the CLI with every extra
         run: uv pip install --system -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
 
+      # The shell completion tests run under each PowerShell present: both
+      # must be, Windows PowerShell 5.1 (on Windows alone) and PowerShell 7, or
+      # they would quietly cover one alone
+      - name: The PowerShells
+        run: |
+          powershell -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+
       # A test still running after 5 minutes dumps every thread's stack, so a
       # hang shows where it is
       - name: The unit tests

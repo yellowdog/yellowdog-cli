@@ -33,7 +33,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 12:04:22 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 12:06:22 BST 2026 -->
 
 <!--te-->
 
@@ -228,10 +228,9 @@ A Python pre-release needs no configuration: tox builds an environment it has no
 
 ### Windows on GitHub Actions
 
-Two workflows run the tests on a GitHub-hosted Windows runner on every push to `next-version`. Both are advisory: no branch requires them to pass, and a failure shows as a cross on the commit. Both install the CLI with uv, whose cache GitHub keeps between successful runs on the same branch, and both can be run by hand from the repository's Actions tab ("Run workflow") once they are on `main`, since GitHub offers that only for a workflow on the default branch.
+[`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs the whole unit suite on a GitHub-hosted Windows runner, with every extra installed, as `make tox` does elsewhere, on every push to `next-version`, and by hand from the repository's Actions tab ("Run workflow") once it is on `main`, since GitHub offers that only for a workflow on the default branch. It is advisory: no branch requires it to pass, and a failure shows as a cross on the commit. It installs the CLI with uv, whose cache GitHub keeps between successful runs on the same branch. A test that assumes Linux or macOS is fixed to run on Windows where it can, or skipped there with the reason; the skip reasons are in the run's log, and the results in `windows-tests.xml`, kept with the run.
 
-- [`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs the whole unit suite, with every extra installed, as `make tox` does elsewhere. A test that assumes Linux or macOS is fixed to run on Windows where it can, or skipped there with the reason; the skip reasons are in the run's log, and the results in `windows-tests.xml`, kept with the run.
-- [`.github/workflows/windows-powershell.yml`](.github/workflows/windows-powershell.yml) runs the shell completion tests under Windows PowerShell 5.1, the version built into Windows, which exists on Windows alone, so no test can run it on macOS or Linux. The runner has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`), and `tests/test_completion.py`'s PowerShell tests run under each PowerShell present; the job checks both are there first, so it cannot quietly cover one alone.
+It is also where Windows PowerShell 5.1, the version built into Windows, is tested: it exists on Windows alone, so no test can run it on macOS or Linux. The runner has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`), and `tests/test_completion.py`'s PowerShell tests run under each PowerShell present; the workflow checks both are there first, so they cannot quietly cover one alone.
 
 ## Type Checking
 
@@ -376,7 +375,7 @@ yellowdog_cli/commander/  # yd commander: the PyQt6 GUI, its .ui layout, images,
 yellowdog_cli/mcp/        # yd mcp: the MCP server over the yd-* commands, and its user README
 yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descriptions.json)
 yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
-.github/workflows/        # GitHub Actions, advisory: the whole suite on Windows, and the PowerShell completion tests under 5.1 and 7
+.github/workflows/        # GitHub Actions, advisory: the whole suite on Windows, PowerShell 5.1 and 7 included
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)
