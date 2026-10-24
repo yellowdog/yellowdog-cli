@@ -954,10 +954,48 @@ def _select_dc_section(base: dict, profile_name: str | None) -> dict:
     return {**scalars, **profile}
 
 
+def _profile_keys(base: dict, profile_name: str | None) -> set[str]:
+    """
+    The fields a named profile sets itself, rather than inheriting them from
+    [dataClient]: those it names, which the environment does not override.
+    """
+    profile = base.get(profile_name) if profile_name is not None else None
+    return set(profile) if isinstance(profile, dict) else set()
+
+
+def _data_client_value(
+    dc_section: dict,
+    profile_keys: set[str],
+    toml_key: str,
+    env_var: str,
+    cli_value: str | None = None,
+) -> str | None:
+    """
+    One [dataClient] field, its variables substituted: the command line's
+    value; else the file's where it outranks the environment (a field the
+    named profile sets itself, or any with the file chosen by '--config');
+    else the environment's; else the file's; else None.
+    """
+    name = f"{DATA_CLIENT_SECTION}.{toml_key}"
+    if cli_value is not None:
+        return cast(str | None, _resolve_value(cli_value, name))
+    toml_value = dc_section.get(toml_key)
+    file_first = config_file_explicitly_selected() or toml_key in profile_keys
+    for value in (
+        toml_value if file_first else None,
+        os.environ.get(env_var),
+        toml_value,
+    ):
+        if value is not None:
+            return cast(str | None, _resolve_value(str(value), name))
+    return None
+
+
 def load_config_data_client() -> ConfigDataClient:
     """
     Load the configuration data for the data client (rclone-backed commands).
-    Priority: CLI flags > environment variables > TOML config.
+    Priority: CLI flags > environment variables > TOML config, except that
+    a field a named profile sets itself beats the environment.
     Named profiles ([dataClient.<name>]) inherit unset fields from [dataClient].
     Resolved values are registered in VARIABLE_SUBSTITUTIONS for use in specs.
     """
@@ -982,31 +1020,12 @@ def load_config_data_client() -> ConfigDataClient:
         dc_section = _select_dc_section(base_section, None)
 
     _resolve_section_variables(dc_section)
+    profile_keys = _profile_keys(base_section, profile_name)
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
-        if cli_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(cli_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        toml_value = dc_section.get(toml_key)
-        if config_file_explicitly_selected() and toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        if toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        return None
+        return _data_client_value(
+            dc_section, profile_keys, toml_key, env_var, cli_value
+        )
 
     remote = _resolve(
         getattr(_ARGS, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
@@ -1061,7 +1080,9 @@ def load_config_data_client_for_profile(
     Load a destination data client config for yd-copy.
 
     CLI source-side flags (--remote, --bucket, --prefix, --no-prefix,
-    --data-client-profile) are NOT applied; only TOML + env vars are used.
+    --data-client-profile) are NOT applied; only TOML + env vars are used,
+    a field the named profile sets itself beating the environment, so that
+    the environment cannot turn the destination into the source.
     dst_prefix_override (from --dst-prefix) takes highest priority.
     Pass an empty string to suppress the default prefix entirely.
     """
@@ -1079,26 +1100,10 @@ def load_config_data_client_for_profile(
         print_debug(f"Using destination data client profile: '{profile_name}'")
 
     _resolve_section_variables(dc_section)
+    profile_keys = _profile_keys(base_section, profile_name)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
-        toml_value = dc_section.get(toml_key)
-        if config_file_explicitly_selected() and toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        if toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        return None
+        return _data_client_value(dc_section, profile_keys, toml_key, env_var)
 
     remote = _resolve(YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE)
     bucket = _resolve(YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET)

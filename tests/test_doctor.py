@@ -939,7 +939,9 @@ class TestProfileLoadFailure:
         config = (
             '[common]\nkey = "k"\nsecret = "s"\n'
             '[dataClient]\nremote = "loc,type=local"\n'
-            '[dataClient.backup]\nbucket = "b"\n'
+            # A field the profile does not set itself, which the environment
+            # (unlike one it does) still sets
+            '[dataClient.backup]\nprefix = "p"\n'
         )
         _, rows = _run_doctor(
             tmp_path,
