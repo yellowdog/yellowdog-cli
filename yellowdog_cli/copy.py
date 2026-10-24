@@ -51,9 +51,15 @@ def main(ctx: DataClientContext):
 
     # The source is stat'ed, not looked up in its parent's listing, which took
     # a top-level file for a directory and a failed listing for 'directory'
-    stat = config_remote_stat(CONFIG_SRC, src_path)
-    if stat is None:
-        raise FileNotFoundError(f"'{src_path}' does not exist")
+    try:
+        stat = config_remote_stat(CONFIG_SRC, src_path)
+        if stat is None:
+            raise FileNotFoundError(f"'{src_path}' does not exist")
+    except Exception as e:
+        # A failed transfer, recorded as yd data download records a path
+        # that is missing or cannot be reached, then raised for its code
+        record_transfer(src_path, dst_path, None, "failed", error=str(e))
+        raise
     src_is_file = not stat["IsDir"]
 
     if sync:

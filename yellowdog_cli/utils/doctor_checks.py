@@ -1030,6 +1030,10 @@ def check_data_client_remote(ctx: Context) -> Result:
         resolve_remote_path,
     )
 
+    # Without an rclone binary, building the remote would download one, with
+    # no time limit: the rclone row has said what to do about it
+    if find_rclone() is None:
+        return Result(Status.SKIP, "rclone not found")
     profile = f"profile {ctx.data_client_name}"
     _, rclone = _rclone_for_config(ctx.data_client)
     target = resolve_remote_path(ctx.data_client)

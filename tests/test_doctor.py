@@ -1242,6 +1242,7 @@ class TestLive:
                 raise answer
             return answer
 
+        monkeypatch.setattr(dc, "find_rclone", lambda: "/usr/local/bin/rclone")
         monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: ("remote", None))
         monkeypatch.setattr(dcu, "remote_stat", stat)
         ctx = _ctx(
@@ -1250,6 +1251,22 @@ class TestLive:
             data_client_name=name,
         )
         return dc.check_data_client_remote(ctx)
+
+    def test_data_client_remote_without_rclone_is_skipped(self, monkeypatch):
+        # Building the remote would download rclone, with no time limit
+        monkeypatch.setattr(dc, "find_rclone", lambda: None)
+        monkeypatch.setattr(
+            dc,
+            "_rclone_for_config",
+            lambda cfg: pytest.fail("rclone was to be fetched"),
+        )
+        ctx = _ctx(
+            config_loaded=True,
+            data_client=SimpleNamespace(remote="remote", bucket="b", prefix="p"),
+            data_client_name="backup",
+        )
+        r = dc.check_data_client_remote(ctx)
+        assert (r.status, r.detail) == (dc.Status.SKIP, "rclone not found")
 
     def test_data_client_remote_checks_the_prefix_and_names_the_profile(
         self, monkeypatch
@@ -1510,6 +1527,7 @@ class TestShownRemote:
         rclone = SimpleNamespace(
             ls=lambda path, max_depth: SimpleNamespace(dirs=[], files=[])
         )
+        monkeypatch.setattr(dc, "find_rclone", lambda: "/usr/local/bin/rclone")
         monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: (":s3", rclone))
         ctx = _ctx(
             config_loaded=True,

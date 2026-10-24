@@ -3258,11 +3258,15 @@ class TestCopy:
 
     @pytest.mark.parametrize("dry_run", [False, True])
     def test_a_missing_source_fails(self, remote, run_dc, dry_run):
-        _, err, code = run_dc(
+        out, err, code = run_dc(
             yd_copy, src_path="loc:remote/nope", dst_path="loc:dst", dry_run=dry_run
         )
         assert code == 1
         assert "'loc:remote/nope' does not exist" in " ".join(err.split())
+        # Recorded, as yd data download records a path that is missing
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed")
+        ]
 
     def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
         self, remote, run_dc
