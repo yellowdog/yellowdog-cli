@@ -1293,7 +1293,7 @@ class TestBoost:
             (ALLOWANCE_ID_2, "failed"),
             (ALLOWANCE_ID, "boosted"),
         ]
-        assert out[0]["error"] == "not found"
+        assert out[0]["error"] == f"Cannot find Allowance {ALLOWANCE_ID_2}"
         # Its one failure's cause
         assert run.exit_code == 6
 
@@ -1312,15 +1312,23 @@ class TestBoost:
         # What to check, said once for both
         assert err.count("required permissions") == 1
 
-    def test_one_confirmation_shows_the_descriptions(self):
-        found = [
-            (ALLOWANCE_ID, SimpleNamespace(description="gpu budget")),
-            (ALLOWANCE_ID_2, SimpleNamespace(description=None)),
-        ]
-        assert yd_boost._confirmation("2 hours", found) == (  # type: ignore[arg-type]
+    def test_one_confirmation_shows_the_descriptions(self, run, monkeypatch):
+        asked: list[str] = []
+        monkeypatch.setattr(
+            yd_boost,
+            "confirm_items",
+            lambda question, items, record: asked.append(question) and False,
+        )
+        run(
+            yd_boost,
+            client=self._client({ALLOWANCE_ID: "gpu budget", ALLOWANCE_ID_2: None}),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert asked == [
             f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
             f" {ALLOWANCE_ID_2})?"
-        )
+        ]
 
     def test_remaining_hours_are_recorded(self, run):
         client = self._client(boost=lambda *a: SimpleNamespace(remainingHours=12.5))
@@ -1330,7 +1338,7 @@ class TestBoost:
         assert out[0]["remainingHours"] == 12.5
 
     def test_a_repeated_id_is_boosted_once(self, run):
-        out, err, client = run(
+        out, _, client = run(
             yd_boost,
             client=self._client(),
             boost_hours=2,
@@ -1338,7 +1346,6 @@ class TestBoost:
         )
         assert client.allowances_client.boost_allowance_by_id.call_count == 1
         assert [item["outcome"] for item in out] == ["boosted"]
-        assert "Ignoring 1 duplicate Allowance ID(s)" in err
 
     def test_an_authentication_failure_stops_the_rest(self, run):
         def boost(*args):

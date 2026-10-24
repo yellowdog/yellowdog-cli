@@ -43,6 +43,7 @@ These changes alter what an existing script or habit will see:
 - **`yd workerpool shutdown -n ''`** shuts down the matching Worker Pools in every namespace, where it matched none.
 - **`yd task cancel` skips a RESUBMITTED Task**, as it skips the other finished states.
 - **A Work Requirement or Compute Requirement name only finished ones share finds the newest**, not whichever the Platform listed first.
+- **`yd allowance boost` follows the rules the other actions do**: an Allowance ID that does not exist is reported as `Cannot find Allowance <ID>` (its `--json` record's `error` too), a repeated ID is acted on once without a warning, and a session failure's message says how many items are not attempted.
 - **`yd node action --status` records a node whose queue cannot be fetched**, with its `error`, and exits with its code (6 for a node not found); and `yd node action` takes `--jsonnet-dry-run`/`-J` for its `--actions` file.
 - **Listings and tables show text that looks like a number as written** (a tag of `1.10`, not `1.1`), and a Task Group both starved and waiting shows `/STARVED/WAITING` when followed, as when listed.
 - **An abbreviated `--docs`** (`--doc`) prints the documentation link rather than running the command; and a message that sets a command on a line of its own keeps its line breaks.
