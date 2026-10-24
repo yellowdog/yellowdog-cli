@@ -783,9 +783,9 @@ def upload_files(
             0 if upload_file(config, local, remote, dry_run=True) else 1
             for local, remote in uploads
         )
-    groups: dict[tuple[Path, str], list[Path]] = {}
-    singles: list[tuple[Path, str]] = []
-    for local, remote in uploads:
+
+    def directories(upload: tuple[Path, str]) -> tuple[Path, str] | None:
+        local, remote = upload
         remote_dir, _, remote_name = remote.rpartition("/")
         if (
             remote_dir
@@ -793,18 +793,15 @@ def upload_files(
             and listable(local.name)
             and not local.is_symlink()
         ):
-            groups.setdefault((local.resolve().parent, remote_dir), []).append(local)
-        else:
-            singles.append((local, remote))
-    # A file alone in its directory is uploaded on its own
-    for (_, remote_dir), files in list(groups.items()):
-        if len(files) == 1:
-            singles.append((files[0], f"{remote_dir}/{files[0].name}"))
-    groups = {key: files for key, files in groups.items() if len(files) > 1}
+            return local.resolve().parent, remote_dir
+        return None
+
+    groups, singles = _by_directory(uploads, directories)
     failed = 0
     if groups:
         _, rclone = _rclone_for_config(config)
-    for (local_dir, remote_dir), files in groups.items():
+    for (local_dir, remote_dir), group in groups.items():
+        files = [local for local, _ in group]
         print_info(
             f"Uploading {len(files):,d} file(s) from '{local_dir}' → '{remote_dir}'"
         )
@@ -1652,23 +1649,18 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
     when it fails, since it may have deleted some; a directory, and a file
     alone in its directory, as delete_item() deletes it.
     """
-    groups: dict[str, list[str]] = {}
-    singles: list[tuple[str, bool]] = []
-    for path, is_dir in targets:
+
+    def directory(target: tuple[str, bool]) -> str | None:
+        path, is_dir = target
         remote_dir, _, name = path.rstrip("/").rpartition("/")
-        if not is_dir and remote_dir and listable(name):
-            groups.setdefault(remote_dir, []).append(name)
-        else:
-            singles.append((path, is_dir))
-    # A file alone in its directory is deleted on its own
-    for remote_dir, names in list(groups.items()):
-        if len(names) == 1:
-            singles.append((f"{remote_dir}/{names[0]}", False))
-    groups = {key: names for key, names in groups.items() if len(names) > 1}
+        return remote_dir if not is_dir and remote_dir and listable(name) else None
+
+    groups, singles = _by_directory(targets, directory)
     failed = 0
     if groups:
         _, rclone = _rclone_for_config(config)
-    for remote_dir, names in groups.items():
+    for remote_dir, group in groups.items():
+        names = [path.rstrip("/").rpartition("/")[2] for path, _ in group]
         print_info(f"Deleting {len(names):,d} file(s) in '{remote_dir}'")
         result = _delete_files(rclone, remote_dir, names)
         left = (
@@ -1706,6 +1698,33 @@ def _files_left(rclone: Rclone, remote_dir: str, names: list[str]) -> set[str]:
     except RuntimeError:
         return set(names)
     return {entry["Name"] for entry in entries}
+
+
+_K = TypeVar("_K")
+
+
+def _by_directory(
+    items: list[_T], directory_of: Callable[[_T], _K | None]
+) -> tuple[dict[_K, list[_T]], list[_T]]:
+    """
+    The items done in one rclone run each directory, the rest one at a time:
+    grouped by what 'directory_of' gives an item (None for one done alone),
+    a group of one done alone too. Returns the groups, and the rest in the
+    order given.
+    """
+    keys = [directory_of(item) for item in items]
+    counts: dict[_K, int] = {}
+    for key in keys:
+        if key is not None:
+            counts[key] = counts.get(key, 0) + 1
+    groups: dict[_K, list[_T]] = {}
+    singles: list[_T] = []
+    for item, key in zip(items, keys):
+        if key is not None and counts[key] > 1:
+            groups.setdefault(key, []).append(item)
+        else:
+            singles.append(item)
+    return groups, singles
 
 
 def lsjson_listing(

@@ -1015,3 +1015,15 @@ def test_a_file_at_the_remotes_root_is_copied_under_its_own_name(tmp_path, monke
     config = ConfigDataClient(remote="loc,type=local")
     copy_remote(config, "loc:a.txt", config, "loc:sub/", src_is_file=True)
     assert [p.name for p in (tmp_path / "sub").iterdir()] == ["a.txt"]
+
+
+def test_items_are_grouped_by_directory_a_group_of_one_done_alone():
+    from yellowdog_cli.utils.dataclient.operations import _by_directory
+
+    items = ["a/1", "b/1", "a/2", "solo", "c/1"]
+    groups, singles = _by_directory(
+        items, lambda item: item.split("/")[0] if "/" in item else None
+    )
+    assert groups == {"a": ["a/1", "a/2"]}
+    # In the order given: one with no directory, and those alone in theirs
+    assert singles == ["b/1", "solo", "c/1"]
