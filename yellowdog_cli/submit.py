@@ -194,6 +194,19 @@ def main(ctx: RunContext):
 
     csv_files = _csv_files(run)
 
+    # Refused on the command line as parsed; these may come from the
+    # configuration ('workRequirementData', 'csvFiles')
+    if ctx.args.empty and (wr_data_file is not None or csv_files is not None):
+        raise ValueError(
+            "'--empty' submits no Task Groups, so cannot be used with the"
+            + (
+                f" Work Requirement specification '{wr_data_file}'"
+                if wr_data_file is not None
+                else " CSV file(s) the configuration names"
+            )
+            + " (from the configuration file)"
+        )
+
     if csv_files is None and ctx.args.process_csv_only:
         raise ValueError(
             "Option '--process-csv-only' is only valid if CSV file(s) specified"

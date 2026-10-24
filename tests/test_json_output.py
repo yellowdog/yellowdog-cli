@@ -1979,6 +1979,33 @@ class TestSubmit:
         assert out["type"] == "work-requirements"
         assert out["name"]
 
+    @pytest.mark.parametrize(
+        "configured, named",
+        [
+            ({"wr_data_file": "wr.json"}, "'wr.json'"),
+            ({"csv_files": ["tasks.csv"]}, "CSV file(s)"),
+        ],
+    )
+    def test_empty_is_refused_with_a_configured_specification(
+        self, run, run_submit, monkeypatch, configured, named
+    ):
+        # Refused on the command line as parsed; from the configuration,
+        # as the command starts, rather than its Task Groups submitted
+        import dataclasses
+
+        import yellowdog_cli.submit as yd_submit
+
+        monkeypatch.setattr(
+            yd_submit,
+            "CONFIG_WR",
+            dataclasses.replace(yd_submit.CONFIG_WR, **configured),
+        )
+        _, err, client = run_submit()
+        client.work_client.add_work_requirement.assert_not_called()
+        assert run.exit_code == ExitCode.FAILURE
+        assert "'--empty' submits no Task Groups" in err
+        assert named in err
+
     def test_quiet_json_is_only_the_json(self, run_submit):
         out, _, _ = run_submit(quiet=True)
         assert out["id"] == WR_ID_1

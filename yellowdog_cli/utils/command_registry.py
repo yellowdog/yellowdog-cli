@@ -3960,7 +3960,8 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
     ignored: '--json-raw' is a complete Platform document, so the options
     that build or extend a specification do not apply to it; '--add-to'
     adds to a Work Requirement that already has its own state and Task
-    Groups; and '--exit-on-failure' needs something to wait on.
+    Groups; '--empty' submits none, so nothing that makes Task Groups or
+    Tasks applies to it; and '--exit-on-failure' needs something to wait on.
     """
     if args.json_raw is not None:
         for dest, flag in (
@@ -3980,6 +3981,17 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
         for dest, flag in (("hold", "--hold"), ("empty", "--empty")):
             if getattr(args, dest, False):
                 parser.error(f"--add-to cannot be used with {flag}")
+    if args.empty:
+        for dest, flag in (
+            ("work_requirement", "--work-requirement"),
+            ("work_requirement_file_positional", "a Work Requirement file"),
+            ("csv_file", "--csv-file"),
+            ("process_csv_only", "--process-csv-only"),
+            ("task_count", "--task-count"),
+            ("task_group_count", "--task-group-count"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--empty cannot be used with {flag}")
     if args.exit_on_failure and not (args.follow or args.progress):
         parser.error("--exit-on-failure needs --follow or --progress")
 

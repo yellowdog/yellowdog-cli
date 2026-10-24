@@ -30,6 +30,12 @@ def _parse(*argv: str) -> CLIParser:
         (["-j", "raw.json", "--validate"], "--json-raw cannot be used with --validate"),
         (["-A", "wr", "-H"], "--add-to cannot be used with --hold"),
         (["-A", "wr", "-e"], "--add-to cannot be used with --empty"),
+        # '--empty' submits no Task Groups: these would make some
+        (["-e", "wr.json"], "--empty cannot be used with a Work Requirement file"),
+        (["-e", "-r", "wr.json"], "--empty cannot be used with --work-requirement"),
+        (["-e", "-V", "a.csv"], "--empty cannot be used with --csv-file"),
+        (["-e", "-C", "3"], "--empty cannot be used with --task-count"),
+        (["-e", "-G", "2"], "--empty cannot be used with --task-group-count"),
         (["-E"], "--exit-on-failure needs --follow or --progress"),
     ],
 )
@@ -47,7 +53,8 @@ def test_refused(argv, message, capsys):
         ["-A", "wr", "wr.json", "-V", "a.csv"],
         ["-E", "-f"],
         ["-E", "--progress"],
-        ["wr.json", "-C", "3", "-G", "2", "-e", "-H"],
+        ["wr.json", "-C", "3", "-G", "2", "-H"],
+        ["-e", "-H"],
     ],
 )
 def test_allowed(argv):

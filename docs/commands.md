@@ -201,7 +201,7 @@ Key options:
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
 - `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state, or, if it could not be followed to its end (its event stream lost, say) and has not finished, with the code of that failure, since its outcome is not known; needs `--follow` or `--progress`
 - `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd workrequirement start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
-- `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
+- `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later; it cannot be combined with a specification file, `--csv-file`, `--process-csv-only`, `--task-count` or `--task-group-count`, and a specification or CSV file named in the configuration (`workRequirementData`, `csvFiles`) is refused with it too
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
 - `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group, overriding `taskCount` or `taskGroupCount` in the specification

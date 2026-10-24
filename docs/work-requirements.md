@@ -815,7 +815,7 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 
 ### Adding Task Groups and Tasks to an Existing Work Requirement
 
-The `--empty` (`-e`) option submits a new Work Requirement with no Task Groups or Tasks (using TOML configuration only, without a JSON spec file), providing a named shell that can be populated later using `--add-to`:
+The `--empty` (`-e`) option submits a new Work Requirement with no Task Groups or Tasks (using TOML configuration only: a specification or CSV file, given or configured, is refused with it), providing a named shell that can be populated later using `--add-to`:
 
 ```bash
 WR_ID=$(yd workrequirement submit --empty --quiet)
