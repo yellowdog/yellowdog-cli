@@ -628,6 +628,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if self._shutting_down:
             return
         self._shutting_down = True
+        self._discovery.stop()
 
         # Release any nested event loop (config parsing, entity enumeration):
         # the close was delivered from inside it, so it must be told to exit or

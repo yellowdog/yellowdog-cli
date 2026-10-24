@@ -36,7 +36,12 @@ from yellowdog_cli.utils.command_registry import (
 
 @pytest.fixture
 def window(qapp):
-    return YellowDogApp()
+    window = YellowDogApp()
+    yield window
+    # Its timers stopped and children ended, so nothing of it runs in a
+    # later test's event loop
+    window.shutdown()
+    window.close()
 
 
 @pytest.fixture

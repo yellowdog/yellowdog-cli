@@ -71,7 +71,7 @@ These changes alter what an existing script or habit will see:
 - **Closing the window while an action is listing what it would affect does nothing more**, where Download went on to download everything matching and the others asked to act on their whole scope.
 - **The Show buttons say why they cannot show a file** (moved, deleted, not UTF-8), where Commander crashed.
 - **An edited Namespace or Tag field is discovered again**, so confirmations and the default object path follow it; a slower, older discovery no longer overwrites a newer one; and a command finishing no longer closes input to a later one still waiting for it.
-- **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row they offer; and a command typed with `--` gets Commander's options ahead of it.
+- **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row they offer; and a command typed with `--` gets Commander's options ahead of it; and closing the window cancels a configuration rediscovery still pending.
 
 ### MCP server
 

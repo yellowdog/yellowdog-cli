@@ -70,7 +70,12 @@ def make_window(settings: StartupSettings | None = None) -> YellowDogApp:
 
 @pytest.fixture
 def window(qapp):
-    return make_window()
+    window = make_window()
+    yield window
+    # Its timers stopped and children ended, so nothing of it runs in a
+    # later test's event loop
+    window.shutdown()
+    window.close()
 
 
 @pytest.fixture

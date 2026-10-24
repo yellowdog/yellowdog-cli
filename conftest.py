@@ -417,6 +417,38 @@ def qapp():
         pytest.skip(f"Qt platform unavailable: {exc}")
 
 
+@pytest.fixture(autouse=True)
+def _commander_windows_shut_down(request):
+    """
+    Shut down and close every Commander window a GUI test leaves open.
+
+    A window left open keeps its timers (discovery's retry and the debounced
+    rediscovery a namespace or tag edit starts) and its child processes, and
+    the QApplication is the session's: they would fire inside a later test's
+    event loop on the same worker, running 'yd variables' there, which is how a
+    worker crashes or hangs long after the test that made the window passed.
+    """
+    yield
+    if "qapp" not in request.fixturenames:
+        return
+
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        from yellowdog_cli.commander.commander import YellowDogApp
+    except ImportError:
+        return  # qapp skipped the test: there is no Qt, so no window
+
+    application = QApplication.instance()
+    if application is None:
+        return
+    for widget in application.topLevelWidgets():
+        if isinstance(widget, YellowDogApp):
+            widget.shutdown()
+            widget.close()
+    application.processEvents()
+
+
 @pytest.fixture(scope="session")
 def run_id() -> str:
     """

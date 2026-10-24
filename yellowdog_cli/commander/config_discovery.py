@@ -204,6 +204,15 @@ class ConfigDiscovery:
         ) and all(property_is_complete(prop) for prop in properties):
             self.reparse_placeholders()
 
+    def stop(self):
+        """
+        Stop the retry and the debounced rediscovery, for a window closing:
+        either would otherwise start 'yd variables', in a nested event loop,
+        after the window had begun to go.
+        """
+        self._discovery_retry_timer.stop()
+        self._user_vars_reparse_timer.stop()
+
     def _schedule_discovery_retry(self):
         """
         Queue the one retry allowed after a timed-out discovery.

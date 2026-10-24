@@ -45,7 +45,11 @@ CANCELLING = {
 def window(qapp):
     window = YellowDogApp()
     window._discovery.tag = "pwt"
-    return window
+    yield window
+    # Its timers stopped and children ended, so nothing of it runs in a
+    # later test's event loop
+    window.shutdown()
+    window.close()
 
 
 @pytest.fixture
