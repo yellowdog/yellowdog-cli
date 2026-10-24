@@ -1359,12 +1359,16 @@ def refuse_parent_segments(
     Refuse a remote path with a '..' segment: it climbs out of the prefix,
     or the bucket, past the checks that refuse deleting or syncing over the
     remote's root or the bucket itself, and object stores do not resolve it
-    as a local disk does.
+    as a local disk does. Both readings of the path are checked, a leading
+    'remote:' and none, since a relative path may hold a ':' of its own
+    ('../run-10:00').
     """
     for remote_path in remote_paths:
         if remote_path is None:
             continue
-        if ".." in remote_path.split(":", 1)[-1].split("/"):
+        if ".." in remote_path.split("/") or (
+            ".." in remote_path.split(":", 1)[-1].split("/")
+        ):
             parser.error(
                 f"'{remote_path}': a remote path cannot contain '..'; name it"
                 " from the remote's root with --no-prefix (or --bucket) instead"

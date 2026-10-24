@@ -633,6 +633,10 @@ class TestRemotePathsWithParentSegments:
             ("yd-copy", ["../a", "b"]),
             ("yd-copy", ["a", "b/../.."]),
             ("yd-upload", ["f.txt", "-d", "../x"]),
+            # A ':' later in a relative path is no remote's
+            ("yd-delete", ["-R", "../run-10:00"]),
+            ("yd-upload", ["f.txt", "-d", "../x:y"]),
+            ("yd-download", ["a/../../b:c"]),
         ],
     )
     def test_refused(self, command, argv, capsys):
@@ -648,6 +652,8 @@ class TestRemotePathsWithParentSegments:
         [
             ("yd-ls", [".."]),
             ("yd-download", ["a..b"]),
+            ("yd-download", ["run-10:00/x"]),
+            ("yd-download", ["myremote:a..b"]),
             ("yd-download", ["x", "-d", "../out"]),
             ("yd-download", ["x", "--into", "../out"]),
             ("yd-upload", ["../f.txt"]),
