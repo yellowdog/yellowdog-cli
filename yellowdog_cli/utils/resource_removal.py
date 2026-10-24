@@ -59,7 +59,10 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.load_resources import RESOURCE_CREATION_ORDER
+from yellowdog_cli.utils.load_resources import (
+    RESOURCE_CREATION_ORDER,
+    resource_display_name,
+)
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import (
@@ -246,8 +249,16 @@ def remove_resources_by_name_or_id(
     def _record(target: str, action: str, error: str) -> None:
         if get_ydid_type(target) is not None:
             _record_by_id(ctx, target, action, error)
-        else:
-            record_resource(resource_type, target, None, action, error)
+            return
+        # Named as a removal names it ('namespace/name'), not as typed
+        try:
+            name = resource_display_name(
+                resource_type,
+                specification_for_name(resource_type, target, ctx.config.namespace),
+            )
+        except ValueError:  # A name it cannot stand for, refused as such
+            name = None
+        record_resource(resource_type, name or target, None, action, error)
 
     try:
         process_each(
@@ -659,8 +670,11 @@ def _removable_by_id(ctx: RunContext, ydid_type: YDIDType) -> _RemovableById:
                 clear_keyring_cache,
             )
         case YDIDType.WORKER_POOL:
+            # Named as a specification or '--type' names it, so one '--json'
+            # document names a Configured Worker Pool one way, and removal
+            # ranks it with them
             return _RemovableById(
-                "WorkerPool",
+                RN_CONFIGURED_POOL,
                 "Worker Pool",
                 ctx.client.worker_pool_client.get_worker_pool_by_id,
                 lambda p: _qualified(p.namespace, p.name),

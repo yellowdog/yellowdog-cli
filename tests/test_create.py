@@ -779,3 +779,31 @@ def test_a_missing_required_property_is_named_without_quotes_round_it():
     with pytest.raises(ValueError) as raised:
         yd_create.create_namespace(_ctx(), {})
     assert str(raised.value) == "Expected property 'name' to be defined"
+
+
+def test_a_requirement_templates_source_without_its_template_is_named(env):
+    # Not "Failed to create ...: 'sourceTemplateId'", the bare KeyError
+    resource = {
+        "resource": "ComputeRequirementTemplate",
+        "type": "co.yellowdog.platform.model.ComputeRequirementStaticTemplate",
+        "name": "t",
+        "namespace": "ns",
+        "sources": [{"instanceType": "t3.micro"}],
+    }
+    with pytest.raises(ValueError, match="Expected property 'sourceTemplateId'"):
+        yd_create.create_compute_requirement_template(_ctx(), resource)
+
+
+def test_a_configured_worker_pool_returned_without_a_token_is_recorded(
+    env, monkeypatch
+):
+    # Created whatever the reply holds: recorded with its ID, not failed
+    # with an AttributeError reading the token
+    monkeypatch.setattr(yd_create, "_get_model_object", lambda *a, **k: MagicMock())
+    env.client.worker_pool_client.add_configured_worker_pool.return_value = (
+        SimpleNamespace(workerPool=SimpleNamespace(id="wp"), token=None)
+    )
+    yd_create.create_configured_worker_pool(_ctx(), {"name": "p", "namespace": "ns"})
+    assert [(r["id"], r["action"], r["token"]) for r in env.records] == [
+        ("wp", "created", None)
+    ]

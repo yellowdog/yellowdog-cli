@@ -337,6 +337,42 @@ def test_names_and_ids_are_removed_in_one_run(monkeypatch):
     assert failed[0][3] == "failed"
 
 
+def test_a_name_that_fails_is_recorded_as_a_removal_names_it(monkeypatch):
+    # 'namespace/name', as one removed or skipped is, not the name as typed
+    from yellowdog_cli.utils import resource_removal
+    from yellowdog_cli.utils.context import RunContext
+    from yellowdog_cli.utils.exit_codes import ReportedFailure
+
+    def fails(ctx, resource_type, resource):
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(resource_removal, "_remove_resource", fails)
+    recorded: list = []
+    monkeypatch.setattr(
+        resource_removal,
+        "record_resource",
+        lambda *args, **kwargs: recorded.append(args),
+    )
+    ctx = RunContext(args=None, config=SimpleNamespace(namespace="ns"), client=None)
+    with pytest.raises(ReportedFailure):
+        resource_removal.remove_resources_by_name_or_id(
+            ctx, "ConfiguredWorkerPool", ["pool"]
+        )
+    assert recorded[0][:2] == ("ConfiguredWorkerPool", "ns/pool")
+
+
+def test_a_worker_pool_removed_by_id_is_named_as_its_specification_is():
+    from unittest.mock import MagicMock
+
+    from yellowdog_cli.utils import resource_removal
+    from yellowdog_cli.utils.context import RunContext
+    from yellowdog_cli.utils.ydid_utils import YDIDType
+
+    ctx = RunContext(args=None, config=None, client=MagicMock())  # type: ignore[arg-type]
+    removable = resource_removal._removable_by_id(ctx, YDIDType.WORKER_POOL)
+    assert removable.resource_type == "ConfiguredWorkerPool"
+
+
 def test_every_type_is_removed_by_name_or_id_or_refused():
     from yellowdog_cli.utils.resource_targets import ID_TYPES, NAMED_TYPES, USER_TYPES
     from yellowdog_cli.utils.ydid_utils import REMOVABLE_YDID_TYPES

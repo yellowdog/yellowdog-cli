@@ -397,7 +397,10 @@ def create_compute_requirement_template(
 
     # Dynamic templates don't have 'sources'; return '[]'
     for source in resource.get(PROP_SOURCES, []):
-        template_name_or_id = source[PROP_CST_ID]
+        try:
+            template_name_or_id = source[PROP_CST_ID]
+        except KeyError as e:
+            raise missing_property(e) from e
         if get_ydid_type(template_name_or_id) != YDIDType.COMPUTE_SOURCE_TEMPLATE:
             template_id = get_compute_source_template_id_by_name(
                 client=ctx.client, name=template_name_or_id, namespace=namespace
@@ -762,18 +765,9 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
     cwp_response: AddConfiguredWorkerPoolResponse = (
         ctx.client.worker_pool_client.add_configured_worker_pool(cwp_request)
     )
-    print_info(
-        f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
-    )
-    print_info(
-        f"                   Worker Pool Token = '{cwp_response.token.secret}'"  # type: ignore[union-attr]
-    )
-    print_info(
-        "                   Worker Pool Expiry Time = "
-        f"{shown_expiry(cwp_response.token.expiryTime)}"  # type: ignore[union-attr]
-    )
-    # The token too, which '--json' otherwise silences with the prints
-    # above, and which is how a Configured Worker Pool is used
+    # Recorded before anything is printed from the reply, the pool existing
+    # whatever it holds; with its token too, which '--json' otherwise
+    # silences with the prints below, and which is how the pool is used
     token = cwp_response.token
     record_resource(
         RN_CONFIGURED_POOL,
@@ -787,6 +781,17 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
             else token.expiryTime.isoformat()
         ),
     )
+    print_info(
+        f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
+    )
+    if token is None:
+        print_warning("The Platform returned no Worker Pool token")
+    else:
+        print_info(f"                   Worker Pool Token = '{token.secret}'")
+        print_info(
+            "                   Worker Pool Expiry Time = "
+            f"{shown_expiry(token.expiryTime)}"
+        )
     print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
 
