@@ -77,7 +77,13 @@ class WindowDialogs(CommandRunning):
         confirmations for this same action (identified by action_key) for the
         rest of the session; the suppression is per-action, not global. It acts
         on every listed row regardless of the tick states, as its label says.
+
+        Nothing proceeds once the window is closing: a listing the close cut
+        short reads as one that failed, which would otherwise ask (or, with
+        confirmations off, go straight on) to act on the whole scope.
         """
+        if self._shutting_down:
+            return Confirmation(proceed=False, handles=None)
         if self._confirmations_disabled or action_key in self._skip_confirmations:
             return Confirmation(proceed=True, handles=None)
         dialog, yes_btn, skip_btn = self._build_destructive_dialog(

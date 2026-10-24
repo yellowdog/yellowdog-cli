@@ -266,7 +266,13 @@ class CommandRunning(WindowBase):
         commands. 'log_args' replaces 'args' in the echoed command line only —
         used to collapse a long list of YDIDs to a count — and is built the
         same way, so the config-source prefix still appears in the echo.
+
+        Nothing is started once the window is closing: shutdown() has stopped
+        the children, and an action whose listing the close cut short would
+        otherwise go on to act on its whole scope.
         """
+        if self._shutting_down:
+            return
         raw_args = args
         args = self._build_command_args(command, args, yd_command)
         display_args = (

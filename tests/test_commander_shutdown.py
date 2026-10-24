@@ -356,3 +356,63 @@ def test_run_nested_deregisters_after_normal_completion(win):
     assert win._shutting_down is False
     assert win._nested_loops == []
     assert win._processes == []
+
+
+# --- Nothing acts once the window is closing --------------------------------
+
+
+@pytest.fixture
+def closed_mid_listing(win, monkeypatch):
+    """
+    The window with its listings cut short by a close, as closing it while
+    an action lists what it would affect does (the listing then reads as
+    one that failed), and every command it would start recorded instead.
+    """
+    import yellowdog_cli.commander.command_running as command_running
+
+    def closed(*args, **kwargs):
+        win._shutting_down = True
+        return None
+
+    started: list[str] = []
+
+    def program(command, args):
+        started.append(command)
+        return "sleep", ["0"]
+
+    monkeypatch.setattr(command_running, "cli_program", program)
+    monkeypatch.setattr(win, "_capture_dry_run_objects", closed)
+    monkeypatch.setattr(win, "_capture_dry_run_summaries", closed)
+    monkeypatch.setattr(win, "_object_path", lambda: "mytag*")
+    monkeypatch.setattr(
+        win,
+        "_build_destructive_dialog",
+        lambda *a, **k: pytest.fail("a confirmation was shown after the close"),
+    )
+    yield started
+    win._shutting_down = False  # for the fixture's own shutdown()
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "_download_results_action",
+        "_delete_objects_action",
+        "_shutdown_all_worker_pools_action",
+        "_terminate_all_compute_requirements_action",
+    ],
+)
+def test_an_action_whose_listing_a_close_cut_short_does_nothing(
+    win, closed_mid_listing, action
+):
+    # Not its whole scope, as a listing that failed would have it
+    getattr(win, action)()
+    assert closed_mid_listing == []
+    assert win._processes == []
+
+
+def test_no_command_starts_once_the_window_is_closing(win):
+    win._shutting_down = True
+    win._run_command_in_subprocess("sleep", [SLEEP_SECONDS], yd_command=False)
+    assert win._processes == []
+    win._shutting_down = False
