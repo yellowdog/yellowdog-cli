@@ -155,9 +155,14 @@ def shut_down(ctx: RunContext, names: list[str]):
                 ctx.config.name_tag,
                 partial_name_matches=True,
             )
+            # The namespace matched exactly ('dev' not taking in 'dev-team'),
+            # and none, as '-n ""' gives, matching every one searched
             if worker_pool_summary.name is not None
-            and worker_pool_summary.namespace == ctx.config.namespace
-            and ctx.config.name_tag in worker_pool_summary.name
+            and (
+                not ctx.config.namespace
+                or worker_pool_summary.namespace == ctx.config.namespace
+            )
+            and (ctx.config.name_tag or "") in worker_pool_summary.name
         ]
 
     finished = [summary for summary in worker_pool_summaries if _is_finished(summary)]

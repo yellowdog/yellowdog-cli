@@ -758,9 +758,11 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
     task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
         ctx.client, cast(str, work_summary.id)
     )
-    task_groups = _apply_name_filter(
-        ctx, _apply_status_filter(ctx, sorted_objects(task_groups)), ET_TASK_GROUPS
-    )
+    task_groups = sorted_objects(task_groups)
+    # '--status' and '--name' are the Tasks' when listing Tasks, so are no
+    # test of the Task Groups walked to reach them
+    if ctx.args.entity_type == ET_TASK_GROUPS:
+        task_groups = _filtered_task_groups(ctx, task_groups)
     if ctx.args.entity_type != ET_TASKS:
         if ctx.args.details:
             print_yd_object_list(
@@ -1288,14 +1290,12 @@ def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker
     """
     for node in nodes:
         for worker in node.workers or []:
-            if ctx.args.active_only:
-                if worker.status not in [
-                    WorkerStatus.SLEEPING,
-                    WorkerStatus.DOING_TASK,
-                    WorkerStatus.STOPPED,
-                    WorkerStatus.STARTING,
-                ]:
-                    continue
+            # The SDK's own test (RUNNING, BATCH_ALLOCATION and LATE as well
+            # as the single-allocation states), not LOST or SHUTDOWN
+            if ctx.args.active_only and not (
+                isinstance(worker.status, WorkerStatus) and worker.status.available
+            ):
+                continue
             # Add extra info to the Worker object
             if node.details is not None:
                 worker.workerTag = node.details.workerTag  # type: ignore[attr-defined]

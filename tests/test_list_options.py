@@ -25,6 +25,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_GROUPS,
     ET_INSTANCES,
     ET_ROLES,
+    ET_TASK_GROUPS,
     ET_TASKS,
     ET_WORKER_POOLS,
     ET_WORKERS,
@@ -382,6 +383,31 @@ class TestActiveInstancesAndWorkers:
         )
         yd_list.list_instances(_ctx(), CR_ID)
         assert [i.id.instanceId for i in shown] == ["i-up"]
+
+    def test_active_workers_are_those_the_sdk_calls_available(
+        self, listing, monkeypatch
+    ):
+        # RUNNING is a busy Worker's status; DOING_TASK and SLEEPING are only
+        # single allocation's
+        from yellowdog_client.model import WorkerStatus
+
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_WORKERS, json_output=True, active_only=True),
+        )
+        workers = [SimpleNamespace(status=status) for status in WorkerStatus]
+        node = SimpleNamespace(details=None, workers=workers, workerPoolName="wp")
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_workers(_ctx(), [node])
+        assert {w.status.name for w in printed[0]} == {
+            s.name
+            for s in WorkerStatus
+            if s not in (WorkerStatus.LOST, WorkerStatus.SHUTDOWN)
+        }
 
     def test_a_worker_on_a_node_without_details_is_listed(self, listing, monkeypatch):
         monkeypatch.setattr(
@@ -980,6 +1006,37 @@ def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
     )
     yd_list.list_nodes(_ctx(), [SimpleNamespace(id=WP_ID, name="pool")])
     assert printed == [[worker]]
+
+
+@pytest.mark.parametrize("entity_type", [ET_TASKS, ET_TASK_GROUPS])
+def test_a_task_status_does_not_filter_their_task_groups(
+    listing, monkeypatch, entity_type
+):
+    # A Task Group is RUNNING while its Tasks are EXECUTING: '--status' is
+    # the Tasks' when listing Tasks, and the Task Groups' only when listing them
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        _args(entity_type, status_filter=["EXECUTING"]),
+    )
+    task_group = SimpleNamespace(name="tg", status=SimpleNamespace(value="RUNNING"))
+    monkeypatch.setattr(
+        yd_list, "get_task_groups_from_wr_by_id", lambda client, wr_id: [task_group]
+    )
+    monkeypatch.setattr(yd_list, "select", lambda client, objects, **k: objects)
+    shown: list = []
+    monkeypatch.setattr(
+        yd_list, "print_numbered_object_list", lambda _c, objects: shown.extend(objects)
+    )
+    walked: list[str] = []
+    monkeypatch.setattr(
+        yd_list, "list_tasks", lambda _c, tg, _wr: walked.append(tg.name)
+    )
+    yd_list.list_task_groups(_ctx(), SimpleNamespace(id="wr"))
+    if entity_type == ET_TASKS:
+        assert walked == ["tg"]
+    else:
+        assert shown == []
 
 
 def _not_found(*_args, **_kwargs):
