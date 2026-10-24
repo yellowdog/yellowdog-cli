@@ -28,6 +28,19 @@ def _parse(*argv: str) -> CLIParser:
         (["-j", "raw.json", "-G", "3"], "--json-raw cannot be used with --task-group"),
         (["-j", "raw.json", "-e"], "--json-raw cannot be used with --empty"),
         (["-j", "raw.json", "--validate"], "--json-raw cannot be used with --validate"),
+        # Read by no '--json-raw' submission
+        (
+            ["-j", "raw.json", "--task-type", "bash"],
+            "--json-raw cannot be used with --task-type",
+        ),
+        (
+            ["-j", "raw.json", "--overwrite"],
+            "--json-raw cannot be used with --overwrite",
+        ),
+        (
+            ["-j", "raw.json", "-F", "d"],
+            "--json-raw cannot be used with --content-path",
+        ),
         (["-A", "wr", "-H"], "--add-to cannot be used with --hold"),
         (["-A", "wr", "-e"], "--add-to cannot be used with --empty"),
         # '--empty' submits no Task Groups: these would make some

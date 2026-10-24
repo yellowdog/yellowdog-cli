@@ -210,7 +210,7 @@ Key options:
 - `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential); once a batch fails, those not yet started are not submitted
 - `--pause-between-batches`/`-P [<seconds>]` — pause between batch submissions; with no interval, user input is required to advance. Only valid when `--parallel-batches` is `1`
 - `--overwrite`/`-O` — overwrite a file that already exists at the remote destination; by default, existing files are skipped
-- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty` or `--validate`, none of which applies to it
+- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty`, `--validate`, `--task-type`, `--overwrite` or `--content-path`, none of which applies to it
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found; a relative path in the specification (a `taskDataFile`, a CSV file) is found there, while the specification file itself is always named from the current directory
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](../README.md#specification-schemas))
@@ -505,7 +505,7 @@ Once provisioned, the Worker Pool will appear in the **Workers** tab in the Yell
 Key options:
 - `--target`/`-T <n>` — override the `targetInstanceCount` from the specification or configuration; a `maxNodes` lower than it is raised to match
 - `--content-path`/`-F <directory>` — the directory in which the User Data files the configuration's `[workerPool]` section names (`userDataFile`, `userDataFiles`) are found, in place of the configuration file's directory; a Worker Pool specification takes its User Data as `userData` alone, and the specification file itself is always named from the current directory
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement; refused without `--follow`
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
 - `--report`/`-r` — report on a test run of the Worker Pool's Compute Requirement Template, without provisioning (see [Test-Running a Dynamic Template](#test-running-a-dynamic-template))
@@ -537,7 +537,7 @@ A YDID is found in whatever namespace it belongs to; a name is looked up in the 
 What cannot be resized is reported before anything is asked. A Worker Pool that does not exist exits with code 6. A Worker Pool fails if it is a Configured Worker Pool, is awaiting nodes, or would be taken outside its minimum or maximum number of nodes; it is skipped if it has already shut down or terminated, or already expects the number of nodes asked for. The confirmation shows the current and new sizes.
 
 Key options:
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement; refused without `--follow`
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -561,7 +561,7 @@ A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matc
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements; refused without `--follow`
 - `--dry-run`/`-D` — show the Worker Pools that would be shut down, whether matched or named, and with `--terminate` the Compute Requirements that would be terminated, without acting
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
@@ -955,9 +955,10 @@ Key options:
 - `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec; cannot be combined with `--node`
 - `--follow`/`-f` — poll the node action queues after submission until every one is `EMPTY` or `FAILED`
 - `--timeout <seconds>` — with `--follow`, stop after this many seconds, failing (exit 1) if any queue has not finished; by default there is no limit
-- `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
+- `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON (refused without `--status`)
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
 - `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Specification Schemas](../README.md#specification-schemas))
+- `--jsonnet-dry-run`/`-J` — print the `--actions` Jsonnet file converted to JSON, and stop; refused with `--status`
 - `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell

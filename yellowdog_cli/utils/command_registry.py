@@ -1310,7 +1310,6 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
     UPGRADE_RCLONE,
     WHICH_RCLONE,
     DATA_CLIENT_PROFILE,
-    DRY_RUN_TRANSFERS,
 )
 
 
@@ -1906,6 +1905,18 @@ WAIT_TIMEOUT = TIMEOUT.variant(
 )
 
 
+def check_auto_follow_needs_follow(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-provision, yd-shutdown and yd-resize: '-a' follows a pool's Compute
+    Requirement as the pool is followed, so it needs '--follow', as
+    '--exit-on-failure' does, rather than doing nothing without it.
+    """
+    if getattr(args, "auto_follow_compute_requirements", False) and not getattr(
+        args, "follow", False
+    ):
+        parser.error("--auto-follow-compute-requirements needs --follow")
+
+
 def check_wait_options(args: Namespace, parser: ArgumentParser) -> None:
     """
     '--wait' waits for Compute Requirements (on yd-resize, only when the
@@ -2159,6 +2170,7 @@ COMMANDS["yd-copy"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         SRC_PATH,
         DST_PATH,
         DST_PROFILE,
@@ -2362,6 +2374,9 @@ COMMANDS["yd-delete"] = Command(
         TAG,
         YES,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS.variant(
+            help="show what would be deleted without deleting anything"
+        ),
         REMOTE_PATHS.variant(
             nargs="*",
             help=(
@@ -2427,6 +2442,7 @@ COMMANDS["yd-download"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         Option(
             REMOTE_PATHS.flags,
             {**REMOTE_PATHS.kwargs, "nargs": "*"},
@@ -2907,6 +2923,7 @@ COMMANDS["yd-provision"] = Command(
     validators=(
         check_json_excludes_streaming,
         check_hide_user_data_requires_dry_run,
+        check_auto_follow_needs_follow,
     ),
     tool=ToolKind.ACTING,
     tool_description=(
@@ -3533,7 +3550,9 @@ NODE_ACTION_STATUS = option(
 def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-nodeaction's options, as they combine: --actions unless --status,
-    which takes neither it nor --validate; node and Worker Pool IDs of the
+    which takes neither it, --validate nor --jsonnet-dry-run (all three are
+    the actions file's), and '--details' only with --status; node and
+    Worker Pool IDs of the
     right kind; and --timeout only with --follow. The YDID parser is
     imported here, so this module still imports nothing at load beyond
     the constants modules and glob_utils.py.
@@ -3543,10 +3562,14 @@ def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
     if args.status:
         if getattr(args, "validate", False):
             parser.error("--validate cannot be used with --status")
+        if getattr(args, "jsonnet_dry_run", False):
+            parser.error("--jsonnet-dry-run cannot be used with --status")
         if args.actions is not None:
             parser.error("--actions cannot be used with --status")
     elif args.actions is None:
         parser.error("--actions is required, unless --status is given")
+    elif getattr(args, "details", False):
+        parser.error("--details needs --status")
     for node_id in args.node or []:
         if get_ydid_type(node_id) != YDIDType.NODE:
             parser.error(f"not a YellowDog Node ID: '{node_id}'")
@@ -3581,6 +3604,7 @@ COMMANDS["yd-nodeaction"] = Command(
             )
         ),
         ACTIONS,
+        JSONNET_DRY_RUN,
         VALIDATE,
         WORKER_POOL.variant(
             help="name of the target worker pool",
@@ -3686,7 +3710,11 @@ COMMANDS["yd-resize"] = Command(
         WAIT_FOR_CAPACITY,
         WAIT_TIMEOUT,
     ),
-    validators=(check_resize_target, check_wait_options),
+    validators=(
+        check_resize_target,
+        check_wait_options,
+        check_auto_follow_needs_follow,
+    ),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3784,7 +3812,7 @@ COMMANDS["yd-shutdown"] = Command(
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names,),
+    validators=(check_glob_and_literal_names, check_auto_follow_needs_follow),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3974,6 +4002,9 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
             ("task_group_count", "--task-group-count"),
             ("empty", "--empty"),
             ("validate", "--validate"),
+            ("task_type", "--task-type"),
+            ("overwrite", "--overwrite"),
+            ("content_path", "--content-path"),
         ):
             if getattr(args, dest, None) not in (None, False):
                 parser.error(f"--json-raw cannot be used with {flag}")
@@ -4192,6 +4223,7 @@ COMMANDS["yd-upload"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         LOCAL_PATHS,
         DESTINATION,
         RECURSIVE,

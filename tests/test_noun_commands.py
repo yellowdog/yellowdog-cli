@@ -453,3 +453,95 @@ class TestDeprecationWarning:
     def test_a_noun_form_is_not_warned_of(self, monkeypatch, capsys):
         invocation.select_command("yd workrequirement submit", "yd wr submit")
         assert self._warned(monkeypatch, capsys, "yd-wr", "--no-format") == ("", "")
+
+
+class TestOptionsAVerbNeverTakesAreHidden:
+    """
+    An option a verb would always refuse is hidden (from its help, Tab
+    completion and the MCP tool), and refused if given.
+    """
+
+    @pytest.mark.parametrize(
+        "command, flag",
+        [
+            ("yd workerpool resize", "--wait"),
+            ("yd workerpool resize", "--timeout"),
+            ("yd workrequirement show", "--substitute-ids"),
+            ("yd workerpool show", "--substitute-ids"),
+            ("yd resource list", "--within"),
+            ("yd resource list", "--limit"),
+            ("yd resource list", "--unhealthy"),
+            ("yd resource list", "--with-errors"),
+        ],
+    )
+    def test_hidden(self, command, flag):
+        from yellowdog_cli.utils.noun_registry import NOUN_COMMANDS
+
+        option = NOUN_COMMANDS[command].option_named(flag)
+        assert option is not None
+        assert not NOUN_COMMANDS[command].offers(option)
+
+    @pytest.mark.parametrize(
+        "command, flag",
+        [
+            ("yd resource show", "--substitute-ids"),
+            ("yd allowance show", "--substitute-ids"),
+            ("yd resource list", "--name"),
+            ("yd computerequirement resize", "--wait"),
+        ],
+    )
+    def test_still_offered_where_it_applies(self, command, flag):
+        from yellowdog_cli.utils.noun_registry import NOUN_COMMANDS
+
+        option = NOUN_COMMANDS[command].option_named(flag)
+        assert option is not None and NOUN_COMMANDS[command].offers(option)
+
+
+class TestOptionsThatNeedAnother:
+    @pytest.mark.parametrize(
+        "command, argv, message",
+        [
+            (
+                "yd-provision",
+                ["-a"],
+                "--auto-follow-compute-requirements needs --follow",
+            ),
+            ("yd-shutdown", ["-a", "pool"], "--auto-follow-compute-requirements needs"),
+            (
+                "yd-resize",
+                ["-a", "pool", "3"],
+                "--auto-follow-compute-requirements needs",
+            ),
+            (
+                "yd-nodeaction",
+                ["--actions", "a.json", "--details"],
+                "--details needs --status",
+            ),
+            ("yd-nodeaction", ["--status", "-J"], "--jsonnet-dry-run cannot be used"),
+        ],
+    )
+    def test_refused(self, capsys, command, argv, message):
+        assert message in _refusal(capsys, command, *argv)
+
+    @pytest.mark.parametrize(
+        "command, argv",
+        [
+            ("yd-provision", ["-a", "-f"]),
+            (
+                "yd-nodeaction",
+                [
+                    "--status",
+                    "--details",
+                    "--node",
+                    "ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                ],
+            ),
+            ("yd-nodeaction", ["--actions", "a.jsonnet", "-J"]),
+        ],
+    )
+    def test_accepted(self, command, argv):
+        _parse(command, *argv)
+
+    def test_data_list_takes_no_dry_run(self, capsys):
+        # It only reads: '--dry-run' would be taken and ignored
+        assert "--dry-run" in _refusal(capsys, "yd-ls", "--dry-run")

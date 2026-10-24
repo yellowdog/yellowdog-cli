@@ -7736,20 +7736,6 @@
     },
     {
       "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "dry_run",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--dry-run",
-        "-D"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
       "const": null,
       "default": null,
       "dest": "remote_paths",
@@ -10794,6 +10780,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "jsonnet_dry_run",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--jsonnet-dry-run",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -32955,20 +32955,6 @@
     },
     {
       "choices": null,
-      "const": true,
-      "default": false,
-      "dest": "dry_run",
-      "kind": "_StoreTrueAction",
-      "nargs": 0,
-      "option_strings": [
-        "--dry-run",
-        "-D"
-      ],
-      "required": false,
-      "type": null
-    },
-    {
-      "choices": null,
       "const": null,
       "default": null,
       "dest": "remote_paths",
@@ -33321,6 +33307,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "jsonnet_dry_run",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--jsonnet-dry-run",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
