@@ -429,9 +429,48 @@ def _update_and_resolve_substitutions(merged: dict):
     # value that is a type-tagged expression ('{{num:count}}') resolves to
     # its type, and is held as its text, as every other value is
     for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        VARIABLE_SUBSTITUTIONS[key_] = _stringify(
-            process_variable_substitutions(_stringify(value_))
+        VARIABLE_SUBSTITUTIONS[key_] = _resolved_variable(value_)
+
+
+def _resolved_variable(value) -> str:
+    """
+    A variable's value with the variables it refers to substituted, as the
+    table holds it. An array or table (held as its JSON text, as a TOML one
+    arrives) is substituted through its structure, element by element, so
+    that a value put into it is escaped as JSON: pasted into its text,
+    'C:\\temp' would be read back with a tab in it, and 'say "hi"' would
+    end the string it was put into.
+    """
+    text = _stringify(value)
+    if VAR_OPENING_DELIMITER in text and text.lstrip().startswith(("[", "{")):
+        try:
+            structure = json_loads(text)
+        except ValueError:
+            structure = None
+        if isinstance(structure, (list, dict)):
+            return _stringify(_substituted_within(structure))
+    return _stringify(process_variable_substitutions(text))
+
+
+def _substituted_within(structure):
+    """
+    An array's or table's values (a table's keys too) substituted one by one;
+    one the '::' syntax unsets is left out.
+    """
+    if isinstance(structure, list):
+        items = [_substituted_within(item) for item in structure]
+        return [item for item in items if item is not _UNSET]
+    if isinstance(structure, dict):
+        pairs = (
+            (_substituted_within(key), _substituted_within(item))
+            for key, item in structure.items()
         )
+        return {
+            key: item for key, item in pairs if key is not _UNSET and item is not _UNSET
+        }
+    if isinstance(structure, str):
+        return process_variable_substitutions(structure)
+    return structure
 
 
 def add_substitutions_without_overwriting(

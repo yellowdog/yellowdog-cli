@@ -1270,6 +1270,30 @@ class TestVariableValueRendering:
     def use_known_subs(self, patched_subs):
         pass
 
+    @pytest.mark.parametrize(
+        "value",
+        ["C:\\temp\\new", 'say "hi"', "tab\there", "line\nbreak"],
+    )
+    def test_a_variable_in_an_array_or_table_is_escaped_as_json(self, value):
+        # Pasted into the array's text, a backslash would be read back as an
+        # escape ('\\t' a tab) and a quote would end the string
+        var_module.add_substitutions_without_overwriting(
+            {"v": value, "arr": ["{{v}}", "b"], "tbl": {"k": "{{v}}"}}
+        )
+        assert var_module.process_variable_substitutions("{{array:arr}}") == [
+            value,
+            "b",
+        ]
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {
+            "k": value
+        }
+
+    def test_an_array_element_takes_its_variables_type(self):
+        var_module.add_substitutions_without_overwriting(
+            {"n": "5", "arr": ["{{num:n}}", "{{n}}"]}
+        )
+        assert var_module.process_variable_substitutions("{{array:arr}}") == [5, "5"]
+
     def test_list_of_strings_round_trips_through_the_array_tag(self):
         var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})
         assert var_module.process_variable_substitutions("{{array:strs}}") == ["a", "b"]
