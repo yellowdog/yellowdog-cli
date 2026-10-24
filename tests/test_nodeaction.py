@@ -315,9 +315,15 @@ class TestStatus:
         get.side_effect = lambda node_id: (
             snapshot if node_id == NODE_1 else (_ for _ in ()).throw(_http_error(404))
         )
-        with pytest.raises(ReportedFailure):
+        with pytest.raises(ReportedFailure) as raised:
             self._status(monkeypatch, [NODE_1, NODE_2, NODE_1])
-        assert [r["nodeId"] for r in platform.records] == [NODE_1]
+        # The node not found recorded with why, and the run's exit code its
+        # failure's (6), as yd-compare's is
+        assert [(r["nodeId"], r.get("error")) for r in platform.records] == [
+            (NODE_1, None),
+            (NODE_2, "not found"),
+        ]
+        assert classify(raised.value) == ExitCode.NOT_FOUND
 
     def test_following_a_queue_that_cannot_be_fetched_fails_the_run(
         self, platform, monkeypatch
@@ -351,8 +357,11 @@ class TestStatus:
         monkeypatch.setattr(na_module, "json_requested", lambda: True)
         with pytest.raises(ReportedFailure) as raised:
             na_module._show_status(_ctx())
-        assert classify(raised.value) == ExitCode.FAILURE
-        assert [r["nodeId"] for r in platform.records] == [NODE_1]
+        assert classify(raised.value) == ExitCode.NOT_FOUND
+        assert [(r["nodeId"], r.get("error")) for r in platform.records] == [
+            (NODE_1, None),
+            (NODE_2, "not found"),
+        ]
         assert f"Failed to get status for node '{NODE_2}': not found" in messages
         assert "All node action queues have finished." not in messages
 
