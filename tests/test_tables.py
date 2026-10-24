@@ -139,3 +139,26 @@ def test_each_table_reads_only_what_its_sdk_model_has(model_class, builder):
     headers, rows = builder([_filled(model)])
     assert len(rows) == 1
     assert len(rows[0]) == len(headers)
+
+
+# ---------------------------------------------------------------------------
+# Text that looks like a number
+# ---------------------------------------------------------------------------
+
+
+def test_a_numbered_list_prints_number_like_text_as_written(capsys):
+    # Read as numbers, '1.10' printed as 1.1, '0042' as 42 and '1e3' as 1000
+    from yellowdog_cli.utils.tables import print_numbered_object_list
+
+    print_numbered_object_list(None, ["1.10", "0042", "1e3"])  # type: ignore[arg-type]
+    out = capsys.readouterr().out
+    for name in ("1.10", "0042", "1e3"):
+        assert f" {name} " in out
+
+
+def test_only_the_columns_parsing_would_rewrite_are_left_unparsed():
+    from yellowdog_cli.utils.tables import _rewritten_columns
+
+    table = [[9, "1.10", "5", "007", 3.5], [10, "x", "12", "a", 2]]
+    # The '#', a count written as text and real numbers stay numbers
+    assert _rewritten_columns(table) == [1, 3]

@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Listings and selection tables show text that looks like a number as written**: a tag of `1.10` showed as `1.1`, `0042` as `42`, and a Task named `1e3` as `1000`.
 - **`yd list tasks --status` filters the Tasks alone**, not the Task Groups walked to reach them as well: in the interactive listing, `--status EXECUTING` showed no Tasks at all, no Task Group being EXECUTING.
 - **`yd list workers --active-only` lists every Worker the SDK counts as available**: RUNNING, a busy Worker's status, and BATCH_ALLOCATION and LATE were left out, only the single-allocation states being listed.
 - **`yd workerpool shutdown` with no namespace (`-n ''`) shuts down the matching Worker Pools in every namespace**, as `yd workrequirement cancel` does: it matched none.

@@ -892,6 +892,31 @@ def _regions_text(instance_type: InstanceType, region: str | None) -> str:
     return "-"
 
 
+def _rewritten_columns(table: list[list]) -> list[int]:
+    """
+    The columns holding text that tabulate, reading it as a number, would
+    print otherwise (a tag of '1.10' as 1.1, '0042' as 42, a name of '1e3'
+    as 1000): parsed as numbers no longer, while the rest, the '#' and the
+    counts, stay numbers, aligned as such.
+    """
+
+    def rewritten(cell: object) -> bool:
+        if not isinstance(cell, str):
+            return False
+        try:
+            return str(int(cell)) != cell
+        except ValueError:
+            pass
+        try:
+            return format(float(cell), "g") != cell
+        except ValueError:
+            return False
+
+    return sorted(
+        {index for row in table for index, cell in enumerate(row) if rewritten(cell)}
+    )
+
+
 def print_numbered_object_list(
     client: PlatformClient,
     objects: Sequence[Item | str | dict],
@@ -923,12 +948,24 @@ def print_numbered_object_list(
             [index + 1, ":", obj.name]  # type: ignore[union-attr]
             for index, obj in enumerate(objects)
         ]
-        print_table_core(indent(tabulate(table, tablefmt="plain"), indent_width=4))
+        print_table_core(
+            indent(
+                tabulate(
+                    table, tablefmt="plain", disable_numparse=_rewritten_columns(table)
+                ),
+                indent_width=4,
+            )
+        )
     else:
         headers, table = table_builder(objects)
         print_table_core(
             indent(
-                tabulate(table, headers=headers, tablefmt="simple_outline"),
+                tabulate(
+                    table,
+                    headers=headers,
+                    tablefmt="simple_outline",
+                    disable_numparse=_rewritten_columns(table),
+                ),
                 indent_width=4,
             )
         )
