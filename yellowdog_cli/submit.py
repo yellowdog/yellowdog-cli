@@ -98,6 +98,7 @@ from yellowdog_cli.utils.task_groups import (
     expand_task_groups,
     promote_task_type,
     task_count_for,
+    task_group_name_at,
 )
 from yellowdog_cli.utils.type_check import (
     check_dict,
@@ -398,11 +399,8 @@ def add_to_existing_work_requirement(
     existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
     wr_data = _specification(run, wr_data)
     _name_the_run(run, cast(str, work_requirement.name))
-    # Numbered as if each were new: until each Task Group has its name,
-    # which the numbering can be part of, which of them are already in the
-    # Work Requirement is unknown
     spec_task_groups = _task_groups(
-        run, wr_data, files_directory, existing_task_groups=len(existing_tgs)
+        run, wr_data, files_directory, existing_tgs=existing_tgs
     )
     work_requirement, additions = _extend_work_requirement(
         run, work_requirement, existing_tgs, spec_task_groups
@@ -442,34 +440,102 @@ def _task_groups(
     run: _Submission,
     wr_data: dict,
     files_directory: str,
-    existing_task_groups: int | None = None,
+    existing_tgs: list[TaskGroup] | None = None,
 ) -> list[TaskGroup]:
     """
     The specification's Task Groups, built once the configuration and the
     specification have been re-substituted with the Work Requirement's name
-    and 'taskGroupCount' has expanded them. 'existing_task_groups' is how
-    many the Work Requirement being added to already has, which they are
-    numbered on from; None for a new one.
+    and 'taskGroupCount' has expanded them. 'existing_tgs' are the Task
+    Groups of the Work Requirement being added to (None for a new one):
+    see _positions_for_adding().
     """
     run.config_wr = update_config_work_requirement_object(run.config_wr)
     resolve_variables_insitu(wr_data)
     run.uploaded_files = RcloneUploadedFiles(run.ctx, files_directory=files_directory)
     expand_task_groups(run.config_wr, wr_data)
-    offset = existing_task_groups or 0
-    count = offset + len(wr_data[TASK_GROUPS])
+    count = len(wr_data[TASK_GROUPS])
+    positions = (
+        [TaskGroupPosition(index, index, count) for index in range(count)]
+        if existing_tgs is None
+        else _positions_for_adding(run.config_wr, wr_data, existing_tgs)
+    )
     task_groups = [
         create_task_group(
             run.config_wr,
-            TaskGroupPosition(tg_number, offset + tg_number, count),
+            position,
             wr_data,
             task_group_data,
             files_directory=files_directory,
             on_legacy_retry=lambda: _warn_legacy_retry_mechanism_once(run),
         )
-        for tg_number, task_group_data in enumerate(wr_data[TASK_GROUPS])
+        for position, task_group_data in zip(positions, wr_data[TASK_GROUPS])
     ]
+    if existing_tgs is not None:
+        _refuse_renamed_by_numbering(positions, task_groups, existing_tgs)
     _refuse_duplicate_names(task_groups)
     return task_groups
+
+
+def _positions_for_adding(
+    config_wr: ConfigWorkRequirement, wr_data: dict, existing_tgs: list[TaskGroup]
+) -> list[TaskGroupPosition]:
+    """
+    Where each of the specification's Task Groups stands once added to a
+    Work Requirement holding 'existing_tgs': one named as an existing Task
+    Group is that one; the rest are appended, numbered on from the existing
+    ones in the order given, the count being the Work Requirement's once
+    they are. Which are existing is told by their names, as they would be
+    given if each were new (a name may hold its number).
+    """
+    existing = {tg.name: index for index, tg in enumerate(existing_tgs)}
+    datas = wr_data[TASK_GROUPS]
+    as_if_new = [
+        task_group_name_at(
+            config_wr,
+            len(existing_tgs) + index,
+            len(existing_tgs) + len(datas),
+            wr_data,
+            task_group_data,
+        )
+        for index, task_group_data in enumerate(datas)
+    ]
+    new = [index for index, name in enumerate(as_if_new) if name not in existing]
+    count = len(existing_tgs) + len(new)
+    return [
+        TaskGroupPosition(
+            index,
+            existing[name]
+            if name in existing
+            else len(existing_tgs) + new.index(index),
+            count,
+        )
+        for index, name in enumerate(as_if_new)
+    ]
+
+
+def _refuse_renamed_by_numbering(
+    positions: list[TaskGroupPosition],
+    task_groups: list[TaskGroup],
+    existing_tgs: list[TaskGroup],
+) -> None:
+    """
+    Refuse a Task Group whose name, holding its number, now names an
+    existing Task Group or no longer does: its number was settled by
+    whether it was one, so it would be added to the wrong Task Group.
+    """
+    existing = {tg.name for tg in existing_tgs}
+    for position, task_group in zip(positions, task_groups):
+        placed = (
+            existing_tgs[position.number].name == task_group.name
+            if position.number < len(existing_tgs)  # Placed as an existing one
+            else task_group.name not in existing
+        )
+        if not placed:
+            raise ValueError(
+                f"Task Group '{task_group.name}' is named by its number, which"
+                " depends on whether it is already in the Work Requirement:"
+                " give it a name of its own to add it with '--add-to'"
+            )
 
 
 def _refuse_duplicate_names(task_groups: list[TaskGroup]) -> None:

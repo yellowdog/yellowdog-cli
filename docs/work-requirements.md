@@ -848,8 +848,10 @@ yd workrequirement submit --add-to my-work-requirement my-spec.json
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
 
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Task and Task Group numbers continue from where the existing Tasks left off, ensuring consistent naming.
-- **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way.
+- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
+- **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way, numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
+
+Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
 
 A single `yd workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
 

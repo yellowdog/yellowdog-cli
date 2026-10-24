@@ -36,9 +36,11 @@ class TaskGroupPosition:
         """
         Define the Task Group's lazy substitutions, for its own properties
         and its Tasks': its name, its number and the Work Requirement's count
-        of Task Groups, and 'num_tasks', the Tasks it is being given.
+        of Task Groups, and its count of Tasks: those it already holds and
+        'num_tasks', those it is being given, as the Tasks' names and
+        YD_NUM_TASKS count them.
         """
-        add_or_update_substitution(L_TASK_COUNT, str(num_tasks))
+        add_or_update_substitution(L_TASK_COUNT, str(self.existing_tasks + num_tasks))
         add_or_update_substitution(L_TASK_GROUP_NAME, task_group_name)
         add_or_update_substitution(
             L_TASK_GROUP_NUMBER, formatted_number_str(self.number, self.count)

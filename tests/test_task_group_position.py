@@ -42,10 +42,11 @@ def test_a_new_work_requirements_task_group(substitutions):
 def test_a_task_group_added_after_existing_ones(substitutions):
     # The third of ten in the Work Requirement, the first in the
     # specification, already holding 4 Tasks: numbered by its place in the
-    # Work Requirement, padded to its count, and counting only the new Tasks
+    # Work Requirement, padded to its count, and counting the Tasks it holds
+    # and the new ones, as the Tasks' names and YD_NUM_TASKS count them
     TaskGroupPosition(spec_index=0, number=2, count=10, existing_tasks=4).substitute(
         "grp", 3
     )
     assert substitutions[L_TASK_GROUP_NUMBER] == "03"
     assert substitutions[L_TASK_GROUP_COUNT] == "10"
-    assert substitutions[L_TASK_COUNT] == "3"
+    assert substitutions[L_TASK_COUNT] == "7"

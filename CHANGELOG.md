@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd workrequirement submit --add-to` numbers a new Task Group by where it is added**, on from the existing Task Groups, in its own properties as in its Tasks': they were numbered as if every Task Group of the specification were new (`tg4-of-4` where its Tasks said `3 of 3`). **And `{{task_count}}` for Tasks added to an existing Task Group is its whole count** everywhere, as in the Tasks' names and `YD_NUM_TASKS`: in their other properties it was the new Tasks alone.
 - **`{{task_count}}` in a Task Group's name and properties is the number of Tasks it gets** with `--task-count`: it was the specification's `taskCount`, which `--task-count` overrides for the Tasks themselves.
 - **A named data client profile's own fields beat the `YD_DATA_CLIENT_*` environment variables**: with `YD_DATA_CLIENT_BUCKET` set, `yd data copy --dst-profile backup` copied onto that bucket, the source's, rather than the bucket `[dataClient.backup]` names. A field the profile inherits from `[dataClient]` is still overridden by the environment.
 - **`--property common.variables.<name>=<value>` sets the variable before the configuration file is read**, as `-v <name>=<value>` does, so the file's own properties and the variables it builds from it take the new value: they kept the file's.
