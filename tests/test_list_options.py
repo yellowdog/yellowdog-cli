@@ -1579,3 +1579,69 @@ def test_a_limit_of_one_is_worded_in_the_singular(monkeypatch):
     limit.warn()
     (warning,) = warnings
     assert warning.startswith("Listed the first Instance; more match.")
+
+
+class TestEmit:
+    """
+    The output the resource listers share (list.py's _emit()).
+    """
+
+    @staticmethod
+    def _objects():
+        return [SimpleNamespace(id="b", name="b"), SimpleNamespace(id="a", name="a")]
+
+    def _emit(self, monkeypatch, capsys, **values):
+        printed: dict = {}
+        monkeypatch.setattr(
+            yd_list, "sorted_objects", lambda o: sorted(o, key=lambda x: x.id)
+        )
+        monkeypatch.setattr(
+            yd_list, "print_objects_as_json", lambda o: printed.update(json=o)
+        )
+        monkeypatch.setattr(yd_list, "select", lambda client, o, **k: o)
+        monkeypatch.setattr(
+            yd_list, "print_yd_object_list", lambda o: printed.update(details=o)
+        )
+        monkeypatch.setattr(
+            yd_list, "print_info", lambda m, **k: printed.update(info=m)
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, o, object_type_name=None: printed.update(
+                table=(o, object_type_name)
+            ),
+        )
+        ctx = SimpleNamespace(args=_args("keyrings", **values), client=None)
+        yd_list._emit(
+            ctx,
+            self._objects(),
+            detail=lambda o: f"full {o.id}",
+            extra=lambda o: {"resource": "X"},
+            type_name="Thing",
+            announce="substituting",
+        )
+        return printed, capsys.readouterr().out
+
+    def test_json_with_details_is_each_in_full(self, monkeypatch, capsys):
+        printed, _ = self._emit(monkeypatch, capsys, json_output=True, details=True)
+        assert printed["json"] == ["full a", "full b"]
+
+    def test_ids_are_sorted(self, monkeypatch, capsys):
+        _, out = self._emit(monkeypatch, capsys, ids_only=True)
+        assert out.split() == ["a", "b"]
+
+    def test_the_table_names_the_type(self, monkeypatch, capsys):
+        printed, _ = self._emit(monkeypatch, capsys)
+        assert [o.id for o in printed["table"][0]] == ["a", "b"]
+        assert printed["table"][1] == "Thing"
+
+    def test_details_are_in_full_with_their_extra_after_the_announcement(
+        self, monkeypatch, capsys
+    ):
+        printed, _ = self._emit(monkeypatch, capsys, details=True, substitute_ids=True)
+        assert printed["details"] == [
+            ("full a", {"resource": "X"}),
+            ("full b", {"resource": "X"}),
+        ]
+        assert printed["info"] == "substituting"
