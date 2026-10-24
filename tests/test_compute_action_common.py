@@ -906,6 +906,16 @@ class TestAutoShutdown:
         )
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
+        assert platform.records[0]["error"].startswith(
+            "'autoshutdown' does not apply to Instances"
+        )
+
+    def test_a_terminated_cr_is_refused_by_the_verb(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.records[0]["error"].endswith(
+            "not a valid state for 'autoshutdown'"
+        )
 
     def test_a_failure_is_recorded(self, platform, monkeypatch):
         platform.failures[self.METHOD] = _http_error(400)

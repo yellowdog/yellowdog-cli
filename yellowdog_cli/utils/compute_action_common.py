@@ -110,6 +110,14 @@ class ComputeAction:
     def prompt(self) -> str:
         return self.confirmation_verb or self.name
 
+    @property
+    def verb(self) -> str:
+        """
+        How a message names the action: its '--json' record's 'action'
+        ('stop', 'autoshutdown'), the verb the command is typed as.
+        """
+        return self.record_name or self.name.lower()
+
     def record(
         self,
         entity: object,
@@ -125,7 +133,7 @@ class ComputeAction:
         record_action(
             entity,
             entity_type,
-            self.record_name or self.name.lower(),
+            self.verb,
             outcome or self.past_tense.lower(),
             error,
             **extra,
@@ -632,7 +640,7 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
         spec is not None or ydid_type == YDIDType.NODE
     ):
         raise Unresolved(
-            f"Instances cannot be {action.past_tense.lower()}; "
+            f"'{action.verb}' does not apply to Instances; "
             "please supply Compute Requirement names or IDs"
         )
 
@@ -652,7 +660,7 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
 
     if action.cr_method_name is None:
         raise Unresolved(
-            f"Compute Requirements cannot be {action.past_tense.lower()}; "
+            f"'{action.verb}' does not apply to Compute Requirements; "
             "please supply Instance or Node IDs"
         )
     compute_requirement: _ComputeRequirementTarget = (
@@ -663,7 +671,7 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
     if compute_requirement.status not in action.valid_cr_statuses:
         raise Unresolved(
             f"Compute Requirement '{target}' is {compute_requirement.status},"
-            f" not a valid state for action '{action.name}'",
+            f" not a valid state for '{action.verb}'",
             SKIPPED,
             compute_requirement,
         )
@@ -712,7 +720,7 @@ def _resolve_instance(
     if instance.status not in action.valid_instance_statuses:
         raise Unresolved(
             f"Instance '{cr_id}.{instance_id}' is {instance.status},"
-            f" not a valid state for action '{action.name}'",
+            f" not a valid state for '{action.verb}'",
             SKIPPED,
         )
     return compute_requirement, instance
