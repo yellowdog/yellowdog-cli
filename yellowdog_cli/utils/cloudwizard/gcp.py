@@ -120,9 +120,8 @@ class GCPConfig(CommonCloudConfig):
         self._create_keyring(keyring_name=YD_KEYRING_NAME)
 
         # Create Credential and add to Keyring
-        create_resources(
-            self._ctx,
-            [self._generate_yd_gcp_credential(YD_KEYRING_NAME, YD_CREDENTIAL_NAME)],
+        self._add_credential(
+            self._generate_yd_gcp_credential(YD_KEYRING_NAME, YD_CREDENTIAL_NAME)
         )
 
         # Save the Compute Requirement and Source Templates

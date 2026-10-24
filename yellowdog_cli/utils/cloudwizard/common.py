@@ -94,6 +94,27 @@ class CommonCloudConfig(ABC):
             f" '{self._cloud_provider}'"
         )
 
+    def _add_credential(self, credential_resource: dict) -> None:
+        """
+        Add the Credential to the Keyring, setup's last Platform step, so
+        that its failure, which create_resources() has reported, does not
+        stop the resource file being saved after it: a session failure is
+        kept in 'platform_failure', for the run to exit with its code, and
+        any other counted, for the run to exit 1.
+        """
+        try:
+            create_resources(self._ctx, [credential_resource])
+        except Exception as e:
+            if classify(e) in SESSION_FAILURES:
+                self.platform_failure = (
+                    e.__cause__ if isinstance(e, ReportedFailure) else e
+                )
+            else:
+                print_error(
+                    "The Credential was not added to the Keyring: run setup again"
+                    " to add it"
+                )
+
     def _remove_yd_templates_by_prefix(self, client: PlatformClient, name_prefix: str):
         """
         Remove YellowDog Compute Source & Requirement Templates based on a prefix.

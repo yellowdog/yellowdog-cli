@@ -127,6 +127,7 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._create_resource_groups_and_network_resources#0": _AZURE,
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._create_resource_groups_and_network_resources#1": _AZURE,
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._remove_resource_groups#0": _AZURE,
+    "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._remove_resource_groups#1": _AZURE,
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._remove_resource_group_by_name#0": _AZURE,
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._create_network_resources#0": _AZURE,
     "yellowdog_cli/utils/cloudwizard/azure.py::AzureConfig._create_network_resources#1": _AZURE,

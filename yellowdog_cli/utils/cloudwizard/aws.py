@@ -361,10 +361,11 @@ class AWSConfig(CommonCloudConfig):
                     " added to YellowDog Keyring"
                 )
             elif self._wait_until_access_key_is_valid_for_ec2(access_key=access_key):
-                credential_resource = self._generate_yd_aws_credential(
-                    YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
+                self._add_credential(
+                    self._generate_yd_aws_credential(
+                        YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
+                    )
                 )
-                create_resources(self._ctx, [credential_resource])
             else:
                 print_warning("AWS Credential not added to YellowDog Keyring")
 
