@@ -835,6 +835,43 @@ class TestAbort:
         assert run.exit_code == ExitCode.AUTHENTICATION
         assert err.count("401 error") == 1
 
+    @pytest.fixture()
+    def selected(self, monkeypatch):
+        """
+        With no targets, the Work Requirements selected from the scope:
+        'wr-a' and 'wr-b', as the (unhashable) SDK summaries they are.
+        """
+        summaries = [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")]
+        monkeypatch.setattr(
+            yd_abort,
+            "get_filtered_work_requirement_summaries",
+            lambda client, **kwargs: summaries,
+        )
+        monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
+
+    @pytest.mark.parametrize(
+        "failure, exit_code, wr_b",
+        [
+            # The next Work Requirement still tried, and failing too
+            ("500", ExitCode.PLATFORM, "failed"),
+            # The session's failure: nothing further attempted
+            ("connection", ExitCode.CONNECTION, "skipped"),
+        ],
+    )
+    def test_a_selected_work_requirements_failing_lookup_is_recorded(
+        self, run, wrs, selected, failure, exit_code, wr_b
+    ):
+        client = self._client()
+        client.work_client.get_tasks.side_effect = (
+            _http_error(500) if failure == "500" else ConnectionError_("reset")
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[])
+        assert [(r["name"], r["outcome"]) for r in out] == [
+            ("wr-a", "failed"),
+            ("wr-b", wr_b),
+        ]
+        assert run.exit_code == exit_code
+
     def test_duplicates_and_overlaps_are_aborted_once(self, run, wrs):
         client = self._client([_task()], by_id={TASK_ID: _task()})
         out, err, _ = run(
