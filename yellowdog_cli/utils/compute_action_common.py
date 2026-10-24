@@ -504,9 +504,11 @@ def _apply_action_by_name_or_id(
     Apply the action to Compute Requirements by their names or IDs, to
     nodes' instances by node ID, or to instances by 'cr_id.instance_id'.
     """
+    # The Compute Requirements of the Instances named, each fetched once
+    fetched: dict[str, ComputeRequirement] = {}
     items = resolve_targets(
         names_or_ids,
-        resolve=lambda target: _resolve_target(ctx, action, target),
+        resolve=lambda target: _resolve_target(ctx, action, target, fetched),
         describe=_target_entity,
         record=action.recorder(),
         verb=action.name.lower(),
@@ -629,10 +631,16 @@ def _act_on_instances(ctx: RunContext, action: ComputeAction, group: list[_Insta
         )
 
 
-def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item:
+def _resolve_target(
+    ctx: RunContext,
+    action: ComputeAction,
+    target: str,
+    fetched: dict[str, ComputeRequirement],
+) -> Item:
     """
     What a target names, raising Unresolved if it cannot be acted on.
-    Anything else raised is a failure of the lookup itself.
+    Anything else raised is a failure of the lookup itself. 'fetched' holds
+    the Compute Requirements an Instance's resolution has fetched, by ID.
     """
     ydid_type = get_ydid_type(target)
     spec = split_instance_specification(target)
@@ -645,14 +653,16 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
         )
 
     if spec is not None:
-        compute_requirement, instance = _resolve_instance(ctx, action, spec[0], spec[1])
+        compute_requirement, instance = _resolve_instance(
+            ctx, action, spec[0], spec[1], fetched
+        )
         return _instance_item(
             _Instance(spec[0], compute_requirement, instance, spec[1], None)
         )
 
     if ydid_type == YDIDType.NODE:
         cr_id, compute_requirement, instance, instance_id = _resolve_node(
-            ctx, action, target
+            ctx, action, target, fetched
         )
         return _instance_item(
             _Instance(cr_id, compute_requirement, instance, instance_id, target)
@@ -708,9 +718,14 @@ def _resolve_compute_requirement_name(
 
 
 def _resolve_instance(
-    ctx: RunContext, action: ComputeAction, cr_id: str, instance_id: str
+    ctx: RunContext,
+    action: ComputeAction,
+    cr_id: str,
+    instance_id: str,
+    fetched: dict[str, ComputeRequirement],
 ) -> tuple[ComputeRequirement, Instance]:
-    compute_requirement = _get_compute_requirement(ctx, cr_id)
+    if (compute_requirement := fetched.get(cr_id)) is None:
+        compute_requirement = fetched[cr_id] = _get_compute_requirement(ctx, cr_id)
     instance: Instance | None = get_instance_by_id(ctx.client, cr_id, instance_id)
     if instance is None:
         raise Unresolved(
@@ -727,7 +742,10 @@ def _resolve_instance(
 
 
 def _resolve_node(
-    ctx: RunContext, action: ComputeAction, node_id: str
+    ctx: RunContext,
+    action: ComputeAction,
+    node_id: str,
+    fetched: dict[str, ComputeRequirement],
 ) -> tuple[str, ComputeRequirement, Instance, str]:
     """
     The Compute Requirement (its ID, and itself), Instance and Instance ID a
@@ -762,5 +780,7 @@ def _resolve_node(
 
     cr_id = worker_pool.computeRequirementId
     instance_id = node.details.instanceId
-    compute_requirement, instance = _resolve_instance(ctx, action, cr_id, instance_id)
+    compute_requirement, instance = _resolve_instance(
+        ctx, action, cr_id, instance_id, fetched
+    )
     return cr_id, compute_requirement, instance, instance_id

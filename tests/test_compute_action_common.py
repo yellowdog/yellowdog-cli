@@ -463,6 +463,16 @@ class TestInstances:
         assert len(prompts) == 1
         assert "2 Instance(s)" in prompts[0]
 
+    def test_instances_in_one_cr_fetch_it_once(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
+        _run(
+            platform,
+            COMPUTE_STOP,
+            [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
+        )
+        fetch = platform.client.compute_client.get_compute_requirement_by_id
+        assert fetch.call_count == 1
+
     def test_crs_and_instances_share_one_confirmation(self, platform, monkeypatch):
         prompts = []
         monkeypatch.setattr(
