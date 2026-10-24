@@ -36,6 +36,7 @@ from yellowdog_cli.utils.completion import (
     LookupRequest,
     complete,
     join_bash_words,
+    unquoted,
 )
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS
@@ -90,7 +91,12 @@ def completion_reply(
     prefix = ""
     if shell == "bash":
         words, current, prefix = join_bash_words(words, current)
-    result = complete(words, current)
+    # As the command will be given them: bash and zsh pass every word as
+    # typed, quotes and all ('-t ""' the empty tag), fish and PowerShell
+    # the earlier ones unquoted but the current one as typed
+    if shell in ("bash", "zsh"):
+        words = [unquoted(word) for word in words]
+    result = complete(words, unquoted(current))
     found = (
         _look_up(result.lookup)
         if result.lookup is not None and names and lookups_enabled()

@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **Tab completion**: on macOS's bash 3.2, `--sort=cr<Tab>` completes to `--sort=created`, where it gave `--sort=--sort=created`; a file or directory after `--option=` completes in bash 3.2, zsh and PowerShell, where nothing was offered; and a quoted word is read as the command will be given it, so `-t ''` and `-n 'my ns'` reach a name lookup unquoted and `'nightly` (a quote opened) completes.
 - **Commander**: an edited Namespace or Tag field is discovered again, so the scope a confirmation names and the default object path follow it, where they kept the previous values; a discovery still running when a newer one starts no longer writes its older result over the newer one; and a command finishing no longer closes the input box to a later command still waiting for input.
 - **`yd workrequirement submit --add-to` numbers a new Task Group by where it is added**, on from the existing Task Groups, in its own properties as in its Tasks': they were numbered as if every Task Group of the specification were new (`tg4-of-4` where its Tasks said `3 of 3`). **And `{{task_count}}` for Tasks added to an existing Task Group is its whole count** everywhere, as in the Tasks' names and `YD_NUM_TASKS`: in their other properties it was the new Tasks alone.
 - **`{{task_count}}` in a Task Group's name and properties is the number of Tasks it gets** with `--task-count`: it was the specification's `taskCount`, which `--task-count` overrides for the Tasks themselves.

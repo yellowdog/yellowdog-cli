@@ -196,7 +196,9 @@ def join_bash_words(words: list[str], current: str) -> tuple[list[str], str, str
     back together: '--sort=name' and a YDID each one word again. Returns the
     words, the current word, and the prefix of the current word bash will
     not replace (what precedes its last '=' or ':'), to be taken off each
-    candidate.
+    candidate. Bash 3.2, macOS's, does not split the words at them, but
+    readline still replaces only what follows the last, so the prefix is
+    taken off there too.
     """
     joined: list[str] = []
     for word in words:
@@ -210,7 +212,37 @@ def join_bash_words(words: list[str], current: str) -> tuple[list[str], str, str
     if joined and joined[-1].endswith(_BASH_BREAKS):
         prefix = joined.pop()
         return joined, prefix + current, prefix
-    return joined, current, ""
+    last = max(current.rfind(character) for character in _BASH_BREAKS)
+    return joined, current, current[: last + 1]
+
+
+def unquoted(word: str) -> str:
+    """
+    A word as the shell will pass it to the command: its quotes taken away
+    and its backslash escapes undone ('my ns', "a b", a\\ b), a quote
+    opened and not yet closed (the word being typed, "'nigh") dropped.
+    The words bash and zsh hand completion are as typed, quotes and all.
+    """
+    characters: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(word):
+        character = word[index]
+        escaped = word[index + 1] if index + 1 < len(word) else None
+        if quote is None and character in "'\"":
+            quote = character
+        elif quote is None and character == "\\" and escaped is not None:
+            characters.append(escaped)
+            index += 1
+        elif character == quote:
+            quote = None
+        elif quote == '"' and character == "\\" and escaped in ('"', "\\", "$", "`"):
+            characters.append(cast(str, escaped))
+            index += 1
+        else:
+            characters.append(character)
+        index += 1
+    return "".join(characters)
 
 
 def _is_long(word: str) -> bool:

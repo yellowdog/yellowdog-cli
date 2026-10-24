@@ -532,6 +532,38 @@ class TestBashWords:
     def test_nothing_to_join(self):
         assert join_bash_words(["yd", "wr"], "s") == (["yd", "wr"], "s", "")
 
+    @pytest.mark.parametrize(
+        "current, prefix", [("--sort=cr", "--sort="), ("ydid:wrkreq:0", "ydid:wrkreq:")]
+    )
+    def test_bash_3_2s_unsplit_word_keeps_its_prefix(self, current, prefix):
+        # macOS's bash does not split the word at '=' or ':', but readline
+        # still replaces only what follows the last of them
+        assert join_bash_words(["yd", "wr", "list"], current) == (
+            ["yd", "wr", "list"],
+            current,
+            prefix,
+        )
+
+
+class TestUnquoted:
+    @pytest.mark.parametrize(
+        "word, expected",
+        [
+            ("'my ns'", "my ns"),
+            ('"a b"', "a b"),
+            ("a\\ b", "a b"),
+            ("''", ""),
+            ("'ni", "ni"),  # Opened, being typed
+            ('"x\\"y"', 'x"y'),
+            ("it\\'s", "it's"),
+            ("plain", "plain"),
+        ],
+    )
+    def test_a_word_as_the_command_will_be_given_it(self, word, expected):
+        from yellowdog_cli.utils.completion import unquoted
+
+        assert unquoted(word) == expected
+
 
 class TestReply:
     def test_bash_gets_values_without_the_prefix_it_keeps(self):
@@ -540,6 +572,29 @@ class TestReply:
             "values",
             "created",
         ]
+
+    def test_bash_3_2_gets_values_without_the_prefix_it_keeps(self):
+        # One word, '--sort=cr': not '--sort=--sort=created' on the line
+        words = ["yd", "wr", "cancel", "--sort=cr"]
+        assert yd_completion.completion_reply("bash", 3, words) == [
+            "values",
+            "created",
+        ]
+
+    @pytest.mark.parametrize("shell", ["bash", "zsh", "fish", "powershell"])
+    def test_a_quoted_current_word_is_matched_unquoted(self, shell):
+        lines = yd_completion.completion_reply(shell, 2, ["yd", "wr", "'can"])
+        assert lines[0] == "values" and lines[1].startswith("cancel")
+
+    def test_quoted_options_reach_a_lookup_unquoted(self):
+        # '-t ""' is the empty tag (the whole namespace), not two quotes
+        from yellowdog_cli.utils.completion import complete, unquoted
+
+        words = ["yd", "wr", "cancel", "-t", "''", "-n", "'my ns'"]
+        request = complete([unquoted(w) for w in words], "").lookup
+        assert request is not None
+        assert request.settings["tag"] == ""
+        assert request.settings["namespace"] == "my ns"
 
     def test_zsh_gets_descriptions(self):
         lines = yd_completion.completion_reply("zsh", 2, ["yd", "wr", "sub"])
@@ -802,6 +857,10 @@ class TestBashScript:
                 "t yd wr cancel --sort = cr",
                 "t yd wr submit specs/w",
                 "t yd schema --write sp",
+                # The path after '=': split there by bash 4 and later, one
+                # word in bash 3.2, macOS's
+                "t yd schema --write = sp",
+                "t yd schema --write=sp",
                 "complete -p yd",
             ]
         )
@@ -809,6 +868,8 @@ class TestBashScript:
             "submit start show",
             "created",
             "specs/wr.json",
+            "specs",
+            "specs",
             "specs",
             "complete -F _yd_completion yd",
         ]
@@ -833,6 +894,7 @@ class TestZshScript:
                 "compdef() { print -r -- compdef $1 $2 }",
                 '_describe() { print -rl -- "${(@P)4}" }',
                 "_files() { print -r -- files $* }",
+                "compset() { print -r -- compset $* }",
                 yd_completion.completion_script("zsh", names=names),
                 't() { words=("$@"); CURRENT=${#words}; _yd_completion }',
                 "t yd wr su",
@@ -845,7 +907,10 @@ class TestZshScript:
             "compdef _yd_completion yd",
             "submit:Submit a Work Requirement",
             "--sort=created",
+            # The path completed after an '--option=', taken off by compset
+            "compset -P *=",
             "files",
+            "compset -P *=",
             "files -/",
         ]
 
@@ -938,6 +1003,7 @@ class TestPowerShellScript:
             "yd wr cancel --sort=cr",
             "yd wr submit specs/w",
             "yd schema --write sp",
+            "yd schema --write=sp",
             "yd-submit --f",
         ]
         quoted = ", ".join(f"'{line}'" for line in lines)
@@ -983,6 +1049,9 @@ class TestPowerShellScript:
             "./specs/wr.json",
             "[yd schema --write sp]",
             "./specs",
+            # The path after '=', completed by the script
+            "[yd schema --write=sp]",
+            "--write=./specs",
             # A deprecated command has no completion
             "[yd-submit --f]",
             # An empty current word, which PowerShell 5.1 would drop
