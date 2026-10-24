@@ -409,6 +409,28 @@ class TestTaskCountFromTheCommandLine:
         assert self._count(config_wr, {"taskCount": 3}, {}) == 3
         assert self._count(config_wr, {}, {}) == 2
 
+    def test_the_task_groups_task_count_is_the_one_its_tasks_are(self):
+        # '{{task_count}}' in the Task Group's name and properties is the
+        # number of Tasks there will be, '--task-count''s over the
+        # specification's, as the Tasks' own is
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+        from yellowdog_cli.utils.task_groups import create_task_group
+
+        config_wr = ConfigWorkRequirement(
+            task_count=10, task_count_from_command_line=True
+        )
+        task_group_data = {
+            "taskCount": 5,
+            "name": "tg-of-{{task_count}}",
+            "tasks": [{"taskType": "x"}],
+        }
+        wr_data = {"taskGroups": [task_group_data]}
+        task_group = create_task_group(
+            config_wr, TaskGroupPosition(0, 0, 1), wr_data, task_group_data
+        )
+        assert task_group.name == "tg-of-10"
+        assert self._count(config_wr, wr_data, task_group_data) == 10
+
 
 class TestTaskCountExpansion:
     """

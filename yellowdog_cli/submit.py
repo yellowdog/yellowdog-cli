@@ -97,11 +97,11 @@ from yellowdog_cli.utils.task_groups import (
     create_task_group,
     expand_task_groups,
     promote_task_type,
+    task_count_for,
 )
 from yellowdog_cli.utils.type_check import (
     check_dict,
     check_float_or_int,
-    check_int,
     check_str,
 )
 from yellowdog_cli.utils.validate_properties import validate_properties
@@ -774,21 +774,6 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
         f"please use '{RETRY_POLICY}' and (optionally) '{FAILURE_POLICY}' "
         "instead. See 'Task Retries and Failure Policies' in the CLI's"
         " docs/work-requirements.md."
-    )
-
-
-def task_count_for(
-    config_wr: ConfigWorkRequirement, wr_data: dict, task_group_data: dict
-) -> int | None:
-    """
-    A Task Group's 'taskCount': '--task-count' where it was given, which
-    overrides the specification; else the lowest level of the specification
-    setting it, else the TOML file's.
-    """
-    if config_wr.task_count_from_command_line:
-        return config_wr.task_count
-    return Cascade(wr_data, task_group_data).checked(
-        TASK_COUNT, check_int, config_wr.task_count
     )
 
 

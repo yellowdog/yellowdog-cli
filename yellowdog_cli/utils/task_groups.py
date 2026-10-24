@@ -260,6 +260,28 @@ def create_task_group(
     return task_group
 
 
+def task_count_for(
+    config_wr: ConfigWorkRequirement, wr_data: dict, task_group_data: dict
+) -> int | None:
+    """
+    A Task Group's 'taskCount': '--task-count' where it was given, which
+    overrides the specification; else the lowest level of the specification
+    setting it, else the TOML file's.
+    """
+    return _task_count_in(config_wr, Cascade(wr_data, task_group_data))
+
+
+def _task_count_in(config_wr: ConfigWorkRequirement, levels: Cascade) -> int | None:
+    """
+    task_count_for() over levels already built: the one rule for the Task
+    Group's name and lazy variables, and for the Tasks generated, so that
+    '{{task_count}}' is the number of Tasks there will be.
+    """
+    if config_wr.task_count_from_command_line:
+        return config_wr.task_count
+    return levels.checked(TASK_COUNT, check_int, config_wr.task_count)
+
+
 def _name_task_group(
     config_wr: ConfigWorkRequirement,
     position: TaskGroupPosition,
@@ -272,8 +294,8 @@ def _name_task_group(
     and then applied to the Task Group's own properties, in place.
     """
     num_tasks = len(task_group_data[TASKS])
-    if num_tasks == 1:  # Account for Task expansion
-        _task_count = levels.checked(TASK_COUNT, check_int, config_wr.task_count)
+    if num_tasks == 1:  # Account for Task expansion, as the Tasks will be
+        _task_count = _task_count_in(config_wr, levels)
         if _task_count is not None:
             num_tasks = _task_count
 

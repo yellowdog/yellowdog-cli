@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`{{task_count}}` in a Task Group's name and properties is the number of Tasks it gets** with `--task-count`: it was the specification's `taskCount`, which `--task-count` overrides for the Tasks themselves.
 - **A named data client profile's own fields beat the `YD_DATA_CLIENT_*` environment variables**: with `YD_DATA_CLIENT_BUCKET` set, `yd data copy --dst-profile backup` copied onto that bucket, the source's, rather than the bucket `[dataClient.backup]` names. A field the profile inherits from `[dataClient]` is still overridden by the environment.
 - **`--property common.variables.<name>=<value>` sets the variable before the configuration file is read**, as `-v <name>=<value>` does, so the file's own properties and the variables it builds from it take the new value: they kept the file's.
 - **A configuration file's own `[common.variables]` win over those of the file it imports with `importCommon`**, with `--config` as without: with `--config`, the imported file's definition replaced the local one, after the local value had already been used in the file's own properties.
