@@ -55,7 +55,7 @@ jobs:
       - name: The unit tests
         run: >
           python -m pytest -n auto -rs -p no:cacheprovider
-          --timeout=300 --junitxml=windows-tests.xml
+          --timeout=300 --timeout-method=thread -o faulthandler_timeout=240 --junitxml=windows-tests.xml
 
       - name: Keep the results
         if: always()

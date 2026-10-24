@@ -70,7 +70,7 @@ jobs:
         run: |
           source .venv/bin/activate
           python -m pytest -n auto -rs -p no:cacheprovider \
-            --timeout=300 --junitxml=macos-tests.xml
+            --timeout=300 --timeout-method=thread -o faulthandler_timeout=240 --junitxml=macos-tests.xml
 
       - name: Keep the results
         if: always()
