@@ -127,8 +127,8 @@ def get_selected_list_items(
                     high = int(high_s)
                     if low > high:
                         raise ValueError
-                    # Checked by its ends, once: not number by number, which
-                    # printed an error for each of '1-200000''s out of range
+                    # Checked by its ends, once, so that a range far out of
+                    # range is one error rather than one per number
                     if 1 <= low and high <= num_items:
                         selector_set.update(range(low, high + 1))
                     else:
@@ -136,7 +136,7 @@ def get_selected_list_items(
                             f"'{selector.strip()}' is out of range (1-{num_items})"
                         )
                         error_flag = True
-                elif not (selector.isspace() or not selector):
+                elif selector.strip():
                     i = int(selector)
                     if in_range(i):
                         selector_set.add(i)
