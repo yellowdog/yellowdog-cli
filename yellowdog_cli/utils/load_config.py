@@ -543,18 +543,20 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             key_raw, secret_raw = common_section[KEY], common_section[SECRET]
         else:
             key_raw, secret_raw = common_section.get(KEY), common_section.get(SECRET)
-        key = None if key_raw is None else _resolved_common_value(KEY, key_raw)
+        key = None if key_raw is None else _resolved_common_value(KEY, key_raw, strict)
         secret = (
-            None if secret_raw is None else _resolved_common_value(SECRET, secret_raw)
+            None
+            if secret_raw is None
+            else _resolved_common_value(SECRET, secret_raw, strict)
         )
         if key is not None:
             add_substitutions_without_overwriting(subs={KEY: key})
         if secret is not None:
             add_substitutions_without_overwriting(subs={SECRET: secret})
 
-        namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE])
+        namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE], strict)
         add_substitutions_without_overwriting(subs={NAMESPACE: namespace})
-        name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG])
+        name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG], strict)
         add_substitutions_without_overwriting(subs={NAME_TAG: name_tag})
 
         _set_certificates_bundle(common_section)
@@ -734,11 +736,24 @@ def _resolved_url(common_section: dict, strict: bool = True) -> str:
     return url
 
 
-def _resolved_common_value(key_name: str, value: object) -> str:
+def _resolved_common_value(key_name: str, value: object, strict: bool = True) -> str:
     """
-    A [common] value with its variables substituted.
+    A [common] value with its variables substituted. One that is not text
+    ('tag = 2026', which TOML reads as a number) is a configuration error,
+    and exits, rather than failing later where a name is built from it;
+    without 'strict' (yd-doctor, which reports the configuration rather
+    than exiting on it) it is taken as its text.
     """
-    return cast(str, _resolve_value(value, f"{COMMON_SECTION}.{key_name}"))
+    resolved = _resolve_value(value, f"{COMMON_SECTION}.{key_name}")
+    if not isinstance(resolved, str) and not strict:
+        return str(resolved)
+    if not isinstance(resolved, str):
+        print_error(
+            f"'{COMMON_SECTION}.{key_name}' must be text, not {resolved!r}:"
+            f' quote it in the configuration file ({key_name} = "{resolved}")'
+        )
+        exit(ExitCode.CONFIGURATION)
+    return resolved
 
 
 def _set_certificates_bundle(common_section: dict) -> None:

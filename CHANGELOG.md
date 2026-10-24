@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`, which TOML reads as a number) is a configuration error, exit 3, naming the property: commands failed later with an internal error.
 - **`yd node action --status` records a node whose queue cannot be fetched**, with its `error`, and exits with that failure's code (6 for a node not found), as `yd node action` itself does: the node was missing from `--json`, and the command exited 1 whatever the cause.
 - **Listings and selection tables show text that looks like a number as written**: a tag of `1.10` showed as `1.1`, `0042` as `42`, and a Task named `1e3` as `1000`.
 - **`yd list tasks --status` filters the Tasks alone**, not the Task Groups walked to reach them as well: in the interactive listing, `--status EXECUTING` showed no Tasks at all, no Task Group being EXECUTING.
