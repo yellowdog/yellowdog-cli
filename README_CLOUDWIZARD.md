@@ -526,6 +526,8 @@ To add an inbound SSH rule to the Cloud Wizard security group for a region, Clou
 
 `yd cloudwizard --cloud-provider=azure --region-name=northeurope add-ssh`
 
+Since the rule allows SSH from anywhere, `add-ssh` asks for confirmation first, naming the security group and the region (`--yes` skips it).
+
 The rule can be removed using:
 
 `yd cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh`

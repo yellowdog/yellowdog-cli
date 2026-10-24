@@ -566,6 +566,12 @@ class AzureConfig(CommonCloudConfig):
         security_group_name = self._generate_security_group_name(selected_region)
         security_rule_name = "ssh-inbound"
         if operation == "add-ssh":
+            # Asked first, as AWS's add-ssh asks: it opens a port to anywhere
+            if not confirmed(
+                "Allow SSH (port 22) from anywhere (*) in Azure security group"
+                f" '{security_group_name}' in region '{selected_region}'?"
+            ):
+                return
             print_info(
                 "Adding inbound SSH rule to Azure security group"
                 f" '{security_group_name}'"

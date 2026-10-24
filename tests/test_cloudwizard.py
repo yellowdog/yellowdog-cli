@@ -196,6 +196,24 @@ def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
     assert "0.0.0.0/0" in asked[0]
 
 
+def test_azure_add_ssh_is_confirmed_first(monkeypatch):
+    # As AWS's is: the rule opens port 22 to anywhere
+    pytest.importorskip("azure.mgmt.network")
+    from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+
+    asked: list[str] = []
+    monkeypatch.setattr(
+        cloudwizard_azure, "confirmed", lambda question: asked.append(question) or False
+    )
+    config = object.__new__(cloudwizard_azure.AzureConfig)
+    config._generate_resource_group_name = lambda region: f"rg-{region}"
+    config._generate_security_group_name = lambda region: f"sg-{region}"
+    config._network_client = MagicMock()
+    config.set_ssh_ingress_rule("add-ssh", "uksouth")
+    assert asked and "sg-uksouth" in asked[0] and "uksouth" in asked[0]
+    config._network_client.security_rules.begin_create_or_update.assert_not_called()
+
+
 def _ec2_with_security_groups() -> MagicMock:
     """
     An EC2 client whose region has a default VPC, and security groups whose
