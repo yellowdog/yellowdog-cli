@@ -11,18 +11,15 @@ from typing import Any
 from PyQt6.QtCore import (
     QEventLoop,
     QProcess,
-    QProcessEnvironment,
     QTimer,
 )
 
-from yellowdog_cli.commander.host import (
-    CHILD_ENVIRONMENT,
-    cli_program,
-)
+from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.output_model import (
     OutputRun,
     message_prefix,
 )
+from yellowdog_cli.commander.processes import child_process
 from yellowdog_cli.commander.selection import (
     EntitySummary,
     ObjectSummary,
@@ -100,15 +97,8 @@ class CommandRunning(WindowBase):
         _capture_json(), returning the parsed JSON document whatever its shape
         (yd variables prints an object); None on any failure.
         """
-        yd_process = QProcess()
+        yd_process = child_process(self._working_dir())
         event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            env.insert(name, value)
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
@@ -283,11 +273,7 @@ class CommandRunning(WindowBase):
             else self._build_command_args(command, log_args, yd_command)
         )
 
-        process = QProcess(self)
-        process_env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            process_env.insert(name, value)
-        process.setProcessEnvironment(process_env)
+        process = child_process(self._working_dir(), parent=self)
         run = self._output.start_run(
             command,
             command_line_text(command, display_args),
@@ -307,7 +293,6 @@ class CommandRunning(WindowBase):
             announcement=True,
         )
 
-        process.setWorkingDirectory(self._working_dir())
         process.start(*cli_program(command, args))
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:

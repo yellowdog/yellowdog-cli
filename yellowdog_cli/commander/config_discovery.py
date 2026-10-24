@@ -12,7 +12,7 @@ from collections.abc import Callable
 from json import loads
 from typing import cast
 
-from PyQt6.QtCore import QEventLoop, QObject, QProcess, QProcessEnvironment, QTimer
+from PyQt6.QtCore import QEventLoop, QObject, QProcess, QTimer
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
 from yellowdog_cli.commander.arguments import (
@@ -20,7 +20,8 @@ from yellowdog_cli.commander.arguments import (
     property_is_complete,
     split_arguments,
 )
-from yellowdog_cli.commander.host import CHILD_ENVIRONMENT, cli_program
+from yellowdog_cli.commander.host import cli_program
+from yellowdog_cli.commander.processes import child_process
 from yellowdog_cli.commander.startup import variable_is_complete
 
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd variables' can block on an unreachable API URL
@@ -307,15 +308,8 @@ class ConfigDiscovery:
         self._parse_generation += 1
         generation = self._parse_generation
 
-        yd_process = QProcess()
+        yd_process = child_process(self._working_dir())
         event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            env.insert(name, value)
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
