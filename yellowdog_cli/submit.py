@@ -175,9 +175,7 @@ def main(ctx: RunContext):
             ctx.args.json_raw,
             batch_size=run.batch_size,
             parallel_batches=_parallel_batches(run),
-            follow=lambda wr_id: _follow(
-                run, ctx.client.work_client.get_work_requirement_by_id(wr_id)
-            ),
+            follow=lambda wr_id: _follow_by_id(run, wr_id),
         )
         return
 
@@ -753,6 +751,16 @@ def _follow(run: _Submission, work_requirement: WorkRequirement) -> None:
         follow_progress_bar(run, work_requirement)
     elif run.ctx.args.follow:
         follow_progress(run, work_requirement)
+
+
+def _follow_by_id(run: _Submission, wr_id: str) -> None:
+    """
+    _follow() for '--json-raw', which has the submitted Work Requirement's
+    ID alone: fetched only to be followed, so that a failure fetching it
+    cannot fail a submission that was not asked to follow it.
+    """
+    if run.ctx.args.progress or run.ctx.args.follow:
+        _follow(run, run.ctx.client.work_client.get_work_requirement_by_id(wr_id))
 
 
 # Per-invocation flag so the deprecation warning fires once even when many
