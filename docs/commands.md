@@ -504,7 +504,7 @@ Once provisioned, the Worker Pool will appear in the **Workers** tab in the Yell
 
 Key options:
 - `--target`/`-T <n>` — override the `targetInstanceCount` from the specification or configuration; a `maxNodes` lower than it is raised to match
-- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found; a relative path in the specification (a `userDataFile`) is found there, while the specification file itself is always named from the current directory
+- `--content-path`/`-F <directory>` — the directory in which the User Data files the configuration's `[workerPool]` section names (`userDataFile`, `userDataFiles`) are found, in place of the configuration file's directory; a Worker Pool specification takes its User Data as `userData` alone, and the specification file itself is always named from the current directory
 - `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
