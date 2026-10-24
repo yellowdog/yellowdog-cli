@@ -25,6 +25,7 @@ written without it and the process ends at once, since a thread blocked in
 a network call cannot be stopped and must not hold the shell.
 """
 
+import dataclasses
 import os
 import sys
 import threading
@@ -103,6 +104,11 @@ def completion_reply(
         else ()
     )
     lines = [result.mode.name.lower()]
+    if found and result.lookup is not None:
+        found = tuple(
+            dataclasses.replace(candidate, value=result.lookup.prefix + candidate.value)
+            for candidate in found
+        )
     for candidate in found or result.candidates:
         value = candidate.value.removeprefix(prefix)
         if shell == "bash" or not candidate.description:

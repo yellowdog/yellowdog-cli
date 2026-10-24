@@ -140,6 +140,9 @@ class LookupRequest:
     current: str
     settings: dict[str, object]
     given: tuple[str, ...] = ()  # the names or IDs typed already
+    # Put ahead of each name or ID found: the '--flag=' of a value typed
+    # in the one word with its option
+    prefix: str = ""
 
 
 @dataclass(frozen=True)
@@ -304,6 +307,12 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
         found = _option_named(flag, by_flag)
         if found is None or not _takes_value(found):
             return _NOTHING
+        # Looked up as the value would be after a space ('--within <Tab>')
+        lookup = _option_lookup(command, found, typed)
+        if lookup is not None:
+            return Completions(
+                lookup=LookupRequest(lookup, value, settings, prefix=f"{flag}=")
+            )
         values = _values(command, found, value)
         return Completions(
             values.mode,

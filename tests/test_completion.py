@@ -545,6 +545,34 @@ class TestBashWords:
         )
 
 
+class TestAnOptionsValueTypedWithIt:
+    def test_within_equals_is_looked_up_as_within_space_is(self):
+        from yellowdog_cli.utils.completion import complete
+
+        spaced = complete(["yd", "task", "list", "--within"], "").lookup
+        joined = complete(["yd", "task", "list"], "--within=").lookup
+        assert spaced is not None and joined is not None
+        assert joined.lookup == spaced.lookup
+        assert (joined.current, joined.prefix) == ("", "--within=")
+
+    def test_what_it_finds_keeps_the_option(self, monkeypatch):
+        from yellowdog_cli.utils.completion import Candidate
+
+        monkeypatch.setattr(
+            yd_completion, "_look_up", lambda request: (Candidate("nightly"),)
+        )
+        monkeypatch.setattr(yd_completion, "lookups_enabled", lambda: True)
+        lines = yd_completion.completion_reply(
+            "zsh", 3, ["yd", "task", "list", "--within="], names=True
+        )
+        assert lines == ["values", "--within=nightly"]
+
+    def test_a_task_groups_priority_completes_its_names(self):
+        from yellowdog_cli.utils.completion_targets import LOOKUPS
+
+        assert LOOKUPS[("yd taskgroup priority", "priority_targets")].task_groups
+
+
 class TestUnquoted:
     @pytest.mark.parametrize(
         "word, expected",

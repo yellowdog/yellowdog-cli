@@ -139,6 +139,7 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     # Task Groups, as 'wr/tg': a Work Requirement's name, then its Task Groups
     (f"{_TG} show", _SHOWN): _task_groups(None),
     (f"{_TG} compare", "wr_or_tg_id"): _task_groups(_WR_UNFINISHED),
+    (f"{_TG} priority", "priority_targets"): _task_groups(_WR_UNFINISHED),
     (f"{_TG} compare", "worker_pool_ids"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     # Worker Pools
     (f"{_WP} resize", "worker_pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
