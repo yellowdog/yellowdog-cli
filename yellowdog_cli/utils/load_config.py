@@ -462,7 +462,9 @@ def _load_config_file() -> None:
                 {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
             )
             print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
-            CONFIG_TOML = load_toml_file_with_variable_substitutions(CONFIG_FILE)
+            CONFIG_TOML = load_toml_file_with_variable_substitutions(
+                CONFIG_FILE, selected_file=True
+            )
             try:
                 # Strip profile sub-tables from [dataClient] before validation;
                 # profile names are user-defined and not in ALL_KEYS.

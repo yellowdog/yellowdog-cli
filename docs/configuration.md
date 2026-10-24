@@ -103,7 +103,7 @@ This could be imported into the main configuration as follows:
     tag = "testing-{{username}}"
 ```
 
-Properties set in the imported file are superseded by any of the same properties that are present in the main configuration file.
+Properties set in the imported file are superseded by any of the same properties that are present in the main configuration file, and so are its `[common.variables]`: a variable both files define takes the main file's value, whether or not the main file was chosen with `--config`.
 
 ### HTTPS Proxy Support
 

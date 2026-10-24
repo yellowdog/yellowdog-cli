@@ -111,7 +111,7 @@ class TestTheConfigurationFile:
     def test_any_other_failure_reading_it_exits_3(self, loading, monkeypatch, tmp_path):
         (tmp_path / "config.toml").write_text("[common]\n", encoding="utf-8")
 
-        def fails(_filename):
+        def fails(_filename, **_kwargs):
             raise RuntimeError("the loader's own fault")
 
         monkeypatch.setattr(
@@ -125,7 +125,7 @@ class TestTheConfigurationFile:
     ):
         (tmp_path / "config.toml").write_text("[common]\n", encoding="utf-8")
 
-        def fails(_filename):
+        def fails(_filename, **_kwargs):
             raise RuntimeError("the loader's own fault")
 
         monkeypatch.setattr(

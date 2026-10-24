@@ -261,11 +261,13 @@ def _jsonnet_error(message: str) -> str:
 
 
 def load_toml_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = ""
+    filename: str, prefix: str = "", postfix: str = "", selected_file: bool = False
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
-    substitutions processed.
+    substitutions processed. 'selected_file' says it is the configuration
+    file itself, whose variables no file read after it replaces (see
+    add_substitutions_from_config_file()).
     """
     config = toml_loads(_read_text(filename))
 
@@ -285,6 +287,7 @@ def load_toml_file_with_variable_substitutions(
                 for var_name, var_value in variables.items()
             },
             source=f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}'",
+            selected_file=selected_file,
         )
 
     resolve_variables_insitu(config, prefix=prefix, postfix=postfix)

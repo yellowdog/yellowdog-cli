@@ -274,6 +274,9 @@ VARIABLE_SUBSTITUTIONS = {
 # overrides of 'common.variables'); these always take precedence, including
 # over the contents of an explicitly selected config file
 CLI_DEFINED_VARIABLES: set[str] = set()
+# The variables the selected configuration file defines itself, which a
+# file it imports ('importCommon'), or any other read later, never replaces
+_CONFIG_FILE_VARIABLES: set[str] = set()
 
 # Each variable's definition as written, before any substitution, which is
 # what explain_unset_variable() works from: once the '::' syntax has removed
@@ -489,16 +492,19 @@ def add_substitutions_without_overwriting(
 
 
 def add_substitutions_from_config_file(
-    subs: dict, source: str = "'[common.variables]'"
+    subs: dict, source: str = "'[common.variables]'", selected_file: bool = False
 ):
     """
-    Add variable substitutions from a TOML configuration file's
-    [common.variables] section.
+    Add variable substitutions from a TOML file's [common.variables]
+    section: the configuration file's own ('selected_file'), or a file read
+    after it, such as one it imports.
 
     If the config file was explicitly selected using '--config'/'-c', its
     variables override environment-defined variables (but never variables
     set on the command line); otherwise existing definitions take
-    precedence as usual.
+    precedence as usual. Either way, a file read after the configuration
+    file never replaces a variable the configuration file defines itself:
+    the local definition wins over an imported one.
     """
     for name in subs:
         check_user_variable_name(name, source)
@@ -506,7 +512,14 @@ def add_substitutions_from_config_file(
         add_substitutions_without_overwriting(subs, source)
         return
 
-    subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
+    subs = {
+        k: v
+        for k, v in subs.items()
+        if k not in CLI_DEFINED_VARIABLES
+        and (selected_file or k not in _CONFIG_FILE_VARIABLES)
+    }
+    if selected_file:
+        _CONFIG_FILE_VARIABLES.update(subs)
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 

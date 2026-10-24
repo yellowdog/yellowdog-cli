@@ -1020,6 +1020,7 @@ class TestAddSubstitutionsFromConfigFile:
     def reset_state(self, monkeypatch):
         monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
         monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
+        monkeypatch.setattr(var_module, "_CONFIG_FILE_VARIABLES", set())
 
     def _set_config_file(self, monkeypatch, value):
         # Whether '--config' selected the file, as register_user_variables()
@@ -1049,6 +1050,27 @@ class TestAddSubstitutionsFromConfigFile:
         self._set_config_file(monkeypatch, "my-config.toml")
         var_module.add_substitutions_from_config_file({"newvar": "world"})
         assert var_module.VARIABLE_SUBSTITUTIONS["newvar"] == "world"
+
+    @pytest.mark.parametrize("selected", [None, "my-config.toml"])
+    def test_the_configuration_files_own_variable_beats_an_imported_one(
+        self, monkeypatch, tmp_path, selected
+    ):
+        # 'importCommon': the local definition wins, with '-c' or without,
+        # and the imported file's other variables are still added
+        self._set_config_file(monkeypatch, selected)
+        main = tmp_path / "config.toml"
+        main.write_text('[common.variables]\nx = "main"\n', encoding="utf-8")
+        shared = tmp_path / "shared.toml"
+        shared.write_text(
+            '[common.variables]\nx = "shared"\ny = "from-shared"\n',
+            encoding="utf-8",
+        )
+        file_module.load_toml_file_with_variable_substitutions(
+            str(main), selected_file=True
+        )
+        file_module.load_toml_file_with_variable_substitutions(str(shared))
+        assert var_module.VARIABLE_SUBSTITUTIONS["x"] == "main"
+        assert var_module.VARIABLE_SUBSTITUTIONS["y"] == "from-shared"
 
 
 # ---------------------------------------------------------------------------
