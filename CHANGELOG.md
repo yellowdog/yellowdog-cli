@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd data` at a remote's root, with no bucket or prefix**: `yd data copy a.txt sub/` names the copy `sub/a.txt`, where it was `sub/<remote>:a.txt`; and `yd data list 'name*' --recursive` and `yd data upload --flatten` keep their paths relative to the remote, where they became absolute (`remote:/name`), the filesystem's root on a local or SFTP remote.
 - **`yd data upload` uploads a symbolic link given among other files as the file it links to**: such a link was recorded as uploaded, and the command exited 0, but nothing was sent.
 - **`yd data delete` records files it could not delete as failed when the connection is lost**: a deletion of several files in one directory that failed, with the listing that checks which went failing too, recorded every file as deleted and exited 0.
 - **Closing Commander while Download, Delete, Cancel, Shut Down or Terminate is listing what it would affect does nothing more**: the cut-short listing was taken for one that failed, so Download went on to download everything matching, and the others asked to act on their whole scope.

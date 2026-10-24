@@ -980,3 +980,38 @@ def test_symlinked_files_are_uploaded_as_their_targets(tmp_path, into_other_dire
         "plain",
     ]
     assert [r["action"] for r in results_module._ITEMS] == ["uploaded"] * 3
+
+
+# ---------------------------------------------------------------------------
+# Paths at a remote's root
+# ---------------------------------------------------------------------------
+
+
+def test_files_under_a_bare_remote_are_not_made_absolute(tmp_path):
+    # 'box:' + '/' + name is 'box:/name', the filesystem's root on a local
+    # or SFTP remote, not the remote's own
+    from yellowdog_cli.utils.dataclient.operations import (
+        _local_upload_files,
+        flattened_destinations,
+    )
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "f.txt").write_text("x", encoding="utf-8")
+    assert flattened_destinations(tmp_path, "box:") == ["box:f.txt"]
+    assert [d for _, d, _ in _local_upload_files(tmp_path, "box:")] == ["box:sub/f.txt"]
+    assert flattened_destinations(tmp_path, "box:up/") == ["box:up/f.txt"]
+
+
+@needs_rclone
+def test_a_file_at_the_remotes_root_is_copied_under_its_own_name(tmp_path, monkeypatch):
+    # Not named after the remote ('sub/loc:a.txt'), as the whole path's last
+    # '/'-separated part would have it
+    from yellowdog_cli.utils.dataclient.operations import copy_remote
+
+    reset_results()
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    config = ConfigDataClient(remote="loc,type=local")
+    copy_remote(config, "loc:a.txt", config, "loc:sub/", src_is_file=True)
+    assert [p.name for p in (tmp_path / "sub").iterdir()] == ["a.txt"]

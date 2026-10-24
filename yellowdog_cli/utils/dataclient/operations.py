@@ -72,7 +72,7 @@ def _rclone_error_detail(result) -> str:
     return result.stderr or f"rclone exit code {result.returncode}"
 
 
-def _join_remote(remote_dir: str, name: str) -> str:
+def join_remote(remote_dir: str, name: str) -> str:
     """
     A name within a remote directory: 'remote_dir' may end with '/', or be a
     bare 'remote:' (as glob_matches() returns it for a path with no
@@ -649,7 +649,7 @@ def _report_sync_deletions(
     base = remote_path.rstrip("/")
     for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
         if entry["Path"] not in local:
-            destination = _join_remote(base, entry["Path"])
+            destination = join_remote(base, entry["Path"])
             print_dry_run(f"Would delete '{destination}'")
             record_transfer(None, destination, entry.get("Size"), "would delete")
 
@@ -687,11 +687,10 @@ def _local_upload_files(
     (source, destination, size) for each file in the local directory, as an
     rclone copy of it to 'remote_path' places it.
     """
-    base = remote_path.rstrip("/")
     return [
         (
             path,
-            f"{base}/{Path(path).relative_to(local_path).as_posix()}",
+            join_remote(remote_path, Path(path).relative_to(local_path).as_posix()),
             Path(path).stat().st_size,
         )
         for path in _local_files(local_path)
@@ -703,8 +702,7 @@ def flattened_destinations(local_path: Path, remote_path: str) -> list[str]:
     Where a flattened upload of a local directory puts each of its files.
     """
     return [
-        f"{remote_path.rstrip('/')}/{Path(path).name}"
-        for path in _local_files(local_path)
+        join_remote(remote_path, Path(path).name) for path in _local_files(local_path)
     ]
 
 
@@ -737,7 +735,7 @@ def _upload_directory_flat(
         else:
             seen[local_file.name] = local_file
 
-    destinations = [f"{remote_path.rstrip('/')}/{f.name}" for f in files]
+    destinations = [join_remote(remote_path, f.name) for f in files]
     if dry_run:
         return all(
             [
@@ -1131,7 +1129,7 @@ def _download_with_glob(
     for entry, files in zip(matches, files_of_matches):
         if not entry["IsDir"] and listable(entry["Name"]):
             continue
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         if flatten:
             _warn_of_flattened_collisions(files, flattened)
             if entry["IsDir"]:
@@ -1183,7 +1181,7 @@ def _download_batch(
         print_error(error)
     missing_names = {entry["Name"] for entry in missing}
     for entry in entries:
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         failed = entry["Name"] in missing_names
         record_transfer(
             src,
@@ -1234,7 +1232,7 @@ def _download_files_of(
         return [(remote_path, str(local_path), entry.get("Size"))]
     return [
         (
-            _join_remote(remote_path, f["Path"]),
+            join_remote(remote_path, f["Path"]),
             str(local_path / (f["Name"] if flatten else f["Path"])),
             f.get("Size"),
         )
@@ -1270,7 +1268,7 @@ def _files_of_matches(
     """
 
     def files_of(entry: dict) -> list[tuple[str, str, int | None]]:
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         is_dir = bool(entry["IsDir"])
         flat = flatten and is_dir
         return _download_files_of(
@@ -1480,14 +1478,14 @@ def _dry_run_download(
                 if flatten:
                     _warn_of_flattened_collisions(files, flattened)
                 _record_downloads(
-                    files, _join_remote(remote_dir, entry["Name"]), "would download"
+                    files, join_remote(remote_dir, entry["Name"]), "would download"
                 )
         if sync:
             for entry in matches:
                 if entry["IsDir"]:
                     _report_local_sync_deletions(
                         rclone,
-                        _join_remote(remote_dir, entry["Name"]),
+                        join_remote(remote_dir, entry["Name"]),
                         local_destination / entry["Name"],
                     )
         return
@@ -1582,7 +1580,7 @@ def deletion_targets(
             record_deletion(remote_path, False, "skipped")
             return [], 0
         candidates = [
-            (_join_remote(remote_dir, entry["Name"]), bool(entry["IsDir"]))
+            (join_remote(remote_dir, entry["Name"]), bool(entry["IsDir"]))
             for entry in matches
         ]
     else:
@@ -1739,7 +1737,7 @@ def lsjson_listing(
                     {**entry, "Path": f"{match['Path']}/{entry['Path']}"}
                     for entry in _lsjson(
                         rclone,
-                        _join_remote(remote_dir, match["Name"]),
+                        join_remote(remote_dir, match["Name"]),
                         recursive=True,
                         modtime=True,
                     )
@@ -1802,7 +1800,7 @@ def copy_remote(
     # Source is a single file: use copyto for precise destination naming.
     # If dst ends with '/', treat it as a directory and append the source filename.
     dst_file = (
-        dst_path + src_path.rsplit("/", 1)[-1] if dst_path.endswith("/") else dst_path
+        dst_path + remote_basename(src_path) if dst_path.endswith("/") else dst_path
     )
 
     def _as_given(source: str, destination: str) -> tuple[str, str]:
@@ -1822,8 +1820,8 @@ def copy_remote(
         else:
             files = [
                 (
-                    _join_remote(src_path.rstrip("/"), f["Path"]),
-                    _join_remote(dst_path.rstrip("/"), f["Path"]),
+                    join_remote(src_path.rstrip("/"), f["Path"]),
+                    join_remote(dst_path.rstrip("/"), f["Path"]),
                     f.get("Size"),
                 )
                 for f in _lsjson(rclone, src_path, recursive=True, files_only=True)
@@ -1884,7 +1882,7 @@ def _report_copy_sync_deletions(
     base = dst_path.rstrip("/")
     for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
         if entry["Path"] not in source:
-            _, destination = as_given(src_path, _join_remote(base, entry["Path"]))
+            _, destination = as_given(src_path, join_remote(base, entry["Path"]))
             print_dry_run(f"Would delete '{destination}'")
             record_transfer(None, destination, entry.get("Size"), "would delete")
 

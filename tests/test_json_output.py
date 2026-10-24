@@ -3937,11 +3937,11 @@ class TestEntryToName:
 
 class TestJoinRemote:
     def test_a_bare_remote_gets_no_slash(self):
-        from yellowdog_cli.utils.dataclient.operations import _join_remote
+        from yellowdog_cli.utils.dataclient.operations import join_remote
 
-        assert _join_remote("S3:", "x") == "S3:x"
-        assert _join_remote("S3:b/", "x") == "S3:b/x"
-        assert _join_remote("S3:b", "x") == "S3:b/x"
+        assert join_remote("S3:", "x") == "S3:x"
+        assert join_remote("S3:b/", "x") == "S3:b/x"
+        assert join_remote("S3:b", "x") == "S3:b/x"
 
 
 # ---------------------------------------------------------------------------
