@@ -60,6 +60,12 @@ from yellowdog_cli.utils.wrapper import main_wrapper
 # a redacted value, named or not.
 SECRET_VARIABLES = (KEY, SECRET)
 
+# A configured key or secret at least this long is found inside another
+# variable's value ('Bearer {{secret}}'); a shorter one, which no real
+# credential is, only as the whole value, so that a test's 'k' does not
+# redact every value with a 'k' in it
+CREDENTIAL_SEARCHED_LENGTH = 8
+
 
 def matches_secret_name_pattern(name: str) -> bool:
     """
@@ -94,6 +100,21 @@ class Report:
     by_pattern: list[str] = field(default_factory=list)
     by_value: list[str] = field(default_factory=list)
     credentials: list[str] = field(default_factory=list)
+    holding_credentials: list[str] = field(default_factory=list)
+
+
+def holds_credential(value: object, credentials: list[str]) -> bool:
+    """
+    Whether a variable's value is, or holds, one of the configured
+    credentials: a variable defined as '{{secret}}' is the secret, whatever
+    it is called.
+    """
+    text = str(value)
+    return any(
+        text == credential
+        or (len(credential) >= CREDENTIAL_SEARCHED_LENGTH and credential in text)
+        for credential in credentials
+    )
 
 
 def report_variables(variable_names: list[str], show_secrets: bool = False) -> Report:
@@ -108,7 +129,8 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> R
     alone of those using the Platform's configuration does not require.
 
     Unless 'show_secrets' is set, the values of SECRET_VARIABLES and of every
-    variable whose name matches SECRET_VARIABLE_NAME_PATTERN are redacted,
+    variable whose name matches SECRET_VARIABLE_NAME_PATTERN or whose value
+    holds the configured key or secret (holds_credential()) are redacted,
     and the parameters of every value that is an inline rclone connection
     string withheld (see is_inline_remote() and shown_remote()) -- whether
     the variable is named or not, so that naming one is no way round the
@@ -125,6 +147,7 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> R
     if show_secrets:
         return report
 
+    credentials = [value for value in map(get_user_variable, SECRET_VARIABLES) if value]
     for name, value in report.variables.items():
         if value is None:
             continue
@@ -134,6 +157,9 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> R
         elif matches_secret_name_pattern(name):
             report.variables[name] = REDACTED_VALUE
             report.by_pattern.append(name)
+        elif holds_credential(value, credentials):
+            report.variables[name] = REDACTED_VALUE
+            report.holding_credentials.append(name)
         elif isinstance(value, str) and (
             is_remote_variable(name) or is_inline_remote(value)
         ):
@@ -173,6 +199,11 @@ def main(ctx: RunContext):
             f"Redacted {len(report.by_pattern)} variable(s) whose names"
             f" match '{SECRET_VARIABLE_NAME_PATTERN.pattern}' (case-insensitive);"
             " everything else is shown in full. --show-secrets reports all."
+        )
+    if report.holding_credentials:
+        print_warning(
+            f"Redacted {len(report.holding_credentials)} variable(s) whose values"
+            " hold the configured key or secret. --show-secrets reports all."
         )
     if report.by_value:
         print_warning(

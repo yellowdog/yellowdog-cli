@@ -175,6 +175,41 @@ class TestRedaction:
             "tag": SUBSTITUTIONS["tag"],
         }
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            SUBSTITUTIONS["secret"],  # 'leak = "{{secret}}"'
+            f"Bearer {SUBSTITUTIONS['secret']}",
+            f"{SUBSTITUTIONS['key']}:{SUBSTITUTIONS['secret']}",
+        ],
+    )
+    @pytest.mark.parametrize("named", [False, True])
+    def test_a_variable_holding_a_credential_is_redacted_whatever_its_name(
+        self, monkeypatch, value, named
+    ):
+        monkeypatch.setattr(
+            variables_module,
+            "VARIABLE_SUBSTITUTIONS",
+            {**SUBSTITUTIONS, "leak": value},
+        )
+        report = report_variables(["leak"] if named else [])
+        assert report.variables["leak"] == REDACTED_VALUE
+        assert report.holding_credentials == ["leak"]
+        shown = report_variables(["leak"], show_secrets=True)
+        assert shown.variables == {"leak": value}
+
+    def test_a_short_credential_is_redacted_only_as_a_whole_value(self, monkeypatch):
+        # No real credential is this short; found inside other values, it
+        # would redact every value holding its letters
+        monkeypatch.setattr(
+            variables_module,
+            "VARIABLE_SUBSTITUTIONS",
+            {"key": "k", "secret": "s", "same": "s", "word": "kites"},
+        )
+        reported = _reported([])
+        assert reported["same"] == REDACTED_VALUE
+        assert reported["word"] == "kites"
+
     def test_unconfigured_credentials_are_null_in_the_full_report(self, monkeypatch):
         # yd-variables runs without credentials; their absence is reported
         monkeypatch.setattr(
