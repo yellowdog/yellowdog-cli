@@ -776,7 +776,9 @@ def upload_files(
     names to one remote directory are uploaded in one rclone run
     (_copy_files()), and checked against a listing of the remote directory
     when it fails, since it may have uploaded some; any other file, as
-    upload_file() uploads it.
+    upload_file() uploads it. A symlink is one of those others: rclone,
+    given its name in a list, skips it as a link it does not follow, or
+    finds no such name in its target's directory, and reports neither.
     """
     if dry_run:
         return sum(
@@ -787,7 +789,12 @@ def upload_files(
     singles: list[tuple[Path, str]] = []
     for local, remote in uploads:
         remote_dir, _, remote_name = remote.rpartition("/")
-        if remote_dir and remote_name == local.name and listable(local.name):
+        if (
+            remote_dir
+            and remote_name == local.name
+            and listable(local.name)
+            and not local.is_symlink()
+        ):
             groups.setdefault((local.resolve().parent, remote_dir), []).append(local)
         else:
             singles.append((local, remote))

@@ -27,6 +27,7 @@ from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient.operations import (
     resolve_remote_path,
     upload_directory,
+    upload_files,
 )
 from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 from yellowdog_cli.utils.results import reset_results
@@ -940,3 +941,42 @@ class TestListingsReadModificationTimesOnlyWhereShown:
         dcu_module.glob_matches(MagicMock(), "s3:b/dir/*.txt", modtime=True)
         dcu_module._lsjson(MagicMock(), "s3:b/dir", modtime=True)
         assert all("--no-modtime" not in call for call in calls)
+
+
+# ---------------------------------------------------------------------------
+# yd-upload of a symlinked file, through a real rclone
+# ---------------------------------------------------------------------------
+
+
+@needs_rclone
+@pytest.mark.parametrize("into_other_directory", [False, True])
+def test_symlinked_files_are_uploaded_as_their_targets(tmp_path, into_other_directory):
+    """
+    Symlinks among a directory's files are uploaded under their own names
+    with their targets' content, not recorded as uploaded while rclone,
+    given their names in a list, skips them (links it does not follow) or
+    finds no such names (links pointing into another directory).
+    """
+    reset_results()
+    data, elsewhere, destination = (tmp_path / d for d in ("data", "other", "dst"))
+    for directory in (data, elsewhere, destination):
+        directory.mkdir()
+    targets = elsewhere if into_other_directory else data
+    (targets / "2026.csv").write_text("this year")
+    (targets / "2025.csv").write_text("last year")
+    (data / "other.csv").write_text("plain")
+    try:
+        (data / "latest.csv").symlink_to(targets / "2026.csv")
+        (data / "previous.csv").symlink_to(targets / "2025.csv")
+    except OSError:
+        pytest.skip("symbolic links cannot be made here")
+    names = ("latest.csv", "previous.csv", "other.csv")
+    uploads = [(data / name, f"loc:{destination.as_posix()}/{name}") for name in names]
+    failed = upload_files(ConfigDataClient(remote="loc,type=local"), uploads)
+    assert failed == 0
+    assert [(destination / name).read_text() for name in names] == [
+        "this year",
+        "last year",
+        "plain",
+    ]
+    assert [r["action"] for r in results_module._ITEMS] == ["uploaded"] * 3
