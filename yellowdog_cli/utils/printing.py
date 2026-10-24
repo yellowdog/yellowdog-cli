@@ -168,14 +168,22 @@ def print_string(msg: str = "", no_fill: bool = False) -> str:
     if no_fill or msg == "" or msg.isspace() or OUTPUT.no_format:
         return prefix + msg
 
-    return fill(
-        msg,
-        width=LOG_WIDTH,
-        initial_indent=prefix,
-        subsequent_indent=SUBSEQUENT_INDENT,
-        drop_whitespace=True,
-        break_long_words=False,  # Preserve URLs
-        break_on_hyphens=False,  # Preserve names
+    # Each line wrapped as a paragraph of its own, under the prefix: filled
+    # as one, a message's line breaks (a command to run, set on a line of
+    # its own) would be run into the text around them
+    return "\n".join(
+        fill(
+            line,
+            width=LOG_WIDTH,
+            initial_indent=prefix if number == 0 else SUBSEQUENT_INDENT,
+            subsequent_indent=SUBSEQUENT_INDENT,
+            drop_whitespace=True,
+            break_long_words=False,  # Preserve URLs
+            break_on_hyphens=False,  # Preserve names
+        )
+        if line.strip()
+        else (prefix.rstrip() if number == 0 else "")
+        for number, line in enumerate(msg.split("\n"))
     )
 
 

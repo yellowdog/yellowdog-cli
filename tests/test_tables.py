@@ -162,3 +162,27 @@ def test_only_the_columns_parsing_would_rewrite_are_left_unparsed():
     table = [[9, "1.10", "5", "007", 3.5], [10, "x", "12", "a", 2]]
     # The '#', a count written as text and real numbers stay numbers
     assert _rewritten_columns(table) == [1, 3]
+
+
+def test_a_task_group_status_reads_the_same_listed_and_followed(monkeypatch):
+    # Starved and waiting on a dependency at once: both, in one order
+    import json
+
+    import yellowdog_cli.utils.event_printing as event_printing
+    from yellowdog_cli.utils.output_style import task_group_status_text
+    from yellowdog_cli.utils.ydid_utils import YDIDType
+
+    assert task_group_status_text("RUNNING", True, True) == "RUNNING/STARVED/WAITING"
+    printed: list[str] = []
+    monkeypatch.setattr(
+        event_printing, "print_info", lambda message, **kwargs: printed.append(message)
+    )
+    task_group = {
+        "name": "tg",
+        "status": "RUNNING",
+        "starved": True,
+        "waitingOnDependency": True,
+    }
+    event = {"name": "wr", "status": "RUNNING", "taskGroups": [task_group]}
+    event_printing.print_event("data:" + json.dumps(event), YDIDType.WORK_REQUIREMENT)
+    assert "[RUNNING/STARVED/WAITING]" in "".join(printed)

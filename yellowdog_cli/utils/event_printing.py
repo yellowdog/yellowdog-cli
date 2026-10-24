@@ -15,6 +15,7 @@ from json import loads as json_loads
 from typing import Any
 
 from yellowdog_cli.utils.output_settings import OUTPUT
+from yellowdog_cli.utils.output_style import task_group_status_text
 from yellowdog_cli.utils.printing import prefix_width, print_info, print_json
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
@@ -205,11 +206,11 @@ def print_event(event: str, id_type: YDIDType):
 
     if id_type == YDIDType.WORK_REQUIREMENT:
         for task_group in event_data.get("taskGroups") or []:
-            status = str(task_group.get("status"))
-            if task_group.get("waitingOnDependency") is True:
-                status += "/WAITING"
-            elif task_group.get("starved") is True:
-                status += "/STARVED"
+            status = task_group_status_text(
+                task_group.get("status"),
+                task_group.get("starved"),
+                task_group.get("waitingOnDependency"),
+            )
             msg += (
                 f"{event_indent}[{status}] Task Group '{task_group.get('name')}':"
                 f" {event_count(event_field(task_group, 'taskSummary', 'taskCount')):,d}"

@@ -20,6 +20,7 @@ from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     MAX_LINES_COLOURED_TABLE,
     MAX_TABLE_DESCRIPTION,
+    task_group_status_text,
 )
 from yellowdog_cli.utils.printing import CONSOLE_TABLE, indent, print_info
 from yellowdog_cli.utils.settings import CLOUD_INFO_NO_SUB_REGION, MIB_PER_GIB
@@ -184,11 +185,9 @@ def task_group_table(
     headers = ["#", "Task Group Name", "Status", "Task Group ID"]
     table = []
     for index, task_group in enumerate(task_group_list):
-        status_msg = str(task_group.status)
-        if task_group.starved:
-            status_msg += "/STARVED"
-        if task_group.waitingOnDependency:
-            status_msg += "/WAITING"
+        status_msg = task_group_status_text(
+            task_group.status, task_group.starved, task_group.waitingOnDependency
+        )
         table.append(
             [
                 index + 1,

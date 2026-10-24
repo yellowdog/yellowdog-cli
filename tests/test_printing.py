@@ -993,3 +993,18 @@ def test_the_consoles_came_up_without_colour():
         printing_module.CONSOLE_JSON,
     ):
         assert console.color_system is None, console
+
+
+def test_a_message_keeps_its_line_breaks():
+    # Advice that sets a command on a line of its own is not run together
+    from yellowdog_cli.utils import output_settings
+    from yellowdog_cli.utils.printing import print_string
+
+    with output_settings.configured(SimpleNamespace(no_format=False, print_pid=False)):
+        lines = print_string(
+            "rebuild it with:\n    pip install -U --no-binary :all: jsonnet\nThen retry"
+        ).split("\n")
+    assert len(lines) == 3
+    assert lines[0].endswith(" : rebuild it with:")
+    assert lines[1].strip() == "pip install -U --no-binary :all: jsonnet"
+    assert lines[2].strip() == "Then retry"
