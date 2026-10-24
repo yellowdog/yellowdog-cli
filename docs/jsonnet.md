@@ -12,7 +12,7 @@
 <!--te-->
 
 
-In all circumstances where JSON files are used by the YellowDog CLI commands, **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc.
+In all circumstances where JSON files are used by the YellowDog CLI commands, **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc. A variable substitution inside a comment is left as it is, so commenting out a line that holds one comments it out.
 
 A simple usage example might be:
 

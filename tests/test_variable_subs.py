@@ -560,6 +560,25 @@ class TestJsonnetFiles:
         var_module.VARIABLE_SUBSTITUTIONS["path"] = self.PATH
         var_module.VARIABLE_SUBSTITUTIONS["msg"] = self.MESSAGE
 
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "// was {{num:not_a_number}}\n{ a: 1 }",
+            "# was {{myvar}}\n{ a: 1 }",
+            '{ a: 1 /* "{{myvar}}" */ }',
+        ],
+    )
+    def test_an_expression_in_a_comment_is_left_alone(self, code):
+        # Commented out, it is no code: neither substituted, nor taken for a
+        # circular reference left behind, nor failed on its value
+        var_module.VARIABLE_SUBSTITUTIONS["not_a_number"] = "abc"
+        assert (
+            file_module.process_variable_substitutions_in_file_contents(
+                code, jsonnet=True
+            )
+            == code
+        )
+
     @staticmethod
     def _load(tmp_path, text: str) -> dict:
         path = tmp_path / "spec.jsonnet"
@@ -1315,6 +1334,22 @@ class TestVariableValueRendering:
             {"n": "5", "arr": ["{{num:n}}", "{{n}}"]}
         )
         assert var_module.process_variable_substitutions("{{array:arr}}") == [5, "5"]
+
+    def test_a_chain_of_variables_however_long_is_resolved(self):
+        # Resolved in the table, not left to the passes over a specification
+        chain = {f"v{i}": f"{{{{v{i + 1}}}}}" for i in range(30)}
+        var_module.add_substitutions_without_overwriting({**chain, "v30": "end"})
+        assert var_module.process_variable_substitutions("{{v0}}") == "end"
+        data = {"name": "{{v0}}"}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"name": "end"}
+
+    def test_a_cycle_that_grows_its_text_stops(self):
+        # Doubling at every pass, it would otherwise outgrow the memory
+        var_module.add_substitutions_without_overwriting(
+            {"a": "{{b}}{{b}}", "b": "{{a}}"}
+        )
+        assert len(var_module.VARIABLE_SUBSTITUTIONS["a"]) < 1_000_000
 
     def test_list_of_strings_round_trips_through_the_array_tag(self):
         var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})

@@ -18,7 +18,10 @@ from json import loads as json_loads
 from typing import cast
 
 from yellowdog_cli.utils.exit_codes import ExitCode
-from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
+from yellowdog_cli.utils.limits import (
+    VAR_SUBSTITUTION_MAX_PASSES,
+    VARIABLE_TABLE_MAX_TEXT,
+)
 from yellowdog_cli.utils.misc_utils import (
     PID,
     PROCESS_DISCRIMINATOR,
@@ -430,9 +433,22 @@ def _update_and_resolve_substitutions(merged: dict):
 
     # Populate variables that can now be substituted, stored as strings: a
     # value that is a type-tagged expression ('{{num:count}}') resolves to
-    # its type, and is held as its text, as every other value is
-    for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        VARIABLE_SUBSTITUTIONS[key_] = _resolved_variable(value_)
+    # its type, and is held as its text, as every other value is. Repeated
+    # until the table settles, so that a chain of variables however long
+    # ('v0 = "{{v1}}"' ... 'v20 = "end"') is resolved here, not left to the
+    # passes over a specification, whose cap it would exceed: no chain is
+    # longer than the table, and a circular reference that grows its text is
+    # stopped at VARIABLE_TABLE_MAX_TEXT, for the circular check to report
+    for _ in range(len(VARIABLE_SUBSTITUTIONS) + 1):
+        changed = False
+        for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
+            resolved = _resolved_variable(value_)
+            changed = changed or resolved != _stringify(value_)
+            VARIABLE_SUBSTITUTIONS[key_] = resolved
+        if not changed or (
+            sum(map(len, VARIABLE_SUBSTITUTIONS.values())) > VARIABLE_TABLE_MAX_TEXT
+        ):
+            break
 
 
 def _resolved_variable(value) -> str:

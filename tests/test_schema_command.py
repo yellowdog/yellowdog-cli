@@ -127,7 +127,21 @@ class TestCheck:
         assert result.returncode == 1
         assert "written for" in (result.stdout + result.stderr)
 
-    @pytest.mark.parametrize("damage", ["edited", "missing"])
+    @pytest.mark.parametrize("index", [b"[]", b'"x"', b"\xff\xfe{"])
+    def test_an_index_that_is_no_object_is_reported_not_a_traceback(
+        self, tmp_path, index
+    ):
+        target = tmp_path / "schemas"
+        _run("--write", str(target))
+        (target / "index.json").write_bytes(index)
+
+        result = _run("--check", str(target))
+
+        assert result.returncode == 1
+        assert "cannot be read" in result.stdout + result.stderr
+        assert "Traceback" not in result.stdout + result.stderr
+
+    @pytest.mark.parametrize("damage", ["edited", "missing", "not UTF-8"])
     def test_exits_one_when_a_schema_is_not_what_is_built(self, tmp_path, damage):
         # The index's versions alone would call this up to date
         target = tmp_path / "schemas"
@@ -135,6 +149,8 @@ class TestCheck:
         path = target / "worker-pool.schema.json"
         if damage == "edited":
             path.write_text(path.read_text().replace('"type"', '"typo"', 1))
+        elif damage == "not UTF-8":
+            path.write_bytes(b"\xff\xfe")
         else:
             path.unlink()
 

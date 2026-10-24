@@ -75,6 +75,9 @@ COMPLETION_CACHE_SECONDS = 30
 # pass that changes nothing ends them. Real chains of references settle in two
 # or three, so reaching this means a circular one.
 VAR_SUBSTITUTION_MAX_PASSES = 10
+# The variable table's text, all values together, past which resolving it
+# stops repeating: only a circular reference grows it so (variable_substitution)
+VARIABLE_TABLE_MAX_TEXT = 100_000
 
 # The Tasks, Instances, Nodes or Workers 'yd list' lists by default: enough
 # that an ordinary listing never reaches it, few enough that a mistaken one
