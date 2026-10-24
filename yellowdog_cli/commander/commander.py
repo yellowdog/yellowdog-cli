@@ -729,9 +729,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
     def _show_config_action(self):
         if not self._check_config_file():
             return
-        self._output.log(f"Displaying contents of '{self._config_file}':\n")
-        with open(cast(str, self._config_file), encoding="utf-8") as f:
-            self._output.log(f.read(), prefix=False)
+        self._display_file(cast(str, self._config_file), "configuration file")
 
     def _deselect_files_action(self):
         """

@@ -313,12 +313,7 @@ class ComputePanel(WindowDialogs):
         if path is None:
             self._output.log("No Worker Pool definition file selected")
             return
-        try:
-            with open(path, encoding="utf-8") as f:
-                self._output.log(f"Displaying contents of '{path}':\n")
-                self._output.log(f.read(), prefix=False)
-        except OSError as e:
-            self._output.log(f"Cannot open Worker Pool file '{path}': {e}")
+        self._display_file(path, "Worker Pool file")
 
     def _follow_worker_pool_set(self, checked_state: Qt.CheckState):
         if (

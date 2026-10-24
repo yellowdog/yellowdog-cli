@@ -151,7 +151,7 @@ class CommandRunning(WindowBase):
         try:
             with open(self._config_file, encoding="utf-8") as f:
                 content = f.read()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return None
 
         m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)

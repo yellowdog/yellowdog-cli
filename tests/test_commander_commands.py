@@ -236,6 +236,35 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
     )
 
 
+@pytest.mark.parametrize("unreadable", ["not UTF-8", "gone"])
+@pytest.mark.parametrize(
+    "action, attribute, description",
+    [
+        ("_show_wr_json_action", "_wr_file", "Work Requirement file"),
+        ("_show_wp_json_action", "_wp_file", "Worker Pool file"),
+        ("_show_config_action", "_config_file", "configuration file"),
+    ],
+)
+def test_a_file_show_cannot_read_is_reported_not_raised(
+    window, monkeypatch, tmp_path, action, attribute, description, unreadable
+):
+    # Raised from a button's slot, the error would abort the application
+    path = tmp_path / "file.json"
+    if unreadable == "not UTF-8":
+        path.write_bytes('{"name": "café"}'.encode("latin-1"))
+    setattr(window, attribute, str(path))
+    monkeypatch.setattr(window, "_check_config_file", lambda: True)
+    logged: list[str] = []
+    monkeypatch.setattr(
+        window._output, "log", lambda text, **kwargs: logged.append(text)
+    )
+
+    getattr(window, action)()
+
+    assert len(logged) == 1
+    assert logged[0].startswith(f"Cannot open {description} '{path}': ")
+
+
 # --- Provision Worker Pool ---------------------------------------------------
 
 
