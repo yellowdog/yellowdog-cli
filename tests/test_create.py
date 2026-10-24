@@ -212,7 +212,9 @@ def test_matching_allowances_are_chosen_before_and_removed_after_the_new_one(
     monkeypatch.setattr(
         yd_create,
         "remove_allowances",
-        lambda client, allowances: calls.append(("remove", allowances)) or ["old"],
+        lambda client, allowances, on_removed: (
+            calls.append(("remove", allowances)) or on_removed("old") or ["old"]
+        ),
     )
     yd_create.create_allowance(_ctx(), _allowance())
     assert calls == [("choose", "d"), "add", ("remove", [old])]
@@ -324,8 +326,12 @@ def test_only_exact_description_matches_are_removed(monkeypatch):
         SimpleNamespace(id="other", description="d2"),
     ]
     monkeypatch.setattr(entity_utils, "confirmed", lambda _: True)
-    assert entity_utils.remove_allowances_matching_description(client, "d") == ["old"]
+    removed: list[str] = []
+    assert entity_utils.remove_allowances_matching_description(
+        client, "d", removed.append
+    ) == ["old"]
     client.allowances_client.delete_allowance_by_id.assert_called_once_with("old")
+    assert removed == ["old"]
 
 
 def test_choosing_allowances_removes_none(monkeypatch):
@@ -345,7 +351,7 @@ def test_declined_allowance_removals_are_not_counted(monkeypatch):
         SimpleNamespace(id="old", description="d")
     ]
     monkeypatch.setattr(entity_utils, "confirmed", lambda _: False)
-    assert entity_utils.remove_allowances_matching_description(client, "d") == []
+    assert entity_utils.remove_allowances_matching_description(client, "d", print) == []
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +455,21 @@ def test_a_group_with_no_roles_loses_them_all(existing_group):
         "gid", "r1"
     )
     assert existing_group.records[-1]["rolesRemoved"] == ["role-1"]
+
+
+def test_a_new_group_whose_role_grant_fails_is_recorded_with_its_id(env, monkeypatch):
+    # The Group exists by then: recorded as created, with its ID, before the
+    # failure is raised for the caller to record
+    monkeypatch.setattr(yd_create, "get_group_id_by_name", lambda *a: None)
+    monkeypatch.setattr(yd_create, "get_role_id_by_name", lambda *a: "rid")
+    env.client.account_client.add_group.return_value = SimpleNamespace(
+        id="gid", name="g"
+    )
+    env.client.account_client.add_role_to_group.side_effect = _http_error(400)
+    roles = [{"role": {"name": "r"}, "scope": {"global": True}}]
+    with pytest.raises(HTTPError):
+        yd_create.create_group(_ctx(), {"name": "g", "roles": roles})
+    assert [(r["id"], r["action"]) for r in env.records] == [("gid", "created")]
 
 
 def test_an_unknown_role_fails_the_group_before_any_change(env, monkeypatch):

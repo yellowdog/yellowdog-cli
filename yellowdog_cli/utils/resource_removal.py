@@ -555,14 +555,16 @@ def remove_allowance(ctx: RunContext, resource: dict):
 
     print_info(f"Removing Allowance(s) matching description '{description}'")
     removed_ids = remove_allowances_matching_description(
-        ctx.client, cast(str, description)
+        ctx.client,
+        cast(str, description),
+        on_removed=lambda removed_id: record_resource(
+            RN_ALLOWANCE, description, removed_id, "removed"
+        ),
     )
     if not removed_ids:
         record_resource(RN_ALLOWANCE, description, None, "skipped")
         return
     print_info(f"Removed {len(removed_ids)} Allowance(s)")
-    for removed_id in removed_ids:
-        record_resource(RN_ALLOWANCE, description, removed_id, "removed")
 
 
 # ---------------------------------------------------------------------------

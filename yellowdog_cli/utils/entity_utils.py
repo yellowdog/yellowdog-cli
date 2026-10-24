@@ -760,26 +760,36 @@ def allowances_to_remove(client: PlatformClient, description: str) -> list:
     ]
 
 
-def remove_allowances(client: PlatformClient, allowances: list) -> list[str]:
+def remove_allowances(
+    client: PlatformClient,
+    allowances: list,
+    on_removed: Callable[[str], None],
+) -> list[str]:
     """
     Remove the Allowances allowances_to_remove() chose, returning their IDs.
+    on_removed(<ID>) is called as each goes, so that those removed before a
+    later one fails are recorded too.
     """
     removed = []
     for allowance in allowances:
         client.allowances_client.delete_allowance_by_id(allowance.id)
         print_info(f"Removed Allowance with YellowDog ID {allowance.id}")
         removed.append(cast(str, allowance.id))
+        on_removed(cast(str, allowance.id))
     return removed
 
 
 def remove_allowances_matching_description(
-    client: PlatformClient, description: str
+    client: PlatformClient, description: str, on_removed: Callable[[str], None]
 ) -> list[str]:
     """
     Remove the Allowances matching on the description property that the
-    user chooses (see allowances_to_remove()), returning their IDs.
+    user chooses (see allowances_to_remove()), returning their IDs; see
+    remove_allowances() for 'on_removed'.
     """
-    return remove_allowances(client, allowances_to_remove(client, description))
+    return remove_allowances(
+        client, allowances_to_remove(client, description), on_removed
+    )
 
 
 def iterate_tasks_in_task_group(

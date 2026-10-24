@@ -862,8 +862,13 @@ def create_allowance(ctx: RunContext, resource: dict):
     if allowance.id is not None:
         print_quiet_result(allowance.id)
 
-    for removed_id in remove_allowances(ctx.client, to_replace):
-        record_resource(RN_ALLOWANCE, description, removed_id, "removed")
+    remove_allowances(
+        ctx.client,
+        to_replace,
+        on_removed=lambda removed_id: record_resource(
+            RN_ALLOWANCE, description, removed_id, "removed"
+        ),
+    )
 
 
 def _group_shown(ctx: RunContext, group_id: str | None) -> str:
@@ -1088,9 +1093,16 @@ def create_group(ctx: RunContext, resource: dict):
         )
         clear_group_caches()
         print_info(f"Created Group '{group.name}' ({group.id})")
-        added = _add_or_update_roles(
-            ctx, cast(str, group.id), role_specifications or []
-        )
+        try:
+            added = _add_or_update_roles(
+                ctx, cast(str, group.id), role_specifications or []
+            )
+        except BaseException:
+            # The Group exists: recorded as created, with its ID, ahead of
+            # the failure the caller records
+            record_resource(RN_GROUP, name, group.id, "created")
+            print_quiet_result(group.id)
+            raise
         record_resource(RN_GROUP, name, group.id, "created", rolesAdded=added)
         print_quiet_result(group.id)
         return
