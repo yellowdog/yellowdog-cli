@@ -4027,6 +4027,50 @@ class TestOneRcloneRunForManyFiles:
         assert sorted(r["action"] for r in out) == ["deleted"] * len(_MANY)
         assert list((many / "remote" / "many").iterdir()) == []
 
+    def _failed_delete(self, monkeypatch, delete_some: bool, listing_fails: bool):
+        """
+        Make the delete run fail, having deleted all but f2.txt if
+        'delete_some', and the listing that checks it fail too if
+        'listing_fails'.
+        """
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        real_delete, real_lsjson = dcu._delete_files, dcu._lsjson
+        ran = []
+
+        def failing_delete(rclone, remote_dir, names):
+            if delete_some:
+                real_delete(rclone, remote_dir, [n for n in names if n != "f2.txt"])
+            ran.append(True)
+            return SimpleNamespace(returncode=1, stderr="connection reset")
+
+        def lsjson(*args, **kwargs):
+            if ran and listing_fails:
+                raise RuntimeError("connection reset")
+            return real_lsjson(*args, **kwargs)
+
+        monkeypatch.setattr(dcu, "_delete_files", failing_delete)
+        monkeypatch.setattr(dcu, "_lsjson", lsjson)
+
+    def test_a_failed_delete_records_each_file_by_whether_it_went(
+        self, many, run_dc, monkeypatch
+    ):
+        self._failed_delete(monkeypatch, delete_some=True, listing_fails=False)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/many/*.txt"])
+        assert code == 1
+        failed = [r["path"] for r in out if r["action"] == "failed"]
+        assert failed == ["loc:remote/many/f2.txt"]
+
+    def test_a_failed_delete_that_cannot_be_checked_records_every_file_failed(
+        self, many, run_dc, monkeypatch
+    ):
+        # As when the connection is lost: nothing is known to have gone
+        self._failed_delete(monkeypatch, delete_some=False, listing_fails=True)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/many/*.txt"])
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"] * len(_MANY)
+        assert len(list((many / "remote" / "many").iterdir())) == len(_MANY)
+
 
 def test_a_long_list_of_names_is_summarised():
     from yellowdog_cli.utils.dataclient.operations import summarise_names

@@ -1674,7 +1674,7 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
         print_info(f"Deleting {len(names):,d} file(s) in '{remote_dir}'")
         result = _delete_files(rclone, remote_dir, names)
         left = (
-            set() if result.returncode == 0 else set(_remote_sizes(rclone, remote_dir))
+            set() if result.returncode == 0 else _files_left(rclone, remote_dir, names)
         )
         error = None
         for name in names:
@@ -1693,6 +1693,21 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
     for path, is_dir in singles:
         failed += 0 if delete_item(config, path, is_dir) else 1
     return failed
+
+
+def _files_left(rclone: Rclone, remote_dir: str, names: list[str]) -> set[str]:
+    """
+    Which of the names are still in a remote directory after a failed
+    deletion: all of them if it cannot be listed, as when the connection
+    that failed the deletion is still lost, since none is known to have
+    gone. (Not _remote_sizes(), which takes a directory it cannot list to
+    hold none: safe for a transfer, whose files it fails, but not here.)
+    """
+    try:
+        entries = _lsjson(rclone, remote_dir, files_only=True)
+    except RuntimeError:
+        return set(names)
+    return {entry["Name"] for entry in entries}
 
 
 def lsjson_listing(
