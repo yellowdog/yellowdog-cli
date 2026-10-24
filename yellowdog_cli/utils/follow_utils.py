@@ -30,7 +30,12 @@ from yellowdog_client.model import (
 )
 
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.event_printing import print_event
+from yellowdog_cli.utils.event_printing import (
+    event_count,
+    event_counts,
+    event_field,
+    print_event,
+)
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
     ExitCode,
@@ -232,18 +237,20 @@ class _TaskCounts:
     @staticmethod
     def of_event(event_data: dict) -> "_TaskCounts":
         """
-        The counts in a Work Requirement event's Task Groups.
+        The counts in a Work Requirement event's Task Groups, a count the
+        event leaves null being 0, as print_event() reads them.
         """
         counts = _TaskCounts()
-        for task_group in event_data.get("taskGroups", []):
-            summary = task_group.get("taskSummary", {})
-            counts.total += summary.get("taskCount", 0)
-            status_counts = summary.get("statusCounts", {})
-            counts.completed += status_counts.get("COMPLETED", 0)
-            counts.failed += status_counts.get("FAILED", 0)
-            counts.aborted += status_counts.get("ABORTED", 0)
-            counts.cancelled += status_counts.get("CANCELLED", 0)
-            counts.resubmitted += status_counts.get("RESUBMITTED", 0)
+        for task_group in event_field(event_data, "taskGroups") or []:
+            counts.total += event_count(
+                event_field(task_group, "taskSummary", "taskCount")
+            )
+            status_counts = event_counts(task_group, "taskSummary", "statusCounts")
+            counts.completed += event_count(status_counts.get("COMPLETED"))
+            counts.failed += event_count(status_counts.get("FAILED"))
+            counts.aborted += event_count(status_counts.get("ABORTED"))
+            counts.cancelled += event_count(status_counts.get("CANCELLED"))
+            counts.resubmitted += event_count(status_counts.get("RESUBMITTED"))
         return counts
 
     def show(self, progress: Progress, bar_task: TaskID, wr_status: str) -> None:

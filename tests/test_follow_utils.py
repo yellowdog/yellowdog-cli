@@ -219,6 +219,37 @@ class TestProgressCounts:
             "Work Requirement finished with 2 cancelled task(s)"
         )
 
+    def test_an_event_leaving_its_counts_null_counts_nothing(self):
+        # The Platform leaves a summary null until there is something to
+        # summarise: the bar shows zeros rather than the stream ending
+        wr = self._wr(_task_group(2))
+        events = [
+            "data:" + json.dumps({"status": "RUNNING", "taskGroups": None}),
+            "data:"
+            + json.dumps(
+                {
+                    "status": "RUNNING",
+                    "taskGroups": [
+                        {"taskSummary": None},
+                        {"taskSummary": {"taskCount": None, "statusCounts": None}},
+                        {
+                            "taskSummary": {
+                                "taskCount": 3,
+                                "statusCounts": {"FAILED": None},
+                            }
+                        },
+                    ],
+                }
+            ),
+        ]
+        progress, warning = self._follow(wr, events)
+        assert [update["description"] for update in progress.updates] == [
+            "RUNNING  0/2",
+            "RUNNING  0/0",
+            "RUNNING  0/3",
+        ]
+        warning.assert_not_called()
+
     def test_an_event_for_another_type_is_ignored(self):
         wr = self._wr(_task_group(1))
         events = [_event("RUNNING", (1, {"FAILED": 1}))]

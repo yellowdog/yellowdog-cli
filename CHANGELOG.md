@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`--progress` keeps following a Work Requirement whose event leaves a Task count empty**, showing it as 0: such an event, as the Platform can send before a Task Group has Tasks to count, stopped the progress bar with an "Event stream error", and `yd workrequirement submit --progress -E` then exited with a failure.
 - **`yd doctor`'s advice names uv and pip**, as the README's installation options do, where it suggested pipx: a CLI installed into the system Python is advised to use `uv tool install` or a virtual environment, and an update or reinstall is shown as `uv tool upgrade` (or `pip install -U` in its environment) and `uv tool install --reinstall`. A pipx installation is still recognised.
 - **Tab completes the options of `yd version`, `yd help`, `yd format-json` and `yd jsonnet2json`**, as it does every other command's: `yd version --j` offered nothing, and now offers `--jsonnet` and `--json`. Their files still complete as files. Their `--help` describes each in the same form as every other command ("YellowDog command-line utility for ..."), its options unchanged.
 
