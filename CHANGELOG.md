@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **A Work Requirement or Compute Requirement name that only finished ones share finds the newest**, for `show`, `follow`, `wait`, `compare` and the actions: it found whichever the Platform listed first.
 - **The Cloud Wizard saves its resource file when adding the Credential fails**, on AWS and GCP as on Azure, and exits 1 (or with a lost connection's own code); and **an Azure teardown removes the YellowDog resources first**, as AWS and GCP do, with a failure to list the Azure resource groups reported rather than ending the teardown before anything was removed.
 - **Tab completion**: on macOS's bash 3.2, `--sort=cr<Tab>` completes to `--sort=created`, where it gave `--sort=--sort=created`; a file or directory after `--option=` completes in bash 3.2, zsh and PowerShell, where nothing was offered; and a quoted word is read as the command will be given it, so `-t ''` and `-n 'my ns'` reach a name lookup unquoted and `'nightly` (a quote opened) completes.
 - **Commander**: an edited Namespace or Tag field is discovered again, so the scope a confirmation names and the default object path follow it, where they kept the previous values; a discovery still running when a newer one starts no longer writes its older result over the newer one; and a command finishing no longer closes the input box to a later command still waiting for input.

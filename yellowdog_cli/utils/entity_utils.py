@@ -6,9 +6,10 @@ import fnmatch
 import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from json import loads as json_loads
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from requests import HTTPError, get
 from yellowdog_client import PlatformClient
@@ -222,9 +223,11 @@ def find_work_requirement_by_name(
     Platform matches partially, so the results are filtered for equality),
     never by listing the namespace. A name can be reused once a Work
     Requirement has finished, so the one whose status is in 'statuses' is
-    preferred; with none, one in another state is returned, for the caller
-    to report as such. Raises NotFoundError when nothing has the name, and
-    AmbiguousNameError when two or more in 'statuses' do.
+    preferred; with none, the newest in another state is returned, for the
+    caller to report as such (the latest run of a reused name, never
+    whichever the search happened to list first). Raises NotFoundError when
+    nothing has the name, and AmbiguousNameError when two or more in
+    'statuses' do.
     """
     namespace, name = split_namespace_and_name(name_or_namespaced_name)
     namespace = default_namespace if namespace is None else namespace
@@ -246,7 +249,25 @@ def find_work_requirement_by_name(
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
-    return (preferred or candidates)[0]
+    return preferred[0] if preferred else _newest(candidates)
+
+
+_Summary = TypeVar("_Summary", WorkRequirementSummary, ComputeRequirementSummary)
+
+
+def _newest(summaries: list[_Summary]) -> _Summary:
+    """
+    The most recently created of the summaries (the first listed, where
+    none says when it was created).
+    """
+    created: dict[int, datetime] = {
+        index: when
+        for index, summary in enumerate(summaries)
+        if (when := getattr(summary, "createdTime", None)) is not None
+    }
+    if not created:
+        return summaries[0]
+    return summaries[max(created, key=lambda index: created[index])]
 
 
 def find_compute_requirement_by_name(
@@ -261,7 +282,8 @@ def find_compute_requirement_by_name(
     'default_namespace' unless the name has a 'namespace/' prefix, by a name
     search filtered for equality, preferring the one whose status is in
     'statuses' (a name can be reused once a Compute Requirement has
-    terminated), else one in another state for the caller to report. Raises
+    terminated), else the newest in another state for the caller to report.
+    Raises
     NotFoundError when nothing has the name, and AmbiguousNameError when two
     or more in 'statuses' do.
     """
@@ -285,7 +307,7 @@ def find_compute_requirement_by_name(
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
-    return (preferred or candidates)[0]
+    return preferred[0] if preferred else _newest(candidates)
 
 
 def work_requirement_summary_of(

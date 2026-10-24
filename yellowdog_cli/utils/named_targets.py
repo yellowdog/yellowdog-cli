@@ -5,8 +5,9 @@ looked up as the type the noun gives it, and replaced by its ID; an ID is
 left as it is. A Work Requirement, Worker Pool or Compute Requirement is
 'name', a Task Group 'wr/tg' and a Task 'wr/tg/task', each with a leading
 'namespace/' to look in another namespace than the configured one
-('--namespace'). Names are unique within a namespace for each type, so a
-name finds its object whether it is live or finished.
+('--namespace'). A name finds its object whether it is live or finished:
+a live one if there is one, else, a Work Requirement's or Compute
+Requirement's name being reusable once it has finished, the newest.
 
 Every name is looked up before anything else is done, and those that find
 nothing are reported together; a failure every later lookup would repeat
