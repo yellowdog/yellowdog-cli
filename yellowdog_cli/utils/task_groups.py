@@ -101,7 +101,8 @@ def check_task_groups(wr_data: dict) -> None:
     them, so that one missing is named rather than reported as a bare
     KeyError ("ERROR : 'tasks'").
     """
-    if TASK_GROUPS not in wr_data:
+    # Null, as missing: check_list() passes None, which would then be indexed
+    if wr_data.get(TASK_GROUPS) is None:
         raise ValueError(
             f"Property '{TASK_GROUPS}' is not defined (use '--empty' to submit a"
             " Work Requirement with no Task Groups)"
@@ -112,7 +113,7 @@ def check_task_groups(wr_data: dict) -> None:
         task_group = f"Task Group {tg_number + 1} of {len(wr_data[TASK_GROUPS])}"
         if not isinstance(task_group_data, dict):
             raise TypeError(f"{task_group} should be of type 'Dict'")
-        if TASKS not in task_group_data:
+        if task_group_data.get(TASKS) is None:
             raise ValueError(f"Property '{TASKS}' is not defined in {task_group}")
         for task_number, task in enumerate(check_list(task_group_data[TASKS], TASKS)):
             if not isinstance(task, dict):

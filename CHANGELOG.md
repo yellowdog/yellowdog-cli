@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd workrequirement submit`, smaller fixes**: a specification whose `taskGroups` or `tasks` is `null` is reported as missing it, where it failed with `'NoneType' object is not iterable`; and a Task's input file to upload is found from the files directory without changing the process's directory, which other batches running in parallel share; its messages name the file with that directory.
 - **Output, smaller fixes**: a message whose advice sets a command on a line of its own (the Jsonnet extra's rebuild command) keeps its line breaks, where they were run into the text; and a Task Group both starved and waiting on a dependency shows `/STARVED/WAITING` when followed, as it does when listed, where following showed `/WAITING` alone.
 - **Tab completion with `--names`**: `--within=<Tab>` looks up what `--within <Tab>` does, where it offered nothing; and `yd taskgroup priority` completes Work Requirement names and then `wr/tg`, as `yd taskgroup show` does.
 - **`yd resource create` and `remove`, smaller fixes**: a Worker Pool removed by its ID is recorded as `ConfiguredWorkerPool`, as one removed by name is, not `WorkerPool`; a name that fails to be removed is recorded as `namespace/name`, as one removed is; a Compute Requirement Template source without `sourceTemplateId` is reported as a missing property; and a Configured Worker Pool the Platform returns without a token is recorded as created, with its ID.
