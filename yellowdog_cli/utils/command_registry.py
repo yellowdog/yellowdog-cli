@@ -3122,11 +3122,21 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("within_target", "--within", LIST_WITHIN_TYPES),
         ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
-        if getattr(args, dest, None) and entity_type not in types:
+        # Given at all ('--limit 0' and '--name ""' as much as any other;
+        # by identity, since 0 == False)
+        value = getattr(args, dest, None)
+        if value is not None and value is not False and entity_type not in types:
             parser.error(
                 f"{flag} does not apply to {entity_type}; it applies to "
                 + ", ".join(sorted(types))
             )
+    # '--status ""' (an unset shell variable) names no status: refused, not
+    # taken for no filter, which would list everything
+    statuses = getattr(args, "status_filter", None)
+    if statuses is not None and not any(
+        part.strip() for given in statuses for part in str(given).split(",")
+    ):
+        parser.error("--status needs at least one status")
     # '--count' is exact, read from the Task Groups' own counts where it can
     if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
         parser.error("--limit cannot be used with --count, which is never limited")
@@ -3701,7 +3711,7 @@ COMMANDS["yd-resize"] = Command(
         TAG,
         YES,
         DRY_RUN_ACTION,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         WORKER_POOL_POSITIONAL,
         WORKER_POOL_SIZE,
         RESIZE_COMPUTE_REQUIREMENT,
@@ -4142,7 +4152,7 @@ COMMANDS["yd-priority"] = Command(
         NAMESPACE,
         DRY_RUN,
         YES,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         PRIORITY,
         PRIORITY_TARGETS,
     ),
@@ -4189,7 +4199,7 @@ COMMANDS["yd-token"] = Command(
         NAMESPACE,
         DRY_RUN,
         YES,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         TOKEN_WORKER_POOLS,
         REGENERATE,
         TTL_HOURS,

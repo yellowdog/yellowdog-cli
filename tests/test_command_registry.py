@@ -613,6 +613,42 @@ class TestArgsProperties:
         assert raised.value.code == 0
         assert "Online documentation" in capsys.readouterr().out
 
+    def test_an_abbreviated_docs_is_answered(self, capsys):
+        # argparse takes '--doc' for '--docs'; the listing would otherwise run
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-list", argv=["work-requirements", "--doc"])
+        assert raised.value.code == 0
+        assert "Online documentation" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("command", ["yd-resize", "yd-priority", "yd-token"])
+    def test_json_help_says_what_a_dry_run_records(self, command):
+        # Under --dry-run they record what would be done, not actions taken
+        option = COMMANDS[command].option_named("--json")
+        assert option is not None and "--dry-run" in option.kwargs["help"]
+
+
+class TestListFiltersGivenAtAll:
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            # A filter given an empty or zero value is still given
+            (["work-requirements", "--limit", "0"], "--limit does not apply"),
+            (["instances", "--name", ""], "--name does not apply"),
+            # No status at all, as an unset shell variable gives
+            (["tasks", "--status", ""], "--status needs at least one status"),
+            (["tasks", "--status", ","], "--status needs at least one status"),
+        ],
+    )
+    def test_refused(self, argv, message, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-list", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
+
 
 class TestRemotePathsWithParentSegments:
     """
