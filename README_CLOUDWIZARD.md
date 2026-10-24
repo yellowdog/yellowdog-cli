@@ -160,7 +160,7 @@ The default **subnets** are provided with a route to a gateway which allows inst
 
 The default **security group** allows unrestricted traffic between instances on the subnet, and allows unrestricted outbound traffic to any address including the public Internet. It allows **no** inbound access from outside the subnet. Hence, if inbound access is required (e.g., SSH access to an instance), this must be added for each default security group in each region for which it is required. Cloud Wizard provides a command for adding and removing SSH access; please see below.
 
-Cloud Wizard will interrogate your AWS account to find out which regions are available, and to determine the default security group for the region, and the default subnet for each availability zone within the region.
+Cloud Wizard will interrogate your AWS account to find out which regions are available, and to determine the default security group for the region (the security group named `default` in the region's default VPC), and the default subnet for each availability zone within the region. `setup` needs a region, to check that the access key it creates works for EC2: `--region-name`, or the default region of your AWS configuration (`AWS_DEFAULT_REGION`, or `region` in `~/.aws/config`); without one it stops before creating anything.
 
 #### AWS Account Setup
 

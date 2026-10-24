@@ -194,6 +194,81 @@ def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
     assert "0.0.0.0/0" in asked[0]
 
 
+def _ec2_with_security_groups() -> MagicMock:
+    """
+    An EC2 client whose region has a default VPC, and security groups whose
+    names hold 'default' ahead of the real one, which only the filters the
+    search sends find.
+    """
+    ec2 = MagicMock()
+    ec2.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-default"}]}
+    groups = [
+        {"GroupName": "prod-default-db", "GroupId": "sg-db", "VpcId": "vpc-prod"},
+        {"GroupName": "default", "GroupId": "sg-other", "VpcId": "vpc-prod"},
+        {"GroupName": "default", "GroupId": "sg-default", "VpcId": "vpc-default"},
+    ]
+
+    def described(Filters):
+        wanted = {f["Name"]: f["Values"] for f in Filters}
+        return {
+            "SecurityGroups": [
+                g
+                for g in groups
+                if g["VpcId"] in wanted.get("vpc-id", [g["VpcId"]])
+                and g["GroupName"] in wanted.get("group-name", [g["GroupName"]])
+            ]
+        }
+
+    ec2.describe_security_groups.side_effect = described
+    return ec2
+
+
+def test_add_ssh_opens_the_default_vpcs_default_security_group(monkeypatch):
+    # Not the first group with 'default' in its name, nor another VPC's
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+
+    ec2 = _ec2_with_security_groups()
+    monkeypatch.setattr(cloudwizard_aws.boto3, "client", lambda *a, **k: ec2)
+    monkeypatch.setattr(cloudwizard_aws, "confirmed", lambda question: True)
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config.set_ssh_ingress_rule("add-ssh", "eu-west-2")
+    calls = ec2.authorize_security_group_ingress.call_args_list
+    assert [call.kwargs["GroupId"] for call in calls] == ["sg-default"]
+
+
+def test_aws_setup_without_a_region_makes_nothing(monkeypatch):
+    # Refused before the IAM user, key and templates exist, not after
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config.region_name = None
+    monkeypatch.setattr(
+        config, "_load_aws_resources", lambda: pytest.fail("set-up was started")
+    )
+    with pytest.raises(ValueError, match="No AWS region"):
+        config.setup()
+
+
+def test_declining_one_access_key_deletion_creates_no_new_key(monkeypatch):
+    # The Credential would use the kept key, whose secret is not available,
+    # and the others are still asked about
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+    from yellowdog_cli.utils.cloudwizard.aws_types import AWSAccessKey
+
+    answers = iter([True, False, True])  # Replace them; keep the first; not the second
+    monkeypatch.setattr(cloudwizard_aws, "confirmed", lambda question: next(answers))
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config._show_secrets = False
+    config._access_keys = [AWSAccessKey("AKIAOLD1"), AWSAccessKey("AKIAOLD2")]
+    iam = MagicMock()
+    config._create_access_key(iam)
+    iam.delete_access_key.assert_called_once_with(
+        UserName=cloudwizard_aws.IAM_USER_NAME, AccessKeyId="AKIAOLD2"
+    )
+    iam.create_access_key.assert_not_called()
+    assert [key.access_key_id for key in config._access_keys] == ["AKIAOLD1"]
+
+
 class TestAzureResourceGroupFailures:
     """
     Azure setup: a region whose resource group cannot be checked, and a
