@@ -416,3 +416,28 @@ def test_no_command_starts_once_the_window_is_closing(win):
     win._run_command_in_subprocess("sleep", [SLEEP_SECONDS], yd_command=False)
     assert win._processes == []
     win._shutting_down = False
+
+
+def test_an_earlier_command_finishing_leaves_a_later_ones_stdin(win, qapp):
+    # Input goes to the last command started that takes it; the first one
+    # ending must not close it to the second
+    win._run_command_in_subprocess(
+        "sleep", [SLEEP_SECONDS], yd_command=False, accept_stdin=True
+    )
+    first = win._processes[-1]
+    win._run_command_in_subprocess(
+        "sleep", [SLEEP_SECONDS], yd_command=False, accept_stdin=True
+    )
+    second = win._processes[-1]
+    first.waitForStarted(2000)
+    second.waitForStarted(2000)
+    first.kill()
+    first.waitForFinished(5000)
+    qapp.processEvents()
+    assert win._active_process is second
+    assert win.stdin_input.isEnabled()
+    second.kill()
+    second.waitForFinished(5000)
+    qapp.processEvents()
+    assert win._active_process is None
+    assert not win.stdin_input.isEnabled()

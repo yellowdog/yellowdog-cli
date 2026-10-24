@@ -320,7 +320,9 @@ class CommandRunning(WindowBase):
                 self._active_run = run.run_id
                 self.stdin_input.setEnabled(True)
                 self.stdin_input.setPlaceholderText("Send input to process...")
-                process.finished.connect(self._on_active_process_finished)
+                process.finished.connect(
+                    functools_partial(self._on_active_process_finished, process)
+                )
 
     @staticmethod
     def _record_outcome(
@@ -427,7 +429,14 @@ class CommandRunning(WindowBase):
             if process.state() != QProcess.ProcessState.NotRunning
         ]
 
-    def _on_active_process_finished(self):
+    def _on_active_process_finished(self, process: QProcess, *_signal_args):
+        """
+        A process that took stdin has finished: stdin is closed if it is
+        still the one taking it, and left alone if a later command has
+        taken it since.
+        """
+        if process is not self._active_process:
+            return
         self._active_process = None
         self.stdin_input.setEnabled(False)
         self.stdin_input.setPlaceholderText("No command running")
