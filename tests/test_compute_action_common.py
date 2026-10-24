@@ -318,6 +318,18 @@ class TestListing:
         _run(platform, COMPUTE_STOP, [])
         assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
 
+    @pytest.mark.parametrize("targets", [[], ["cr-*"], [CR_ID], ["cr-a"]])
+    def test_a_failure_names_the_compute_requirement_on_every_path(
+        self, platform, monkeypatch, targets
+    ):
+        # By tag, by glob, by ID and by name: the one message
+        errors: list[str] = []
+        monkeypatch.setattr(action_runner, "print_error", errors.append)
+        platform.failures["stop_compute_requirement_by_id"] = _http_error(500)
+        _run(platform, COMPUTE_STOP, targets)
+        assert len(errors) == 1
+        assert errors[0].startswith("Failed to stop Compute Requirement 'cr-a': ")
+
     @pytest.mark.parametrize(
         "error", [_http_error(401), RequestsConnectionError("reset")]
     )

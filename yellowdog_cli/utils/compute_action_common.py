@@ -429,19 +429,7 @@ def _apply_action_to_summaries(
     ):
         items = []
 
-    done = carry_out(
-        [
-            Unit(
-                [item],
-                act=lambda cr=item.value: _act_on_compute_requirement(ctx, action, cr),
-                failure=lambda e, cr=item.value: (
-                    f"Failed to {action.name.lower()} '{cr.name}': {e}"
-                ),
-            )
-            for item in items
-        ],
-        action.recorder(),
-    )
+    done = carry_out([_cr_unit(ctx, action, item) for item in items], action.recorder())
     actioned_ids = [cast(str, unit.items[0].value.id) for unit in done]
 
     if actioned_ids:
@@ -449,6 +437,21 @@ def _apply_action_to_summaries(
         _after(ctx, action, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
+
+
+def _cr_unit(ctx: RunContext, action: ComputeAction, item: Item) -> Unit:
+    """
+    The action on one Compute Requirement, as carry_out() takes it.
+    """
+    compute_requirement: _ComputeRequirementTarget = item.value
+    return Unit(
+        [item],
+        act=lambda: _act_on_compute_requirement(ctx, action, compute_requirement),
+        failure=lambda e: (
+            f"Failed to {action.name.lower()} Compute Requirement"
+            f" '{compute_requirement.name}': {e}"
+        ),
+    )
 
 
 def _act_on_compute_requirement(
@@ -549,13 +552,7 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
     Requirement's Instances in one call.
     """
     units = [
-        Unit(
-            [item],
-            act=lambda cr=item.value: _act_on_compute_requirement(ctx, action, cr),
-            failure=lambda e, cr=item.value: (
-                f"Failed to {action.name.lower()} Compute Requirement '{cr.name}': {e}"
-            ),
-        )
+        _cr_unit(ctx, action, item)
         for item in items
         if item.entity_type == ET_COMPUTE_REQUIREMENTS
     ] + [
