@@ -184,6 +184,40 @@ def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
     assert errors == ["please select at least one item"]
 
 
+def _listed(quiet: bool, force_interactive: bool, override_quiet: bool = False):
+    """
+    The 'override_quiet' select() lists the objects with, or None if it
+    lists none.
+    """
+    mock_args = SimpleNamespace(quiet=quiet, interactive=False)
+    with (
+        output_settings.configured(mock_args),
+        patch.object(interactive_module, "print_numbered_object_list") as listed,
+        patch.object(interactive_module, "get_selected_list_items", return_value=[2]),
+    ):
+        selected = interactive_module.select(
+            None,  # type: ignore[arg-type]
+            ["a", "b"],
+            force_interactive=force_interactive,
+            override_quiet=override_quiet,
+            sort_objects=False,
+        )
+    assert selected == (["b"] if force_interactive else ["a", "b"])
+    return listed.call_args.kwargs["override_quiet"] if listed.called else None
+
+
+def test_a_forced_selection_lists_its_objects_under_quiet():
+    # As removing Allowances by a description several match asks: the
+    # prompt without the list would leave nothing to choose from
+    assert _listed(quiet=True, force_interactive=True) is True
+
+
+def test_quiet_lists_nothing_when_nothing_is_to_be_selected():
+    assert _listed(quiet=True, force_interactive=False) is None
+    assert _listed(quiet=False, force_interactive=False) is False
+    assert _listed(quiet=True, force_interactive=False, override_quiet=True) is True
+
+
 def test_an_answer_with_spaces_is_understood():
     mock_args = SimpleNamespace(yes=False, no_format=True)
     with output_settings.configured(mock_args):

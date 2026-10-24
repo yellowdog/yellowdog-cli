@@ -68,11 +68,12 @@ def select(
                     showing_all=showing_all,
                     object_type_name=object_type_name,
                 )
-    elif not OUTPUT.quiet or override_quiet or OUTPUT.interactive:
+    elif not OUTPUT.quiet or override_quiet or selecting:
+        # Whatever '--quiet' says when a selection is to be made from it
         print_numbered_object_list(
             client,
             objects,  # type: ignore[arg-type]
-            override_quiet=override_quiet,
+            override_quiet=override_quiet or selecting,
             showing_all=showing_all,
             object_type_name=object_type_name,
         )
