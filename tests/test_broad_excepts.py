@@ -166,7 +166,6 @@ ALLOWED: dict[str, str] = {
         "Cosmetic: an event line that is not JSON, skipped by the progress bar"
     ),
     "yellowdog_cli/utils/follow_utils.py::_restore_cursor#0": _CURSOR,
-    "yellowdog_cli/utils/follow_utils.py::follow_ids._on_sigint#0": _CURSOR,
     "yellowdog_cli/utils/follow_utils.py::follow_events#0": (
         "Decoding the message of a refused stream; the HTTPError is still"
         " recorded by its status"

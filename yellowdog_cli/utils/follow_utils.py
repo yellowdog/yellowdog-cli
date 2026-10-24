@@ -4,7 +4,7 @@ Utility function to follow event streams.
 
 import signal
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from json import loads as json_loads
 from threading import Event, Lock, Thread
@@ -527,42 +527,31 @@ def follow_ids(
             continue
         threads.append(thread)
 
-    # Install a SIGINT handler in the main thread so that Ctrl-C restores the
-    # terminal cursor even if Rich's Live context is running in a daemon thread
-    # (signal handlers can only be installed from the main thread).
-    _original_sigint = signal.getsignal(signal.SIGINT)
-    if ctx.args.progress and threads:
-
-        def _on_sigint(sig, frame):
-            try:
-                CONSOLE.file.write("\033[?25h")
-                CONSOLE.file.flush()
-            except Exception:
-                pass
-            signal.signal(signal.SIGINT, _original_sigint)
-            signal.default_int_handler(sig, frame)
-
-        signal.signal(signal.SIGINT, _on_sigint)
-
-    # Poll with a short sleep rather than a plain join() so that
-    # KeyboardInterrupt (Ctrl-C) is delivered promptly on Windows.
-    # sleep() releases the GIL and Python checks for pending signals on
-    # return, so Ctrl-C is handled within ~100ms on all platforms.
-    deadline = None if timeout is None else monotonic() + timeout
-    while any(t.is_alive() for t in threads):
-        if deadline is not None and monotonic() >= deadline:
-            _STOP_FOLLOWING.set()
-            print_warning(f"Stopped following after {timeout:,g} second(s)")
-            break
-        sleep(0.1)
-
-    if ctx.args.progress:
-        signal.signal(signal.SIGINT, _original_sigint)
+    # Ctrl-C restores the terminal's cursor, which the progress bar hides
+    # from its daemon thread, where no signal handler can be set
+    with _cursor_restored_on_interrupt() if use_progress and threads else nullcontext():
+        _wait_for_streams(threads, timeout)
 
     if len(threads) > 1 and not ctx.args.print_pid:
         print_info("All event streams have concluded")
 
     return valid_original
+
+
+def _wait_for_streams(threads: list[Thread], timeout: float | None) -> None:
+    """
+    Wait for the streams' threads to end, or, with 'timeout', for that many
+    seconds at most, then stopping them. Polled with a short sleep rather
+    than join(), so that Ctrl-C is delivered promptly on Windows too: sleep()
+    releases the GIL, and Python checks for pending signals on its return.
+    """
+    deadline = None if timeout is None else monotonic() + timeout
+    while any(t.is_alive() for t in threads):
+        if deadline is not None and monotonic() >= deadline:
+            _STOP_FOLLOWING.set()
+            print_warning(f"Stopped following after {timeout:,g} second(s)")
+            return
+        sleep(0.1)
 
 
 def _compute_requirement_of_worker_pool(

@@ -3,6 +3,8 @@ Unit tests for follow_utils.py.
 """
 
 import json
+import signal
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -1013,6 +1015,44 @@ class TestFollowIdsChoices:
         fu.follow_ids(_ctx(), [WR])
         assert barred == [WR]
         assert started == []
+
+    def _guarded(self, monkeypatch, ydids: list[str], progress: bool) -> bool:
+        """
+        Whether follow_ids() waited for the streams with the cursor guard.
+        """
+        self._args(monkeypatch, progress=progress)
+        monkeypatch.setattr(fu, "print_warning", lambda *a, **k: None)
+        monkeypatch.setattr(
+            fu, "follow_work_requirement_with_progress", lambda _ctx, ydid: None
+        )
+        guarded: list[bool] = []
+
+        @contextmanager
+        def guard():
+            guarded.append(True)
+            yield
+
+        monkeypatch.setattr(fu, "_cursor_restored_on_interrupt", guard)
+        fu.follow_ids(_ctx(), ydids)
+        return bool(guarded)
+
+    def test_the_progress_bar_restores_the_cursor_on_ctrl_c(self, started, monkeypatch):
+        assert self._guarded(monkeypatch, [WR], progress=True)
+
+    def test_plain_following_leaves_ctrl_c_alone(self, started, monkeypatch):
+        other = WR.replace("aaaaaaaa-", "cccccccc-")
+        assert not self._guarded(monkeypatch, [WR], progress=False)
+        # '--progress' given up for two Work Requirements: no bar, no guard
+        assert not self._guarded(monkeypatch, [WR, other], progress=True)
+
+    def test_the_sigint_handler_is_put_back(self, started, monkeypatch):
+        self._args(monkeypatch, progress=True)
+        monkeypatch.setattr(
+            fu, "follow_work_requirement_with_progress", lambda _ctx, ydid: None
+        )
+        before = signal.getsignal(signal.SIGINT)
+        fu.follow_ids(_ctx(), [WR])
+        assert signal.getsignal(signal.SIGINT) is before
 
     def test_only_a_provisioned_worker_pool_has_a_compute_requirement(
         self, monkeypatch
