@@ -9,6 +9,7 @@ warnings ahead of it and the wrapper's 'Done' after it, and only JSON under
 
 import os
 import subprocess
+import sys
 from json import loads
 from pathlib import Path
 
@@ -383,6 +384,38 @@ class TestCommandOutput:
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"instances": "5"}
+
+    @pytest.mark.parametrize("selected", [True, False])
+    @pytest.mark.parametrize(
+        "given", [["-v", "x=z"], ["--property", "common.variables.x=z"]]
+    )
+    def test_a_variable_given_on_the_command_line_reaches_what_is_built_from_it(
+        self, tmp_path, given, selected
+    ):
+        # '--property common.variables.x' as '-v x' is: in place before the
+        # file is read, so its own values and variables take it
+        (tmp_path / "config.toml").write_text(
+            '[common]\nnamespace = "ns-{{x}}"\n'
+            '[common.variables]\nx = "a"\ny = "{{x}}-b"\n',
+            encoding="utf-8",
+        )
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("YD_VAR_") and name not in ("YD_NAMESPACE", "YD_TAG")
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "yellowdog_cli.yd", "variables"]
+            + (["-c", "config.toml"] if selected else [])
+            + [*given, "-q", "x", "y", "namespace"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=tmp_path,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"namespace": "ns-z", "x": "z", "y": "z-b"}
 
     def test_the_data_clients_prefix_is_its_default_with_no_dataclient_section(
         self, tmp_path

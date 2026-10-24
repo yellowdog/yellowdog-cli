@@ -285,17 +285,41 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         display_section = ".".join([section, *path[:-1]])
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
-            try:
-                check_user_variable_name(path[1], f"'--property {override}'")
-                add_or_update_substitution(
-                    path[1], value, source=f"'--property {override}'"
-                )
-            except ValueError as e:
-                print_error(e)
-                exit(ExitCode.CONFIGURATION)
-            # Command-line-defined variables always take precedence,
-            # including over an explicitly selected config file
-            CLI_DEFINED_VARIABLES.add(path[1])
+            _register_variable_override(override, path[1], value)
+
+
+def _register_variable_override(override: str, name: str, value: object) -> None:
+    """
+    A '--property common.variables.<name>=<value>' override, registered as
+    a '-v' variable is: command-line-defined, so taking precedence over the
+    configuration file's definition, including an explicitly selected one.
+    """
+    try:
+        check_user_variable_name(name, f"'--property {override}'")
+        add_or_update_substitution(name, value, source=f"'--property {override}'")
+    except ValueError as e:
+        print_error(e)
+        exit(ExitCode.CONFIGURATION)
+    CLI_DEFINED_VARIABLES.add(name)
+
+
+def _register_variable_overrides(overrides: list[str]) -> None:
+    """
+    Register the '--property common.variables.<name>=...' overrides before
+    the configuration file is read, as '-v' variables are, so that the
+    file's own values, and the variables it builds from them, take the
+    overriding value; applied after, as the other overrides are, the file
+    would already have used its own. A malformed override is left for
+    _apply_property_overrides() to report.
+    """
+    prefix = f"{COMMON_SECTION}.{VARIABLES}."
+    for override in overrides:
+        lhs, equals, value_str = override.partition("=")
+        name = lhs[len(prefix) :]
+        if equals and lhs.startswith(prefix) and name and "." not in name:
+            _register_variable_override(
+                override, name, parse_property_value(value_str, name)
+            )
 
 
 _DATA_CLIENT_PROFILE_KEYS = (DATA_CLIENT_REMOTE, DATA_CLIENT_BUCKET, DATA_CLIENT_PREFIX)
@@ -462,6 +486,8 @@ def _load_config_file() -> None:
                 {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
             )
             print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
+            if _ARGS.property_overrides:
+                _register_variable_overrides(_ARGS.property_overrides)
             CONFIG_TOML = load_toml_file_with_variable_substitutions(
                 CONFIG_FILE, selected_file=True
             )

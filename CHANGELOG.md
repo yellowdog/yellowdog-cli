@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`--property common.variables.<name>=<value>` sets the variable before the configuration file is read**, as `-v <name>=<value>` does, so the file's own properties and the variables it builds from it take the new value: they kept the file's.
 - **A configuration file's own `[common.variables]` win over those of the file it imports with `importCommon`**, with `--config` as without: with `--config`, the imported file's definition replaced the local one, after the local value had already been used in the file's own properties.
 - **A variable used inside an array or table variable keeps its backslashes and quotes**: with `dirs = ["{{dir}}"]` and a Windows path in `dir`, `{{array:dirs}}` read `\t` as a tab and `\n` as a line break, and a value holding a `"` made the array unreadable.
 - **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`, which TOML reads as a number) is a configuration error, exit 3, naming the property: commands failed later with an internal error.
