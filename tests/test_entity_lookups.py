@@ -122,6 +122,15 @@ def test_a_template_name_in_one_namespace_is_found():
     )
 
 
+def test_a_source_template_name_in_two_namespaces_is_ambiguous():
+    client = MagicMock()
+    client.compute_client.get_compute_source_templates.return_value.list_all.return_value = [
+        SimpleNamespace(id=f"cst-{ns}", namespace=ns, name="aws") for ns in ("b", "a")
+    ]
+    with pytest.raises(AmbiguousNameError, match="a, b"):
+        entity_utils.get_compute_source_template_id_by_name(client, "aws")
+
+
 # ---------------------------------------------------------------------------
 # Names shown in place of IDs
 # ---------------------------------------------------------------------------

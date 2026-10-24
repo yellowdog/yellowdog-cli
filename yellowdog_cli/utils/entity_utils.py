@@ -372,7 +372,9 @@ def get_compute_source_template_id_by_name(
     """
     Find a Compute Source Template id by name.
     Compute Source Template names are unique within a namespace.
-    Namespace included as part of a name overrides argument.
+    Namespace included as part of a name overrides argument. With neither,
+    the name is looked for in every namespace, and found in two or more
+    raises AmbiguousNameError rather than one of them being picked.
     """
     namespace_, name = split_namespace_and_name(name)  # type: ignore[assignment]
     namespace_ = namespace if namespace_ is None else namespace_
@@ -383,8 +385,13 @@ def get_compute_source_template_id_by_name(
     )
     if not csts:
         return None
+    if len(csts) > 1:
+        namespaces = ", ".join(sorted(str(cst.namespace) for cst in csts))
+        raise AmbiguousNameError(
+            f"Compute Source Templates named '{name}' are in namespaces"
+            f" {namespaces}; please supply 'namespace/{name}' or the ID"
+        )
 
-    # Names are unique within namespaces
     # This will be printed only once per name, due to caching
     print_info(f"Compute Source Template name '{name}' -> ID {(cst_id := csts[0].id)}")
     return cst_id

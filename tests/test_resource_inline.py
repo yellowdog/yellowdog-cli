@@ -281,6 +281,27 @@ def test_a_name_is_the_specification_removal_reads(resource_type, target, expect
     }
 
 
+@pytest.mark.parametrize(
+    "resource_type",
+    [
+        "ComputeRequirementTemplate",
+        "MachineImageFamily",
+        "ConfiguredWorkerPool",
+        "ComputeSourceTemplate",
+    ],
+)
+@pytest.mark.parametrize("namespace, target", [(None, "p"), ("", "p"), ("ns", "/p")])
+def test_a_namespaced_name_with_no_namespace_is_refused(
+    resource_type, namespace, target
+):
+    # An empty namespace searches every one, so the name would be removed
+    # wherever it is found ('-n' given no value)
+    from yellowdog_cli.utils.resource_targets import specification_for_name
+
+    with pytest.raises(ValueError, match="names no namespace"):
+        specification_for_name(resource_type, target, namespace)
+
+
 def test_names_and_ids_are_removed_in_one_run(monkeypatch):
     from yellowdog_cli.utils import resource_removal
     from yellowdog_cli.utils.context import RunContext
