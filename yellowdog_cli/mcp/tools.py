@@ -13,6 +13,7 @@ wrapper.py, args.py or printing.py.
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -523,9 +524,19 @@ def _check(name: str, value: Any, schema: dict[str, Any]) -> None:
     if kind == "boolean":
         if not isinstance(value, bool):
             raise ToolArgumentError(f"{name} must be true or false")
-    elif kind == "integer":
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ToolArgumentError(f"{name} must be an integer")
+    elif kind in ("integer", "number"):
+        # Unchecked, a list would become one '--flag=value' per item, and
+        # a positional's items extra positionals: more targets, or the last
+        # of several values winning
+        whole = kind == "integer"
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int if whole else (int, float))
+            or not math.isfinite(value)
+        ):
+            raise ToolArgumentError(
+                f"{name} must be {'an integer' if whole else 'a number'}"
+            )
         if "minimum" in schema and value < schema["minimum"]:
             raise ToolArgumentError(f"{name} must be at least {schema['minimum']}")
     elif kind == "array":
@@ -542,6 +553,9 @@ def _check(name: str, value: Any, schema: dict[str, Any]) -> None:
     elif kind == "string":
         if not isinstance(value, str):
             raise ToolArgumentError(f"{name} must be a string")
+    else:
+        # A kind added to _property_schema() is checked here, or refused
+        raise ToolArgumentError(f"{name} has a type this server cannot check")
     if "enum" in schema and value not in schema["enum"]:
         raise ToolArgumentError(f"{name} must be one of {', '.join(schema['enum'])}")
 
