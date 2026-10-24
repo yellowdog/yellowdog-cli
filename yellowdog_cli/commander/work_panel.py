@@ -163,7 +163,8 @@ class WorkPanel(WindowDialogs):
                 f" Work Requirement{scope}, '{entities[0].name}'"
             )
         else:
-            newest = newest_entity_id(parsed)
+            # The newest of those offered, not one left out as not addable
+            newest = newest_entity_id(parsed, {e.id for e in entities})
             target = self._choose_one(
                 title,
                 f"Choose the Work Requirement{scope} to add the Task Groups and"

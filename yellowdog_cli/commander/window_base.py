@@ -526,11 +526,11 @@ class WindowBase(QMainWindow):
             # by specifying them first.
             for index, var in enumerate(self._namespace_tag_and_user_vars(command)):
                 args.insert(index, var)
-            args += ["--nf", "--pp"]
+            args = _before_end_of_options(args, ["--nf", "--pp"])
         elif command in NO_FORMAT_UNDECORATED_YD_COMMANDS and not (
             set(NO_FORMAT_FLAGS) & set(args)
         ):
-            args = [*args, "--nf"]
+            args = _before_end_of_options(args, ["--nf"])
 
         return args
 
@@ -566,3 +566,15 @@ class WindowBase(QMainWindow):
             return
         self._output.log(f"Displaying contents of '{path}':\n")
         self._output.log(text, prefix=False)
+
+
+def _before_end_of_options(args: list[str], options: list[str]) -> list[str]:
+    """
+    'args' with 'options' added at their end, or before a '--' typed among
+    them: after it they would be arguments ('yd data delete -R -- -odd.txt'
+    would also delete objects named '--nf' and '--pp').
+    """
+    if "--" in args:
+        end = args.index("--")
+        return [*args[:end], *options, *args[end:]]
+    return [*args, *options]

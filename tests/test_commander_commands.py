@@ -1188,3 +1188,79 @@ def test_a_noun_verb_is_not_given_an_option_it_hides(window):
     window.namespace_override.setPlainText("ns")
     assert window._namespace_tag_and_user_vars("yd instance terminate") == []
     assert window._namespace_tag_and_user_vars("yd cr terminate")[:2] == ["-n", "ns"]
+
+
+# --- Small things the review found --------------------------------------------
+
+
+def test_a_typed_end_of_options_keeps_the_added_flags_options(window):
+    # A command typed in the command box: after '--' they would be objects
+    # to delete, named '--nf' and '--pp'
+    args = window._build_command_args(
+        "yd data delete", ["-R", "--", "-odd.txt"], yd_command=False
+    )
+    end = args.index("--")
+    assert {"--nf", "--pp"} <= set(args[:end])
+    assert args[end + 1 :] == ["-odd.txt"]
+
+
+def test_a_commented_out_definition_file_is_not_taken(window, tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[workRequirement]\n# workRequirementData = "old.json"\n'
+        'workRequirementData = "current.json"\n',
+        encoding="utf-8",
+    )
+    window._config_file = str(config)
+    found = window._get_config_data_file("workRequirementData")
+    assert found is not None and found.endswith("current.json")
+
+
+def test_copy_and_save_keep_their_tooltips_unfiltered(window):
+    tooltips = [
+        window.copy_command_output.toolTip(),
+        window.save_command_output.toolTip(),
+    ]
+    window._output.log("a line")
+    assert tooltips[0] and tooltips[1]
+    assert [
+        window.copy_command_output.toolTip(),
+        window.save_command_output.toolTip(),
+    ] == tooltips
+
+
+def test_the_quit_dialog_names_a_yd_command_as_typed(window, monkeypatch):
+    # Its program is the Python interpreter that runs it
+    monkeypatch.setattr(
+        command_running_module, "cli_program", lambda command, args: ("sleep", ["30"])
+    )
+    window._run_command_in_subprocess("yd version", [])
+    process = window._processes[-1]
+    process.waitForStarted(2000)
+    named: list[str] = []
+
+    class Shown(Exception):
+        pass
+
+    def dialog(names):
+        named.extend(names)
+        raise Shown
+
+    monkeypatch.setattr(window, "_build_quit_dialog", dialog)
+    try:
+        with pytest.raises(Shown):
+            window._confirm_quit([process])
+        assert named[0].startswith("yd version")
+    finally:
+        window.shutdown()
+
+
+def test_the_newest_offered_row_is_preselected():
+    from yellowdog_cli.commander.selection import newest_entity_id
+
+    parsed = [
+        {"id": "older", "createdTime": "2026-10-01T00:00:00Z"},
+        {"id": "newer-finishing", "createdTime": "2026-10-09T00:00:00Z"},
+    ]
+    assert newest_entity_id(parsed) == "newer-finishing"
+    assert newest_entity_id(parsed, {"older"}) == "older"

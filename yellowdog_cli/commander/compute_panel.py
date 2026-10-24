@@ -276,7 +276,10 @@ class ComputePanel(WindowDialogs):
             f"Choose the Worker Pool{scope} to resize, and the number of nodes"
             " to resize it to.",
             pools,
-            selected=newest_entity_id(parsed),
+            # The newest that can be chosen, not one awaiting nodes
+            selected=newest_entity_id(
+                parsed, {pool.id for pool in pools if not pool.awaiting_nodes}
+            ),
         )
         if choice is None:
             return

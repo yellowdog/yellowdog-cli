@@ -660,8 +660,14 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         Ask whether to quit while commands are still running. Returns True if
         the user chose to quit. Suppressed by '--yes', which quits immediately.
         """
+        # Each by the command as typed: every 'yd' command's program is the
+        # Python interpreter that runs it
         dialog, quit_btn = self._build_quit_dialog(
-            [f"{process.program()} (pid {process.processId()})" for process in running]
+            [
+                f"{self._output.command_line_of(process.processId()) or process.program()}"
+                f" (pid {process.processId()})"
+                for process in running
+            ]
         )
         clicked: dict[str, object] = {}
         buttons = cast(QDialogButtonBox, dialog.findChild(QDialogButtonBox))

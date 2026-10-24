@@ -154,7 +154,9 @@ class CommandRunning(WindowBase):
         except (OSError, UnicodeDecodeError):
             return None
 
-        m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)
+        # At the start of a line, so that a commented-out definition
+        # ('# workRequirementData = "old.json"') is not taken
+        m = re.search(rf"^\s*{key}\s*=\s*\"([^\"]*)\"", content, re.MULTILINE)
         if not m:
             return None
 
