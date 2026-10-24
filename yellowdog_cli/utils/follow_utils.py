@@ -5,10 +5,11 @@ Utility function to follow event streams.
 import signal
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from json import loads as json_loads
 from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
+from typing import Any
 
 import requests
 from rich.progress import (
@@ -152,7 +153,7 @@ def work_requirement_exit_code(ctx: RunContext, wr_id: str) -> ExitCode:
         )
         return ExitCode.FAILURE
     finished = wr.status is not None and wr.status.finished
-    if not finished and (code := follow_exit_code()) != ExitCode.SUCCESS:
+    if not finished and (code := follow_exit_code_of(wr_id)) != ExitCode.SUCCESS:
         print_error(
             f"Work Requirement '{wr_id}' could not be followed to its end, so its"
             f" outcome is not known (its status is '{status}')"
@@ -172,52 +173,32 @@ class _WRNameColumn(ProgressColumn):
         return Text(f"[{name}]" if name else "", style="dim")
 
 
-def _progress_desc(
-    wr_status: str,
-    total: int,
-    completed: int,
-    failed: int,
-    aborted: int,
-    cancelled: int,
-    resubmitted: int = 0,
-) -> str:
-    """
-    Build the progress-bar description string.
-
-    Shows WR status and done/total counts, then a breakdown of each terminal
-    state (omitting any that are zero). RESUBMITTED counts as done — those
-    Tasks have been re-issued in another Task Group per a FailurePolicy.
-    """
-    done = completed + failed + aborted + cancelled + resubmitted
-    desc = f"{wr_status}  {done:,}/{total:,}"
-    parts = []
-    if completed:
-        parts.append(f"{completed:,} completed")
-    if failed:
-        parts.append(f"{failed:,} failed")
-    if aborted:
-        parts.append(f"{aborted:,} aborted")
-    if cancelled:
-        parts.append(f"{cancelled:,} cancelled")
-    if resubmitted:
-        parts.append(f"{resubmitted:,} resubmitted")
-    if parts:
-        desc += "  " + " · ".join(parts)
-    return desc
+# The Task statuses the progress bar counts as done, in the order it shows
+# them: RESUBMITTED Tasks have been reissued in another Task Group, as a
+# FailurePolicy asks
+_DONE_STATUSES = ("COMPLETED", "FAILED", "ABORTED", "CANCELLED", "RESUBMITTED")
+# Those the closing warning gives, as not having succeeded
+_FAILED_STATUSES = ("FAILED", "ABORTED", "CANCELLED")
 
 
 @dataclass
 class _TaskCounts:
     """
-    A Work Requirement's Task counts, as its progress bar shows them.
+    A Work Requirement's Task counts, as its progress bar shows them: the
+    Tasks, and those in each of _DONE_STATUSES.
     """
 
     total: int = 0
-    completed: int = 0
-    failed: int = 0
-    aborted: int = 0
-    cancelled: int = 0
-    resubmitted: int = 0
+    done: dict[str, int] = field(default_factory=dict)
+
+    def _add(self, total: Any, count: Callable[[str], Any]) -> None:
+        """
+        Add a Task Group's counts: its Tasks, and count(<status name>) for
+        each status, a count left null being 0.
+        """
+        self.total += event_count(total)
+        for status in _DONE_STATUSES:
+            self.done[status] = self.done.get(status, 0) + event_count(count(status))
 
     def add_task_groups(self, task_groups: list[TaskGroup] | None) -> None:
         """
@@ -226,47 +207,51 @@ class _TaskCounts:
         for task_group in task_groups or []:
             summary = task_group.taskSummary
             if summary:
-                self.total += summary.taskCount or 0
                 counts = summary.statusCounts or {}
-                self.completed += counts.get(TaskStatus.COMPLETED, 0)
-                self.failed += counts.get(TaskStatus.FAILED, 0)
-                self.aborted += counts.get(TaskStatus.ABORTED, 0)
-                self.cancelled += counts.get(TaskStatus.CANCELLED, 0)
-                self.resubmitted += counts.get(TaskStatus.RESUBMITTED, 0)
+                self._add(summary.taskCount, lambda name: counts.get(TaskStatus[name]))
 
     @staticmethod
-    def of_event(event_data: dict) -> "_TaskCounts":
+    def of_event(event_data: Any) -> "_TaskCounts":
         """
         The counts in a Work Requirement event's Task Groups, a count the
         event leaves null being 0, as print_event() reads them.
         """
         counts = _TaskCounts()
         for task_group in event_field(event_data, "taskGroups") or []:
-            counts.total += event_count(
-                event_field(task_group, "taskSummary", "taskCount")
-            )
             status_counts = event_counts(task_group, "taskSummary", "statusCounts")
-            counts.completed += event_count(status_counts.get("COMPLETED"))
-            counts.failed += event_count(status_counts.get("FAILED"))
-            counts.aborted += event_count(status_counts.get("ABORTED"))
-            counts.cancelled += event_count(status_counts.get("CANCELLED"))
-            counts.resubmitted += event_count(status_counts.get("RESUBMITTED"))
+            counts._add(
+                event_field(task_group, "taskSummary", "taskCount"), status_counts.get
+            )
         return counts
+
+    def _phrases(self, statuses: tuple[str, ...]) -> list[str]:
+        """
+        '<n> <status>' for each of the statuses with Tasks in it.
+        """
+        return [
+            f"{self.done[status]:,} {status.lower()}"
+            for status in statuses
+            if self.done.get(status)
+        ]
+
+    def description(self, wr_status: str) -> str:
+        """
+        The bar's description: the Work Requirement's status and its Tasks
+        done of the total, then how many are in each status done (those with
+        any).
+        """
+        done = sum(self.done.values())
+        description = f"{wr_status}  {done:,}/{self.total:,}"
+        if phrases := self._phrases(_DONE_STATUSES):
+            description += "  " + " · ".join(phrases)
+        return description
 
     def show(self, progress: Progress, bar_task: TaskID, wr_status: str) -> None:
         progress.update(
             bar_task,
             total=self.total if self.total > 0 else None,
-            completed=self.completed,
-            description=_progress_desc(
-                wr_status,
-                self.total,
-                self.completed,
-                self.failed,
-                self.aborted,
-                self.cancelled,
-                self.resubmitted,
-            ),
+            completed=self.done.get("COMPLETED", 0),
+            description=self.description(wr_status),
         )
 
     def failures(self) -> str | None:
@@ -274,14 +259,7 @@ class _TaskCounts:
         The Tasks that did not succeed, as the closing warning gives them, or
         None if there were none.
         """
-        parts = []
-        if self.failed:
-            parts.append(f"{self.failed:,} failed")
-        if self.aborted:
-            parts.append(f"{self.aborted:,} aborted")
-        if self.cancelled:
-            parts.append(f"{self.cancelled:,} cancelled")
-        return " · ".join(parts) if parts else None
+        return " · ".join(self._phrases(_FAILED_STATUSES)) or None
 
 
 @dataclass(frozen=True)
@@ -358,25 +336,18 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
     # Pre-populate from the fetched WR so the bar shows a meaningful state
     # even if no events arrive (e.g. the WR is already in a terminal state).
     if fetched.wr is not None:
-        try:
-            counts.add_task_groups(fetched.wr.taskGroups)
-            wr_status = fetched.wr.status.value if fetched.wr.status else ""
-            counts.show(progress, bar_task, wr_status)
-        except Exception:
-            pass
+        counts.add_task_groups(fetched.wr.taskGroups)
+        wr_status = fetched.wr.status.value if fetched.wr.status else ""
+        counts.show(progress, bar_task, wr_status)
 
     def on_event(event: str, ydid_type: YDIDType) -> None:
         nonlocal counts
-        if not event.startswith("data:"):
-            return
-        try:
-            event_data = json_loads(event[len("data:") :])
-        except Exception:
-            return
         if ydid_type is not YDIDType.WORK_REQUIREMENT:
             return
+        if (event_data := _event_data(event)) is None:
+            return
         counts = _TaskCounts.of_event(event_data)
-        counts.show(progress, bar_task, event_data.get("status", ""))
+        counts.show(progress, bar_task, str(event_field(event_data, "status") or ""))
 
     print_info(f"Tracking progress for Work Requirement '{ydid}'")
     with _cursor_restored_on_interrupt(), progress:
@@ -612,6 +583,19 @@ def _entity_finished(ctx: RunContext, ydid: str, ydid_type: YDIDType) -> bool | 
         return True
 
 
+def _event_data(event: str) -> Any:
+    """
+    An event line's data, parsed from its JSON, or None for a line that is
+    not data or whose data is not JSON.
+    """
+    if not event.startswith(_EVENT_DATA_PREFIX):
+        return None
+    try:
+        return json_loads(event[len(_EVENT_DATA_PREFIX) :])
+    except ValueError:
+        return None
+
+
 def _has_settled(ydid: str, event: str, settled: Settled) -> bool:
     """
     settled() on an event's data. A test that cannot be made (one reading
@@ -619,11 +603,7 @@ def _has_settled(ydid: str, event: str, settled: Settled) -> bool:
     on, but for an authentication or connection failure, which every later
     test would repeat, and which is raised for the stream to stop on.
     """
-    if not event.startswith(_EVENT_DATA_PREFIX):
-        return False
-    try:
-        data = json_loads(event[len(_EVENT_DATA_PREFIX) :])
-    except ValueError:
+    if (data := _event_data(event)) is None:
         return False
     try:
         return settled(data)

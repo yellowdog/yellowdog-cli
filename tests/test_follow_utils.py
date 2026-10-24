@@ -280,19 +280,21 @@ class TestExitOnFailureCode:
     that failure's code, its outcome never having been seen.
     """
 
-    def _code(self, status, follow_failure=None):
+    WR_ID = "ydid:workreq:000000:aaa:bbb"
+
+    def _code(self, status, follow_failure=None, failed_stream=WR_ID):
         client = MagicMock()
         client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
             status=status
         )
         if follow_failure is not None:
-            fu._record_follow_failure(follow_failure)
+            fu._record_follow_failure(follow_failure, failed_stream)
         with (
             patch.object(wrapper_module, "CLIENT", client),
             patch.object(fu, "print_error") as error,
             patch.object(fu, "print_warning"),
         ):
-            code = fu.work_requirement_exit_code(_ctx(), "ydid:workreq:000000:aaa:bbb")
+            code = fu.work_requirement_exit_code(_ctx(), self.WR_ID)
         return code, error
 
     @pytest.mark.parametrize(
@@ -308,6 +310,12 @@ class TestExitOnFailureCode:
         code, error = self._code(WorkRequirementStatus.RUNNING, ExitCode.CONNECTION)
         assert code == ExitCode.CONNECTION
         assert "could not be followed to its end" in error.call_args.args[0]
+
+    def test_another_streams_failure_is_not_charged_to_it(self):
+        code, _ = self._code(
+            WorkRequirementStatus.RUNNING, ExitCode.CONNECTION, "ydid:compreq:x"
+        )
+        assert code == ExitCode.SUCCESS
 
     def test_one_that_finished_though_the_stream_failed_exits_0(self):
         # Its outcome is known after all

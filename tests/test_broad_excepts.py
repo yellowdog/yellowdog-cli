@@ -159,12 +159,6 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/utils/doctor_checks.py::_load_data_client_under_test#0": _DOCTOR,
     "yellowdog_cli/utils/doctor_checks.py::check_data_client_remote#0": _DOCTOR,
     "yellowdog_cli/utils/doctor_checks.py::check_data_client_remote#1": _DOCTOR,
-    "yellowdog_cli/utils/follow_utils.py::follow_work_requirement_with_progress#0": (
-        "Cosmetic: the progress bar's counts before the first event"
-    ),
-    "yellowdog_cli/utils/follow_utils.py::follow_work_requirement_with_progress.on_event#0": (
-        "Cosmetic: an event line that is not JSON, skipped by the progress bar"
-    ),
     "yellowdog_cli/utils/follow_utils.py::_restore_cursor#0": _CURSOR,
     "yellowdog_cli/utils/follow_utils.py::follow_events#0": (
         "Decoding the message of a refused stream; the HTTPError is still"
