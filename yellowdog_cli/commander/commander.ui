@@ -101,15 +101,8 @@
       </property>
      </widget>
     </item>
-    <item row="1" column="0">
+    <item row="1" column="0" colspan="4">
      <widget class="Line" name="line_7">
-      <property name="orientation">
-       <enum>Qt::Orientation::Horizontal</enum>
-      </property>
-     </widget>
-    </item>
-    <item row="1" column="2" colspan="2">
-     <widget class="Line" name="line_9">
       <property name="orientation">
        <enum>Qt::Orientation::Horizontal</enum>
       </property>
@@ -662,7 +655,7 @@ file, choosing which ones first</string>
       </item>
      </layout>
     </item>
-    <item row="0" column="1" rowspan="7">
+    <item row="2" column="1" rowspan="5">
      <widget class="Line" name="line_5">
       <property name="orientation">
        <enum>Qt::Orientation::Vertical</enum>

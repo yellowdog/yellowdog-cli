@@ -85,7 +85,6 @@ def test_a_separator_divides_the_browse_row_from_the_run_command_row(qapp):
 # something geometry can be asked.
 ALIGNED_ROWS = [
     ("horizontalLayout_select_config", "select_config_label"),  # Select / selection
-    ("line_7", "line_9"),  # and the separator beneath them
 ]
 
 
@@ -126,6 +125,22 @@ def test_the_paired_rows_align_across_the_two_columns(qapp):
             )
 
     assert not misaligned, "rows do not share a grid row: " + "; ".join(misaligned)
+
+
+def test_the_select_row_is_closed_off_by_one_line_the_divider_starts_below(qapp):
+    # The selection row is the whole window's, not the left column's: one
+    # separator runs beneath it from the left margin to the right, unbroken
+    # by the vertical divider, which begins below it
+    win = gui_harness.shown(YellowDogApp())
+    separator = row_rect(win, "line_7")
+    divider = row_rect(win, "line_5")
+    select_row = row_rect(win, "horizontalLayout_select_config")
+    selection = row_rect(win, "select_config_label")
+
+    assert separator.left() <= select_row.left()
+    assert separator.right() >= selection.right()
+    assert divider.top() > separator.bottom()
+    assert win.findChild(QWidget, "line_9") is None
 
 
 @pytest.mark.skipif(

@@ -54,6 +54,7 @@ These changes alter what an existing script or habit will see:
 
 - **Closing the window stops what was under way**: an action listing what it would affect does nothing more, where Download went on to download everything matching and the others asked to act on their whole scope; and a pending configuration rediscovery is cancelled.
 - **The Show buttons say why they cannot show a file** (moved, deleted, not UTF-8), where Commander crashed; an edited Namespace or Tag field is discovered again, so confirmations and the default object path follow it, and an older discovery never overwrites a newer one; and a command finishing leaves input open to a later one still waiting for it.
+- **The configuration row is closed off by one line across the window**, the divider between the panels starting beneath it.
 - **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row; and a command typed with `--` gets Commander's options ahead of it.
 
 ### MCP server
