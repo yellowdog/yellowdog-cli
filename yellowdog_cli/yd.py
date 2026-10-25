@@ -15,16 +15,20 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.invocation import select_command
 from yellowdog_cli.utils.noun_dispatch import run_noun
 from yellowdog_cli.utils.output_encoding import use_utf8_output
+from yellowdog_cli.utils.suggestions import did_you_mean
 from yellowdog_cli.utils.top_level import TOP_LEVEL, Kind
 
 _USAGE = "usage: yd <command> [<verb>] [options]"
 
 
-def _refuse(message: str) -> NoReturn:
-    # As argparse words a usage error, and with its exit code
+def _refuse(message: str, word: str | None = None) -> NoReturn:
+    # As argparse words a usage error, and with its exit code: the command
+    # meant by a misspelt 'word', where one is close, else them all
+    suggestion = None if word is None else did_you_mean(word, TOP_LEVEL)
     print(_USAGE, file=sys.stderr)
     print(
-        f"yd: error: {message}; choose from: {', '.join(sorted(TOP_LEVEL))}",
+        f"yd: error: {message}; "
+        + (suggestion or f"choose from: {', '.join(sorted(TOP_LEVEL))}"),
         file=sys.stderr,
     )
     sys.exit(ExitCode.USAGE)
@@ -55,7 +59,7 @@ def main() -> None:
     if entry is None:
         if word.startswith("-"):
             _refuse(f"a command must come before '{word}'")
-        _refuse(f"unknown command '{word}'")
+        _refuse(f"unknown command '{word}'", word)
 
     sys.argv = [sys.argv[0], *arguments[1:]]
     if entry.kind is Kind.NOUN:

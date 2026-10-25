@@ -74,6 +74,7 @@ yellowdog_cli/
     ├── completion_cache.py      # A JSON file per lookup in a private per-user temp dir, fresh for COMPLETION_CACHE_SECONDS, every write removing the expired; imports nothing from the CLI
     ├── top_level.py             # TOP_LEVEL: the words after 'yd' (Entry: word, Kind NOUN/COMMAND/OTHER, target, summary), built from the registries; word_of(), yd_form()
     ├── noun_dispatch.py         # run_noun(): a noun's help, its verb's parser selected (args.select_command()), the verb's fixed arguments, the registry command's main()
+    ├── suggestions.py           # did_you_mean(): the word meant by a misspelt command, verb, option (command_registry._Parser), sort key or resource type; the closest, or those equally close; stdlib only
     ├── invocation.py            # How the command was invoked: select_command()/selected() (the dispatcher's choice, read by CLIParser), selected_prog() for a standalone parser, invoked_name(); stdlib only
     ├── args.py                  # CLIParser and ARGS_PARSER (lazy): parses via the registry, runs validators; the properties over the parsed values
     ├── config_types.py          # Configuration dataclasses

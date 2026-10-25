@@ -61,6 +61,7 @@ These changes alter what an existing script or habit will see:
 ### Other
 
 - **`--help` lists a command's own options first**, and the options every command shares (`--config`, `--key`, `--debug`, ...) after them under `universal options`, shown in the usage line as `[universal options]`, so the line names what the command itself takes.
+- **A misspelt command, verb, option, sort key or resource type is answered with the word meant**: `yd wr submti` says `did you mean 'submit'?`, and `--namepsace` `did you mean '--namespace'?`; with nothing close, the choices are listed as before.
 - **`yd doctor`** names uv and pip in its advice, and skips the Remote reachable check without an rclone binary, where it downloaded one with no time limit; an abbreviated `--docs` (`--doc`) prints the documentation link; and a message that sets a command on a line of its own keeps its line breaks.
 
 ## 15.1.0 — 2026-10-23

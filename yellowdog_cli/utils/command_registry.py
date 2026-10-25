@@ -82,6 +82,7 @@ from yellowdog_cli.utils.limits import (
 )
 from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
+from yellowdog_cli.utils.suggestions import did_you_mean
 from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
 Validator = Callable[[Namespace, ArgumentParser], None]
@@ -322,7 +323,7 @@ def build_parser(command: Command | None, prog: str | None = None) -> ArgumentPa
     """
     common = COMMON_OPTIONS[CommandKind.API if command is None else command.kind]
     own = () if command is None else command.options
-    parser = ArgumentParser(
+    parser = _Parser(
         prog=prog,
         description=None if command is None else DESCRIPTION_PREFIX + command.purpose,
         usage=_usage(own, prog) if common else None,
@@ -333,6 +334,41 @@ def build_parser(command: Command | None, prog: str | None = None) -> ArgumentPa
         # of their own: the same on every command, so read once
         _register(parser.add_argument_group(COMMON_OPTIONS_TITLE), common)
     return parser
+
+
+class _Parser(ArgumentParser):
+    """
+    argparse's parser, naming the option meant by each unrecognised one
+    where one is close ('--namepsace': did you mean '--namespace'?).
+    """
+
+    def parse_args(self, args=None, namespace=None):  # type: ignore[override]
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error(
+                "unrecognized arguments: "
+                + " ".join(extras)
+                + "".join(f"; {hint}" for hint in self._option_hints(extras))
+            )
+        return parsed
+
+    def _option_hints(self, extras: list[str]) -> list[str]:
+        offered = [
+            flag
+            for action in self._actions
+            if action.help != SUPPRESS
+            for flag in action.option_strings
+            if flag.startswith("--")
+        ]
+        hints = []
+        for extra in extras:
+            if not extra.startswith("--"):
+                continue
+            typed = extra.split("=", 1)[0]
+            suggestion = did_you_mean(typed, offered)
+            if suggestion is not None:
+                hints.append(f"'{typed}': {suggestion}")
+        return hints
 
 
 # The heading over the options every command of a kind shares (the Universal
@@ -555,7 +591,9 @@ def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
             raise ArgumentTypeError(f"empty sort key in '{value}'")
         if key not in valid:
             raise ArgumentTypeError(
-                f"invalid sort key '{key}' (choose from {', '.join(valid)})"
+                f"invalid sort key '{key}' ("
+                + (did_you_mean(key, valid) or f"choose from {', '.join(valid)}")
+                + ")"
             )
     repeated = sorted({key for key in keys if keys.count(key) > 1})
     if repeated:
@@ -1109,8 +1147,12 @@ def resolve_resource_type(value: str) -> str:
         if resource_type.lower() == value.lower():
             return resource_type
     raise ArgumentTypeError(
-        f"invalid resource type: '{value}' (choose from"
-        f" {', '.join(RESOURCE_TYPE_CHOICES)})"
+        f"invalid resource type: '{value}' ("
+        + (
+            did_you_mean(value, RESOURCE_TYPE_CHOICES)
+            or f"choose from {', '.join(RESOURCE_TYPE_CHOICES)}"
+        )
+        + ")"
     )
 
 
