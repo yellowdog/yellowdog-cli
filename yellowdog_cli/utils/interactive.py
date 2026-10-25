@@ -220,19 +220,39 @@ def wait_for_enter(prompt: str) -> None:
     _get_user_input(print_string(prompt) + " ")
 
 
-def _get_user_input(input_prompt: str) -> str:
+def ask(prompt: str, secret: bool = False) -> str:
+    """
+    The answer to 'prompt', a line of text, stripped; a 'secret' one typed
+    without being shown. NoAnswerToPrompt, with its remedy, when there is no
+    terminal to answer from.
+    """
+    return _get_user_input(print_string(prompt) + " ", secret=secret).strip()
+
+
+def _get_user_input(input_prompt: str, secret: bool = False) -> str:
     """
     Get user input, respecting the --no-format option. Under '--json' the
-    prompt goes to stderr, so stdout holds only the result document.
+    prompt goes to stderr, so stdout holds only the result document. A
+    'secret' is read unseen (getpass), its prompt printed as any other is,
+    so it is highlighted alike. Left unanswered (Ctrl-C, end of input), the
+    prompt's line is ended, so what is printed next starts a line of its own.
     """
+    from getpass import getpass
+
+    read = getpass if secret else input
+    console = CONSOLE_ERR if OUTPUT.json_output else CONSOLE
     try:
         if OUTPUT.json_output:
             CONSOLE_ERR.print(input_prompt, end="", soft_wrap=True)
-            return input("")
+            return read("")
         if OUTPUT.no_format:
-            return input(input_prompt)
+            return read(input_prompt)
         # Prevents broken wrapping
         CONSOLE.print(input_prompt, end="", soft_wrap=True)
-        return CONSOLE.input("")
+        return getpass("") if secret else CONSOLE.input("")
+    except KeyboardInterrupt:
+        console.print(soft_wrap=True)
+        raise
     except EOFError:
+        console.print(soft_wrap=True)
         raise NoAnswerToPrompt() from None

@@ -25,7 +25,7 @@ The configuration file has four possible sections:
 3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required.)
 4. A `dataClient` section that configures the remote data store used by the `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` commands.
 
-There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured.
+There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured. To start with the `[common]` properties alone, run `yd init`, which asks for them and writes a `config.toml`, or with `--user` your own file (see [yd init](commands.md#yd-init)).
 
 The name of the configuration file can be supplied in two different ways:
 

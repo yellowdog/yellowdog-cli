@@ -10,6 +10,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 import yellowdog_cli.utils.interactive as interactive_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
@@ -245,3 +247,64 @@ def test_interactive_imports_no_sdk():
         [sys.executable, "-c", script], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == "False"
+
+
+class TestAsk:
+    """
+    ask(): a secret's prompt goes through the console as every other prompt
+    does, so it is highlighted (its timestamp coloured) like them, and only
+    the answer is read unseen.
+    """
+
+    def test_a_secrets_prompt_is_printed_by_the_console(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=False)),
+            patch.object(interactive_module.CONSOLE, "print") as printed,
+            patch("getpass.getpass", return_value=" s3cret ") as read,
+        ):
+            assert interactive_module.ask("Secret:", secret=True) == "s3cret"
+        assert printed.call_args.args[0].rstrip().endswith("Secret:")
+        read.assert_called_once_with("")
+
+    def test_without_format_the_prompt_is_getpasss_own(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch.object(interactive_module.CONSOLE, "print") as printed,
+            patch("getpass.getpass", return_value="s") as read,
+        ):
+            interactive_module.ask("Secret:", secret=True)
+        printed.assert_not_called()
+        assert read.call_args.args[0].rstrip().endswith("Secret:")
+
+    def test_no_answer_to_a_secret(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch("getpass.getpass", side_effect=EOFError),
+            pytest.raises(interactive_module.NoAnswerToPrompt),
+        ):
+            interactive_module.ask("Secret:", secret=True)
+
+
+class TestAPromptLeftUnanswered:
+    """
+    Ctrl-C or end of input at a prompt ends the prompt's line, so what is
+    printed next (the command's 'Cancelled', an error) starts a line of its
+    own rather than running on after the prompt.
+    """
+
+    @pytest.mark.parametrize("raised", [KeyboardInterrupt, EOFError])
+    @pytest.mark.parametrize("secret", [False, True])
+    def test_the_line_is_ended(self, capsys, raised, secret):
+        expected = (
+            KeyboardInterrupt
+            if raised is KeyboardInterrupt
+            else interactive_module.NoAnswerToPrompt
+        )
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch("builtins.input", side_effect=raised),
+            patch("getpass.getpass", side_effect=raised),
+            pytest.raises(expected),
+        ):
+            interactive_module.ask("Question:", secret=secret)
+        assert capsys.readouterr().out.endswith("\n")

@@ -19,6 +19,8 @@ These changes alter what an existing script or habit will see:
 
 - **Your own configuration file**: with no `config.toml` in the current directory and none named with `--config`, `yd` reads `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set), so one set of credentials and defaults serves every directory; a local `config.toml` is read in its place, the environment wins over it as over any `config.toml`, and `yd doctor` names it.
 
+- **`yd init` writes a starter configuration file**: it asks for the key, secret, namespace, tag and URL (offering `YD_KEY` and the others' values, the secret typed unseen; `--yes` asks nothing) and writes `config.toml`, or with `--user` your own file; an existing file is replaced only with `--overwrite`, and one holding the secret is readable by its owner alone.
+
 ### Data client
 
 - **Transfers record what happened**: `yd data upload` uploads a symbolic link given among other files, where it recorded it as uploaded and sent nothing; `yd data delete` records files as failed when a deletion and the listing that checks it both fail, where it recorded every file as deleted and exited 0; and `yd data copy --json` records a source that is missing or cannot be reached.
@@ -66,6 +68,7 @@ These changes alter what an existing script or habit will see:
 
 - **`--help` lists a command's own options first**, and the options every command shares (`--config`, `--key`, `--debug`, ...) after them under `universal options`, shown in the usage line as `[universal options]`, so the line names what the command itself takes.
 - **A misspelt command, verb, option, sort key or resource type is answered with the word meant**: `yd wr submti` says `did you mean 'submit'?`, and `--namepsace` `did you mean '--namespace'?`; with nothing close, the choices are listed as before.
+- **A prompt interrupted with Ctrl-C, or given no answer, ends its line**, so the message that follows starts on a line of its own rather than after the question.
 - **`yd doctor`** names uv and pip in its advice, and skips the Remote reachable check without an rclone binary, where it downloaded one with no time limit; an abbreviated `--docs` (`--doc`) prints the documentation link; and a message that sets a command on a line of its own keeps its line breaks.
 
 ## 15.1.0 — 2026-10-23

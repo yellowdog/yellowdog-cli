@@ -53,6 +53,7 @@ UTILITIES = {
     "yd-cloudwizard",
     "yd-completion",
     "yd-doctor",
+    "yd-init",
     "yd-variables",
     "yd-schema",
     "yd-format-json",

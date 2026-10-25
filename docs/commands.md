@@ -68,6 +68,7 @@
       * [yd wait](#yd-wait)
       * [yd application](#yd-application)
       * [yd variables](#yd-variables)
+      * [yd init](#yd-init)
       * [yd doctor](#yd-doctor)
       * [yd help](#yd-help)
       * [yd version](#yd-version)
@@ -116,7 +117,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -1728,7 +1729,20 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
-None of `yd completion`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd help`, `yd version` and `yd jsonnet2json` accept; `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd init`, `yd help`, `yd version` and `yd jsonnet2json` accept; `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+
+### yd init
+
+The `yd init` command writes a starter configuration file: `config.toml` in the current directory, or with `--user` your own, `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads (see [Configuration](configuration.md)). It asks for the Application key ID and secret (the secret typed without being shown), the namespace, the tag and the Platform API URL, offering the value of `YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG` or `YD_URL` for Enter to keep, and writes them to its `[common]` section; a value given none is written commented out, so the file shows where it would go. A file holding the secret is readable by its owner alone. Run `yd doctor` afterwards to check it.
+
+```shell
+yd init [options]
+```
+
+- `--user`: write your own configuration file, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set), rather than `config.toml` in the current directory
+- `--overwrite`: replace the file if it exists; without it, an existing file is refused (exit 1) before anything is asked
+- `--yes`, `-y`: ask nothing, taking each value from its environment variable and leaving any not set commented out
+- `--no-format`: print the messages without colouring
 
 ### yd doctor
 

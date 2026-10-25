@@ -26,7 +26,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
 - **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
+Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
 
 The remote data store commands — the `yd data` verbs `upload`, `download`, `delete`, `list` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 

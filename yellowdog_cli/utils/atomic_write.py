@@ -9,19 +9,22 @@ import os
 import tempfile
 
 
-def write_text_atomically(filename: str, text: str) -> None:
+def write_text_atomically(filename: str, text: str, mode: int | None = None) -> None:
     """
-    Write 'text' (UTF-8) to 'filename' atomically. An existing file keeps
-    its permissions; a new one gets those an ordinary write would give it
-    (0o666 less the umask), rather than the temporary file's 0o600.
+    Write 'text' (UTF-8) to 'filename' atomically. The file gets 'mode' if
+    given; else an existing file keeps its permissions, and a new one gets
+    those an ordinary write would give it (0o666 less the umask), rather
+    than the temporary file's 0o600. The mode is set before the file takes
+    the name, so a file holding a secret is never readable more widely.
     """
     directory = os.path.dirname(os.path.abspath(filename))
-    try:
-        mode = os.stat(filename).st_mode & 0o7777
-    except FileNotFoundError:
-        umask = os.umask(0)
-        os.umask(umask)
-        mode = 0o666 & ~umask
+    if mode is None:
+        try:
+            mode = os.stat(filename).st_mode & 0o7777
+        except FileNotFoundError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=directory, prefix=".yd-write-", delete=False
     ) as temporary:

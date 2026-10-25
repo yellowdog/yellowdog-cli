@@ -86,6 +86,8 @@ NOT_EXERCISED: dict[str, str] = {
     "yd help": _UNIT_TESTED,
     "yd version": _UNIT_TESTED,
     "yd completion": _UNIT_TESTED,
+    "yd init": "writes a configuration file, never reaching the Platform; "
+    + _UNIT_TESTED,
     "yd format-json": _UNIT_TESTED,
     "yd jsonnet2json": _UNIT_TESTED,
     "yd schema": (

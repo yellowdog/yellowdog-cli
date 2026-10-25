@@ -195,6 +195,7 @@ class TestRegistryMatchesEntryPoints:
         assert {n for n, c in COMMANDS.items() if not c.script} == {
             "yd-completion",
             "yd-auto-shutdown",
+            "yd-init",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -212,6 +213,7 @@ class TestRegistryMatchesEntryPoints:
         }
         standalone = {
             "yd-completion",
+            "yd-init",
             "yd-help",
             "yd-version",
             "yd-format-json",
@@ -435,6 +437,7 @@ class TestToolKinds:
         assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.NONE} == {
             "yd-cloudwizard",
             "yd-completion",
+            "yd-init",
             "yd-format-json",
             "yd-jsonnet2json",
             "yd-help",

@@ -296,6 +296,8 @@ universal options:
                         supplied multiple times
 ```
 
+To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace and tag, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
 ## Shell Completion

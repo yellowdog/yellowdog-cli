@@ -4424,6 +4424,42 @@ COMMANDS["yd-completion"] = Command(
     tool=ToolKind.NONE,
     script=False,
 )
+INIT_USER = option(
+    "--user",
+    action="store_true",
+    required=False,
+    help=(
+        "write your own configuration file, ~/.config/yellowdog/config.toml,"
+        " read wherever a directory has no config.toml, rather than"
+        " config.toml in the current directory"
+    ),
+)
+INIT_OVERWRITE = option(
+    "--overwrite",
+    action="store_true",
+    required=False,
+    help="replace the configuration file if it exists",
+)
+COMMANDS["yd-init"] = Command(
+    name="yd-init",
+    purpose="writing a starter configuration file",
+    summary="Write a starter configuration file",
+    kind=CommandKind.STANDALONE,
+    options=(
+        INIT_USER,
+        INIT_OVERWRITE,
+        YES.variant(
+            help=(
+                "ask nothing: take the key, secret, namespace, tag and URL from"
+                " YD_KEY, YD_SECRET, YD_NAMESPACE, YD_TAG and YD_URL, leaving"
+                " any not set commented out"
+            )
+        ),
+        NO_FORMAT.variant(help="print the messages without colouring"),
+    ),
+    tool=ToolKind.NONE,
+    script=False,
+)
 FORMAT_JSON_FILES = option(
     "files",
     nargs="+",
