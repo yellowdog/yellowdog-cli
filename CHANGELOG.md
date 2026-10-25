@@ -10,68 +10,43 @@ These changes alter what an existing script or habit will see:
 
 - **Combinations that were accepted and ignored are refused** (exit 2): `-a` (`--auto-follow-compute-requirements`) without `--follow`; `yd node action --details` without `--status`; `yd workrequirement submit --empty` with a specification or CSV file, `--task-count` or `--task-group-count` (and, exit 1, with one named in the configuration), where it submitted their Tasks; `--json-raw` with `--task-type`, `--overwrite` or `--content-path`; `yd list --status ''`, which listed everything; and a `yd list` filter given as `0` or `""` for a type it does not apply to.
 - **Options a verb never takes are no longer offered**: `yd workerpool resize --wait`/`--timeout`, `--substitute-ids` on the `show` verbs other than resources' and Allowances', `yd resource list --within`/`--limit`/`--unhealthy`/`--with-errors`, and `yd data list --dry-run`. They are gone from `--help`, Tab completion and the MCP tools, and refused if given.
-- **`--property common.variables.<name>=<value>` acts as `-v <name>=<value>` does**: set before the configuration file is read, so the file's own properties and the variables built from it take the new value, where they kept the file's.
-- **A named data client profile's own fields beat `YD_DATA_CLIENT_*`**: with `YD_DATA_CLIENT_BUCKET` set, `yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names, where it copied onto the source's. A field the profile inherits is still overridden.
-- **A configuration file's own `[common.variables]` win over an `importCommon` file's**, with `--config` as without.
-- **`yd resource remove --type <type> <name>` with no namespace configured** (`-n ''`) refuses a name of a namespaced type, where it removed the resource of that name in every namespace; and a Compute Source Template name found in more than one namespace is refused as ambiguous rather than the first found used.
-- **`yd variables` redacts a variable whose value holds the configured key or secret** (one defined as `{{secret}}`), whatever it is called.
-- **`yd resource remove --json` names a Worker Pool removed by its ID `ConfiguredWorkerPool`**, as one removed by name is, where it was `WorkerPool`.
-- **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`, a number to TOML) is a configuration error, exit 3.
+- **Which value wins**: `--property common.variables.<name>=<value>` acts as `-v <name>=<value>` does, set before the configuration file is read, so the file's properties and the variables built from it take it; a configuration file's own `[common.variables]` win over an `importCommon` file's, with `--config` as without; and a named data client profile's own fields beat `YD_DATA_CLIENT_*` (`yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names), a field it inherits still being overridden.
+- **`yd resource remove`**: with no namespace configured (`-n ''`), a name of a namespaced type is refused, where it removed the resource of that name in every namespace; a Compute Source Template name found in more than one namespace is refused as ambiguous, where the first found was used; and `--json` names a Worker Pool removed by its ID `ConfiguredWorkerPool`, as one removed by name is, where it was `WorkerPool`.
+- **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`) is a configuration error, exit 3; and **`yd variables` redacts a variable whose value holds the configured key or secret** (one defined as `{{secret}}`), whatever it is called.
 
 ### Data client
 
-- **`yd data upload` uploads a symbolic link given among other files as the file it links to**, where it recorded it as uploaded and sent nothing.
-- **`yd data delete` records files as failed when a deletion and the listing that checks it both fail** (a lost connection), where it recorded every file as deleted and exited 0.
-- **A `..` in a relative remote path holding a `:`** (`../run-10:00`) is refused, as any other `..` is, where it climbed out of the prefix past the checks that protect the bucket.
-- **At a remote's root, with no bucket or prefix**: `yd data copy a.txt sub/` names the copy `sub/a.txt`, not `sub/<remote>:a.txt`; and `yd data list --recursive` and `yd data upload --flatten` keep their paths relative to the remote, not the filesystem's root.
-- **`yd data copy` records a source that is missing or cannot be reached** under `--json`, as `yd data download` does.
+- **Transfers record what happened**: `yd data upload` uploads a symbolic link given among other files, where it recorded it as uploaded and sent nothing; `yd data delete` records files as failed when a deletion and the listing that checks it both fail, where it recorded every file as deleted and exited 0; and `yd data copy --json` records a source that is missing or cannot be reached.
+- **Paths**: a `..` in a relative remote path holding a `:` (`../run-10:00`) is refused, as any other `..` is, where it climbed out of the prefix; and at a remote's root, with no bucket or prefix, `yd data copy a.txt sub/` names the copy `sub/a.txt`, and `yd data list --recursive` and `yd data upload --flatten` keep their paths relative to the remote.
 
 ### Work Requirements
 
 - **`--progress` keeps following when an event leaves a Task count empty**, as the Platform can before a Task Group has Tasks, where it stopped with an "Event stream error" (and `-E` then exited with a failure).
-- **`--parallel-batches` stops building batches once one has failed**, where the rest were still built and their input files uploaded before the Work Requirement was cancelled.
-- **`--json-raw` without `--follow` or `--progress` no longer fetches the Work Requirement it submitted**, so a lost connection at that point cannot fail a submission that succeeded.
-- **`--add-to` numbers a new Task Group by where it is added**, on from the existing ones, in its own properties as in its Tasks'; and `{{task_count}}` for Tasks added to an existing Task Group is its whole count everywhere, as in their names and `YD_NUM_TASKS`.
-- **`{{task_count}}` in a Task Group's name and properties is the number of Tasks it gets** with `--task-count`, not the specification's `taskCount`.
-- **A specification whose `taskGroups` or `tasks` is `null`** is reported as missing it, not with a `'NoneType'` error; and an input file to upload is found from the files directory without changing the process's directory.
-- **`yd workrequirement abort` with no targets** records a Work Requirement whose Tasks cannot be listed as failed and goes on to the next, exiting with the failure's own code, where it stopped with an internal error.
+- **Numbering**: `--add-to` numbers a new Task Group on from the existing ones, in its own properties as in its Tasks'; `{{task_count}}` for Tasks added to an existing Task Group is its whole count everywhere; and `{{task_count}}` in a Task Group's name and properties is the number of Tasks `--task-count` gives it.
+- **Failures part-way**: `--parallel-batches` stops building batches once one has failed; `--json-raw` without `--follow` or `--progress` does not fetch the Work Requirement it submitted, so a lost connection then cannot fail a submission that succeeded; a specification whose `taskGroups` or `tasks` is `null` is reported as missing it; and `yd workrequirement abort` with no targets records a Work Requirement whose Tasks cannot be listed as failed and goes on, exiting with the failure's code.
 
 ### Listing and actions
 
-- **`yd list tasks --status` filters the Tasks alone**, not the Task Groups walked to them, so `--status EXECUTING` shows the executing Tasks.
-- **`yd list workers --active-only` lists every Worker the SDK counts as available**, RUNNING, BATCH_ALLOCATION and LATE included.
-- **`yd workerpool shutdown -n ''`** shuts down the matching Worker Pools in every namespace, where it matched none.
-- **`yd task cancel` skips a RESUBMITTED Task**, as it skips the other finished states.
-- **A Work Requirement or Compute Requirement name only finished ones share finds the newest**, not whichever the Platform listed first.
-- **`yd allowance boost` follows the rules the other actions do**: an Allowance ID that does not exist is reported as `Cannot find Allowance <ID>` (its `--json` record's `error` too), a repeated ID is acted on once without a warning, and a session failure's message says how many items are not attempted.
-- **`yd node action --status` records a node whose queue cannot be fetched**, with its `error`, and exits with its code (6 for a node not found); and `yd node action` takes `--jsonnet-dry-run`/`-J` for its `--actions` file.
-- **Listings and tables show text that looks like a number as written** (a tag of `1.10`, not `1.1`), and a Task Group both starved and waiting shows `/STARVED/WAITING` when followed, as when listed.
-- **An abbreviated `--docs`** (`--doc`) prints the documentation link rather than running the command; and a message that sets a command on a line of its own keeps its line breaks.
+- **`yd list`**: `tasks --status` filters the Tasks alone, so `--status EXECUTING` shows the executing Tasks; `workers --active-only` includes BATCH_ALLOCATION and LATE Workers; text that looks like a number is shown as written (a tag of `1.10`, not `1.1`); and a Task Group both starved and waiting shows `/STARVED/WAITING` when followed, as when listed.
+- **Actions**: `yd workerpool shutdown -n ''` acts in every namespace, where it matched nothing; `yd task cancel` skips a RESUBMITTED Task; a Work Requirement or Compute Requirement name only finished ones share finds the newest; `yd allowance boost` follows the other actions' rules (`Cannot find Allowance <ID>`, a repeated ID acted on once); and `yd node action --status` records a node whose queue cannot be fetched and exits with its code, and takes `-J` for its `--actions` file.
 
 ### Resources
 
-- **`yd resource create --json` records a new Group as created, with its ID, when granting it a role fails**; each Allowance removed by `--match-allowances-by-description` is recorded as it goes; a name that fails to be removed is recorded as `namespace/name`; and a Configured Worker Pool returned without a token is recorded as created.
-- **`yd resource remove --quiet` lists the Allowances to choose from** when several match a description.
-- **A Compute Requirement Template source without `sourceTemplateId`** is reported as a missing property.
+- **`yd resource create --json` records what was done when part of it fails** (a new Group whose role grant failed, each Allowance removed by `--match-allowances-by-description`, a Configured Worker Pool returned without a token, a failed removal as `namespace/name`); `yd resource remove --quiet` still lists the Allowances to choose from; and a Compute Requirement Template source without `sourceTemplateId` is reported as a missing property.
 
 ### Variables and configuration
 
-- **A variable inside an array or table variable keeps its backslashes and quotes** (`dirs = ["{{dir}}"]` with a Windows path).
-- **A chain of variables however long resolves**, where more than about ten links was reported as circular; and a `{{variable}}` inside a Jsonnet comment is left alone.
-- **`yd schema --check`** reports a malformed `index.json` or a schema file that is not UTF-8 rather than failing with a traceback.
+- **A variable inside an array or table variable keeps its backslashes and quotes** (a Windows path); a chain of variables however long resolves, where more than about ten links was reported as circular; a `{{variable}}` inside a Jsonnet comment is left alone; and `yd schema --check` reports a malformed `index.json` or a schema file that is not UTF-8 rather than a traceback.
 
 ### Tab completion
 
-- **Options of `yd version`, `yd help`, `yd format-json` and `yd jsonnet2json` complete**, as every other command's do.
-- **On macOS's bash 3.2, `--sort=cr<Tab>` completes to `--sort=created`**, not `--sort=--sort=created`; a file or directory after `--option=` completes in bash 3.2, zsh and PowerShell; and a quoted word is read as the command will be given it (`-t ''`, `-n 'my ns'`, `'nightly`).
-- **With `--names`**: `--within=<Tab>` looks up what `--within <Tab>` does, and `yd taskgroup priority` completes `wr/tg`.
+- **The options of `yd version`, `yd help`, `yd format-json` and `yd jsonnet2json` complete**; on macOS's bash 3.2, `--sort=cr<Tab>` completes to `--sort=created`; a file after `--option=` completes in bash 3.2, zsh and PowerShell; a quoted word is read as the command will take it (`-n 'my ns'`); and with `--names`, `--within=<Tab>` looks up what `--within <Tab>` does and `yd taskgroup priority` completes `wr/tg`.
 
 ### Commander
 
-- **Closing the window while an action is listing what it would affect does nothing more**, where Download went on to download everything matching and the others asked to act on their whole scope.
-- **The Show buttons say why they cannot show a file** (moved, deleted, not UTF-8), where Commander crashed.
-- **An edited Namespace or Tag field is discovered again**, so confirmations and the default object path follow it; a slower, older discovery no longer overwrites a newer one; and a command finishing no longer closes input to a later one still waiting for it.
-- **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row they offer; a command typed with `--` gets Commander's options ahead of it; and closing the window cancels a configuration rediscovery still pending.
+- **Closing the window stops what was under way**: an action listing what it would affect does nothing more, where Download went on to download everything matching and the others asked to act on their whole scope; and a pending configuration rediscovery is cancelled.
+- **The Show buttons say why they cannot show a file** (moved, deleted, not UTF-8), where Commander crashed; an edited Namespace or Tag field is discovered again, so confirmations and the default object path follow it, and an older discovery never overwrites a newer one; and a command finishing leaves input open to a later one still waiting for it.
+- **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row; and a command typed with `--` gets Commander's options ahead of it.
 
 ### MCP server
 
@@ -79,13 +54,11 @@ These changes alter what an existing script or habit will see:
 
 ### Cloud Wizard
 
-- **AWS**: `add-ssh` and `setup` use the default VPC's `default` security group, where they took the first group with `default` in its name, in any VPC; `setup` without a region stops before creating anything; and declining one access key's deletion keeps it and creates no new key.
-- **Azure**: `add-ssh` asks before opening port 22, as AWS's does; and a teardown removes the YellowDog resources first, a failure listing the resource groups reported rather than ending it.
-- **Every provider saves its resource file when adding the Credential fails**, and exits 1 (or with a lost connection's code).
+- **AWS** `add-ssh` and `setup` use the default VPC's `default` security group, where they took the first group with `default` in its name in any VPC; `setup` without a region stops before creating anything; and declining an access key's deletion keeps it and creates no new key. **Azure** `add-ssh` asks before opening port 22, and a teardown removes the YellowDog resources first. **Every provider** saves its resource file when adding the Credential fails, and exits 1 (or with a lost connection's code).
 
 ### Other
 
-- **`yd doctor`** names uv and pip in its advice, where it suggested pipx, and skips the data client's Remote reachable check without an rclone binary, where it downloaded one with no time limit.
+- **`yd doctor`** names uv and pip in its advice, and skips the Remote reachable check without an rclone binary, where it downloaded one with no time limit; an abbreviated `--docs` (`--doc`) prints the documentation link; and a message that sets a command on a line of its own keeps its line breaks.
 
 ## 15.1.0 — 2026-10-23
 
