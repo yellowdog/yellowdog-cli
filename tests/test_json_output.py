@@ -3691,8 +3691,8 @@ class TestNodeAction:
                 "nodeId": NODE_ID,
                 "status": "EMPTY",
                 "waiting": 0,
-                "executing": "-",
-                "failed": "-",
+                "executing": None,
+                "failed": None,
             }
         ]
 

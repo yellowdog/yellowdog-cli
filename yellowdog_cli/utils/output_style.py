@@ -119,7 +119,7 @@ def task_group_status_text(status: object, starved: object, waiting: object) -> 
     with '/STARVED' and '/WAITING' (on a dependency) added where they hold.
     """
     return (
-        str(status)
+        ("" if status is None else str(status))
         + ("/STARVED" if starved is True else "")
         + ("/WAITING" if waiting is True else "")
     )

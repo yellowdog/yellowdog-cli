@@ -139,8 +139,12 @@ def compute_requirement_table(
                 cr.name,
                 cr.namespace,
                 cr.tag,
-                str(cr.status)
-                + f" ({cr.targetInstanceCount:,d}/{cr.expectedInstanceCount:,d}/{cr.aliveInstanceCount:,d})",
+                _status_with_counts(
+                    cr.status,
+                    cr.targetInstanceCount,
+                    cr.expectedInstanceCount,
+                    cr.aliveInstanceCount,
+                ),
                 cr.id,
             ]
         )
@@ -162,16 +166,14 @@ def work_requirement_table(
     ]
     table = []
     for index, wr_summary in enumerate(wr_summary_list):
-        namespace = "" if wr_summary.namespace is None else wr_summary.namespace
-        tag = "" if wr_summary.tag is None else wr_summary.tag
         table.append(
             [
                 index + 1,
                 wr_summary.name,
-                namespace,
-                tag,
-                str(wr_summary.status),
-                f"{wr_summary.completedTaskCount}/{wr_summary.totalTaskCount}",
+                wr_summary.namespace,
+                wr_summary.tag,
+                _cell(wr_summary.status),
+                _counts(wr_summary.completedTaskCount, wr_summary.totalTaskCount),
                 _yes_or_no(wr_summary.healthy),
                 wr_summary.id,
             ]
@@ -207,7 +209,7 @@ def task_table(task_list: list[Task]) -> tuple[list[str], list[list]]:
             [
                 index + 1,
                 task.name,
-                str(task.status),
+                _cell(task.status),
                 task.id,
             ]
         )
@@ -232,8 +234,10 @@ def worker_pool_table(
                 index + 1,
                 worker_pool_summary.name,
                 worker_pool_summary.namespace,
-                f"{(worker_pool_summary.type or '').split('.')[-1:][0].replace('WorkerPool', '')}",
-                f"{worker_pool_summary.status}",
+                (worker_pool_summary.type or "")
+                .split(".")[-1]
+                .replace("WorkerPool", ""),
+                _cell(worker_pool_summary.status),
                 worker_pool_summary.id,
             ]
         )
@@ -419,7 +423,7 @@ def nodes_table(
             None if details is None else details.region,
             None if details is None else details.ram,
             None if details is None else details.vcpus,
-            "" if details is None else ", ".join(details.supportedTaskTypes or []),
+            None if details is None else ", ".join(details.supportedTaskTypes or []),
             None if details is None else details.workerTag,
             len(node.workers or []),
             node.status,
@@ -452,7 +456,7 @@ def workers_table(
                 getattr(worker, "workerTag", None),
                 worker.status,
                 getattr(worker, "claimCount", None),
-                _yes_or_no(getattr(worker, "exclusive", False)),
+                _yes_or_no(getattr(worker, "exclusive", None)),
                 worker.id,
             ]
         )
@@ -477,16 +481,12 @@ def allowances_table(
         table.append(
             [
                 index + 1,
-                allowance.type.split(".")[-1],
+                _last_part(allowance.type),
                 _truncate_text(allowance.description),
                 allowance.allowedHours,
                 allowance.remainingHours,
                 allowance.limitEnforcement,
-                (
-                    f"{allowance.resetInterval} {allowance.resetType}"
-                    if allowance.resetInterval is not None
-                    else ""
-                ),
+                _joined_cells(allowance.resetInterval, allowance.resetType),
                 allowance.id,
             ]
         )
@@ -508,9 +508,9 @@ def attribute_definitions_table(
         table.append(
             [
                 index + 1,
-                attribute_definition["name"],
-                attribute_definition["type"].split(".")[-1],
-                attribute_definition["title"],
+                attribute_definition.get("name"),
+                _last_part(attribute_definition.get("type")),
+                attribute_definition.get("title"),
                 _truncate_text(attribute_definition.get("description", "")),
             ]
         )
@@ -680,7 +680,7 @@ def roles_table(
     ]
     table = []
     for index, role in enumerate(roles):
-        permissions = ", ".join(sorted([x.value for x in role.permissions]))
+        permissions = ", ".join(sorted(x.value for x in role.permissions or []))
         table.append(
             [
                 index + 1,
@@ -826,7 +826,7 @@ def _instance_type_row(instance_type: InstanceType, region: str | None) -> list:
     return [
         _provider_text(instance_type.provider),
         instance_type.name,
-        "-"
+        None
         if instance_type.processorArchitecture is None
         else instance_type.processorArchitecture.name,
         _number_text(instance_type.defaultVcpus),
@@ -836,22 +836,22 @@ def _instance_type_row(instance_type: InstanceType, region: str | None) -> list:
     ]
 
 
-def _provider_text(provider: CloudProvider | None) -> str:
-    return "-" if provider is None else provider.display_name
+def _provider_text(provider: CloudProvider | None) -> str | None:
+    return None if provider is None else provider.display_name
 
 
-def _display_name(value: Any) -> str:
-    return "-" if value is None else getattr(value, "display_name", value.name)
+def _display_name(value: Any) -> str | None:
+    return None if value is None else getattr(value, "display_name", value.name)
 
 
-def _sub_region_text(sub_region: str | None) -> str:
+def _sub_region_text(sub_region: str | None) -> str | None:
     """
-    A price's sub-region; '-' for one the service gives for the whole region.
+    A price's sub-region; blank for one the service gives for the whole region.
     """
-    return "-" if sub_region in (None, CLOUD_INFO_NO_SUB_REGION) else sub_region
+    return None if sub_region in (None, CLOUD_INFO_NO_SUB_REGION) else sub_region
 
 
-def _os_licence_text(licence: Any) -> str:
+def _os_licence_text(licence: Any) -> str | None:
     """
     The SDK's display name for no licence is 'None', which reads as a value
     the service did not give.
@@ -861,34 +861,34 @@ def _os_licence_text(licence: Any) -> str:
     return _display_name(licence)
 
 
-def _number_text(value: float | None) -> str:
-    return "-" if value is None else f"{value:g}"
+def _number_text(value: float | None) -> str | None:
+    return None if value is None else f"{value:g}"
 
 
-def _price_text(price: Price | None) -> str:
-    return "-" if price is None or price.value is None else f"{price.value:.4f}"
+def _price_text(price: Price | None) -> str | None:
+    return None if price is None or price.value is None else f"{price.value:.4f}"
 
 
-def _currency_text(price: Price | None) -> str:
-    return "-" if price is None or price.currency is None else price.currency.name
+def _currency_text(price: Price | None) -> str | None:
+    return None if price is None or price.currency is None else price.currency.name
 
 
-def _gpus_text(gpus: dict[str, int] | None) -> str:
+def _gpus_text(gpus: dict[str, int] | None) -> str | None:
     """
-    The GPU count and models, '1 (T4)'; '-' for none.
+    The GPU count and models, '1 (T4)'; blank for none.
     """
     if not gpus:
-        return "-"
+        return None
     return f"{sum(gpus.values())} ({', '.join(sorted(gpus))})"
 
 
-def _regions_text(instance_type: InstanceType, region: str | None) -> str:
+def _regions_text(instance_type: InstanceType, region: str | None) -> str | None:
     if region is None:
         return str(len(instance_type.regions or []))
     for entry in instance_type.regions or []:
         if entry.name == region:
-            return ", ".join(entry.subRegions or []) or "-"
-    return "-"
+            return ", ".join(entry.subRegions or []) or None
+    return None
 
 
 def _rewritten_columns(table: list[list]) -> list[int]:
@@ -1183,19 +1183,66 @@ def _truncate_text(description: str | None):
     return f"{description[: MAX_TABLE_DESCRIPTION - 3] + '...' if len(description) > MAX_TABLE_DESCRIPTION else description}"
 
 
-def _yes_or_no(true_: bool) -> str:
+def _yes_or_no(true_: bool | None) -> str | None:
     """
-    Swap bools into strings.
+    'Yes' or 'No'; blank when the Platform gave neither.
     """
+    if true_ is None:
+        return None
     return "Yes" if true_ else "No"
 
 
-def node_action_type_label(action: NodeAction | None) -> str:
+def _cell(value: object) -> str | None:
+    """
+    A value as text, or None, a blank cell, when there is none: str() would
+    print 'None'.
+    """
+    return None if value is None else str(value)
+
+
+def _last_part(dotted: str | None) -> str | None:
+    """
+    The last part of a dotted type name ('co.yellowdog...AccountAllowance').
+    """
+    return None if dotted is None else dotted.split(".")[-1]
+
+
+def _joined_cells(*values: object) -> str | None:
+    """
+    The values given, separated by spaces, leaving out those missing; blank
+    when all are.
+    """
+    return " ".join(str(value) for value in values if value is not None) or None
+
+
+def _counts(*counts: int | None, separated: bool = False) -> str | None:
+    """
+    Counts as '3/10' ('3,000/10,000' when separated), a missing one blank
+    within it ('/10'); blank when all are missing.
+    """
+    if all(count is None for count in counts):
+        return None
+    return "/".join(
+        "" if count is None else f"{count:,d}" if separated else str(count)
+        for count in counts
+    )
+
+
+def _status_with_counts(status: object, *counts: int | None) -> str | None:
+    """
+    A status followed by its counts, 'RUNNING (2/2/2)', either part left out
+    when missing; the counts separated by thousands.
+    """
+    shown_counts = _counts(*counts, separated=True)
+    return _joined_cells(status, None if shown_counts is None else f"({shown_counts})")
+
+
+def node_action_type_label(action: NodeAction | None) -> str | None:
     """
     Return a short human-readable label for a node action.
     """
     if action is None:
-        return "-"
+        return None
     path = getattr(action, "path", None)
     match type(action).__name__:
         case "NodeRunCommandAction":
@@ -1228,7 +1275,7 @@ def node_action_queue_table(
         table.append(
             [
                 node_id,
-                snapshot.status.value if snapshot.status else "-",
+                snapshot.status.value if snapshot.status else None,
                 waiting_count,
                 executing_label,
                 failed_label,

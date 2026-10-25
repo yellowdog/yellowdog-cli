@@ -693,8 +693,8 @@ class TestActionTypeLabel:
     Returns a short human-readable label for a node action or None.
     """
 
-    def test_none_returns_dash(self):
-        assert _action_type_label(None) == "-"
+    def test_none_returns_none(self):
+        assert _action_type_label(None) is None
 
     def test_run_command_includes_path(self):
         action = NodeRunCommandAction(path="/bin/bash")
