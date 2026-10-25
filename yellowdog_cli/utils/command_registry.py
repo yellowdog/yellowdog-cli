@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import shutil
 from argparse import (
     SUPPRESS,
     Action,
@@ -319,21 +320,56 @@ def build_parser(command: Command | None, prog: str | None = None) -> ArgumentPa
     API common set and nothing else, which is what pytest's own executable
     name gets when args.py is imported under test.
     """
+    common = COMMON_OPTIONS[CommandKind.API if command is None else command.kind]
+    own = () if command is None else command.options
     parser = ArgumentParser(
         prog=prog,
         description=None if command is None else DESCRIPTION_PREFIX + command.purpose,
+        usage=_usage(own, prog) if common else None,
     )
-    items = (
-        COMMON_OPTIONS[CommandKind.API] if command is None else command.all_options()
-    )
+    _register(parser, own)
+    if common:
+        # After the command's own, which say what it does, under a heading
+        # of their own: the same on every command, so read once
+        _register(parser.add_argument_group(COMMON_OPTIONS_TITLE), common)
+    return parser
+
+
+# The heading over the options every command of a kind shares (the Universal
+# Options of docs/commands.md), and how the
+# usage line stands for them
+COMMON_OPTIONS_TITLE = "universal options"
+COMMON_OPTIONS_USAGE = f"[{COMMON_OPTIONS_TITLE}]"
+
+
+def _register(
+    target: ArgumentParser | _ArgumentGroup, items: Iterable[Option | Exclusive]
+) -> None:
     for item in items:
         if isinstance(item, Exclusive):
-            group = parser.add_mutually_exclusive_group()
+            group = target.add_mutually_exclusive_group()
             for member in item.options:
                 member.register(group)
         else:
-            item.register(parser)
-    return parser
+            item.register(target)
+
+
+def _usage(own: tuple[Option | Exclusive, ...], prog: str | None) -> str:
+    """
+    The usage line with the command's own options in full, as argparse
+    wraps them for a parser of those alone, and the common options as one
+    '[universal options]' at its end, on the last line if it fits there.
+    """
+    alone = ArgumentParser(prog=prog)
+    _register(alone, own)
+    lines = alone.format_usage().removeprefix("usage: ").rstrip("\n").split("\n")
+    indent = " " * (len("usage: ") + len(alone.prog) + 1)
+    width = shutil.get_terminal_size().columns - 2
+    if len("usage: ") + len(lines[-1]) + 1 + len(COMMON_OPTIONS_USAGE) <= width:
+        lines[-1] += " " + COMMON_OPTIONS_USAGE
+    else:
+        lines.append(indent + COMMON_OPTIONS_USAGE)
+    return "\n".join(lines).replace("%", "%%")
 
 
 # --- Entity types (yd-list's positional) ---------------------------------

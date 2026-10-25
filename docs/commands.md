@@ -116,7 +116,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 

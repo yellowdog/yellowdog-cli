@@ -173,7 +173,8 @@ class TestBuildParser:
         assert parser.prog == "yd-x"
         assert parser.description == DESCRIPTION_PREFIX + "doing x"
         names = [a.option_strings[0] for a in parser._actions if a.option_strings]
-        assert names == ["-h", "--debug", "--yes", "--ids-only", "--json"]
+        # The command's own first, then the common set, under its own heading
+        assert names == ["-h", "--yes", "--ids-only", "--json", "--debug"]
         with pytest.raises(SystemExit):
             parser.parse_args(["--ids-only", "--json"])  # mutually exclusive
 
