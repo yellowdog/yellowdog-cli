@@ -4,18 +4,18 @@
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
 * [Installation](#installation)
-   * [Option 1: pipx (recommended)](#option-1-pipx-recommended)
-      * [Install pipx](#install-pipx)
+   * [Installing uv](#installing-uv)
+   * [Option 1: uv tool](#option-1-uv-tool)
       * [Install the YellowDog CLI](#install-the-yellowdog-cli)
       * [Update](#update)
       * [With Jsonnet support](#with-jsonnet-support)
-   * [Option 2: uv](#option-2-uv)
-      * [Install uv](#install-uv)
+   * [Option 2: a virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)
+      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment)
       * [Install the YellowDog CLI](#install-the-yellowdog-cli-1)
       * [Update](#update-1)
       * [With Jsonnet support](#with-jsonnet-support-1)
-   * [Option 3: pip + virtual environment](#option-3-pip--virtual-environment)
-      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment)
+   * [Option 3: pip in a virtual environment](#option-3-pip-in-a-virtual-environment)
+      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment-1)
       * [Install the YellowDog CLI](#install-the-yellowdog-cli-2)
       * [Update](#update-2)
       * [With Jsonnet support](#with-jsonnet-support-2)
@@ -37,7 +37,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:32:32 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 18:24:58 BST 2026 -->
 
 <!--te-->
 
@@ -98,57 +98,17 @@ To set up **Configured Worker Pools**, you'll need:
 
 # Installation
 
-Python 3.10 or later is required. If you don't have Python installed, download it from **[python.org](https://www.python.org/downloads/)**, or use your system package manager:
+Python 3.10 or later is required. There are several ways to install the CLI, each keeping it and its dependencies in an environment of their own; choose the one that fits how you work:
 
-| Platform        | Command                             |
-|-----------------|-------------------------------------|
-| macOS           | `brew install python`               |
-| Ubuntu / Debian | `sudo apt install python3`          |
-| Windows         | `winget install Python.Python.3.12` |
+- **[uv tool](#option-1-uv-tool)** — the commands on your PATH everywhere, with no environment to activate. uv supplies Python itself if you have none.
+- **[A virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)** — an environment you activate, for using the CLI alongside other Python tools. uv supplies Python itself if you have none.
+- **[pip in a virtual environment](#option-3-pip-in-a-virtual-environment)** — the standard Python tooling, with a Python you have installed.
 
-Three installation methods are available. **pipx is recommended** for most users; uv is a good choice if you already use it as your Python toolchain; pip + virtual environment is the better choice if you are integrating these commands into a broader Python development workflow.
+Other installers, such as pipx, work too.
 
-## Option 1: pipx (recommended)
+## Installing uv
 
-**[pipx](https://pipx.pypa.io)** installs the commands into an isolated environment and puts them on your PATH automatically. You never need to create or activate a virtual environment.
-
-### Install pipx
-
-| Platform | Command                                                |
-|----------|--------------------------------------------------------|
-| macOS    | `brew install pipx && pipx ensurepath`                 |
-| Linux    | `pip install --user pipx && pipx ensurepath`           |
-| Windows  | `pip install --user pipx` (then restart your terminal) |
-
-### Install the YellowDog CLI
-
-```shell
-pipx install yellowdog-cli
-```
-
-### Update
-
-```shell
-pipx upgrade yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-pipx install yellowdog-cli          # first-time install
-pipx inject yellowdog-cli jsonnet   # add Jsonnet
-
-pipx upgrade yellowdog-cli          # update CLI
-pipx inject --force yellowdog-cli jsonnet  # update Jsonnet
-```
-
-## Option 2: uv
-
-**[uv](https://docs.astral.sh/uv/)** is a fast, modern Python package and project manager. Like pipx, it installs CLI tools into isolated environments and puts them on your PATH automatically.
-
-### Install uv
-
-See the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/) for full instructions. Quick options:
+**[uv](https://docs.astral.sh/uv/)** installs Python packages, and Python itself: the first two options need it, and no Python of your own. See the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/) for full instructions. Quick options:
 
 | Platform         | Command                                            |
 |------------------|----------------------------------------------------|
@@ -156,10 +116,20 @@ See the [uv installation docs](https://docs.astral.sh/uv/getting-started/install
 | macOS (Homebrew) | `brew install uv`                                  |
 | Windows          | `winget install --id=astral-sh.uv -e`              |
 
+## Option 1: uv tool
+
+uv installs the CLI into an environment of its own and puts the `yd` command on your PATH, downloading a suitable Python if none is installed.
+
 ### Install the YellowDog CLI
 
 ```shell
 uv tool install yellowdog-cli
+```
+
+To choose the Python it runs on, which uv downloads if it is not installed:
+
+```shell
+uv tool install --python 3.14 yellowdog-cli
 ```
 
 ### Update
@@ -174,15 +144,47 @@ uv tool upgrade yellowdog-cli
 uv tool install "yellowdog-cli[jsonnet]"
 ```
 
-To update:
+## Option 2: a virtual environment created with uv
+
+uv creates the virtual environment, downloading the Python you ask for if it is not installed, and installs the CLI into it.
+
+### Create and activate a virtual environment
 
 ```shell
-uv tool upgrade yellowdog-cli
+uv venv --python 3.14 yd-env
+source yd-env/bin/activate   # macOS / Linux
+yd-env\Scripts\activate      # Windows
 ```
 
-## Option 3: pip + virtual environment
+### Install the YellowDog CLI
 
-This method gives you full control over the Python environment and integrates naturally with other Python tooling.
+```shell
+uv pip install yellowdog-cli
+```
+
+### Update
+
+```shell
+uv pip install -U yellowdog-cli
+```
+
+### With Jsonnet support
+
+```shell
+uv pip install -U "yellowdog-cli[jsonnet]"
+```
+
+> **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
+
+## Option 3: pip in a virtual environment
+
+This uses the standard Python tooling, with a Python you have installed. If you don't have Python 3.10 or later, download it from **[python.org](https://www.python.org/downloads/)**, or use your system package manager:
+
+| Platform        | Command                             |
+|-----------------|-------------------------------------|
+| macOS           | `brew install python`               |
+| Ubuntu / Debian | `sudo apt install python3`          |
+| Windows         | `winget install Python.Python.3.12` |
 
 ### Create and activate a virtual environment
 
@@ -210,7 +212,7 @@ pip install -U yellowdog-cli
 pip install -U "yellowdog-cli[jsonnet]"
 ```
 
-> **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
+> **Note:** As with uv's, you will need to activate the virtual environment each time you open a new terminal session, or add the activation to your shell profile.
 
 # YellowDog Commander (GUI)
 
@@ -242,31 +244,47 @@ Commands are run from the command line. Invoking any command with the `--help` o
 
 ```text
 % yd workrequirement cancel -h
-usage: yd workrequirement cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>]
-                                 [--debug] [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config]
-                                 [--property <section.key=value>] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>]
-                                 [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
-                                 [<work-requirement-name-or-ID> ...]
+usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
+                                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
+                                 [<work-requirement-name-or-ID> ...] [universal options]
 
 YellowDog command-line utility for cancelling Work Requirements
 
 positional arguments:
   <work-requirement-name-or-ID>
-                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may
-                        be a glob pattern (e.g. 'proj-*')
+                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may be a glob
+                        pattern (e.g. 'proj-*')
 
 options:
   -h, --help            show this help message and exit
+  --sort <name|created|status|namespace>[,...]
+                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time, earliest
+                        first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in turn (e.g.
+                        'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
+  --reverse             reverse (descending) the whole order --sort gives
+  --variable, -v <var1=v1>
+                        user-defined variable substitution; the option can be supplied multiple times, one per variable
+  --namespace, -n [<namespace>]
+                        the namespace to use when specifying entities; this is set to '' if the option is provided without a value
+  --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without a value
+  --abort, -a           abort running tasks with immediate effect
+  --follow, -f          follow progress after cancelling the work requirement(s)
+  --dry-run, -D         list the entities that would be affected, without acting
+  --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
+  --interactive, -i     list, and interactively select, the items to act on
+  --yes, -y             perform modifying/destructive actions without requiring user confirmation
+
+universal options:
   --docs                provide a link to the documentation for this version
   --config, -c <config_file.toml>
-                        configuration file in TOML format; the default to use is 'config.toml' in the current directory
+                        configuration file in TOML format; the default to use is 'config.toml' in the current directory, else
+                        ~/.config/yellowdog/config.toml
   --key, -k <app-key-id>
                         the application key ID
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error, and the
-                        configuration preamble
+  --debug               display the Python stack trace on error, and the configuration preamble
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
@@ -274,26 +292,11 @@ options:
   --print-pid, --pp     include the process ID of this CLI invocation alongside timestamp in logging messages
   --no-config, --nc     ignore the contents of any TOML configuration file (even if specified on the command line)
   --property <section.key=value>
-                        override a TOML configuration property; format: 'section.key=value', e.g.
-                        'workRequirement.workerTags=["mytag"]'; can be supplied multiple times
-  --sort <name|created|status|namespace>[,...]
-                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time,
-                        earliest first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in
-                        turn (e.g. 'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
-  --reverse             reverse (descending) the whole order --sort gives
-  --variable, -v <var1=v1>
-                        user-defined variable substitution; the option can be supplied multiple times, one per variable
-  --namespace, -n [<namespace>]
-                        the namespace to use when specifying entities; this is set to '' if the option is provided without a value
-  --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without
-                        a value
-  --abort, -a           abort running tasks with immediate effect
-  --follow, -f          follow progress after cancelling the work requirement(s)
-  --dry-run, -D         list the entities that would be affected, without acting
-  --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
-  --interactive, -i     list, and interactively select, the items to act on
-  --yes, -y             perform modifying/destructive actions without requiring user confirmation
+                        override a TOML configuration property; format: 'section.key=value', e.g. 'workRequirement.workerTags=["mytag"]'; can be
+                        supplied multiple times
 ```
+
+To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace and tag, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 

@@ -17,7 +17,6 @@ from typing import Any, TypeAlias, cast
 
 from yellowdog_client.model import (
     Task,
-    TaskStatus,
     WorkRequirement,
     WorkRequirementStatus,
     WorkRequirementSummary,
@@ -65,15 +64,6 @@ _CANCELLABLE_STATUSES = [
     WorkRequirementStatus.RUNNING,
     WorkRequirementStatus.HELD,
     WorkRequirementStatus.FINISHING,
-]
-
-# The Task states a cancellation no longer applies to
-_FINISHED_TASK_STATUSES = [
-    TaskStatus.COMPLETED,
-    TaskStatus.FAILED,
-    TaskStatus.ABORTED,
-    TaskStatus.CANCELLED,
-    TaskStatus.DISCARDED,
 ]
 
 # A Work Requirement to cancel: fetched by its ID, or listed or found by name
@@ -251,7 +241,9 @@ def _resolve(ctx: RunContext, target: str) -> Item:
             if is_http_not_found(e):
                 raise Unresolved(f"Cannot find Task {target}") from e
             raise
-        if task.status in _FINISHED_TASK_STATUSES:
+        # A cancellation no longer applies to a finished Task: the SDK's own
+        # test, RESUBMITTED and DISCARDED included
+        if task.status is not None and task.status.finished:
             raise Unresolved(
                 f"Task {_task_label(task)} is {task.status}", SKIPPED, task
             )

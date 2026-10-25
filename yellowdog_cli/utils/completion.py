@@ -15,10 +15,10 @@ the Platform, but not here: complete() returns a LookupRequest naming the
 lookup and the configuration options typed on the line, and the
 yd completion command makes it (utils/completion_lookups.py), so this
 module stays local and SDK-free.
-A command whose arguments the registry does not describe (yd commander,
-yd mcp, and the standalone commands that parse their own) is left to the
-shell's own completion of files, which is what it had before the stubs
-claimed its name, with '--help' for a word starting with '-'.
+A command whose arguments the registry does not describe (yd commander and
+yd mcp, the launchers) is left to the shell's own completion of files, which
+is what it had before the stubs claimed its name, with '--help' for a word
+starting with '-'.
 
 The stubs register 'yd' alone: a deprecated 'yd-*' script is not
 completed.
@@ -140,6 +140,9 @@ class LookupRequest:
     current: str
     settings: dict[str, object]
     given: tuple[str, ...] = ()  # the names or IDs typed already
+    # Put ahead of each name or ID found: the '--flag=' of a value typed
+    # in the one word with its option
+    prefix: str = ""
 
 
 @dataclass(frozen=True)
@@ -196,7 +199,9 @@ def join_bash_words(words: list[str], current: str) -> tuple[list[str], str, str
     back together: '--sort=name' and a YDID each one word again. Returns the
     words, the current word, and the prefix of the current word bash will
     not replace (what precedes its last '=' or ':'), to be taken off each
-    candidate.
+    candidate. Bash 3.2, macOS's, does not split the words at them, but
+    readline still replaces only what follows the last, so the prefix is
+    taken off there too.
     """
     joined: list[str] = []
     for word in words:
@@ -210,7 +215,37 @@ def join_bash_words(words: list[str], current: str) -> tuple[list[str], str, str
     if joined and joined[-1].endswith(_BASH_BREAKS):
         prefix = joined.pop()
         return joined, prefix + current, prefix
-    return joined, current, ""
+    last = max(current.rfind(character) for character in _BASH_BREAKS)
+    return joined, current, current[: last + 1]
+
+
+def unquoted(word: str) -> str:
+    """
+    A word as the shell will pass it to the command: its quotes taken away
+    and its backslash escapes undone ('my ns', "a b", a\\ b), a quote
+    opened and not yet closed (the word being typed, "'nigh") dropped.
+    The words bash and zsh hand completion are as typed, quotes and all.
+    """
+    characters: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(word):
+        character = word[index]
+        escaped = word[index + 1] if index + 1 < len(word) else None
+        if quote is None and character in "'\"":
+            quote = character
+        elif quote is None and character == "\\" and escaped is not None:
+            characters.append(escaped)
+            index += 1
+        elif character == quote:
+            quote = None
+        elif quote == '"' and character == "\\" and escaped in ('"', "\\", "$", "`"):
+            characters.append(cast(str, escaped))
+            index += 1
+        else:
+            characters.append(character)
+        index += 1
+    return "".join(characters)
 
 
 def _is_long(word: str) -> bool:
@@ -272,6 +307,12 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
         found = _option_named(flag, by_flag)
         if found is None or not _takes_value(found):
             return _NOTHING
+        # Looked up as the value would be after a space ('--within <Tab>')
+        lookup = _option_lookup(command, found, typed)
+        if lookup is not None:
+            return Completions(
+                lookup=LookupRequest(lookup, value, settings, prefix=f"{flag}=")
+            )
         values = _values(command, found, value)
         return Completions(
             values.mode,

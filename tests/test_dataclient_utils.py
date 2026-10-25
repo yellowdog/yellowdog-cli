@@ -27,6 +27,7 @@ from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient.operations import (
     resolve_remote_path,
     upload_directory,
+    upload_files,
 )
 from yellowdog_cli.utils.dataclient.rclone_version import find_rclone
 from yellowdog_cli.utils.results import reset_results
@@ -940,3 +941,89 @@ class TestListingsReadModificationTimesOnlyWhereShown:
         dcu_module.glob_matches(MagicMock(), "s3:b/dir/*.txt", modtime=True)
         dcu_module._lsjson(MagicMock(), "s3:b/dir", modtime=True)
         assert all("--no-modtime" not in call for call in calls)
+
+
+# ---------------------------------------------------------------------------
+# yd-upload of a symlinked file, through a real rclone
+# ---------------------------------------------------------------------------
+
+
+@needs_rclone
+@pytest.mark.parametrize("into_other_directory", [False, True])
+def test_symlinked_files_are_uploaded_as_their_targets(tmp_path, into_other_directory):
+    """
+    Symlinks among a directory's files are uploaded under their own names
+    with their targets' content, not recorded as uploaded while rclone,
+    given their names in a list, skips them (links it does not follow) or
+    finds no such names (links pointing into another directory).
+    """
+    reset_results()
+    data, elsewhere, destination = (tmp_path / d for d in ("data", "other", "dst"))
+    for directory in (data, elsewhere, destination):
+        directory.mkdir()
+    targets = elsewhere if into_other_directory else data
+    (targets / "2026.csv").write_text("this year")
+    (targets / "2025.csv").write_text("last year")
+    (data / "other.csv").write_text("plain")
+    try:
+        (data / "latest.csv").symlink_to(targets / "2026.csv")
+        (data / "previous.csv").symlink_to(targets / "2025.csv")
+    except OSError:
+        pytest.skip("symbolic links cannot be made here")
+    names = ("latest.csv", "previous.csv", "other.csv")
+    uploads = [(data / name, f"loc:{destination.as_posix()}/{name}") for name in names]
+    failed = upload_files(ConfigDataClient(remote="loc,type=local"), uploads)
+    assert failed == 0
+    assert [(destination / name).read_text() for name in names] == [
+        "this year",
+        "last year",
+        "plain",
+    ]
+    assert [r["action"] for r in results_module._ITEMS] == ["uploaded"] * 3
+
+
+# ---------------------------------------------------------------------------
+# Paths at a remote's root
+# ---------------------------------------------------------------------------
+
+
+def test_files_under_a_bare_remote_are_not_made_absolute(tmp_path):
+    # 'box:' + '/' + name is 'box:/name', the filesystem's root on a local
+    # or SFTP remote, not the remote's own
+    from yellowdog_cli.utils.dataclient.operations import (
+        _local_upload_files,
+        flattened_destinations,
+    )
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "f.txt").write_text("x", encoding="utf-8")
+    assert flattened_destinations(tmp_path, "box:") == ["box:f.txt"]
+    assert [d for _, d, _ in _local_upload_files(tmp_path, "box:")] == ["box:sub/f.txt"]
+    assert flattened_destinations(tmp_path, "box:up/") == ["box:up/f.txt"]
+
+
+@needs_rclone
+def test_a_file_at_the_remotes_root_is_copied_under_its_own_name(tmp_path, monkeypatch):
+    # Not named after the remote ('sub/loc:a.txt'), as the whole path's last
+    # '/'-separated part would have it
+    from yellowdog_cli.utils.dataclient.operations import copy_remote
+
+    reset_results()
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    config = ConfigDataClient(remote="loc,type=local")
+    copy_remote(config, "loc:a.txt", config, "loc:sub/", src_is_file=True)
+    assert [p.name for p in (tmp_path / "sub").iterdir()] == ["a.txt"]
+
+
+def test_items_are_grouped_by_directory_a_group_of_one_done_alone():
+    from yellowdog_cli.utils.dataclient.operations import _by_directory
+
+    items = ["a/1", "b/1", "a/2", "solo", "c/1"]
+    groups, singles = _by_directory(
+        items, lambda item: item.split("/")[0] if "/" in item else None
+    )
+    assert groups == {"a": ["a/1", "a/2"]}
+    # In the order given: one with no directory, and those alone in theirs
+    assert singles == ["b/1", "solo", "c/1"]

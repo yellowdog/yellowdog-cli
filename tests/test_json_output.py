@@ -835,6 +835,43 @@ class TestAbort:
         assert run.exit_code == ExitCode.AUTHENTICATION
         assert err.count("401 error") == 1
 
+    @pytest.fixture()
+    def selected(self, monkeypatch):
+        """
+        With no targets, the Work Requirements selected from the scope:
+        'wr-a' and 'wr-b', as the (unhashable) SDK summaries they are.
+        """
+        summaries = [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")]
+        monkeypatch.setattr(
+            yd_abort,
+            "get_filtered_work_requirement_summaries",
+            lambda client, **kwargs: summaries,
+        )
+        monkeypatch.setattr(yd_abort, "select", lambda client, objects, **k: objects)
+
+    @pytest.mark.parametrize(
+        "failure, exit_code, wr_b",
+        [
+            # The next Work Requirement still tried, and failing too
+            ("500", ExitCode.PLATFORM, "failed"),
+            # The session's failure: nothing further attempted
+            ("connection", ExitCode.CONNECTION, "skipped"),
+        ],
+    )
+    def test_a_selected_work_requirements_failing_lookup_is_recorded(
+        self, run, wrs, selected, failure, exit_code, wr_b
+    ):
+        client = self._client()
+        client.work_client.get_tasks.side_effect = (
+            _http_error(500) if failure == "500" else ConnectionError_("reset")
+        )
+        out, _, _ = run(yd_abort, client=client, task_id_list=[])
+        assert [(r["name"], r["outcome"]) for r in out] == [
+            ("wr-a", "failed"),
+            ("wr-b", wr_b),
+        ]
+        assert run.exit_code == exit_code
+
     def test_duplicates_and_overlaps_are_aborted_once(self, run, wrs):
         client = self._client([_task()], by_id={TASK_ID: _task()})
         out, err, _ = run(
@@ -1256,7 +1293,7 @@ class TestBoost:
             (ALLOWANCE_ID_2, "failed"),
             (ALLOWANCE_ID, "boosted"),
         ]
-        assert out[0]["error"] == "not found"
+        assert out[0]["error"] == f"Cannot find Allowance {ALLOWANCE_ID_2}"
         # Its one failure's cause
         assert run.exit_code == 6
 
@@ -1275,15 +1312,23 @@ class TestBoost:
         # What to check, said once for both
         assert err.count("required permissions") == 1
 
-    def test_one_confirmation_shows_the_descriptions(self):
-        found = [
-            (ALLOWANCE_ID, SimpleNamespace(description="gpu budget")),
-            (ALLOWANCE_ID_2, SimpleNamespace(description=None)),
-        ]
-        assert yd_boost._confirmation("2 hours", found) == (  # type: ignore[arg-type]
+    def test_one_confirmation_shows_the_descriptions(self, run, monkeypatch):
+        asked: list[str] = []
+        monkeypatch.setattr(
+            yd_boost,
+            "confirm_items",
+            lambda question, items, record: asked.append(question) and False,
+        )
+        run(
+            yd_boost,
+            client=self._client({ALLOWANCE_ID: "gpu budget", ALLOWANCE_ID_2: None}),
+            boost_hours=2,
+            allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
+        )
+        assert asked == [
             f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
             f" {ALLOWANCE_ID_2})?"
-        )
+        ]
 
     def test_remaining_hours_are_recorded(self, run):
         client = self._client(boost=lambda *a: SimpleNamespace(remainingHours=12.5))
@@ -1293,7 +1338,7 @@ class TestBoost:
         assert out[0]["remainingHours"] == 12.5
 
     def test_a_repeated_id_is_boosted_once(self, run):
-        out, err, client = run(
+        out, _, client = run(
             yd_boost,
             client=self._client(),
             boost_hours=2,
@@ -1301,7 +1346,6 @@ class TestBoost:
         )
         assert client.allowances_client.boost_allowance_by_id.call_count == 1
         assert [item["outcome"] for item in out] == ["boosted"]
-        assert "Ignoring 1 duplicate Allowance ID(s)" in err
 
     def test_an_authentication_failure_stops_the_rest(self, run):
         def boost(*args):
@@ -1941,6 +1985,33 @@ class TestSubmit:
         assert out["namespace"] == "ns"
         assert out["type"] == "work-requirements"
         assert out["name"]
+
+    @pytest.mark.parametrize(
+        "configured, named",
+        [
+            ({"wr_data_file": "wr.json"}, "'wr.json'"),
+            ({"csv_files": ["tasks.csv"]}, "CSV file(s)"),
+        ],
+    )
+    def test_empty_is_refused_with_a_configured_specification(
+        self, run, run_submit, monkeypatch, configured, named
+    ):
+        # Refused on the command line as parsed; from the configuration,
+        # as the command starts, rather than its Task Groups submitted
+        import dataclasses
+
+        import yellowdog_cli.submit as yd_submit
+
+        monkeypatch.setattr(
+            yd_submit,
+            "CONFIG_WR",
+            dataclasses.replace(yd_submit.CONFIG_WR, **configured),
+        )
+        _, err, client = run_submit()
+        client.work_client.add_work_requirement.assert_not_called()
+        assert run.exit_code == ExitCode.FAILURE
+        assert "'--empty' submits no Task Groups" in err
+        assert named in err
 
     def test_quiet_json_is_only_the_json(self, run_submit):
         out, _, _ = run_submit(quiet=True)
@@ -3194,11 +3265,15 @@ class TestCopy:
 
     @pytest.mark.parametrize("dry_run", [False, True])
     def test_a_missing_source_fails(self, remote, run_dc, dry_run):
-        _, err, code = run_dc(
+        out, err, code = run_dc(
             yd_copy, src_path="loc:remote/nope", dst_path="loc:dst", dry_run=dry_run
         )
         assert code == 1
         assert "'loc:remote/nope' does not exist" in " ".join(err.split())
+        # Recorded, as yd data download records a path that is missing
+        assert [(r["source"], r["action"]) for r in out] == [
+            ("loc:remote/nope", "failed")
+        ]
 
     def test_a_file_at_the_remotes_top_level_is_copied_to_its_path(
         self, remote, run_dc
@@ -3616,8 +3691,8 @@ class TestNodeAction:
                 "nodeId": NODE_ID,
                 "status": "EMPTY",
                 "waiting": 0,
-                "executing": "-",
-                "failed": "-",
+                "executing": None,
+                "failed": None,
             }
         ]
 
@@ -3873,11 +3948,11 @@ class TestEntryToName:
 
 class TestJoinRemote:
     def test_a_bare_remote_gets_no_slash(self):
-        from yellowdog_cli.utils.dataclient.operations import _join_remote
+        from yellowdog_cli.utils.dataclient.operations import join_remote
 
-        assert _join_remote("S3:", "x") == "S3:x"
-        assert _join_remote("S3:b/", "x") == "S3:b/x"
-        assert _join_remote("S3:b", "x") == "S3:b/x"
+        assert join_remote("S3:", "x") == "S3:x"
+        assert join_remote("S3:b/", "x") == "S3:b/x"
+        assert join_remote("S3:b", "x") == "S3:b/x"
 
 
 # ---------------------------------------------------------------------------
@@ -4026,6 +4101,50 @@ class TestOneRcloneRunForManyFiles:
         assert counted["_delete_files"] == 1
         assert sorted(r["action"] for r in out) == ["deleted"] * len(_MANY)
         assert list((many / "remote" / "many").iterdir()) == []
+
+    def _failed_delete(self, monkeypatch, delete_some: bool, listing_fails: bool):
+        """
+        Make the delete run fail, having deleted all but f2.txt if
+        'delete_some', and the listing that checks it fail too if
+        'listing_fails'.
+        """
+        import yellowdog_cli.utils.dataclient.operations as dcu
+
+        real_delete, real_lsjson = dcu._delete_files, dcu._lsjson
+        ran = []
+
+        def failing_delete(rclone, remote_dir, names):
+            if delete_some:
+                real_delete(rclone, remote_dir, [n for n in names if n != "f2.txt"])
+            ran.append(True)
+            return SimpleNamespace(returncode=1, stderr="connection reset")
+
+        def lsjson(*args, **kwargs):
+            if ran and listing_fails:
+                raise RuntimeError("connection reset")
+            return real_lsjson(*args, **kwargs)
+
+        monkeypatch.setattr(dcu, "_delete_files", failing_delete)
+        monkeypatch.setattr(dcu, "_lsjson", lsjson)
+
+    def test_a_failed_delete_records_each_file_by_whether_it_went(
+        self, many, run_dc, monkeypatch
+    ):
+        self._failed_delete(monkeypatch, delete_some=True, listing_fails=False)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/many/*.txt"])
+        assert code == 1
+        failed = [r["path"] for r in out if r["action"] == "failed"]
+        assert failed == ["loc:remote/many/f2.txt"]
+
+    def test_a_failed_delete_that_cannot_be_checked_records_every_file_failed(
+        self, many, run_dc, monkeypatch
+    ):
+        # As when the connection is lost: nothing is known to have gone
+        self._failed_delete(monkeypatch, delete_some=False, listing_fails=True)
+        out, _, code = run_dc(yd_delete, remote_paths=["loc:remote/many/*.txt"])
+        assert code == 1
+        assert [r["action"] for r in out] == ["failed"] * len(_MANY)
+        assert len(list((many / "remote" / "many").iterdir())) == len(_MANY)
 
 
 def test_a_long_list_of_names_is_summarised():

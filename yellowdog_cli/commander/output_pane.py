@@ -88,6 +88,11 @@ class OutputPane:
         # Copy and Save take what is shown, and their tooltips say so
         self._copy_button = copy_button
         self._save_button = save_button
+        # Their own tooltips, the window's, put back when the output is no
+        # longer filtered
+        self._button_tooltips = {
+            button: button.toolTip() for button in (copy_button, save_button)
+        }
         self._build_chooser = build_chooser
         self._pid = pid  # Commander's, on its own messages
 
@@ -324,6 +329,16 @@ class OutputPane:
             )
         )
         return menu
+
+    def command_line_of(self, pid: int) -> str | None:
+        """
+        The command line, as the user would type it, of the run whose
+        process has 'pid', or None if no run has.
+        """
+        for run in self._output_runs.values():
+            if run.pid == pid:
+                return run.user_command_line or run.command_line or None
+        return None
 
     def _choosable_runs(self) -> list[OutputRun]:
         """
@@ -592,8 +607,8 @@ class OutputPane:
         """
         self._bar.setVisible(self._filtered)
         if not self._filtered:
-            for button in (self._copy_button, self._save_button):
-                button.setToolTip("")
+            for button, tooltip in self._button_tooltips.items():
+                button.setToolTip(tooltip)
             return
 
         runs = [self._output_runs[run_id] for run_id in self._output_filter or ()]

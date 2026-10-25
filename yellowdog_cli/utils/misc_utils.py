@@ -18,7 +18,11 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import dotenv_values, find_dotenv, load_dotenv
 
 from yellowdog_cli.utils.limits import YD_NAME_MAX_LENGTH
-from yellowdog_cli.utils.paths import relative_if_possible
+from yellowdog_cli.utils.paths import (
+    default_config_file,
+    is_user_config_file,
+    relative_if_possible,
+)
 from yellowdog_cli.utils.printing import print_debug, print_warning
 from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
 from yellowdog_cli.utils.type_check import check_str
@@ -467,14 +471,21 @@ def format_yd_name(yd_name: str, add_prefix: bool = True) -> str:
 def dotenv_file_path(config_file: str | None) -> str | None:
     """
     The .env file a command would load: one beside the config file
-    ('config_file', else config.toml) first, else the nearest one found
-    upwards from the current directory; None when there is neither.
+    ('config_file', else the one read by default) first, else the nearest
+    one found upwards from the current directory; None when there is
+    neither. The user's own configuration file, read for want of one here,
+    comes after the current directory's: its .env is the user's default, as
+    the file is.
     """
     # Check the config file's directory first (covers the case where the user
     # runs from a different directory than where config.toml lives), then
     # fall back to searching upward from CWD.
-    config_path = config_file or "config.toml"
+    config_path = config_file or default_config_file()
     config_dir_dotenv = join(dirname(abspath(config_path)), ".env")
+    if config_file is None and is_user_config_file(config_path):
+        return find_dotenv(usecwd=True) or (
+            config_dir_dotenv if isfile(config_dir_dotenv) else None
+        )
     if isfile(config_dir_dotenv):
         return config_dir_dotenv
     return find_dotenv(usecwd=True) or None

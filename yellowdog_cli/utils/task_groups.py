@@ -101,7 +101,8 @@ def check_task_groups(wr_data: dict) -> None:
     them, so that one missing is named rather than reported as a bare
     KeyError ("ERROR : 'tasks'").
     """
-    if TASK_GROUPS not in wr_data:
+    # Null, as missing: check_list() passes None, which would then be indexed
+    if wr_data.get(TASK_GROUPS) is None:
         raise ValueError(
             f"Property '{TASK_GROUPS}' is not defined (use '--empty' to submit a"
             " Work Requirement with no Task Groups)"
@@ -112,7 +113,7 @@ def check_task_groups(wr_data: dict) -> None:
         task_group = f"Task Group {tg_number + 1} of {len(wr_data[TASK_GROUPS])}"
         if not isinstance(task_group_data, dict):
             raise TypeError(f"{task_group} should be of type 'Dict'")
-        if TASKS not in task_group_data:
+        if task_group_data.get(TASKS) is None:
             raise ValueError(f"Property '{TASKS}' is not defined in {task_group}")
         for task_number, task in enumerate(check_list(task_group_data[TASKS], TASKS)):
             if not isinstance(task, dict):
@@ -260,6 +261,78 @@ def create_task_group(
     return task_group
 
 
+def task_count_for(
+    config_wr: ConfigWorkRequirement, wr_data: dict, task_group_data: dict
+) -> int | None:
+    """
+    A Task Group's 'taskCount': '--task-count' where it was given, which
+    overrides the specification; else the lowest level of the specification
+    setting it, else the TOML file's.
+    """
+    return _task_count_in(config_wr, Cascade(wr_data, task_group_data))
+
+
+def _task_count_in(config_wr: ConfigWorkRequirement, levels: Cascade) -> int | None:
+    """
+    task_count_for() over levels already built: the one rule for the Task
+    Group's name and lazy variables, and for the Tasks generated, so that
+    '{{task_count}}' is the number of Tasks there will be.
+    """
+    if config_wr.task_count_from_command_line:
+        return config_wr.task_count
+    return levels.checked(TASK_COUNT, check_int, config_wr.task_count)
+
+
+def task_group_name_at(
+    config_wr: ConfigWorkRequirement,
+    number: int,
+    count: int,
+    wr_data: dict,
+    task_group_data: dict,
+) -> str:
+    """
+    The name the Task Group would be given as number 'number' (zero-based)
+    of 'count', changing nothing: for '--add-to', which must know which of
+    the specification's Task Groups the Work Requirement already has before
+    it can number the rest.
+    """
+    name, _ = _name_and_task_count(
+        config_wr, number, count, task_group_data, Cascade(wr_data, task_group_data)
+    )
+    return name
+
+
+def _name_and_task_count(
+    config_wr: ConfigWorkRequirement,
+    number: int,
+    count: int,
+    task_group_data: dict,
+    levels: Cascade,
+) -> tuple[str, int]:
+    """
+    The Task Group's name as number 'number' of 'count', and its number of
+    Tasks ('taskCount' if a single Task is to be expanded, as the Tasks
+    will be).
+    """
+    num_tasks = len(task_group_data[TASKS])
+    if num_tasks == 1:  # Account for Task expansion, as the Tasks will be
+        _task_count = _task_count_in(config_wr, levels)
+        if _task_count is not None:
+            num_tasks = _task_count
+
+    # The following handles possible CSV substitution at the config.toml level
+    name = task_group_data.get(NAME)
+    if name is None:
+        try:
+            name = task_group_data[TASKS][0][TASK_GROUP_NAME]
+        except (KeyError, IndexError):
+            name = config_wr.task_group_name
+    task_group_name = format_yd_name(
+        get_task_group_name(check_str(name, NAME), number, count, num_tasks)
+    )
+    return task_group_name, num_tasks
+
+
 def _name_task_group(
     config_wr: ConfigWorkRequirement,
     position: TaskGroupPosition,
@@ -271,25 +344,8 @@ def _name_task_group(
     Task is to be expanded), with its lazy substitutions defined from them
     and then applied to the Task Group's own properties, in place.
     """
-    num_tasks = len(task_group_data[TASKS])
-    if num_tasks == 1:  # Account for Task expansion
-        _task_count = levels.checked(TASK_COUNT, check_int, config_wr.task_count)
-        if _task_count is not None:
-            num_tasks = _task_count
-
-    # The following handles possible CSV substitution at the config.toml level
-    try:
-        if task_group_data.get(NAME) is None:
-            task_group_data[NAME] = task_group_data[TASKS][0][TASK_GROUP_NAME]
-    except (KeyError, IndexError):
-        pass
-    task_group_name = format_yd_name(
-        get_task_group_name(
-            check_str(task_group_data.get(NAME, config_wr.task_group_name), NAME),
-            position.number,
-            position.count,
-            num_tasks,
-        )
+    task_group_name, num_tasks = _name_and_task_count(
+        config_wr, position.number, position.count, task_group_data, levels
     )
 
     # Add lazy substitutions for use in any Task Group property

@@ -781,6 +781,31 @@ def test_two_local_files_for_one_upload_path_are_refused(tmp_path, monkeypatch):
         instance._upload_rclone_file("b.txt", "yds3:bucket/in.txt")
 
 
+def test_a_file_is_found_from_the_files_directory_without_changing_directory(
+    tmp_path, monkeypatch
+):
+    # Joined, never chdir()'d to: the whole process would move while other
+    # batches run
+    import os
+
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    monkeypatch.setattr(
+        type(lazy_value(wrapper_module.ARGS_PARSER)),
+        "dry_run",
+        property(lambda self: True),
+    )
+
+    def changed(path):
+        pytest.fail("changed directory")
+
+    monkeypatch.setattr(os, "chdir", changed)
+    monkeypatch.setattr(su, "chdir", changed, raising=False)
+    instance = su.RcloneUploadedFiles(_ctx(), files_directory=str(tmp_path))
+    instance._upload_rclone_file("a.txt", "yds3:bucket/in.txt")
+    with pytest.raises(FileNotFoundError, match=r"nope\.txt"):
+        instance._upload_rclone_file("nope.txt", "yds3:bucket/nope.txt")
+
+
 class TestTaskDataLevels:
     @staticmethod
     def _config(**values) -> Any:

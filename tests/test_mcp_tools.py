@@ -311,13 +311,13 @@ class TestFixedArgs:
             config_file=None, namespace="ns", tag="t", variables=("a=1",)
         )
         # yd-show has no --yes; yd-show and yd-variables print JSON without
-        # a flag; yd-wait has no namespace or tag; yd-version parses its own
-        # command line and takes --json alone
+        # a flag; yd-wait has no namespace or tag; yd-version, standalone,
+        # takes --json and --nf alone
         assert "--yes" not in fixed_args(COMMANDS["yd-show"], settings)
         assert "--json" not in fixed_args(COMMANDS["yd-show"], settings)
         assert "--json" not in fixed_args(COMMANDS["yd-variables"], settings)
         assert "-n" not in fixed_args(COMMANDS["yd-wait"], settings)
-        assert fixed_args(COMMANDS["yd-version"], settings) == ["--json"]
+        assert fixed_args(COMMANDS["yd-version"], settings) == ["--nf", "--json"]
 
     def test_the_self_printing_commands_are_quiet(self):
         # yd-show and yd-variables print their own JSON with no --json option,
@@ -438,6 +438,38 @@ class TestToArgv:
                 to_argv(
                     TOOLS["yd_workrequirement_cancel"], {"sort": sort}, str(tmp_path)
                 )
+
+    @pytest.mark.parametrize("value", [[1, 2], True, None, "5", float("nan")])
+    @pytest.mark.parametrize(
+        "tool, name, rest",
+        [
+            ("yd_workrequirement_priority", "priority", {"priority_targets": ["wr"]}),
+            ("yd_taskgroup_priority", "priority", {"priority_targets": ["wr/tg"]}),
+            (
+                "yd_computerequirement_autoshutdown",
+                "auto_shutdown_minutes",
+                {"all_in_scope": True},
+            ),
+        ],
+    )
+    def test_a_number_argument_that_is_not_one_is_refused(
+        self, tmp_path, tool, name, rest, value
+    ):
+        # A list would become extra targets ('-- 1 2 wr'), or several
+        # '--minutes=' of which the last wins
+        with pytest.raises(ToolArgumentError, match=f"{name} must be a number"):
+            to_argv(TOOLS[tool], {**rest, name: value}, str(tmp_path))
+
+    def test_a_number_argument_takes_a_fraction_and_keeps_its_minimum(self, tmp_path):
+        tool = TOOLS["yd_computerequirement_autoshutdown"]
+        argv, _ = to_argv(
+            tool, {"auto_shutdown_minutes": 2.5, "all_in_scope": True}, str(tmp_path)
+        )
+        assert "--minutes=2.5" in argv
+        with pytest.raises(ToolArgumentError, match="at least 0"):
+            to_argv(
+                tool, {"auto_shutdown_minutes": -1, "all_in_scope": True}, str(tmp_path)
+            )
 
     def test_a_missing_required_argument_is_refused(self, tmp_path):
         with pytest.raises(ToolArgumentError, match="remote_paths"):

@@ -65,7 +65,7 @@ yd data upload --data-client-profile prod myfile.txt
 yd data download --data-client-profile staging results/
 ```
 
-The active profile can also be set via the `YD_DATA_CLIENT` environment variable. The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation.
+The active profile can also be set via the `YD_DATA_CLIENT` environment variable. The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation. The `YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET` and `YD_DATA_CLIENT_PREFIX` environment variables do not override a field the selected profile sets itself, only those it inherits from `[dataClient]`: a profile is chosen by name, so `yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names even with `YD_DATA_CLIENT_BUCKET` set for the source.
 
 Profile names are free-form; the only reserved names are `remote`, `bucket`, and `prefix` (the scalar field names of `[dataClient]` itself). A profile takes only those three keys: any other, such as a misspelt `bukcet`, is an error, as an unknown key elsewhere in the file is, rather than being ignored while the profile uses the base section's value.
 

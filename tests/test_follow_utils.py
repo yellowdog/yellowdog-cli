@@ -3,6 +3,8 @@ Unit tests for follow_utils.py.
 """
 
 import json
+import signal
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -219,6 +221,37 @@ class TestProgressCounts:
             "Work Requirement finished with 2 cancelled task(s)"
         )
 
+    def test_an_event_leaving_its_counts_null_counts_nothing(self):
+        # The Platform leaves a summary null until there is something to
+        # summarise: the bar shows zeros rather than the stream ending
+        wr = self._wr(_task_group(2))
+        events = [
+            "data:" + json.dumps({"status": "RUNNING", "taskGroups": None}),
+            "data:"
+            + json.dumps(
+                {
+                    "status": "RUNNING",
+                    "taskGroups": [
+                        {"taskSummary": None},
+                        {"taskSummary": {"taskCount": None, "statusCounts": None}},
+                        {
+                            "taskSummary": {
+                                "taskCount": 3,
+                                "statusCounts": {"FAILED": None},
+                            }
+                        },
+                    ],
+                }
+            ),
+        ]
+        progress, warning = self._follow(wr, events)
+        assert [update["description"] for update in progress.updates] == [
+            "RUNNING  0/2",
+            "RUNNING  0/0",
+            "RUNNING  0/3",
+        ]
+        warning.assert_not_called()
+
     def test_an_event_for_another_type_is_ignored(self):
         wr = self._wr(_task_group(1))
         events = [_event("RUNNING", (1, {"FAILED": 1}))]
@@ -247,19 +280,21 @@ class TestExitOnFailureCode:
     that failure's code, its outcome never having been seen.
     """
 
-    def _code(self, status, follow_failure=None):
+    WR_ID = "ydid:workreq:000000:aaa:bbb"
+
+    def _code(self, status, follow_failure=None, failed_stream=WR_ID):
         client = MagicMock()
         client.work_client.get_work_requirement_by_id.return_value = SimpleNamespace(
             status=status
         )
         if follow_failure is not None:
-            fu._record_follow_failure(follow_failure)
+            fu._record_follow_failure(follow_failure, failed_stream)
         with (
             patch.object(wrapper_module, "CLIENT", client),
             patch.object(fu, "print_error") as error,
             patch.object(fu, "print_warning"),
         ):
-            code = fu.work_requirement_exit_code(_ctx(), "ydid:workreq:000000:aaa:bbb")
+            code = fu.work_requirement_exit_code(_ctx(), self.WR_ID)
         return code, error
 
     @pytest.mark.parametrize(
@@ -275,6 +310,12 @@ class TestExitOnFailureCode:
         code, error = self._code(WorkRequirementStatus.RUNNING, ExitCode.CONNECTION)
         assert code == ExitCode.CONNECTION
         assert "could not be followed to its end" in error.call_args.args[0]
+
+    def test_another_streams_failure_is_not_charged_to_it(self):
+        code, _ = self._code(
+            WorkRequirementStatus.RUNNING, ExitCode.CONNECTION, "ydid:compreq:x"
+        )
+        assert code == ExitCode.SUCCESS
 
     def test_one_that_finished_though_the_stream_failed_exits_0(self):
         # Its outcome is known after all
@@ -982,6 +1023,44 @@ class TestFollowIdsChoices:
         fu.follow_ids(_ctx(), [WR])
         assert barred == [WR]
         assert started == []
+
+    def _guarded(self, monkeypatch, ydids: list[str], progress: bool) -> bool:
+        """
+        Whether follow_ids() waited for the streams with the cursor guard.
+        """
+        self._args(monkeypatch, progress=progress)
+        monkeypatch.setattr(fu, "print_warning", lambda *a, **k: None)
+        monkeypatch.setattr(
+            fu, "follow_work_requirement_with_progress", lambda _ctx, ydid: None
+        )
+        guarded: list[bool] = []
+
+        @contextmanager
+        def guard():
+            guarded.append(True)
+            yield
+
+        monkeypatch.setattr(fu, "_cursor_restored_on_interrupt", guard)
+        fu.follow_ids(_ctx(), ydids)
+        return bool(guarded)
+
+    def test_the_progress_bar_restores_the_cursor_on_ctrl_c(self, started, monkeypatch):
+        assert self._guarded(monkeypatch, [WR], progress=True)
+
+    def test_plain_following_leaves_ctrl_c_alone(self, started, monkeypatch):
+        other = WR.replace("aaaaaaaa-", "cccccccc-")
+        assert not self._guarded(monkeypatch, [WR], progress=False)
+        # '--progress' given up for two Work Requirements: no bar, no guard
+        assert not self._guarded(monkeypatch, [WR, other], progress=True)
+
+    def test_the_sigint_handler_is_put_back(self, started, monkeypatch):
+        self._args(monkeypatch, progress=True)
+        monkeypatch.setattr(
+            fu, "follow_work_requirement_with_progress", lambda _ctx, ydid: None
+        )
+        before = signal.getsignal(signal.SIGINT)
+        fu.follow_ids(_ctx(), [WR])
+        assert signal.getsignal(signal.SIGINT) is before
 
     def test_only_a_provisioned_worker_pool_has_a_compute_requirement(
         self, monkeypatch

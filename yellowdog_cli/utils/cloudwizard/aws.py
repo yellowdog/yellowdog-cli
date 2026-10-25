@@ -41,6 +41,29 @@ def _error_code(error: ClientError) -> str:
     return str(error.response.get("Error", {}).get("Code", ""))
 
 
+def _default_security_group(ec2_client) -> AWSSecurityGroup | None:
+    """
+    The security group named 'default' in the region's default VPC, or None
+    if the region has no default VPC. Not the first group with 'default' in
+    its name, which may be a user's 'prod-default-db', or another VPC's.
+    Raises ClientError as describing them does.
+    """
+    vpcs = ec2_client.describe_vpcs(
+        Filters=[{"Name": "isDefault", "Values": ["true"]}]
+    )["Vpcs"]
+    if not vpcs:
+        return None
+    groups = ec2_client.describe_security_groups(
+        Filters=[
+            {"Name": "vpc-id", "Values": [vpcs[0]["VpcId"]]},
+            {"Name": "group-name", "Values": ["default"]},
+        ]
+    )["SecurityGroups"]
+    if not groups:
+        return None
+    return AWSSecurityGroup(name=groups[0]["GroupName"], id=groups[0]["GroupId"])
+
+
 def _get_opted_in_regions() -> list[str]:
     """
     Return the list of AWS regions opted into by the account.
@@ -133,8 +156,15 @@ class AWSConfig(CommonCloudConfig):
 
     def setup(self):
         """
-        Set up all AWS and YellowDog assets
+        Set up all AWS and YellowDog assets. A region is needed, to check
+        the new access key works for EC2: refused before anything is made
+        without one, rather than once the IAM user, key and templates exist.
         """
+        if self.region_name is None:
+            raise ValueError(
+                "No AWS region: give --region-name, or set a default region"
+                " (AWS_DEFAULT_REGION, or 'region' in ~/.aws/config)"
+            )
         self._load_aws_resources()
         self._create_aws_resources()
         self._gather_aws_network_information()
@@ -178,31 +208,25 @@ class AWSConfig(CommonCloudConfig):
             return
         for region in regions:
             ec2_client = boto3.client("ec2", region_name=region)
-            # Collect the default security group for the region
             try:
-                response = ec2_client.describe_security_groups(Filters=[])
+                aws_sec_grp = _default_security_group(ec2_client)
             except ClientError as e:
-                if _error_code(e) == "AuthFailure":
-                    pass
-                else:
+                if _error_code(e) != "AuthFailure":
                     print_error(
                         f"Cannot retrieve security groups for region '{region}': {e}"
                     )
                 continue
-
-            for sec_grp in response["SecurityGroups"]:
-                name = sec_grp["GroupName"]
-                if "default" in name.lower():
-                    aws_sec_grp = AWSSecurityGroup(name=name, id=sec_grp["GroupId"])
-                    if operation == "add-ssh":
-                        AWSConfig._add_security_group_ingress_rule(
-                            ec2_client, aws_sec_grp, ssh_ipv4_ingress_rule, "SSH"
-                        )
-                    elif operation == "remove-ssh":
-                        AWSConfig._remove_security_group_ingress_rule(
-                            ec2_client, aws_sec_grp, ssh_ipv4_ingress_rule, "SSH"
-                        )
-                    break
+            if aws_sec_grp is None:
+                print_warning(f"No default security group found for {region}")
+                continue
+            if operation == "add-ssh":
+                AWSConfig._add_security_group_ingress_rule(
+                    ec2_client, aws_sec_grp, ssh_ipv4_ingress_rule, "SSH"
+                )
+            elif operation == "remove-ssh":
+                AWSConfig._remove_security_group_ingress_rule(
+                    ec2_client, aws_sec_grp, ssh_ipv4_ingress_rule, "SSH"
+                )
 
     def _create_aws_resources(self):
         """
@@ -337,10 +361,11 @@ class AWSConfig(CommonCloudConfig):
                     " added to YellowDog Keyring"
                 )
             elif self._wait_until_access_key_is_valid_for_ec2(access_key=access_key):
-                credential_resource = self._generate_yd_aws_credential(
-                    YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
+                self._add_credential(
+                    self._generate_yd_aws_credential(
+                        YD_KEYRING_NAME, YD_CREDENTIAL_NAME, access_key
+                    )
                 )
-                create_resources(self._ctx, [credential_resource])
             else:
                 print_warning("AWS Credential not added to YellowDog Keyring")
 
@@ -374,9 +399,10 @@ class AWSConfig(CommonCloudConfig):
             print_info(f"Gathering network information for region '{region}'")
             ec2_client = boto3.client("ec2", region_name=region)
 
-            # Collect the default security group for the region
+            # The default security group of the region's default VPC, whose
+            # default subnets are those collected below
             try:
-                response = ec2_client.describe_security_groups(Filters=[])
+                found = _default_security_group(ec2_client)
             except ClientError as e:
                 if _error_code(e) == "AuthFailure":
                     print_info(
@@ -386,16 +412,9 @@ class AWSConfig(CommonCloudConfig):
                     continue
                 else:
                     raise RuntimeError(f"Unable to list security groups: {e}") from e
-
-            aws_sec_grp = AWSSecurityGroup(name="", id="")
-            for sec_grp in response["SecurityGroups"]:
-                name = sec_grp["GroupName"]
-                if "default" in name.lower():
-                    aws_sec_grp = AWSSecurityGroup(name=name, id=sec_grp["GroupId"])
-                    break
-            else:
-                # No security group matched (or the list was empty)
+            if found is None:
                 print_warning(f"No default security group found for {region}")
+            aws_sec_grp = AWSSecurityGroup(name="", id="") if found is None else found
 
             # Collect the default subnets for each AZ in the region
             response = ec2_client.describe_subnets(
@@ -569,7 +588,10 @@ class AWSConfig(CommonCloudConfig):
             print_warning(f"Access key(s) already exist for user '{IAM_USER_NAME}'")
             if confirmed("Delete existing access key(s) and generate a new key?"):
                 self._delete_access_keys(iam_client)
-            else:
+            if self._access_keys:
+                # Declined, wholly or for one of them: the Credential would
+                # use an existing key, whose secret is not available, and
+                # AWS allows a user two keys
                 print_warning("Secret access keys will not be available")
                 return
 
@@ -593,18 +615,21 @@ class AWSConfig(CommonCloudConfig):
 
     def _delete_access_keys(self, iam_client):
         """
-        Delete the access key(s).
+        Delete the access key(s), each confirmed: those declined, or failing
+        to go, are kept in the list, and the rest are still asked about.
         """
         if not self._access_keys:
             print_warning(f"No access keys to delete for user '{IAM_USER_NAME}'")
             return
 
+        kept: list[AWSAccessKey] = []
         for access_key in self._access_keys:
             if not confirmed(
                 f"Delete access key '{access_key.access_key_id}' from user"
                 f" '{IAM_USER_NAME}'?"
             ):
-                return
+                kept.append(access_key)
+                continue
             try:
                 iam_client.delete_access_key(
                     UserName=IAM_USER_NAME, AccessKeyId=access_key.access_key_id
@@ -619,8 +644,9 @@ class AWSConfig(CommonCloudConfig):
                     print_error(
                         f"Unable to delete access key '{access_key.access_key_id}': {e}"
                     )
+                    kept.append(access_key)
 
-        self._access_keys.clear()
+        self._access_keys = kept
 
     @staticmethod
     def _add_service_linked_role_for_ec2_spot(iam_client):
@@ -826,6 +852,11 @@ class AWSConfig(CommonCloudConfig):
                         f" '{access_key.access_key_id}': {e}"
                     )
                     return False
+            except BotoCoreError as e:  # Not the Platform's: no region, say
+                print_error(
+                    f"Unable to validate AWS access key '{access_key.access_key_id}': {e}"
+                )
+                return False
 
         print_error(f"Unable to validate AWS access key '{access_key.access_key_id}'")
         return False

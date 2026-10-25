@@ -55,6 +55,19 @@ class Batches:
     def submit(self, function: Callable[..., int], *args) -> None:
         self._futures.append(self._executor.submit(self._run, function, *args))
 
+    def stop(self) -> None:
+        """
+        Skip every batch not yet started.
+        """
+        self._stop.set()
+
+    def stopped(self) -> bool:
+        """
+        Whether a batch has failed, or stop() was called: no more need be
+        built, since none would be sent.
+        """
+        return self._stop.is_set()
+
     def _run(self, function: Callable[..., int], *args) -> int:
         if self._stop.is_set():
             return 0
@@ -128,7 +141,16 @@ def run_batches(
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         batches = Batches(executor)
         for batch_number in range(num_batches):
-            batches.submit(send_batch, batch(batch_number), batch_number, num_batches)
+            # Once a batch has failed, none is built: building one uploads
+            # its Tasks' input files, for a Work Requirement to be cancelled
+            if batches.stopped():
+                break
+            try:
+                tasks = batch(batch_number)
+            except BaseException:
+                batches.stop()  # The batches queued are not sent either
+                raise
+            batches.submit(send_batch, tasks, batch_number, num_batches)
         return batches.total()
 
 

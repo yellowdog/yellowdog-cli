@@ -261,11 +261,13 @@ def _jsonnet_error(message: str) -> str:
 
 
 def load_toml_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = ""
+    filename: str, prefix: str = "", postfix: str = "", selected_file: bool = False
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
-    substitutions processed.
+    substitutions processed. 'selected_file' says it is the configuration
+    file itself, whose variables no file read after it replaces (see
+    add_substitutions_from_config_file()).
     """
     config = toml_loads(_read_text(filename))
 
@@ -285,6 +287,7 @@ def load_toml_file_with_variable_substitutions(
                 for var_name, var_value in variables.items()
             },
             source=f"'[{COMMON_SECTION}.{VARIABLES}]' in '{filename}'",
+            selected_file=selected_file,
         )
 
     resolve_variables_insitu(config, prefix=prefix, postfix=postfix)
@@ -338,12 +341,13 @@ def process_variable_substitutions_in_file_contents(
 
     # The Jsonnet pass leaves a type-tagged expression inside a longer string
     # for the in-situ pass to substitute as text, so one still here is not a
-    # sign of a circular reference
+    # sign of a circular reference; nor is one in a comment, which it leaves
+    checked = _without_jsonnet_comments(file_contents) if jsonnet else file_contents
     _undefined_unless_circular(
         [
             reference
             for reference in _unsubstituted_references(
-                {label: file_contents}, prefix=prefix, postfix=postfix
+                {label: checked}, prefix=prefix, postfix=postfix
             )
             if not reference[0][len(opening) :].startswith(TYPE_TAGS)
         ]
@@ -481,6 +485,15 @@ def _jsonnet_escaped(kind: str, text: str, indentation: str) -> str:
     return text.replace("\n", "\n" + indentation)
 
 
+def _without_jsonnet_comments(code: str) -> str:
+    """
+    Jsonnet code with its comments taken out, the strings left as they are.
+    """
+    return _JSONNET_LITERAL.sub(
+        lambda match: match.group() if match.lastgroup is not None else "", code
+    )
+
+
 def _substitute_jsonnet_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
@@ -499,6 +512,7 @@ def _substitute_jsonnet_pass(
     """
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
+    literals = list(_JSONNET_LITERAL.finditer(file_contents))
     strings = [
         (
             match.lastgroup,
@@ -506,10 +520,14 @@ def _substitute_jsonnet_pass(
             match.end(match.lastgroup),
             match,
         )
-        for match in _JSONNET_LITERAL.finditer(file_contents)
+        for match in literals
         if match.lastgroup is not None  # Not a comment
     ]
     starts = [start for _, start, _, _ in strings]
+    # The comments, whose expressions are left as they are: commented out,
+    # one is no code, and a typed one would fail the file on its value
+    comments = [match.span() for match in literals if match.lastgroup is None]
+    comment_starts = [start for start, _ in comments]
 
     # Substituted once each per pass, however often it appears: an expression
     # as written, with the kind of string it is in (None in the code)
@@ -519,6 +537,9 @@ def _substitute_jsonnet_pass(
     for span in find_delimited_expression_spans(file_contents, opening, closing):
         if span.start < position:
             continue  # Inside a whole string already written as its value
+        comment = bisect_right(comment_starts, span.start) - 1
+        if comment >= 0 and span.start < comments[comment][1]:
+            continue
         index = bisect_right(starts, span.start) - 1
         kind, content_start, content_end, literal = (
             strings[index] if index >= 0 else (None, 0, 0, None)

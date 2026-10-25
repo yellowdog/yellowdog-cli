@@ -17,8 +17,9 @@ _yd_completion() {
     lines=("${(@f)reply}")
     mode=${lines[1]}
     case $mode in
-        files) _files ;;
-        dirs) _files -/ ;;
+        # The path after an '--option=', not the option with it
+        files) compset -P '*='; _files ;;
+        dirs) compset -P '*='; _files -/ ;;
         values)
             for line in "${(@)lines[2,-1]}"; do
                 if [[ $line == *$'\t'?* ]]; then

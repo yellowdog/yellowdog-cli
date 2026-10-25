@@ -15,6 +15,7 @@ from json import loads as json_loads
 from typing import Any
 
 from yellowdog_cli.utils.output_settings import OUTPUT
+from yellowdog_cli.utils.output_style import task_group_status_text
 from yellowdog_cli.utils.printing import prefix_width, print_info, print_json
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
@@ -142,7 +143,7 @@ def status_counts_msg(
         return ""
 
 
-def _field(data: Any, *keys: str) -> Any:
+def event_field(data: Any, *keys: str) -> Any:
     """
     A field of an event's JSON, or None where it, or any object on the way
     to it, is absent or null: the Platform leaves a summary null until there
@@ -155,15 +156,15 @@ def _field(data: Any, *keys: str) -> Any:
     return data
 
 
-def _counts(data: Any, *keys: str) -> dict:
+def event_counts(data: Any, *keys: str) -> dict:
     """
     A status count table from an event, empty where there is none.
     """
-    counts = _field(data, *keys)
+    counts = event_field(data, *keys)
     return counts if isinstance(counts, dict) else {}
 
 
-def _count(value: Any) -> int:
+def event_count(value: Any) -> int:
     """
     A count from an event, 0 where there is none.
     """
@@ -205,61 +206,63 @@ def print_event(event: str, id_type: YDIDType):
 
     if id_type == YDIDType.WORK_REQUIREMENT:
         for task_group in event_data.get("taskGroups") or []:
-            status = str(task_group.get("status"))
-            if task_group.get("waitingOnDependency") is True:
-                status += "/WAITING"
-            elif task_group.get("starved") is True:
-                status += "/STARVED"
+            status = task_group_status_text(
+                task_group.get("status"),
+                task_group.get("starved"),
+                task_group.get("waitingOnDependency"),
+            )
             msg += (
                 f"{event_indent}[{status}] Task Group '{task_group.get('name')}':"
-                f" {_count(_field(task_group, 'taskSummary', 'taskCount')):,d}"
+                f" {event_count(event_field(task_group, 'taskSummary', 'taskCount')):,d}"
                 f" Task(s){event_indent_2}"
             )
             msg += status_counts_msg(
                 status_counts_tasks(),
-                _counts(task_group, "taskSummary", "statusCounts"),
+                event_counts(task_group, "taskSummary", "statusCounts"),
             )
 
     elif id_type == YDIDType.WORKER_POOL:
         msg += f"{event_indent}Node(s):        " + status_counts_msg(
-            status_counts_nodes(), _counts(event_data, "nodeSummary", "statusCounts")
+            status_counts_nodes(),
+            event_counts(event_data, "nodeSummary", "statusCounts"),
         )
         node_actions_msg = status_counts_msg(
             status_counts_node_actions(),
-            _counts(event_data, "nodeSummary", "actionQueueStatuses"),
+            event_counts(event_data, "nodeSummary", "actionQueueStatuses"),
             empty_msg_if_zero_total=True,
         )
         if node_actions_msg:
             msg += f"{event_indent}Node Action(s): " + node_actions_msg
         workers_msg = status_counts_msg(
             status_counts_workers(),
-            _counts(event_data, "workerSummary", "statusCounts"),
+            event_counts(event_data, "workerSummary", "statusCounts"),
             empty_msg_if_zero_total=True,
         )
         if workers_msg:
             msg += f"{event_indent}Worker(s):      " + workers_msg
 
     else:
-        sources = _field(event_data, "provisionStrategy", "sources") or []
+        sources = event_field(event_data, "provisionStrategy", "sources") or []
         alive_count = sum(
-            _count(_field(source, "instanceSummary", "aliveCount"))
+            event_count(event_field(source, "instanceSummary", "aliveCount"))
             for source in sources
         )
         msg += (
             f"{event_indent}Instance(s): "
-            f"{_count(event_data.get('targetInstanceCount')):,d} TARGET,"
-            f" {_count(event_data.get('expectedInstanceCount')):,d} EXPECTED,"
+            f"{event_count(event_data.get('targetInstanceCount')):,d} TARGET,"
+            f" {event_count(event_data.get('expectedInstanceCount')):,d} EXPECTED,"
             f" {alive_count:,d} ALIVE"
         )
         for source in sources:
             source_msg = status_counts_msg(
                 status_counts_instances(),
-                _counts(source, "instanceSummary", "statusCounts"),
+                event_counts(source, "instanceSummary", "statusCounts"),
                 empty_msg_if_zero_total=True,
             )
             if source_msg:
                 msg += (
-                    f"{event_indent}Source: '{_field(source, 'name')}': " + source_msg
+                    f"{event_indent}Source: '{event_field(source, 'name')}': "
+                    + source_msg
                 )
 
     print_info(msg, no_fill=True)

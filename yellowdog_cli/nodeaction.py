@@ -145,6 +145,30 @@ def _record_queues(rows: list[tuple[str, NodeActionQueueSnapshot]]) -> None:
         record(row)
 
 
+def _queue_error(e: Exception) -> str:
+    return "not found" if is_http_not_found(e) else str(e)
+
+
+def _queues_not_fetched(failures: list[tuple[str, Exception]]) -> ReportedFailure:
+    """
+    The failure to raise for the nodes whose queues could not be fetched,
+    each recorded for '--json' as a row of nulls with its 'error' (they were
+    reported as they failed): exiting with the code their failures share (6
+    if no such node), or FAILURE for different causes, as yd-compare does.
+    """
+    if json_requested():
+        for node_id, e in failures:
+            row = rows_as_objects(
+                NODE_ACTION_QUEUE_HEADINGS, [[node_id, None, None, None, None]]
+            )[0]
+            record({**row, "error": _queue_error(e)})
+    causes = [e for _, e in failures]
+    message = f"The node action queue(s) of {len(causes)} node(s) could not be fetched"
+    return ReportedFailure(
+        causes[0] if len({classify(e) for e in causes}) == 1 else RuntimeError(message)
+    )
+
+
 @main_wrapper
 def main(ctx: RunContext):
     # '--validate' with '--status', and a missing '--actions', are refused as
@@ -855,7 +879,7 @@ def _follow_node_actions(
     pending = set(node_ids)
     done: dict[str, NodeActionQueueSnapshot] = {}
     latest: dict[str, NodeActionQueueSnapshot] = {}
-    not_fetched: list[str] = []
+    not_fetched: list[tuple[str, Exception]] = []
     timeout = ctx.args.timeout
     deadline = None if timeout is None else time.monotonic() + timeout
     print_info(f"Following node action queue(s) for {len(pending)} node(s)...")
@@ -873,10 +897,11 @@ def _follow_node_actions(
             except Exception as e:
                 if classify(e) in SESSION_FAILURES:
                     raise
-                error = "not found" if is_http_not_found(e) else str(e)
-                print_error(f"Failed to get status for node '{node_id}': {error}")
+                print_error(
+                    f"Failed to get status for node '{node_id}': {_queue_error(e)}"
+                )
                 completed.add(node_id)
-                not_fetched.append(node_id)
+                not_fetched.append((node_id, e))
                 continue
 
             live_rows.append((node_id, snapshot))
@@ -908,7 +933,7 @@ def _follow_node_actions(
 
     final_rows = sorted(done.items(), key=lambda row: row[0])
     if not_fetched:
-        raise _QueuesNotFetched(final_rows, len(not_fetched))
+        raise _QueuesNotFetched(final_rows, not_fetched)
     print_info("All node action queues have finished.")
     return final_rows
 
@@ -928,14 +953,20 @@ class _QueuesNotFetched(Exception):
     """
     The queues of some nodes could not be fetched while following, each
     reported as it failed: 'rows' are the others' final queues, for the
-    caller to record before the failure is raised.
+    caller to record before the failure is raised, and 'failures' the nodes
+    not fetched, with why.
     """
 
-    def __init__(self, rows: list[tuple[str, NodeActionQueueSnapshot]], count: int):
+    def __init__(
+        self,
+        rows: list[tuple[str, NodeActionQueueSnapshot]],
+        failures: list[tuple[str, Exception]],
+    ):
         super().__init__(
-            f"The node action queue(s) of {count} node(s) could not be fetched"
+            f"The node action queue(s) of {len(failures)} node(s) could not be fetched"
         )
         self.rows = rows
+        self.failures = failures
 
 
 def _show_status(ctx: RunContext):
@@ -964,13 +995,13 @@ def _show_status(ctx: RunContext):
         except _QueuesNotFetched as e:
             if json_requested():
                 _record_queues(e.rows)
-            raise ReportedFailure(RuntimeError(str(e)))
+            raise _queues_not_fetched(e.failures)
         if json_requested():
             _record_queues(final_rows)
         return
 
     rows: list[tuple[str, NodeActionQueueSnapshot]] = []
-    failures: list[Exception] = []
+    failures: list[tuple[str, Exception]] = []
     for node_id in node_ids:
         try:
             snapshot: NodeActionQueueSnapshot = (
@@ -979,9 +1010,11 @@ def _show_status(ctx: RunContext):
         except Exception as e:
             if classify(e) in SESSION_FAILURES:
                 raise
-            error = "not found" if is_http_not_found(e) else str(e)
-            print_error(f"Failed to get the node action queue for '{node_id}': {error}")
-            failures.append(e)
+            print_error(
+                f"Failed to get the node action queue for '{node_id}':"
+                f" {_queue_error(e)}"
+            )
+            failures.append((node_id, e))
             continue
 
         # Under '--json' the table's rows, '--details' or not
@@ -996,12 +1029,7 @@ def _show_status(ctx: RunContext):
     elif rows:
         print_node_action_queue_table(rows)
     if failures:
-        raise ReportedFailure(
-            RuntimeError(
-                f"The node action queue(s) of {len(failures)} node(s) could not be"
-                " fetched"
-            )
-        )
+        raise _queues_not_fetched(failures)
 
 
 # Entry point

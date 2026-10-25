@@ -318,6 +318,18 @@ class TestListing:
         _run(platform, COMPUTE_STOP, [])
         assert [r["outcome"] for r in platform.records] == ["failed", "failed"]
 
+    @pytest.mark.parametrize("targets", [[], ["cr-*"], [CR_ID], ["cr-a"]])
+    def test_a_failure_names_the_compute_requirement_on_every_path(
+        self, platform, monkeypatch, targets
+    ):
+        # By tag, by glob, by ID and by name: the one message
+        errors: list[str] = []
+        monkeypatch.setattr(action_runner, "print_error", errors.append)
+        platform.failures["stop_compute_requirement_by_id"] = _http_error(500)
+        _run(platform, COMPUTE_STOP, targets)
+        assert len(errors) == 1
+        assert errors[0].startswith("Failed to stop Compute Requirement 'cr-a': ")
+
     @pytest.mark.parametrize(
         "error", [_http_error(401), RequestsConnectionError("reset")]
     )
@@ -450,6 +462,16 @@ class TestInstances:
         ]
         assert len(prompts) == 1
         assert "2 Instance(s)" in prompts[0]
+
+    def test_instances_in_one_cr_fetch_it_once(self, platform, monkeypatch):
+        platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
+        _run(
+            platform,
+            COMPUTE_STOP,
+            [f"{CR_ID}.{INSTANCE_ID}", f"{CR_ID}.{INSTANCE_ID_2}"],
+        )
+        fetch = platform.client.compute_client.get_compute_requirement_by_id
+        assert fetch.call_count == 1
 
     def test_crs_and_instances_share_one_confirmation(self, platform, monkeypatch):
         prompts = []
@@ -894,6 +916,16 @@ class TestAutoShutdown:
         )
         assert platform.calls == []
         assert platform.records[0]["outcome"] == "failed"
+        assert platform.records[0]["error"].startswith(
+            "'autoshutdown' does not apply to Instances"
+        )
+
+    def test_a_terminated_cr_is_refused_by_the_verb(self, platform, monkeypatch):
+        platform.crs[CR_ID] = _cr(CR_ID, "cr-a", TERMINATED)
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert platform.records[0]["error"].endswith(
+            "not a valid state for 'autoshutdown'"
+        )
 
     def test_a_failure_is_recorded(self, platform, monkeypatch):
         platform.failures[self.METHOD] = _http_error(400)

@@ -119,6 +119,33 @@ class TestStrict:
         assert load_config.CONFIG_SOURCES["key"] == "not set"
 
 
+class TestCommonValuesAreText:
+    @pytest.mark.parametrize("name, value", [("tag", 2026), ("namespace", True)])
+    def test_a_value_that_is_not_text_exits_3(self, isolated, monkeypatch, name, value):
+        # 'tag = 2026' is a number to TOML: refused as the configuration is
+        # read, not failing where a name is built from it
+        from yellowdog_cli.utils.exit_codes import ExitCode
+
+        monkeypatch.setattr(
+            load_config,
+            "CONFIG_TOML",
+            {"common": {"key": "k", "secret": "s", name: value}},
+        )
+        errors: list[str] = []
+        monkeypatch.setattr(load_config, "print_error", errors.append)
+        monkeypatch.setattr(load_config, "_ARGS", _args())
+        with pytest.raises(SystemExit) as exited:
+            load_config.load_config_common()
+        assert exited.value.code == ExitCode.CONFIGURATION
+        assert f"'common.{name}' must be text" in errors[0]
+
+    def test_without_strict_it_is_taken_as_its_text(self, isolated, monkeypatch):
+        # yd-doctor reports the configuration rather than exiting on it
+        monkeypatch.setattr(load_config, "CONFIG_TOML", {"common": {"tag": 2026}})
+        monkeypatch.setattr(load_config, "_ARGS", _args())
+        assert load_config.load_config_common(strict=False).name_tag == "2026"
+
+
 class TestReadTimeout:
     """
     [common] readTimeout: seconds to wait for a Platform response, from the

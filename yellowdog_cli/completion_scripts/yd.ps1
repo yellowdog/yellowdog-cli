@@ -24,7 +24,20 @@ Register-ArgumentCompleter -Native -CommandName @('yd', 'yd.exe') -ScriptBlock {
     $index = $words.Count
     if ($wordToComplete) { $words += $wordToComplete }
     $reply = @(& yd completion --complete powershell $index @words 2>$null)
-    if ($reply.Count -eq 0 -or $reply[0] -ne 'values') { return }
+    if ($reply.Count -eq 0) { return }
+    # A file or directory after an '--option=': PowerShell's own completion,
+    # which answering nothing falls back to, would take the option for part
+    # of the path, so the part after '=' is completed here
+    if ($reply[0] -in @('files', 'dirs') -and $wordToComplete -match '^(-[^=]*=)(.*)$') {
+        $option = $Matches[1]
+        foreach ($found in [System.Management.Automation.CompletionCompleters]::CompleteFilename($Matches[2])) {
+            if ($reply[0] -eq 'dirs' -and $found.ResultType -ne 'ProviderContainer') { continue }
+            [System.Management.Automation.CompletionResult]::new(
+                $option + $found.CompletionText, $found.ListItemText, $found.ResultType, $found.ToolTip)
+        }
+        return
+    }
+    if ($reply[0] -ne 'values') { return }
     foreach ($line in ($reply | Select-Object -Skip 1)) {
         $value, $description = $line -split "`t", 2
         if (-not $description) { $description = $value }

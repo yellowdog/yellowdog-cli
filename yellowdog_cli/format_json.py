@@ -12,9 +12,9 @@ so an interruption leaves the original.
 
 import json
 import sys
-from argparse import ArgumentParser
 
 from yellowdog_cli.utils.atomic_write import write_text_atomically
+from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compact_json import (
     CompactJSONEncoder,
     FloatAsWritten,
@@ -60,23 +60,8 @@ def _error(message: str) -> None:
 def main():
     use_utf8_output()
     warn_if_deprecated_script("yd-format-json")
-    parser = ArgumentParser(
-        prog=selected_prog("yd-format-json"),
-        description=(
-            "Reformat JSON files in place with the CLI's compact layout (small"
-            " containers on one line), changing nothing but the layout."
-        ),
-    )
-    parser.add_argument(
-        "files", nargs="+", metavar="<file.json>", help="the JSON file(s) to reformat"
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help=(
-            "report the files that would be reformatted, without writing"
-            " anything, and exit 1 if there are any"
-        ),
+    parser = build_parser(
+        COMMANDS["yd-format-json"], prog=selected_prog("yd-format-json")
     )
     args = parser.parse_args()
 

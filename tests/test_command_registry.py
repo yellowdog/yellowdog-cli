@@ -173,7 +173,8 @@ class TestBuildParser:
         assert parser.prog == "yd-x"
         assert parser.description == DESCRIPTION_PREFIX + "doing x"
         names = [a.option_strings[0] for a in parser._actions if a.option_strings]
-        assert names == ["-h", "--debug", "--yes", "--ids-only", "--json"]
+        # The command's own first, then the common set, under its own heading
+        assert names == ["-h", "--yes", "--ids-only", "--json", "--debug"]
         with pytest.raises(SystemExit):
             parser.parse_args(["--ids-only", "--json"])  # mutually exclusive
 
@@ -194,6 +195,7 @@ class TestRegistryMatchesEntryPoints:
         assert {n for n, c in COMMANDS.items() if not c.script} == {
             "yd-completion",
             "yd-auto-shutdown",
+            "yd-init",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -211,6 +213,7 @@ class TestRegistryMatchesEntryPoints:
         }
         standalone = {
             "yd-completion",
+            "yd-init",
             "yd-help",
             "yd-version",
             "yd-format-json",
@@ -434,6 +437,7 @@ class TestToolKinds:
         assert {n for n, c in COMMANDS.items() if c.tool is ToolKind.NONE} == {
             "yd-cloudwizard",
             "yd-completion",
+            "yd-init",
             "yd-format-json",
             "yd-jsonnet2json",
             "yd-help",
@@ -613,6 +617,42 @@ class TestArgsProperties:
         assert raised.value.code == 0
         assert "Online documentation" in capsys.readouterr().out
 
+    def test_an_abbreviated_docs_is_answered(self, capsys):
+        # argparse takes '--doc' for '--docs'; the listing would otherwise run
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-list", argv=["work-requirements", "--doc"])
+        assert raised.value.code == 0
+        assert "Online documentation" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("command", ["yd-resize", "yd-priority", "yd-token"])
+    def test_json_help_says_what_a_dry_run_records(self, command):
+        # Under --dry-run they record what would be done, not actions taken
+        option = COMMANDS[command].option_named("--json")
+        assert option is not None and "--dry-run" in option.kwargs["help"]
+
+
+class TestListFiltersGivenAtAll:
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            # A filter given an empty or zero value is still given
+            (["work-requirements", "--limit", "0"], "--limit does not apply"),
+            (["instances", "--name", ""], "--name does not apply"),
+            # No status at all, as an unset shell variable gives
+            (["tasks", "--status", ""], "--status needs at least one status"),
+            (["tasks", "--status", ","], "--status needs at least one status"),
+        ],
+    )
+    def test_refused(self, argv, message, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd-list", argv=argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
+
 
 class TestRemotePathsWithParentSegments:
     """
@@ -633,6 +673,10 @@ class TestRemotePathsWithParentSegments:
             ("yd-copy", ["../a", "b"]),
             ("yd-copy", ["a", "b/../.."]),
             ("yd-upload", ["f.txt", "-d", "../x"]),
+            # A ':' later in a relative path is no remote's
+            ("yd-delete", ["-R", "../run-10:00"]),
+            ("yd-upload", ["f.txt", "-d", "../x:y"]),
+            ("yd-download", ["a/../../b:c"]),
         ],
     )
     def test_refused(self, command, argv, capsys):
@@ -648,6 +692,8 @@ class TestRemotePathsWithParentSegments:
         [
             ("yd-ls", [".."]),
             ("yd-download", ["a..b"]),
+            ("yd-download", ["run-10:00/x"]),
+            ("yd-download", ["myremote:a..b"]),
             ("yd-download", ["x", "-d", "../out"]),
             ("yd-download", ["x", "--into", "../out"]),
             ("yd-upload", ["../f.txt"]),

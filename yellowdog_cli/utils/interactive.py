@@ -68,11 +68,12 @@ def select(
                     showing_all=showing_all,
                     object_type_name=object_type_name,
                 )
-    elif not OUTPUT.quiet or override_quiet or OUTPUT.interactive:
+    elif not OUTPUT.quiet or override_quiet or selecting:
+        # Whatever '--quiet' says when a selection is to be made from it
         print_numbered_object_list(
             client,
             objects,  # type: ignore[arg-type]
-            override_quiet=override_quiet,
+            override_quiet=override_quiet or selecting,
             showing_all=showing_all,
             object_type_name=object_type_name,
         )
@@ -126,8 +127,8 @@ def get_selected_list_items(
                     high = int(high_s)
                     if low > high:
                         raise ValueError
-                    # Checked by its ends, once: not number by number, which
-                    # printed an error for each of '1-200000''s out of range
+                    # Checked by its ends, once, so that a range far out of
+                    # range is one error rather than one per number
                     if 1 <= low and high <= num_items:
                         selector_set.update(range(low, high + 1))
                     else:
@@ -135,7 +136,7 @@ def get_selected_list_items(
                             f"'{selector.strip()}' is out of range (1-{num_items})"
                         )
                         error_flag = True
-                elif not (selector.isspace() or not selector):
+                elif selector.strip():
                     i = int(selector)
                     if in_range(i):
                         selector_set.add(i)
@@ -219,19 +220,39 @@ def wait_for_enter(prompt: str) -> None:
     _get_user_input(print_string(prompt) + " ")
 
 
-def _get_user_input(input_prompt: str) -> str:
+def ask(prompt: str, secret: bool = False) -> str:
+    """
+    The answer to 'prompt', a line of text, stripped; a 'secret' one typed
+    without being shown. NoAnswerToPrompt, with its remedy, when there is no
+    terminal to answer from.
+    """
+    return _get_user_input(print_string(prompt) + " ", secret=secret).strip()
+
+
+def _get_user_input(input_prompt: str, secret: bool = False) -> str:
     """
     Get user input, respecting the --no-format option. Under '--json' the
-    prompt goes to stderr, so stdout holds only the result document.
+    prompt goes to stderr, so stdout holds only the result document. A
+    'secret' is read unseen (getpass), its prompt printed as any other is,
+    so it is highlighted alike. Left unanswered (Ctrl-C, end of input), the
+    prompt's line is ended, so what is printed next starts a line of its own.
     """
+    from getpass import getpass
+
+    read = getpass if secret else input
+    console = CONSOLE_ERR if OUTPUT.json_output else CONSOLE
     try:
         if OUTPUT.json_output:
             CONSOLE_ERR.print(input_prompt, end="", soft_wrap=True)
-            return input("")
+            return read("")
         if OUTPUT.no_format:
-            return input(input_prompt)
+            return read(input_prompt)
         # Prevents broken wrapping
         CONSOLE.print(input_prompt, end="", soft_wrap=True)
-        return CONSOLE.input("")
+        return getpass("") if secret else CONSOLE.input("")
+    except KeyboardInterrupt:
+        console.print(soft_wrap=True)
+        raise
     except EOFError:
+        console.print(soft_wrap=True)
         raise NoAnswerToPrompt() from None

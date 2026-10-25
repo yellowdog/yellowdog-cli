@@ -163,7 +163,8 @@ class WorkPanel(WindowDialogs):
                 f" Work Requirement{scope}, '{entities[0].name}'"
             )
         else:
-            newest = newest_entity_id(parsed)
+            # The newest of those offered, not one left out as not addable
+            newest = newest_entity_id(parsed, {e.id for e in entities})
             target = self._choose_one(
                 title,
                 f"Choose the Work Requirement{scope} to add the Task Groups and"
@@ -223,12 +224,7 @@ class WorkPanel(WindowDialogs):
         if path is None:
             self._output.log("No Work Requirement definition file selected")
             return
-        try:
-            with open(path, encoding="utf-8") as f:
-                self._output.log(f"Displaying contents of '{path}':\n")
-                self._output.log(f.read(), prefix=False)
-        except OSError as e:
-            self._output.log(f"Cannot open Work Requirement file '{path}': {e}")
+        self._display_file(path, "Work Requirement file")
 
     def _follow_progress_set(self, checked_state: Qt.CheckState):
         if self.dry_run.isChecked() and checked_state == Qt.CheckState.Checked:

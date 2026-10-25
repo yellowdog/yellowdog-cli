@@ -409,6 +409,28 @@ class TestTaskCountFromTheCommandLine:
         assert self._count(config_wr, {"taskCount": 3}, {}) == 3
         assert self._count(config_wr, {}, {}) == 2
 
+    def test_the_task_groups_task_count_is_the_one_its_tasks_are(self):
+        # '{{task_count}}' in the Task Group's name and properties is the
+        # number of Tasks there will be, '--task-count''s over the
+        # specification's, as the Tasks' own is
+        from yellowdog_cli.utils.config_types import ConfigWorkRequirement
+        from yellowdog_cli.utils.task_groups import create_task_group
+
+        config_wr = ConfigWorkRequirement(
+            task_count=10, task_count_from_command_line=True
+        )
+        task_group_data = {
+            "taskCount": 5,
+            "name": "tg-of-{{task_count}}",
+            "tasks": [{"taskType": "x"}],
+        }
+        wr_data = {"taskGroups": [task_group_data]}
+        task_group = create_task_group(
+            config_wr, TaskGroupPosition(0, 0, 1), wr_data, task_group_data
+        )
+        assert task_group.name == "tg-of-10"
+        assert self._count(config_wr, wr_data, task_group_data) == 10
+
 
 class TestTaskCountExpansion:
     """
@@ -620,6 +642,64 @@ class TestBatchesStopAfterAFailure:
         if threads == 1:
             assert started == [0, 1]
         assert len(started) < 6
+
+    @staticmethod
+    def _ctx() -> SimpleNamespace:
+        return SimpleNamespace(args=SimpleNamespace(pause_between_batches=None))
+
+    def test_no_batch_is_built_once_one_has_failed(self, monkeypatch):
+        # Building a batch uploads its Tasks' input files, for a Work
+        # Requirement about to be cancelled
+        failed = threading.Event()
+
+        class Signalling(task_batches_module.Batches):
+            def _run(self, function, *args):
+                try:
+                    return super()._run(function, *args)
+                except BaseException:
+                    failed.set()
+                    raise
+
+        monkeypatch.setattr(task_batches_module, "Batches", Signalling)
+        built: list[int] = []
+
+        def make_batch(start: int, end: int) -> list:
+            built.append(start // 10)
+            if start:
+                failed.wait(5)  # Batch 0's send has failed by now
+            return [start]
+
+        def send_batch(tasks: list, number: int, count: int) -> int:
+            if number == 0:
+                raise RuntimeError("refused")
+            return 10
+
+        with pytest.raises(RuntimeError, match="refused"):
+            task_batches_module.run_batches(
+                self._ctx(), 60, 10, 2, make_batch, send_batch
+            )
+        # Batch 1 is built only if the failure is not seen in time; none after
+        assert built in ([0], [0, 1])
+
+    def test_no_queued_batch_is_sent_once_building_one_has_failed(self):
+        sent: list[int] = []
+
+        def make_batch(start: int, end: int) -> list:
+            if start == 30:
+                raise ValueError("no such localFile")
+            return [start]
+
+        def send_batch(tasks: list, number: int, count: int) -> int:
+            # Both threads busy until the build of batch 3 has failed
+            threading.Event().wait(0.5)
+            sent.append(number)
+            return 10
+
+        with pytest.raises(ValueError, match="localFile"):
+            task_batches_module.run_batches(
+                self._ctx(), 60, 10, 2, make_batch, send_batch
+            )
+        assert sorted(sent) == [0, 1]
 
     def test_all_batches_succeeding_are_totalled(self):
         with ThreadPoolExecutor(max_workers=3) as executor:

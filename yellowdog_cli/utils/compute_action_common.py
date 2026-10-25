@@ -110,6 +110,14 @@ class ComputeAction:
     def prompt(self) -> str:
         return self.confirmation_verb or self.name
 
+    @property
+    def verb(self) -> str:
+        """
+        How a message names the action: its '--json' record's 'action'
+        ('stop', 'autoshutdown'), the verb the command is typed as.
+        """
+        return self.record_name or self.name.lower()
+
     def record(
         self,
         entity: object,
@@ -125,7 +133,7 @@ class ComputeAction:
         record_action(
             entity,
             entity_type,
-            self.record_name or self.name.lower(),
+            self.verb,
             outcome or self.past_tense.lower(),
             error,
             **extra,
@@ -429,19 +437,7 @@ def _apply_action_to_summaries(
     ):
         items = []
 
-    done = carry_out(
-        [
-            Unit(
-                [item],
-                act=lambda cr=item.value: _act_on_compute_requirement(ctx, action, cr),
-                failure=lambda e, cr=item.value: (
-                    f"Failed to {action.name.lower()} '{cr.name}': {e}"
-                ),
-            )
-            for item in items
-        ],
-        action.recorder(),
-    )
+    done = carry_out([_cr_unit(ctx, action, item) for item in items], action.recorder())
     actioned_ids = [cast(str, unit.items[0].value.id) for unit in done]
 
     if actioned_ids:
@@ -449,6 +445,21 @@ def _apply_action_to_summaries(
         _after(ctx, action, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
+
+
+def _cr_unit(ctx: RunContext, action: ComputeAction, item: Item) -> Unit:
+    """
+    The action on one Compute Requirement, as carry_out() takes it.
+    """
+    compute_requirement: _ComputeRequirementTarget = item.value
+    return Unit(
+        [item],
+        act=lambda: _act_on_compute_requirement(ctx, action, compute_requirement),
+        failure=lambda e: (
+            f"Failed to {action.name.lower()} Compute Requirement"
+            f" '{compute_requirement.name}': {e}"
+        ),
+    )
 
 
 def _act_on_compute_requirement(
@@ -493,9 +504,11 @@ def _apply_action_by_name_or_id(
     Apply the action to Compute Requirements by their names or IDs, to
     nodes' instances by node ID, or to instances by 'cr_id.instance_id'.
     """
+    # The Compute Requirements of the Instances named, each fetched once
+    fetched: dict[str, ComputeRequirement] = {}
     items = resolve_targets(
         names_or_ids,
-        resolve=lambda target: _resolve_target(ctx, action, target),
+        resolve=lambda target: _resolve_target(ctx, action, target, fetched),
         describe=_target_entity,
         record=action.recorder(),
         verb=action.name.lower(),
@@ -549,13 +562,7 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
     Requirement's Instances in one call.
     """
     units = [
-        Unit(
-            [item],
-            act=lambda cr=item.value: _act_on_compute_requirement(ctx, action, cr),
-            failure=lambda e, cr=item.value: (
-                f"Failed to {action.name.lower()} Compute Requirement '{cr.name}': {e}"
-            ),
-        )
+        _cr_unit(ctx, action, item)
         for item in items
         if item.entity_type == ET_COMPUTE_REQUIREMENTS
     ] + [
@@ -624,10 +631,16 @@ def _act_on_instances(ctx: RunContext, action: ComputeAction, group: list[_Insta
         )
 
 
-def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item:
+def _resolve_target(
+    ctx: RunContext,
+    action: ComputeAction,
+    target: str,
+    fetched: dict[str, ComputeRequirement],
+) -> Item:
     """
     What a target names, raising Unresolved if it cannot be acted on.
-    Anything else raised is a failure of the lookup itself.
+    Anything else raised is a failure of the lookup itself. 'fetched' holds
+    the Compute Requirements an Instance's resolution has fetched, by ID.
     """
     ydid_type = get_ydid_type(target)
     spec = split_instance_specification(target)
@@ -635,19 +648,21 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
         spec is not None or ydid_type == YDIDType.NODE
     ):
         raise Unresolved(
-            f"Instances cannot be {action.past_tense.lower()}; "
+            f"'{action.verb}' does not apply to Instances; "
             "please supply Compute Requirement names or IDs"
         )
 
     if spec is not None:
-        compute_requirement, instance = _resolve_instance(ctx, action, spec[0], spec[1])
+        compute_requirement, instance = _resolve_instance(
+            ctx, action, spec[0], spec[1], fetched
+        )
         return _instance_item(
             _Instance(spec[0], compute_requirement, instance, spec[1], None)
         )
 
     if ydid_type == YDIDType.NODE:
         cr_id, compute_requirement, instance, instance_id = _resolve_node(
-            ctx, action, target
+            ctx, action, target, fetched
         )
         return _instance_item(
             _Instance(cr_id, compute_requirement, instance, instance_id, target)
@@ -655,7 +670,7 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
 
     if action.cr_method_name is None:
         raise Unresolved(
-            f"Compute Requirements cannot be {action.past_tense.lower()}; "
+            f"'{action.verb}' does not apply to Compute Requirements; "
             "please supply Instance or Node IDs"
         )
     compute_requirement: _ComputeRequirementTarget = (
@@ -666,7 +681,7 @@ def _resolve_target(ctx: RunContext, action: ComputeAction, target: str) -> Item
     if compute_requirement.status not in action.valid_cr_statuses:
         raise Unresolved(
             f"Compute Requirement '{target}' is {compute_requirement.status},"
-            f" not a valid state for action '{action.name}'",
+            f" not a valid state for '{action.verb}'",
             SKIPPED,
             compute_requirement,
         )
@@ -703,9 +718,14 @@ def _resolve_compute_requirement_name(
 
 
 def _resolve_instance(
-    ctx: RunContext, action: ComputeAction, cr_id: str, instance_id: str
+    ctx: RunContext,
+    action: ComputeAction,
+    cr_id: str,
+    instance_id: str,
+    fetched: dict[str, ComputeRequirement],
 ) -> tuple[ComputeRequirement, Instance]:
-    compute_requirement = _get_compute_requirement(ctx, cr_id)
+    if (compute_requirement := fetched.get(cr_id)) is None:
+        compute_requirement = fetched[cr_id] = _get_compute_requirement(ctx, cr_id)
     instance: Instance | None = get_instance_by_id(ctx.client, cr_id, instance_id)
     if instance is None:
         raise Unresolved(
@@ -715,14 +735,17 @@ def _resolve_instance(
     if instance.status not in action.valid_instance_statuses:
         raise Unresolved(
             f"Instance '{cr_id}.{instance_id}' is {instance.status},"
-            f" not a valid state for action '{action.name}'",
+            f" not a valid state for '{action.verb}'",
             SKIPPED,
         )
     return compute_requirement, instance
 
 
 def _resolve_node(
-    ctx: RunContext, action: ComputeAction, node_id: str
+    ctx: RunContext,
+    action: ComputeAction,
+    node_id: str,
+    fetched: dict[str, ComputeRequirement],
 ) -> tuple[str, ComputeRequirement, Instance, str]:
     """
     The Compute Requirement (its ID, and itself), Instance and Instance ID a
@@ -757,5 +780,7 @@ def _resolve_node(
 
     cr_id = worker_pool.computeRequirementId
     instance_id = node.details.instanceId
-    compute_requirement, instance = _resolve_instance(ctx, action, cr_id, instance_id)
+    compute_requirement, instance = _resolve_instance(
+        ctx, action, cr_id, instance_id, fetched
+    )
     return cr_id, compute_requirement, instance, instance_id

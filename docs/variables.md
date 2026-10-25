@@ -116,7 +116,7 @@ TOML values that are not strings are converted to their JSON text when they're l
 
 The precedence order for setting variables is:
 
-1. Command line (`--variable`/`-v`)
+1. Command line (`--variable`/`-v`, or `--property common.variables.<name>=<value>`, which is the same: in place before the configuration file is read, so the file's own values and variables built from it take it too)
 2. `YD_VAR_` environment variables
 3. `YD_VAR_` variables defined in a `.env` file
 4. TOML configuration file (`[common.variables]`)

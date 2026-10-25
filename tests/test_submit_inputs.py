@@ -121,6 +121,15 @@ class TestCheckTaskGroups:
         ):
             task_groups_module.check_task_groups({TASK_GROUPS: [{TASKS: []}, {}]})
 
+    def test_null_task_groups_or_tasks_are_named_as_missing(self):
+        # Not "'NoneType' object is not iterable"
+        with pytest.raises(ValueError, match=f"'{TASK_GROUPS}' is not defined"):
+            task_groups_module.check_task_groups({TASK_GROUPS: None})
+        with pytest.raises(
+            ValueError, match=f"'{TASKS}' is not defined in Task Group 1"
+        ):
+            task_groups_module.check_task_groups({TASK_GROUPS: [{TASKS: None}]})
+
     def test_task_groups_must_be_a_list(self):
         with pytest.raises(TypeError, match=f"'{TASK_GROUPS}'"):
             task_groups_module.check_task_groups({TASK_GROUPS: {}})

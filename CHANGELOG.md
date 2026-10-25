@@ -2,6 +2,76 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.2.0 — 2026-10-25
+
+### Upgrading
+
+These changes alter what an existing script or habit will see:
+
+- **Combinations that were accepted and ignored are refused** (exit 2): `-a` (`--auto-follow-compute-requirements`) without `--follow`; `yd node action --details` without `--status`; `yd workrequirement submit --empty` with a specification or CSV file, `--task-count` or `--task-group-count` (and, exit 1, with one named in the configuration), where it submitted their Tasks; `--json-raw` with `--task-type`, `--overwrite` or `--content-path`; `yd list --status ''`, which listed everything; and a `yd list` filter given as `0` or `""` for a type it does not apply to.
+- **Options a verb never takes are no longer offered**: `yd workerpool resize --wait`/`--timeout`, `--substitute-ids` on the `show` verbs other than resources' and Allowances', `yd resource list --within`/`--limit`/`--unhealthy`/`--with-errors`, and `yd data list --dry-run`. They are gone from `--help`, Tab completion and the MCP tools, and refused if given.
+- **Which value wins**: `--property common.variables.<name>=<value>` acts as `-v <name>=<value>` does, set before the configuration file is read, so the file's properties and the variables built from it take it; a configuration file's own `[common.variables]` win over an `importCommon` file's, with `--config` as without; and a named data client profile's own fields beat `YD_DATA_CLIENT_*` (`yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names), a field it inherits still being overridden.
+- **`yd resource remove`**: with no namespace configured (`-n ''`), a name of a namespaced type is refused, where it removed the resource of that name in every namespace; a Compute Source Template name found in more than one namespace is refused as ambiguous, where the first found was used; and `--json` names a Worker Pool removed by its ID `ConfiguredWorkerPool`, as one removed by name is, where it was `WorkerPool`.
+- **`yd node action --status --json` gives `null` for a queue's missing status or action**, where it gave `"-"`, as it already did for a node whose queue could not be fetched.
+- **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`) is a configuration error, exit 3; and **`yd variables` redacts a variable whose value holds the configured key or secret** (one defined as `{{secret}}`), whatever it is called.
+
+### Configuration
+
+- **Your own configuration file**: with no `config.toml` in the current directory and none named with `--config`, `yd` reads `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set), so one set of credentials and defaults serves every directory; a local `config.toml` is read in its place, the environment wins over it as over any `config.toml`, and `yd doctor` names it.
+
+- **`yd init` writes a starter configuration file**: it asks for the key, secret, namespace, tag and URL (offering `YD_KEY` and the others' values, the secret typed unseen; `--yes` asks nothing) and writes `config.toml`, or with `--user` your own file; an existing file is replaced only with `--overwrite`, and one holding the secret is readable by its owner alone.
+
+### Data client
+
+- **Transfers record what happened**: `yd data upload` uploads a symbolic link given among other files, where it recorded it as uploaded and sent nothing; `yd data delete` records files as failed when a deletion and the listing that checks it both fail, where it recorded every file as deleted and exited 0; and `yd data copy --json` records a source that is missing or cannot be reached.
+- **Paths**: a `..` in a relative remote path holding a `:` (`../run-10:00`) is refused, as any other `..` is, where it climbed out of the prefix; and at a remote's root, with no bucket or prefix, `yd data copy a.txt sub/` names the copy `sub/a.txt`, and `yd data list --recursive` and `yd data upload --flatten` keep their paths relative to the remote.
+
+### Work Requirements
+
+- **`--progress` keeps following when an event leaves a Task count empty**, as the Platform can before a Task Group has Tasks, where it stopped with an "Event stream error" (and `-E` then exited with a failure).
+- **Numbering**: `--add-to` numbers a new Task Group on from the existing ones, in its own properties as in its Tasks'; `{{task_count}}` for Tasks added to an existing Task Group is its whole count everywhere; and `{{task_count}}` in a Task Group's name and properties is the number of Tasks `--task-count` gives it.
+- **Failures part-way**: `--parallel-batches` stops building batches once one has failed; `--json-raw` without `--follow` or `--progress` does not fetch the Work Requirement it submitted, so a lost connection then cannot fail a submission that succeeded; a specification whose `taskGroups` or `tasks` is `null` is reported as missing it; and `yd workrequirement abort` with no targets records a Work Requirement whose Tasks cannot be listed as failed and goes on, exiting with the failure's code.
+
+### Listing and actions
+
+- **`yd list`**: `tasks --status` filters the Tasks alone, so `--status EXECUTING` shows the executing Tasks; `workers --active-only` includes BATCH_ALLOCATION and LATE Workers; text that looks like a number is shown as written (a tag of `1.10`, not `1.1`); and a Task Group both starved and waiting shows `/STARVED/WAITING` when followed, as when listed.
+- **A value the Platform did not give is a blank cell in every table**: never the text `None` (a missing status, `None/None` Tasks, a reset of `5 None`), a `No` for an unknown yes or no, or a `-` (Cloud Info's and the node action queue's tables); and a Compute Requirement missing an instance count, an Allowance or Attribute Definition missing its type, or a Role missing its permissions is listed rather than stopping the listing.
+- **Actions**: `yd workerpool shutdown -n ''` acts in every namespace, where it matched nothing; `yd task cancel` skips a RESUBMITTED Task; a Work Requirement or Compute Requirement name only finished ones share finds the newest; `yd allowance boost` follows the other actions' rules (`Cannot find Allowance <ID>`, a repeated ID acted on once); and `yd node action --status` records a node whose queue cannot be fetched and exits with its code, and takes `-J` for its `--actions` file.
+
+### Resources
+
+- **`yd resource create --json` records what was done when part of it fails** (a new Group whose role grant failed, each Allowance removed by `--match-allowances-by-description`, a Configured Worker Pool returned without a token, a failed removal as `namespace/name`); `yd resource remove --quiet` still lists the Allowances to choose from; and a Compute Requirement Template source without `sourceTemplateId` is reported as a missing property.
+
+### Variables and configuration
+
+- **A variable inside an array or table variable keeps its backslashes and quotes** (a Windows path); a chain of variables however long resolves, where more than about ten links was reported as circular; a `{{variable}}` inside a Jsonnet comment is left alone; and `yd schema --check` reports a malformed `index.json` or a schema file that is not UTF-8 rather than a traceback.
+
+### Tab completion
+
+- **The options of `yd version`, `yd help`, `yd format-json` and `yd jsonnet2json` complete**; on macOS's bash 3.2, `--sort=cr<Tab>` completes to `--sort=created`; a file after `--option=` completes in bash 3.2, zsh and PowerShell; a quoted word is read as the command will take it (`-n 'my ns'`); and with `--names`, `--within=<Tab>` looks up what `--within <Tab>` does and `yd taskgroup priority` completes `wr/tg`.
+
+### Commander
+
+- **Closing the window stops what was under way**: an action listing what it would affect does nothing more, where Download went on to download everything matching and the others asked to act on their whole scope; and a pending configuration rediscovery is cancelled.
+- **The Show buttons say why they cannot show a file** (moved, deleted, not UTF-8), where Commander crashed; an edited Namespace or Tag field is discovered again, so confirmations and the default object path follow it, and an older discovery never overwrites a newer one; and a command finishing leaves input open to a later one still waiting for it.
+- **The configuration row is closed off by one line across the window**, the divider between the panels starting beneath it.
+- **Smaller fixes**: the quit dialog names commands as typed; Copy and Save keep their tooltips; a commented-out `workRequirementData`/`workerPoolData` line is skipped; Add to and Resize preselect the newest row; and a command typed with `--` gets Commander's options ahead of it.
+
+### MCP server
+
+- **A number argument that is not a number is refused**: a list given as a priority added its items as targets, and `[5, 0]` as `auto_shutdown_minutes` disabled the auto shutdown.
+
+### Cloud Wizard
+
+- **AWS** `add-ssh` and `setup` use the default VPC's `default` security group, where they took the first group with `default` in its name in any VPC; `setup` without a region stops before creating anything; and declining an access key's deletion keeps it and creates no new key. **Azure** `add-ssh` asks before opening port 22, and a teardown removes the YellowDog resources first. **Every provider** saves its resource file when adding the Credential fails, and exits 1 (or with a lost connection's code).
+
+### Other
+
+- **`--help` lists a command's own options first**, and the options every command shares (`--config`, `--key`, `--debug`, ...) after them under `universal options`, shown in the usage line as `[universal options]`, so the line names what the command itself takes.
+- **A misspelt command, verb, option, sort key or resource type is answered with the word meant**: `yd wr submti` says `did you mean 'submit'?`, and `--namepsace` `did you mean '--namespace'?`; with nothing close, the choices are listed as before.
+- **A prompt interrupted with Ctrl-C, or given no answer, ends its line**, so the message that follows starts on a line of its own rather than after the question.
+- **`yd doctor`** names uv and pip in its advice, and skips the Remote reachable check without an rclone binary, where it downloaded one with no time limit; an abbreviated `--docs` (`--doc`) prints the documentation link; and a message that sets a command on a line of its own keeps its line breaks.
+
 ## 15.1.0 — 2026-10-23
 
 ### Upgrading

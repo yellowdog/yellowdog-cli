@@ -85,6 +85,11 @@ class CLIParser:
             sys.exit(0)
 
         self.args = self.parser.parse_args(argv)
+        # An abbreviation argparse took for it ('--doc'), which the check
+        # above, for the word itself, cannot see
+        if getattr(self.args, "docs", False):
+            docs()
+            sys.exit(0)
 
         if self.command is not None:
             check_namespace_and_tag_are_no_files(self.args, self.parser)

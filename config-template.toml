@@ -1,5 +1,7 @@
 #
-# Template for YellowDog CLI configuration files.
+# Template for YellowDog CLI configuration files: save as config.toml in a
+# directory to use it there, or as ~/.config/yellowdog/config.toml to use it
+# wherever a directory has none.
 # TOML key names are case-sensitive.
 #
 # Some properties can be overridden by a command-line flag or an environment

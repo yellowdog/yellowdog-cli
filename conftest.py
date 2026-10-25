@@ -3,6 +3,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -417,6 +418,38 @@ def qapp():
         pytest.skip(f"Qt platform unavailable: {exc}")
 
 
+@pytest.fixture(autouse=True)
+def _commander_windows_shut_down(request):
+    """
+    Shut down and close every Commander window a GUI test leaves open.
+
+    A window left open keeps its timers (discovery's retry and the debounced
+    rediscovery a namespace or tag edit starts) and its child processes, and
+    the QApplication is the session's: they would fire inside a later test's
+    event loop on the same worker, running 'yd variables' there, which is how a
+    worker crashes or hangs long after the test that made the window passed.
+    """
+    yield
+    if "qapp" not in request.fixturenames:
+        return
+
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        from yellowdog_cli.commander.commander import YellowDogApp
+    except ImportError:
+        return  # qapp skipped the test: there is no Qt, so no window
+
+    application = QApplication.instance()
+    if application is None:
+        return
+    for widget in application.topLevelWidgets():
+        if isinstance(widget, YellowDogApp):
+            widget.shutdown()
+            widget.close()
+    application.processEvents()
+
+
 @pytest.fixture(scope="session")
 def run_id() -> str:
     """
@@ -664,6 +697,11 @@ def pytest_configure(config):
     # No test's Tab completion may reach the Platform: a test of the lookups
     # stands its own in and clears this, and every child process inherits it
     os.environ["YD_COMPLETION_LOOKUPS"] = "off"
+    # Nor read the developer's own configuration file (~/.config/yellowdog/
+    # config.toml), which a command reads when its directory has none: a
+    # directory of the session's own, empty, in its place, which every child
+    # process inherits; a test of that file sets its own
+    os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="yd-tests-xdg-")
     _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"

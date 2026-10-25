@@ -200,19 +200,62 @@ def _listing_all(ctx: RunContext) -> bool:
     return bool(ctx.args.json_output or ctx.args.count_only or ctx.args.ids_only)
 
 
-def _print_all(
-    ctx: RunContext, objects: list, id_of: Callable[[Any], object] | None = None
-) -> None:
+def _print_all(ctx: RunContext, objects: list) -> None:
     """
-    Final output for the non-interactive modes: the IDs for '--ids-only'
-    ('id_of' gives an entity's, its 'id' by default), otherwise as
-    _print_json_or_count().
+    Final output for the non-interactive modes: the IDs for '--ids-only',
+    otherwise as _print_json_or_count().
     """
     if ctx.args.ids_only:
         for obj in objects:
-            print(obj.id if id_of is None else id_of(obj))
+            print(obj.id)
     else:
         _print_json_or_count(ctx, objects)
+
+
+def _emit(
+    ctx: RunContext,
+    objects: list,
+    *,
+    detail: Callable[[Any], Any] | None = None,
+    extra: Callable[[Any], dict] | None = None,
+    type_name: str | None = None,
+    announce: str | None = None,
+) -> None:
+    """
+    The output the listers share, of what they found (not nothing), sorted:
+    the number for '--count'; the objects for '--json', with '--details'
+    each as 'detail' gives it (fetched in full, say); their IDs for
+    '--ids-only'; otherwise their table ('type_name' naming the type where
+    it cannot be told), or with '--details' those selected, each as 'detail'
+    gives it with the properties 'extra' adds (its 'resource', a User's
+    'groups'), after 'announce' where '--substitute-ids' is given.
+    """
+    ordered = sorted_objects(objects)
+    if ctx.args.json_output or ctx.args.count_only:
+        if ctx.args.details and detail is not None:
+            print_objects_as_json([detail(obj) for obj in ordered])
+        else:
+            _print_json_or_count(ctx, ordered)
+        return
+    if ctx.args.ids_only:
+        for obj in ordered:
+            print(obj.id)
+        return
+    if not ctx.args.details:
+        print_numbered_object_list(ctx.client, ordered, object_type_name=type_name)
+        return
+    selected = select(ctx.client, ordered)
+    if selected and announce is not None and ctx.args.substitute_ids:
+        print_info(announce)
+    print_yd_object_list(
+        [
+            (
+                obj if detail is None else detail(obj),
+                None if extra is None else extra(obj),
+            )
+            for obj in selected
+        ]
+    )
 
 
 def _print_empty(ctx: RunContext, message: str) -> None:
@@ -758,17 +801,17 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
     task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
         ctx.client, cast(str, work_summary.id)
     )
-    task_groups = _apply_name_filter(
-        ctx, _apply_status_filter(ctx, sorted_objects(task_groups)), ET_TASK_GROUPS
-    )
+    task_groups = sorted_objects(task_groups)
+    # '--status' and '--name' are the Tasks' when listing Tasks, so are no
+    # test of the Task Groups walked to reach them
+    if ctx.args.entity_type == ET_TASK_GROUPS:
+        task_groups = _filtered_task_groups(ctx, task_groups)
     if ctx.args.entity_type != ET_TASKS:
+        # Interactive alone: '--ids-only' lists everything, with no choosing
         if ctx.args.details:
             print_yd_object_list(
                 [(task_group, None) for task_group in select(ctx.client, task_groups)]
             )
-        elif ctx.args.ids_only:
-            for task_group in task_groups:
-                print(task_group.id)
         else:
             print_numbered_object_list(ctx.client, task_groups)
     else:
@@ -782,11 +825,9 @@ def list_tasks(
 ):
     limit = _ListLimit(ctx)
     tasks = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
+    # Interactive alone, as list_task_groups() is
     if ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
-    elif ctx.args.ids_only:
-        for task in tasks:
-            print(task.id)
     else:
         print_numbered_object_list(ctx.client, tasks)
     limit.warn()
@@ -1288,14 +1329,12 @@ def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker
     """
     for node in nodes:
         for worker in node.workers or []:
-            if ctx.args.active_only:
-                if worker.status not in [
-                    WorkerStatus.SLEEPING,
-                    WorkerStatus.DOING_TASK,
-                    WorkerStatus.STOPPED,
-                    WorkerStatus.STARTING,
-                ]:
-                    continue
+            # The SDK's own test (RUNNING, BATCH_ALLOCATION and LATE as well
+            # as the single-allocation states), not LOST or SHUTDOWN
+            if ctx.args.active_only and not (
+                isinstance(worker.status, WorkerStatus) and worker.status.available
+            ):
+                continue
             # Add extra info to the Worker object
             if node.details is not None:
                 worker.workerTag = node.details.workerTag  # type: ignore[attr-defined]
@@ -1378,54 +1417,20 @@ def list_compute_requirement_templates(ctx: RunContext):
         _print_empty(ctx, "No matching Compute Requirement Templates found")
         return
 
-    if ctx.args.json_output or ctx.args.count_only:
-        if ctx.args.details:
-            print_objects_as_json(
-                [
-                    substitute_ids_for_names_in_crt(
-                        ctx.client,
-                        ctx.client.compute_client.get_compute_requirement_template(
-                            cast(str, crt.id)
-                        ),
-                        substitute=bool(ctx.args.substitute_ids),
-                    )
-                    for crt in sorted_objects(cr_templates)
-                ]
-            )
-        else:
-            _print_json_or_count(ctx, sorted_objects(cr_templates))
-        return
-
-    if ctx.args.ids_only:
-        for crt in cr_templates:
-            print(crt.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, sorted_objects(cr_templates))
-        return
-
-    # Show details
-    cr_templates = select(ctx.client, cr_templates)
-    if cr_templates and ctx.args.substitute_ids:
-        print_info(
-            "Substituting Compute Source Template IDs and Image Family IDs with names"
-        )
-    cr_template_details = [
-        (
-            substitute_ids_for_names_in_crt(
-                ctx.client,
-                ctx.client.compute_client.get_compute_requirement_template(
-                    cast(str, cr_template.id)
-                ),
-                substitute=bool(ctx.args.substitute_ids),
+    _emit(
+        ctx,
+        cr_templates,
+        detail=lambda crt: substitute_ids_for_names_in_crt(
+            ctx.client,
+            ctx.client.compute_client.get_compute_requirement_template(
+                cast(str, crt.id)
             ),
-            {PROP_RESOURCE: RN_REQUIREMENT_TEMPLATE},
-        )
-        for cr_template in cr_templates
-    ]
-    print_yd_object_list(
-        cr_template_details,  # type: ignore[arg-type]
+            substitute=bool(ctx.args.substitute_ids),
+        ),
+        extra=lambda _: {PROP_RESOURCE: RN_REQUIREMENT_TEMPLATE},
+        announce=(
+            "Substituting Compute Source Template IDs and Image Family IDs with names"
+        ),
     )
 
 
@@ -1464,46 +1469,15 @@ def list_compute_source_templates(ctx: RunContext):
         _print_empty(ctx, "No matching Compute Source Templates found")
         return
 
-    if ctx.args.json_output or ctx.args.count_only:
-        if ctx.args.details:
-            print_objects_as_json(
-                [
-                    substitute_image_family_id_for_name_in_cst(
-                        ctx.client,
-                        ctx.client.compute_client.get_compute_source_template(cst.id),  # type: ignore[arg-type]
-                        substitute=bool(ctx.args.substitute_ids),
-                    )
-                    for cst in sorted_objects(cs_templates)
-                ]
-            )
-        else:
-            _print_json_or_count(ctx, sorted_objects(cs_templates))
-        return
-
-    if ctx.args.ids_only:
-        for cst in cs_templates:
-            print(cst.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, sorted_objects(cs_templates))
-        return
-
-    # Show details
-    cs_templates = select(ctx.client, sorted_objects(cs_templates))
-    cs_template_details = [
-        (
-            substitute_image_family_id_for_name_in_cst(
-                ctx.client,
-                ctx.client.compute_client.get_compute_source_template(cs_template.id),  # type: ignore[arg-type]
-                substitute=bool(ctx.args.substitute_ids),
-            ),
-            {PROP_RESOURCE: RN_SOURCE_TEMPLATE},
-        )
-        for cs_template in cs_templates
-    ]
-    print_yd_object_list(
-        cs_template_details,  # type: ignore[arg-type]
+    _emit(
+        ctx,
+        cs_templates,
+        detail=lambda cst: substitute_image_family_id_for_name_in_cst(
+            ctx.client,
+            ctx.client.compute_client.get_compute_source_template(cst.id),  # type: ignore[arg-type]
+            substitute=bool(ctx.args.substitute_ids),
+        ),
+        extra=lambda _: {PROP_RESOURCE: RN_SOURCE_TEMPLATE},
     )
 
 
@@ -1529,26 +1503,7 @@ def list_keyrings(ctx: RunContext):
         _print_empty(ctx, "No Keyrings found")
         return
 
-    if ctx.args.json_output or ctx.args.count_only:
-        _print_json_or_count(ctx, sorted_objects(keyrings))
-        return
-
-    if ctx.args.ids_only:
-        for keyring in keyrings:
-            print(keyring.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, sorted_objects(keyrings))
-        return
-
-    # Show details
-    print_yd_object_list(
-        [
-            (keyring, {PROP_RESOURCE: RN_KEYRING})
-            for keyring in select(ctx.client, keyrings)
-        ]
-    )
+    _emit(ctx, keyrings, extra=lambda _: {PROP_RESOURCE: RN_KEYRING})
 
 
 def list_image_families(ctx: RunContext):
@@ -1599,38 +1554,13 @@ def list_image_families(ctx: RunContext):
             )
             return
 
-    if ctx.args.json_output or ctx.args.count_only:
-        if ctx.args.details:
-            print_objects_as_json(
-                [
-                    ctx.client.images_client.get_image_family_by_id(ifs.id)  # type: ignore[arg-type]
-                    for ifs in sorted_objects(image_family_summaries)
-                ]
-            )
-        else:
-            _print_json_or_count(ctx, sorted_objects(image_family_summaries))
-        return
-
-    if ctx.args.ids_only:
-        for image_family in image_family_summaries:
-            print(image_family.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, sorted_objects(image_family_summaries))
-        return
-
-    # Show details
-    image_family_summaries = select(ctx.client, sorted_objects(image_family_summaries))
-    image_families = [
-        (
-            ctx.client.images_client.get_image_family_by_id(image_family_summary.id),  # type: ignore[arg-type]
-            {PROP_RESOURCE: RN_IMAGE_FAMILY},
-        )
-        for image_family_summary in image_family_summaries
-    ]
-    print_yd_object_list(
-        image_families,  # type: ignore[arg-type]
+    _emit(
+        ctx,
+        image_family_summaries,
+        detail=lambda family: ctx.client.images_client.get_image_family_by_id(
+            family.id  # type: ignore[arg-type]
+        ),
+        extra=lambda _: {PROP_RESOURCE: RN_IMAGE_FAMILY},
     )
 
 
@@ -1649,48 +1579,18 @@ def list_allowances(ctx: RunContext):
         _print_empty(ctx, "No Allowances to display")
         return
 
-    if ctx.args.json_output or ctx.args.count_only:
-        if ctx.args.details:
-            print_objects_as_json(
-                [
-                    substitute_id_for_name_in_allowance(
-                        ctx.client,
-                        a,  # type: ignore[arg-type]
-                        substitute=bool(ctx.args.substitute_ids),
-                    )
-                    for a in allowances
-                ]
-            )
-        else:
-            _print_json_or_count(ctx, allowances)
-        return
-
-    if ctx.args.ids_only:
-        for allowance in allowances:
-            print(allowance.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, allowances)
-        return
-
-    # Show details
-    if allowances and ctx.args.substitute_ids:
-        print_info(
+    _emit(
+        ctx,
+        allowances,
+        detail=lambda allowance: substitute_id_for_name_in_allowance(
+            ctx.client,
+            allowance,  # type: ignore[arg-type]
+            substitute=bool(ctx.args.substitute_ids),
+        ),
+        extra=lambda _: {PROP_RESOURCE: RN_ALLOWANCE},
+        announce=(
             "Substituting Compute Requirement Template IDs with names (if applicable)"
-        )
-    print_yd_object_list(
-        [
-            (
-                substitute_id_for_name_in_allowance(
-                    ctx.client,
-                    allowance,  # type: ignore[arg-type]
-                    substitute=bool(ctx.args.substitute_ids),
-                ),
-                {PROP_RESOURCE: RN_ALLOWANCE},
-            )
-            for allowance in select(ctx.client, allowances)
-        ]
+        ),
     )
 
 
@@ -1760,27 +1660,7 @@ def list_namespaces(ctx: RunContext):
     if not namespaces:
         _print_empty(ctx, "No Namespaces found")
         return
-    namespaces = sorted_objects(namespaces)
-
-    if ctx.args.json_output or ctx.args.count_only:
-        _print_json_or_count(ctx, namespaces)
-        return
-
-    if ctx.args.ids_only:
-        for namespace in namespaces:
-            print(namespace.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, namespaces)
-        return
-
-    print_yd_object_list(
-        [
-            (namespace, {PROP_RESOURCE: RN_NAMESPACE})
-            for namespace in select(ctx.client, namespaces)
-        ]
-    )
+    _emit(ctx, namespaces, extra=lambda _: {PROP_RESOURCE: RN_NAMESPACE})
 
 
 def list_namespace_policies(ctx: RunContext):
@@ -1832,36 +1712,18 @@ def list_users(ctx: RunContext):
         _print_empty(ctx, "No Users to display")
         return
 
-    users = sorted_objects(users)
-
-    if ctx.args.json_output or ctx.args.count_only:
-        _print_json_or_count(ctx, users)
-        return
-
-    if ctx.args.ids_only:
-        for user in users:
-            print(user.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(ctx.client, users, object_type_name="User")
-        return
-
-    # Add the list of groups to the user details
-    print_yd_object_list(
-        [
-            (
-                user,
-                {
-                    PROP_GROUPS: [
-                        group.name
-                        for group in get_user_groups(ctx.client, user.id)  # type: ignore[arg-type]
-                    ],
-                    PROP_RESOURCE: user.__class__.__name__,
-                },
-            )
-            for user in select(ctx.client, users)
-        ]
+    # With '--details', each User's Groups by name, as yd-create takes them
+    _emit(
+        ctx,
+        users,
+        type_name="User",
+        extra=lambda user: {
+            PROP_GROUPS: [
+                group.name
+                for group in get_user_groups(ctx.client, user.id)  # type: ignore[arg-type]
+            ],
+            PROP_RESOURCE: user.__class__.__name__,
+        },
     )
 
 
@@ -1880,40 +1742,18 @@ def list_applications(ctx: RunContext):
         _print_empty(ctx, "No Applications to display")
         return
 
-    applications = sorted_objects(applications)
-
-    if ctx.args.json_output or ctx.args.count_only:
-        _print_json_or_count(ctx, applications)
-        return
-
-    if ctx.args.ids_only:
-        for application in applications:
-            print(application.id)
-        return
-
-    if not ctx.args.details:
-        print_numbered_object_list(
-            ctx.client, applications, object_type_name="Application"
-        )
-        return
-
-    # Add the list of group names for each application
-    print_yd_object_list(
-        [
-            (
-                application,
-                {
-                    PROP_GROUPS: [
-                        group.name
-                        for group in get_application_group_summaries(
-                            ctx.client, application.id
-                        )
-                    ],
-                    PROP_RESOURCE: RN_APPLICATION,
-                },
-            )
-            for application in select(ctx.client, applications)
-        ]
+    # With '--details', each Application's Groups by name
+    _emit(
+        ctx,
+        applications,
+        type_name="Application",
+        extra=lambda application: {
+            PROP_GROUPS: [
+                group.name
+                for group in get_application_group_summaries(ctx.client, application.id)
+            ],
+            PROP_RESOURCE: RN_APPLICATION,
+        },
     )
 
 

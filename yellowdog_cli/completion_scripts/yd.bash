@@ -22,10 +22,13 @@ _yd_completion() {
         files|dirs)
             type compopt &>/dev/null && compopt -o filenames
             local IFS=$'\n'
+            # The path after an '--option=' (one word in bash 3.2, which
+            # does not split it there), which is all readline replaces
+            local path=${cur##*[=:]}
             if [[ $mode == files ]]; then
-                COMPREPLY=($(compgen -f -- "$cur"))
+                COMPREPLY=($(compgen -f -- "$path"))
             else
-                COMPREPLY=($(compgen -d -- "$cur"))
+                COMPREPLY=($(compgen -d -- "$path"))
             fi
             ;;
         values)

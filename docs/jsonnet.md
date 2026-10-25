@@ -7,12 +7,12 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:12 BST 2026 -->
+<!-- Added by: pwt, at: Fri Oct 23 18:25:13 BST 2026 -->
 
 <!--te-->
 
 
-In all circumstances where JSON files are used by the YellowDog CLI commands, **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc.
+In all circumstances where JSON files are used by the YellowDog CLI commands, **[Jsonnet](https://jsonnet.org)** files can be used instead. This allows the use of Jsonnet's powerful JSON extensions, including comments, variables, functions, etc. A variable substitution inside a comment is left as it is, so commenting out a line that holds one comments it out.
 
 A simple usage example might be:
 
@@ -28,32 +28,23 @@ Jsonnet is **not** installed by default. If you try to use a Jsonnet file withou
 
 On most platforms Jsonnet installs as a prebuilt wheel and needs nothing else. There is no wheel for Linux on Arm (`aarch64`), for Intel macOS, for Windows on Arm, or for Linux distributions older than Debian 9 / Ubuntu 17.04; on those, pip compiles Jsonnet from source, which needs a C++ compiler — `build-essential` on Debian/Ubuntu. `yd version` reports whether Jsonnet is installed, and which version.
 
-**With pipx:**
+Install it as an extra, the way the CLI was installed (see [Installation](../README.md#installation)):
 
-```shell
-pipx inject yellowdog-cli jsonnet
-```
-
-To update Jsonnet alongside the CLI:
-
-```shell
-pipx upgrade yellowdog-cli
-pipx inject --force yellowdog-cli jsonnet
-```
-
-**With uv:**
+**With uv tool:**
 
 ```shell
 uv tool install "yellowdog-cli[jsonnet]"
 ```
 
-To update:
+To update: `uv tool upgrade yellowdog-cli`
+
+**In a virtual environment created with uv**, with the environment activated:
 
 ```shell
-uv tool upgrade yellowdog-cli
+uv pip install -U "yellowdog-cli[jsonnet]"
 ```
 
-**With pip:**
+**With pip in a virtual environment**, with the environment activated:
 
 ```shell
 pip install -U "yellowdog-cli[jsonnet]"

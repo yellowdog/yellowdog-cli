@@ -11,6 +11,7 @@ from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from rich.console import Console
 from rich.text import Text
 from yellowdog_client.model import KeyringSummary, Task, WorkRequirementSummary
@@ -617,15 +618,15 @@ class TestWorkRequirementTable:
         _, rows = work_requirement_table([wr])
         assert rows[0][5] == "2/10"
 
-    def test_none_namespace_becomes_empty_string(self):
+    def test_none_namespace_is_a_blank_cell(self):
         wr = self._wr(namespace=None)
         _, rows = work_requirement_table([wr])
-        assert rows[0][2] == ""
+        assert rows[0][2] is None
 
-    def test_none_tag_becomes_empty_string(self):
+    def test_none_tag_is_a_blank_cell(self):
         wr = self._wr(tag=None)
         _, rows = work_requirement_table([wr])
-        assert rows[0][3] == ""
+        assert rows[0][3] is None
 
     def test_healthy_flag_rendered(self):
         _, rows_yes = work_requirement_table([self._wr(healthy=True)])
@@ -862,7 +863,76 @@ class TestSortedObjects:
 def test_a_node_without_details_is_still_listed():
     node = SimpleNamespace(details=None, workers=[], status="RUNNING", id="ydid:node:x")
     _, rows = tables_module.nodes_table([node])
-    assert rows == [[1, None, None, None, None, "", None, 0, "RUNNING", "ydid:node:x"]]
+    assert rows == [
+        [1, None, None, None, None, None, None, 0, "RUNNING", "ydid:node:x"]
+    ]
+
+
+class _Missing:
+    """
+    An object the Platform gave nothing for: every property is None.
+    """
+
+    def __getattr__(self, name: str) -> None:
+        return None
+
+
+def _model_builders() -> list:
+    """
+    The builder of every entity listing whose rows are read from properties;
+    users_table, which keys on the user's class, aside.
+    """
+    return [
+        builder
+        for _model, builder in tables_module._model_table_builders()
+        if builder is not tables_module.users_table
+    ]
+
+
+class TestMissingCells:
+    """
+    One rule for a value the Platform did not give: a blank cell (None in the
+    row, which --json gives as null where a table is recorded). Never the text
+    'None', never a guessed 'No' or '-', and never an exception that ends the
+    listing.
+    """
+
+    @pytest.mark.parametrize("builder", _model_builders(), ids=lambda b: b.__name__)
+    def test_an_object_with_nothing_set_lists_as_blanks(self, builder):
+        _, rows = builder([_Missing()])
+        [row] = rows
+        assert row[0] == 1
+        # Blank either way: None, or text with nothing in it; 0 is a count
+        assert all(cell in (None, "", 0) for cell in row[1:]), row
+
+    def test_an_attribute_definition_with_only_a_name(self):
+        _, rows = tables_module.attribute_definitions_table([{"name": "a"}])
+        assert rows == [[1, "a", None, None, ""]]
+
+    def test_a_missing_yes_or_no_is_blank(self):
+        assert _yes_or_no(None) is None
+
+    def test_a_missing_value_is_printed_as_a_blank_cell(self, capsys):
+        with output_settings.configured(SimpleNamespace(no_format=True)):
+            tables_module.print_table(["A", "B"], [["x", None]])
+        assert "None" not in capsys.readouterr().out
+
+    def test_cloud_info_cells_follow_the_same_rule(self):
+        assert tables_module._provider_text(None) is None
+        assert tables_module._number_text(None) is None
+        assert tables_module._price_text(None) is None
+        assert tables_module._currency_text(None) is None
+        assert tables_module._gpus_text(None) is None
+        assert tables_module._sub_region_text(None) is None
+        assert tables_module._display_name(None) is None
+
+    def test_a_node_action_queue_without_a_status_or_actions(self):
+        snapshot = SimpleNamespace(
+            status=None, waiting=None, executing=None, failed=None
+        )
+        assert tables_module.node_action_queue_table([("ydid:node:x", snapshot)]) == [
+            ["ydid:node:x", None, 0, None, None]
+        ]
 
 
 def test_an_output_file_that_cannot_be_written_keeps_its_cause(tmp_path):
@@ -993,3 +1063,18 @@ def test_the_consoles_came_up_without_colour():
         printing_module.CONSOLE_JSON,
     ):
         assert console.color_system is None, console
+
+
+def test_a_message_keeps_its_line_breaks():
+    # Advice that sets a command on a line of its own is not run together
+    from yellowdog_cli.utils import output_settings
+    from yellowdog_cli.utils.printing import print_string
+
+    with output_settings.configured(SimpleNamespace(no_format=False, print_pid=False)):
+        lines = print_string(
+            "rebuild it with:\n    pip install -U --no-binary :all: jsonnet\nThen retry"
+        ).split("\n")
+    assert len(lines) == 3
+    assert lines[0].endswith(" : rebuild it with:")
+    assert lines[1].strip() == "pip install -U --no-binary :all: jsonnet"
+    assert lines[2].strip() == "Then retry"

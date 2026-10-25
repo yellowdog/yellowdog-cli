@@ -72,7 +72,7 @@ def _rclone_error_detail(result) -> str:
     return result.stderr or f"rclone exit code {result.returncode}"
 
 
-def _join_remote(remote_dir: str, name: str) -> str:
+def join_remote(remote_dir: str, name: str) -> str:
     """
     A name within a remote directory: 'remote_dir' may end with '/', or be a
     bare 'remote:' (as glob_matches() returns it for a path with no
@@ -649,7 +649,7 @@ def _report_sync_deletions(
     base = remote_path.rstrip("/")
     for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
         if entry["Path"] not in local:
-            destination = _join_remote(base, entry["Path"])
+            destination = join_remote(base, entry["Path"])
             print_dry_run(f"Would delete '{destination}'")
             record_transfer(None, destination, entry.get("Size"), "would delete")
 
@@ -687,11 +687,10 @@ def _local_upload_files(
     (source, destination, size) for each file in the local directory, as an
     rclone copy of it to 'remote_path' places it.
     """
-    base = remote_path.rstrip("/")
     return [
         (
             path,
-            f"{base}/{Path(path).relative_to(local_path).as_posix()}",
+            join_remote(remote_path, Path(path).relative_to(local_path).as_posix()),
             Path(path).stat().st_size,
         )
         for path in _local_files(local_path)
@@ -703,8 +702,7 @@ def flattened_destinations(local_path: Path, remote_path: str) -> list[str]:
     Where a flattened upload of a local directory puts each of its files.
     """
     return [
-        f"{remote_path.rstrip('/')}/{Path(path).name}"
-        for path in _local_files(local_path)
+        join_remote(remote_path, Path(path).name) for path in _local_files(local_path)
     ]
 
 
@@ -737,7 +735,7 @@ def _upload_directory_flat(
         else:
             seen[local_file.name] = local_file
 
-    destinations = [f"{remote_path.rstrip('/')}/{f.name}" for f in files]
+    destinations = [join_remote(remote_path, f.name) for f in files]
     if dry_run:
         return all(
             [
@@ -776,30 +774,34 @@ def upload_files(
     names to one remote directory are uploaded in one rclone run
     (_copy_files()), and checked against a listing of the remote directory
     when it fails, since it may have uploaded some; any other file, as
-    upload_file() uploads it.
+    upload_file() uploads it. A symlink is one of those others: rclone,
+    given its name in a list, skips it as a link it does not follow, or
+    finds no such name in its target's directory, and reports neither.
     """
     if dry_run:
         return sum(
             0 if upload_file(config, local, remote, dry_run=True) else 1
             for local, remote in uploads
         )
-    groups: dict[tuple[Path, str], list[Path]] = {}
-    singles: list[tuple[Path, str]] = []
-    for local, remote in uploads:
+
+    def directories(upload: tuple[Path, str]) -> tuple[Path, str] | None:
+        local, remote = upload
         remote_dir, _, remote_name = remote.rpartition("/")
-        if remote_dir and remote_name == local.name and listable(local.name):
-            groups.setdefault((local.resolve().parent, remote_dir), []).append(local)
-        else:
-            singles.append((local, remote))
-    # A file alone in its directory is uploaded on its own
-    for (_, remote_dir), files in list(groups.items()):
-        if len(files) == 1:
-            singles.append((files[0], f"{remote_dir}/{files[0].name}"))
-    groups = {key: files for key, files in groups.items() if len(files) > 1}
+        if (
+            remote_dir
+            and remote_name == local.name
+            and listable(local.name)
+            and not local.is_symlink()
+        ):
+            return local.resolve().parent, remote_dir
+        return None
+
+    groups, singles = _by_directory(uploads, directories)
     failed = 0
     if groups:
         _, rclone = _rclone_for_config(config)
-    for (local_dir, remote_dir), files in groups.items():
+    for (local_dir, remote_dir), group in groups.items():
+        files = [local for local, _ in group]
         print_info(
             f"Uploading {len(files):,d} file(s) from '{local_dir}' → '{remote_dir}'"
         )
@@ -1124,7 +1126,7 @@ def _download_with_glob(
     for entry, files in zip(matches, files_of_matches):
         if not entry["IsDir"] and listable(entry["Name"]):
             continue
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         if flatten:
             _warn_of_flattened_collisions(files, flattened)
             if entry["IsDir"]:
@@ -1176,7 +1178,7 @@ def _download_batch(
         print_error(error)
     missing_names = {entry["Name"] for entry in missing}
     for entry in entries:
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         failed = entry["Name"] in missing_names
         record_transfer(
             src,
@@ -1227,7 +1229,7 @@ def _download_files_of(
         return [(remote_path, str(local_path), entry.get("Size"))]
     return [
         (
-            _join_remote(remote_path, f["Path"]),
+            join_remote(remote_path, f["Path"]),
             str(local_path / (f["Name"] if flatten else f["Path"])),
             f.get("Size"),
         )
@@ -1263,7 +1265,7 @@ def _files_of_matches(
     """
 
     def files_of(entry: dict) -> list[tuple[str, str, int | None]]:
-        src = _join_remote(remote_dir, entry["Name"])
+        src = join_remote(remote_dir, entry["Name"])
         is_dir = bool(entry["IsDir"])
         flat = flatten and is_dir
         return _download_files_of(
@@ -1473,14 +1475,14 @@ def _dry_run_download(
                 if flatten:
                     _warn_of_flattened_collisions(files, flattened)
                 _record_downloads(
-                    files, _join_remote(remote_dir, entry["Name"]), "would download"
+                    files, join_remote(remote_dir, entry["Name"]), "would download"
                 )
         if sync:
             for entry in matches:
                 if entry["IsDir"]:
                     _report_local_sync_deletions(
                         rclone,
-                        _join_remote(remote_dir, entry["Name"]),
+                        join_remote(remote_dir, entry["Name"]),
                         local_destination / entry["Name"],
                     )
         return
@@ -1575,7 +1577,7 @@ def deletion_targets(
             record_deletion(remote_path, False, "skipped")
             return [], 0
         candidates = [
-            (_join_remote(remote_dir, entry["Name"]), bool(entry["IsDir"]))
+            (join_remote(remote_dir, entry["Name"]), bool(entry["IsDir"]))
             for entry in matches
         ]
     else:
@@ -1647,27 +1649,22 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
     when it fails, since it may have deleted some; a directory, and a file
     alone in its directory, as delete_item() deletes it.
     """
-    groups: dict[str, list[str]] = {}
-    singles: list[tuple[str, bool]] = []
-    for path, is_dir in targets:
+
+    def directory(target: tuple[str, bool]) -> str | None:
+        path, is_dir = target
         remote_dir, _, name = path.rstrip("/").rpartition("/")
-        if not is_dir and remote_dir and listable(name):
-            groups.setdefault(remote_dir, []).append(name)
-        else:
-            singles.append((path, is_dir))
-    # A file alone in its directory is deleted on its own
-    for remote_dir, names in list(groups.items()):
-        if len(names) == 1:
-            singles.append((f"{remote_dir}/{names[0]}", False))
-    groups = {key: names for key, names in groups.items() if len(names) > 1}
+        return remote_dir if not is_dir and remote_dir and listable(name) else None
+
+    groups, singles = _by_directory(targets, directory)
     failed = 0
     if groups:
         _, rclone = _rclone_for_config(config)
-    for remote_dir, names in groups.items():
+    for remote_dir, group in groups.items():
+        names = [path.rstrip("/").rpartition("/")[2] for path, _ in group]
         print_info(f"Deleting {len(names):,d} file(s) in '{remote_dir}'")
         result = _delete_files(rclone, remote_dir, names)
         left = (
-            set() if result.returncode == 0 else set(_remote_sizes(rclone, remote_dir))
+            set() if result.returncode == 0 else _files_left(rclone, remote_dir, names)
         )
         error = None
         for name in names:
@@ -1686,6 +1683,48 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
     for path, is_dir in singles:
         failed += 0 if delete_item(config, path, is_dir) else 1
     return failed
+
+
+def _files_left(rclone: Rclone, remote_dir: str, names: list[str]) -> set[str]:
+    """
+    Which of the names are still in a remote directory after a failed
+    deletion: all of them if it cannot be listed, as when the connection
+    that failed the deletion is still lost, since none is known to have
+    gone. (Not _remote_sizes(), which takes a directory it cannot list to
+    hold none: safe for a transfer, whose files it fails, but not here.)
+    """
+    try:
+        entries = _lsjson(rclone, remote_dir, files_only=True)
+    except RuntimeError:
+        return set(names)
+    return {entry["Name"] for entry in entries}
+
+
+_K = TypeVar("_K")
+
+
+def _by_directory(
+    items: list[_T], directory_of: Callable[[_T], _K | None]
+) -> tuple[dict[_K, list[_T]], list[_T]]:
+    """
+    The items done in one rclone run each directory, the rest one at a time:
+    grouped by what 'directory_of' gives an item (None for one done alone),
+    a group of one done alone too. Returns the groups, and the rest in the
+    order given.
+    """
+    keys = [directory_of(item) for item in items]
+    counts: dict[_K, int] = {}
+    for key in keys:
+        if key is not None:
+            counts[key] = counts.get(key, 0) + 1
+    groups: dict[_K, list[_T]] = {}
+    singles: list[_T] = []
+    for item, key in zip(items, keys):
+        if key is not None and counts[key] > 1:
+            groups.setdefault(key, []).append(item)
+        else:
+            singles.append(item)
+    return groups, singles
 
 
 def lsjson_listing(
@@ -1717,7 +1756,7 @@ def lsjson_listing(
                     {**entry, "Path": f"{match['Path']}/{entry['Path']}"}
                     for entry in _lsjson(
                         rclone,
-                        _join_remote(remote_dir, match["Name"]),
+                        join_remote(remote_dir, match["Name"]),
                         recursive=True,
                         modtime=True,
                     )
@@ -1780,7 +1819,7 @@ def copy_remote(
     # Source is a single file: use copyto for precise destination naming.
     # If dst ends with '/', treat it as a directory and append the source filename.
     dst_file = (
-        dst_path + src_path.rsplit("/", 1)[-1] if dst_path.endswith("/") else dst_path
+        dst_path + remote_basename(src_path) if dst_path.endswith("/") else dst_path
     )
 
     def _as_given(source: str, destination: str) -> tuple[str, str]:
@@ -1800,8 +1839,8 @@ def copy_remote(
         else:
             files = [
                 (
-                    _join_remote(src_path.rstrip("/"), f["Path"]),
-                    _join_remote(dst_path.rstrip("/"), f["Path"]),
+                    join_remote(src_path.rstrip("/"), f["Path"]),
+                    join_remote(dst_path.rstrip("/"), f["Path"]),
                     f.get("Size"),
                 )
                 for f in _lsjson(rclone, src_path, recursive=True, files_only=True)
@@ -1862,7 +1901,7 @@ def _report_copy_sync_deletions(
     base = dst_path.rstrip("/")
     for entry in sorted(json.loads(result.stdout or "[]"), key=lambda e: e["Path"]):
         if entry["Path"] not in source:
-            _, destination = as_given(src_path, _join_remote(base, entry["Path"]))
+            _, destination = as_given(src_path, join_remote(base, entry["Path"]))
             print_dry_run(f"Would delete '{destination}'")
             record_transfer(None, destination, entry.get("Size"), "would delete")
 

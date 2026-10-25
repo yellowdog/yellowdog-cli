@@ -11,18 +11,15 @@ from typing import Any
 from PyQt6.QtCore import (
     QEventLoop,
     QProcess,
-    QProcessEnvironment,
     QTimer,
 )
 
-from yellowdog_cli.commander.host import (
-    CHILD_ENVIRONMENT,
-    cli_program,
-)
+from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.output_model import (
     OutputRun,
     message_prefix,
 )
+from yellowdog_cli.commander.processes import child_process
 from yellowdog_cli.commander.selection import (
     EntitySummary,
     ObjectSummary,
@@ -100,15 +97,8 @@ class CommandRunning(WindowBase):
         _capture_json(), returning the parsed JSON document whatever its shape
         (yd variables prints an object); None on any failure.
         """
-        yd_process = QProcess()
+        yd_process = child_process(self._working_dir())
         event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            env.insert(name, value)
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
@@ -151,10 +141,12 @@ class CommandRunning(WindowBase):
         try:
             with open(self._config_file, encoding="utf-8") as f:
                 content = f.read()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             return None
 
-        m = re.search(rf"\b{key}\s*=\s*\"([^\"]*)\"", content)
+        # At the start of a line, so that a commented-out definition
+        # ('# workRequirementData = "old.json"') is not taken
+        m = re.search(rf"^\s*{key}\s*=\s*\"([^\"]*)\"", content, re.MULTILINE)
         if not m:
             return None
 
@@ -266,7 +258,13 @@ class CommandRunning(WindowBase):
         commands. 'log_args' replaces 'args' in the echoed command line only —
         used to collapse a long list of YDIDs to a count — and is built the
         same way, so the config-source prefix still appears in the echo.
+
+        Nothing is started once the window is closing: shutdown() has stopped
+        the children, and an action whose listing the close cut short would
+        otherwise go on to act on its whole scope.
         """
+        if self._shutting_down:
+            return
         raw_args = args
         args = self._build_command_args(command, args, yd_command)
         display_args = (
@@ -275,11 +273,7 @@ class CommandRunning(WindowBase):
             else self._build_command_args(command, log_args, yd_command)
         )
 
-        process = QProcess(self)
-        process_env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            process_env.insert(name, value)
-        process.setProcessEnvironment(process_env)
+        process = child_process(self._working_dir(), parent=self)
         run = self._output.start_run(
             command,
             command_line_text(command, display_args),
@@ -299,7 +293,6 @@ class CommandRunning(WindowBase):
             announcement=True,
         )
 
-        process.setWorkingDirectory(self._working_dir())
         process.start(*cli_program(command, args))
         process.waitForStarted()
         if process.error() != QProcess.ProcessError.UnknownError:
@@ -314,7 +307,9 @@ class CommandRunning(WindowBase):
                 self._active_run = run.run_id
                 self.stdin_input.setEnabled(True)
                 self.stdin_input.setPlaceholderText("Send input to process...")
-                process.finished.connect(self._on_active_process_finished)
+                process.finished.connect(
+                    functools_partial(self._on_active_process_finished, process)
+                )
 
     @staticmethod
     def _record_outcome(
@@ -421,7 +416,14 @@ class CommandRunning(WindowBase):
             if process.state() != QProcess.ProcessState.NotRunning
         ]
 
-    def _on_active_process_finished(self):
+    def _on_active_process_finished(self, process: QProcess, *_signal_args):
+        """
+        A process that took stdin has finished: stdin is closed if it is
+        still the one taking it, and left alone if a later command has
+        taken it since.
+        """
+        if process is not self._active_process:
+            return
         self._active_process = None
         self.stdin_input.setEnabled(False)
         self.stdin_input.setPlaceholderText("No command running")

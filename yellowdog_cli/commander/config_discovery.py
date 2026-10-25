@@ -12,7 +12,7 @@ from collections.abc import Callable
 from json import loads
 from typing import cast
 
-from PyQt6.QtCore import QEventLoop, QObject, QProcess, QProcessEnvironment, QTimer
+from PyQt6.QtCore import QEventLoop, QObject, QProcess, QTimer
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
 
 from yellowdog_cli.commander.arguments import (
@@ -20,7 +20,8 @@ from yellowdog_cli.commander.arguments import (
     property_is_complete,
     split_arguments,
 )
-from yellowdog_cli.commander.host import CHILD_ENVIRONMENT, cli_program
+from yellowdog_cli.commander.host import cli_program
+from yellowdog_cli.commander.processes import child_process
 from yellowdog_cli.commander.startup import variable_is_complete
 
 CONFIG_PARSE_TIMEOUT_MS = 10_000  # 'yd variables' can block on an unreachable API URL
@@ -85,6 +86,10 @@ class ConfigDiscovery:
         self._config_parse_timed_out = False
         self._config_parse_retried = False
         self._last_discovery_failure: str | None = None
+        # Counts the discoveries started: one started while another is still
+        # waiting on 'yd variables' (the debounce timer fires in its nested
+        # event loop) supersedes it, its inputs being the newer
+        self._parse_generation = 0
 
         # One retry of namespace/tag discovery, a moment after a timeout. Timers
         # here are parented to the window so they die with it; a bare
@@ -99,18 +104,20 @@ class ConfigDiscovery:
         for ui_object in [namespace_field, tag_field, user_variables, properties]:
             ui_object.textChanged.connect(self._mark_stale)
 
-        # Re-evaluate namespace/tag placeholders after a short delay when
-        # user-defined variables or properties change (debounced to avoid
-        # running yd variables on every keystroke). A property can set the
-        # namespace or tag itself: common.namespace, common.tag.
+        # Re-evaluate namespace/tag after a short delay when any of these
+        # changes (debounced to avoid running yd variables on every
+        # keystroke): the Namespace and Tag fields themselves, which the
+        # scope a dialog names and the default object path are built from,
+        # and the variables and properties, which can set either
+        # (common.namespace, common.tag)
         self._user_vars_reparse_timer = QTimer(parent)
         self._user_vars_reparse_timer.setSingleShot(True)
         self._user_vars_reparse_timer.setInterval(600)
         self._user_vars_reparse_timer.timeout.connect(
             self._reparse_placeholders_after_edit
         )
-        user_variables.textChanged.connect(self._user_vars_reparse_timer.start)
-        properties.textChanged.connect(self._user_vars_reparse_timer.start)
+        for ui_object in [namespace_field, tag_field, user_variables, properties]:
+            ui_object.textChanged.connect(self._user_vars_reparse_timer.start)
 
     def clear(self):
         """
@@ -196,6 +203,15 @@ class ConfigDiscovery:
             for variable in self._user_variables.toPlainText().split()
         ) and all(property_is_complete(prop) for prop in properties):
             self.reparse_placeholders()
+
+    def stop(self):
+        """
+        Stop the retry and the debounced rediscovery, for a window closing:
+        either would otherwise start 'yd variables', in a nested event loop,
+        after the window had begun to go.
+        """
+        self._discovery_retry_timer.stop()
+        self._user_vars_reparse_timer.stop()
 
     def _schedule_discovery_retry(self):
         """
@@ -298,16 +314,11 @@ class ConfigDiscovery:
         if timeout_ms is None:
             timeout_ms = CONFIG_PARSE_TIMEOUT_MS
         self._config_parse_timed_out = False
+        self._parse_generation += 1
+        generation = self._parse_generation
 
-        yd_process = QProcess()
+        yd_process = child_process(self._working_dir())
         event_loop = QEventLoop()
-
-        env = QProcessEnvironment.systemEnvironment()
-        for name, value in CHILD_ENVIRONMENT.items():
-            env.insert(name, value)
-        yd_process.setProcessEnvironment(env)
-        yd_process.setWorkingDirectory(self._working_dir())
-
         yd_process.finished.connect(event_loop.quit)
         yd_process.errorOccurred.connect(event_loop.quit)
 
@@ -323,7 +334,12 @@ class ConfigDiscovery:
         if not quiet:
             self._log(f"Discovering namespace/tag: '{cmd + ' ' + ' '.join(args)}'")
         yd_process.start(*cli_program(cmd, args))
-        if not self._run_nested(yd_process, event_loop, timeout_ms):
+        finished = self._run_nested(yd_process, event_loop, timeout_ms)
+        if generation != self._parse_generation:
+            # Superseded while it ran: the newer discovery's result stands,
+            # never this one's, from the inputs as they were
+            return not self._config_parse_invalid
+        if not finished:
             if self._shutting_down():
                 return False  # the widgets are going away; don't touch them
             self._config_parse_timed_out = True

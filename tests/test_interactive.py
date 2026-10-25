@@ -10,6 +10,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 import yellowdog_cli.utils.interactive as interactive_module
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
@@ -184,6 +186,40 @@ def test_a_required_selection_says_so_when_none_is_made(monkeypatch):
     assert errors == ["please select at least one item"]
 
 
+def _listed(quiet: bool, force_interactive: bool, override_quiet: bool = False):
+    """
+    The 'override_quiet' select() lists the objects with, or None if it
+    lists none.
+    """
+    mock_args = SimpleNamespace(quiet=quiet, interactive=False)
+    with (
+        output_settings.configured(mock_args),
+        patch.object(interactive_module, "print_numbered_object_list") as listed,
+        patch.object(interactive_module, "get_selected_list_items", return_value=[2]),
+    ):
+        selected = interactive_module.select(
+            None,  # type: ignore[arg-type]
+            ["a", "b"],
+            force_interactive=force_interactive,
+            override_quiet=override_quiet,
+            sort_objects=False,
+        )
+    assert selected == (["b"] if force_interactive else ["a", "b"])
+    return listed.call_args.kwargs["override_quiet"] if listed.called else None
+
+
+def test_a_forced_selection_lists_its_objects_under_quiet():
+    # As removing Allowances by a description several match asks: the
+    # prompt without the list would leave nothing to choose from
+    assert _listed(quiet=True, force_interactive=True) is True
+
+
+def test_quiet_lists_nothing_when_nothing_is_to_be_selected():
+    assert _listed(quiet=True, force_interactive=False) is None
+    assert _listed(quiet=False, force_interactive=False) is False
+    assert _listed(quiet=True, force_interactive=False, override_quiet=True) is True
+
+
 def test_an_answer_with_spaces_is_understood():
     mock_args = SimpleNamespace(yes=False, no_format=True)
     with output_settings.configured(mock_args):
@@ -211,3 +247,64 @@ def test_interactive_imports_no_sdk():
         [sys.executable, "-c", script], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == "False"
+
+
+class TestAsk:
+    """
+    ask(): a secret's prompt goes through the console as every other prompt
+    does, so it is highlighted (its timestamp coloured) like them, and only
+    the answer is read unseen.
+    """
+
+    def test_a_secrets_prompt_is_printed_by_the_console(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=False)),
+            patch.object(interactive_module.CONSOLE, "print") as printed,
+            patch("getpass.getpass", return_value=" s3cret ") as read,
+        ):
+            assert interactive_module.ask("Secret:", secret=True) == "s3cret"
+        assert printed.call_args.args[0].rstrip().endswith("Secret:")
+        read.assert_called_once_with("")
+
+    def test_without_format_the_prompt_is_getpasss_own(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch.object(interactive_module.CONSOLE, "print") as printed,
+            patch("getpass.getpass", return_value="s") as read,
+        ):
+            interactive_module.ask("Secret:", secret=True)
+        printed.assert_not_called()
+        assert read.call_args.args[0].rstrip().endswith("Secret:")
+
+    def test_no_answer_to_a_secret(self):
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch("getpass.getpass", side_effect=EOFError),
+            pytest.raises(interactive_module.NoAnswerToPrompt),
+        ):
+            interactive_module.ask("Secret:", secret=True)
+
+
+class TestAPromptLeftUnanswered:
+    """
+    Ctrl-C or end of input at a prompt ends the prompt's line, so what is
+    printed next (the command's 'Cancelled', an error) starts a line of its
+    own rather than running on after the prompt.
+    """
+
+    @pytest.mark.parametrize("raised", [KeyboardInterrupt, EOFError])
+    @pytest.mark.parametrize("secret", [False, True])
+    def test_the_line_is_ended(self, capsys, raised, secret):
+        expected = (
+            KeyboardInterrupt
+            if raised is KeyboardInterrupt
+            else interactive_module.NoAnswerToPrompt
+        )
+        with (
+            output_settings.configured(SimpleNamespace(no_format=True)),
+            patch("builtins.input", side_effect=raised),
+            patch("getpass.getpass", side_effect=raised),
+            pytest.raises(expected),
+        ):
+            interactive_module.ask("Question:", secret=secret)
+        assert capsys.readouterr().out.endswith("\n")

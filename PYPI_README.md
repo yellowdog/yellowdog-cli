@@ -26,33 +26,37 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
 - **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
+Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
 
 The remote data store commands — the `yd data` verbs `upload`, `download`, `delete`, `list` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 
 ## Installation
 
-Python 3.10 or later is required.
+Python 3.10 or later is required. Choose the installation that fits how you work; **[uv](https://docs.astral.sh/uv/)** supplies Python itself if you have none.
 
-**pipx (recommended)** — installs into an isolated environment and puts the commands on your PATH automatically:
-
-```shell
-pipx install yellowdog-cli
-```
-
-**uv:**
+**uv tool** — the commands on your PATH everywhere, with no environment to activate:
 
 ```shell
 uv tool install yellowdog-cli
 ```
 
-**pip + virtual environment:**
+**A virtual environment created with uv**, downloading Python 3.14 if it is not installed:
+
+```shell
+uv venv --python 3.14 yd-env
+source yd-env/bin/activate   # macOS / Linux; on Windows: yd-env\Scripts\activate
+uv pip install yellowdog-cli
+```
+
+**pip in a virtual environment**, with a Python you have installed:
 
 ```shell
 python3 -m venv yd-env
 source yd-env/bin/activate   # macOS / Linux; on Windows: yd-env\Scripts\activate
 pip install -U yellowdog-cli
 ```
+
+Other installers, such as pipx, work too.
 
 ### Optional Extras
 
@@ -68,12 +72,10 @@ Four optional extras are available:
 List the ones you need in square brackets at installation time, e.g. to install all four:
 
 ```shell
-pipx install "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"    # pipx
-uv tool install "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]" # uv
-pip install -U "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"  # pip
+uv tool install "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"    # uv tool
+uv pip install -U "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"  # uv virtual environment
+pip install -U "yellowdog-cli[jsonnet,commander,cloudwizard,mcp]"     # pip
 ```
-
-An extra can also be added to an existing pipx installation without reinstalling it, e.g. `pipx inject yellowdog-cli jsonnet`.
 
 ### Commander GUI
 

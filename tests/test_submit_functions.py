@@ -4,6 +4,7 @@ Tests for create_task_group (utils/task_groups.py), submit_work_requirement
 """
 
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import ANY, MagicMock, PropertyMock, patch
 
 import pytest
@@ -1200,3 +1201,29 @@ class TestDuplicateTaskGroupNamesAreRefused:
         }
         result = _run_submit_wr(wr_data=wr_data, real_task_groups=True)
         result["add_wr_mock"].assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# --json-raw's follow
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "follow, progress, fetched",
+    [(False, False, False), (True, False, True), (False, True, True)],
+)
+def test_json_raw_fetches_the_work_requirement_only_to_follow_it(
+    monkeypatch, follow, progress, fetched
+):
+    # Fetched unasked, a lost connection would fail a submission that
+    # succeeded, and leave its Work Requirement running
+    client = MagicMock()
+    followed: list = []
+    monkeypatch.setattr(submit_module, "_follow", lambda run, wr: followed.append(wr))
+    run = submit_module._Submission(
+        RunContext(SimpleNamespace(follow=follow, progress=progress), None, client),  # type: ignore[arg-type]
+        config_wr=lazy_value(submit_module.CONFIG_WR),
+    )
+    submit_module._follow_by_id(run, "ydid:workreq:x")
+    assert client.work_client.get_work_requirement_by_id.called is fetched
+    assert len(followed) == (1 if fetched else 0)

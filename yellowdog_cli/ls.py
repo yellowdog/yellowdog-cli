@@ -12,6 +12,7 @@ from yellowdog_cli.utils.dataclient.operations import (
     config_glob_matches,
     config_remote_stat,
     is_glob,
+    join_remote,
     list_remote,
     lsjson_listing,
     resolve_remote_path,
@@ -59,8 +60,6 @@ def _ls_glob(
         print_simple("  (no wildcard matches)")
         return
 
-    base = remote_dir.rstrip("/")
-
     long = ctx.args.long_listing or False
     if not recursive:
         entries = []
@@ -85,7 +84,7 @@ def _ls_glob(
                 print_simple(f"  {name}", override_quiet=True)
     else:
         for e in matches:
-            entry_path = f"{base}/{e['Name']}"
+            entry_path = join_remote(remote_dir, e["Name"])
             if e["IsDir"]:
                 print_simple(f"{e['Name']}/", override_quiet=True)
                 sub_listing = list_remote(config, entry_path, recursive=True)

@@ -96,9 +96,12 @@ def _check(directory: str) -> int:
     index_path = Path(directory) / INDEX_FILE
     try:
         index = json.loads(index_path.read_text(encoding="utf-8"))
+        if not isinstance(index, dict):
+            raise TypeError("it is not a JSON object")
         written_cli = index["cli"]
         written_sdk = index["sdk"]
-    except (OSError, json.JSONDecodeError, KeyError) as error:
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        # ValueError: not JSON, or not UTF-8 (UnicodeDecodeError is one)
         print_error(f"{index_path}: cannot be read ({error})")
         return 1
     if written_cli != cli_version or written_sdk != sdk_version:
@@ -114,7 +117,7 @@ def _check(directory: str) -> int:
             current = path.read_text(encoding="utf-8") == schema_text(
                 build_schema(family)
             )
-        except OSError:
+        except (OSError, UnicodeDecodeError):  # Gone, or not the text written
             current = False
         if not current:
             stale.append(str(path))

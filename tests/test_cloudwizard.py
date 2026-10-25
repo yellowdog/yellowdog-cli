@@ -10,12 +10,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from requests import ConnectionError as RequestsConnectionError
 
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.command_registry import (
     check_cloudwizard_args,
     cloud_provider_of,
 )
+from yellowdog_cli.utils.exit_codes import ReportedFailure
 
 
 def _args(**values) -> Namespace:
@@ -194,6 +196,99 @@ def test_add_ssh_in_every_region_is_confirmed_first(monkeypatch):
     assert "0.0.0.0/0" in asked[0]
 
 
+def test_azure_add_ssh_is_confirmed_first(monkeypatch):
+    # As AWS's is: the rule opens port 22 to anywhere
+    pytest.importorskip("azure.mgmt.network")
+    from yellowdog_cli.utils.cloudwizard import azure as cloudwizard_azure
+
+    asked: list[str] = []
+    monkeypatch.setattr(
+        cloudwizard_azure, "confirmed", lambda question: asked.append(question) or False
+    )
+    config = object.__new__(cloudwizard_azure.AzureConfig)
+    config._generate_resource_group_name = lambda region: f"rg-{region}"
+    config._generate_security_group_name = lambda region: f"sg-{region}"
+    config._network_client = MagicMock()
+    config.set_ssh_ingress_rule("add-ssh", "uksouth")
+    assert asked and "sg-uksouth" in asked[0] and "uksouth" in asked[0]
+    config._network_client.security_rules.begin_create_or_update.assert_not_called()
+
+
+def _ec2_with_security_groups() -> MagicMock:
+    """
+    An EC2 client whose region has a default VPC, and security groups whose
+    names hold 'default' ahead of the real one, which only the filters the
+    search sends find.
+    """
+    ec2 = MagicMock()
+    ec2.describe_vpcs.return_value = {"Vpcs": [{"VpcId": "vpc-default"}]}
+    groups = [
+        {"GroupName": "prod-default-db", "GroupId": "sg-db", "VpcId": "vpc-prod"},
+        {"GroupName": "default", "GroupId": "sg-other", "VpcId": "vpc-prod"},
+        {"GroupName": "default", "GroupId": "sg-default", "VpcId": "vpc-default"},
+    ]
+
+    def described(Filters):
+        wanted = {f["Name"]: f["Values"] for f in Filters}
+        return {
+            "SecurityGroups": [
+                g
+                for g in groups
+                if g["VpcId"] in wanted.get("vpc-id", [g["VpcId"]])
+                and g["GroupName"] in wanted.get("group-name", [g["GroupName"]])
+            ]
+        }
+
+    ec2.describe_security_groups.side_effect = described
+    return ec2
+
+
+def test_add_ssh_opens_the_default_vpcs_default_security_group(monkeypatch):
+    # Not the first group with 'default' in its name, nor another VPC's
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+
+    ec2 = _ec2_with_security_groups()
+    monkeypatch.setattr(cloudwizard_aws.boto3, "client", lambda *a, **k: ec2)
+    monkeypatch.setattr(cloudwizard_aws, "confirmed", lambda question: True)
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config.set_ssh_ingress_rule("add-ssh", "eu-west-2")
+    calls = ec2.authorize_security_group_ingress.call_args_list
+    assert [call.kwargs["GroupId"] for call in calls] == ["sg-default"]
+
+
+def test_aws_setup_without_a_region_makes_nothing(monkeypatch):
+    # Refused before the IAM user, key and templates exist, not after
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config.region_name = None
+    monkeypatch.setattr(
+        config, "_load_aws_resources", lambda: pytest.fail("set-up was started")
+    )
+    with pytest.raises(ValueError, match="No AWS region"):
+        config.setup()
+
+
+def test_declining_one_access_key_deletion_creates_no_new_key(monkeypatch):
+    # The Credential would use the kept key, whose secret is not available,
+    # and the others are still asked about
+    from yellowdog_cli.utils.cloudwizard import aws as cloudwizard_aws
+    from yellowdog_cli.utils.cloudwizard.aws_types import AWSAccessKey
+
+    answers = iter([True, False, True])  # Replace them; keep the first; not the second
+    monkeypatch.setattr(cloudwizard_aws, "confirmed", lambda question: next(answers))
+    config = object.__new__(cloudwizard_aws.AWSConfig)
+    config._show_secrets = False
+    config._access_keys = [AWSAccessKey("AKIAOLD1"), AWSAccessKey("AKIAOLD2")]
+    iam = MagicMock()
+    config._create_access_key(iam)
+    iam.delete_access_key.assert_called_once_with(
+        UserName=cloudwizard_aws.IAM_USER_NAME, AccessKeyId="AKIAOLD2"
+    )
+    iam.create_access_key.assert_not_called()
+    assert [key.access_key_id for key in config._access_keys] == ["AKIAOLD1"]
+
+
 class TestAzureResourceGroupFailures:
     """
     Azure setup: a region whose resource group cannot be checked, and a
@@ -226,6 +321,23 @@ class TestAzureResourceGroupFailures:
         assert config._created_regions == []
         assert cloudwizard_common.errors_reported() == 1
         assert any("denied" in line for line in printed)
+
+    def test_a_teardown_whose_listing_fails_still_removes_the_yellowdog_side(
+        self, printed
+    ):
+        # Azure checks its credentials only as they are used: the listing
+        # failing is reported and counted, and the YellowDog resources, which
+        # are removed first, are removed regardless
+        def listed():
+            raise RuntimeError("ClientAuthenticationError")
+
+        config = self._config(SimpleNamespace(list=listed))
+        steps: list[str] = []
+        config._remove_yellowdog_resources = lambda: steps.append("yellowdog")
+        config.teardown()
+        assert steps == ["yellowdog"]
+        assert cloudwizard_common.errors_reported() == 1
+        assert any("ClientAuthenticationError" in line for line in printed)
 
     def test_a_failed_rollback_is_counted_with_its_reason(self, printed):
         groups = SimpleNamespace(
@@ -419,7 +531,9 @@ class TestSetupAfterAPlatformFailure:
                 raise ReportedFailure(error) if error is not None else RuntimeError()
             return None
 
+        # The templates' module and the shared Credential step's
         monkeypatch.setattr(cloudwizard_azure, "create_resources", create)
+        monkeypatch.setattr(cloudwizard_common, "create_resources", create)
         config = object.__new__(cloudwizard_azure.AzureConfig)
         cloudwizard_common.CommonCloudConfig.__init__(
             config, ctx=SimpleNamespace(client=MagicMock()), cloud_provider="Azure"
@@ -462,3 +576,53 @@ class TestSetupAfterAPlatformFailure:
         assert exited.value.code == 1
         assert config.saved
         assert cloudwizard_common.errors_reported() == 1
+
+
+class TestTheCredentialStepIsShared:
+    """
+    Every provider adds its Credential through CommonCloudConfig's
+    _add_credential(), so a failure there never stops the resource file
+    being saved after it, as AWS and GCP once let it.
+    """
+
+    @pytest.mark.parametrize("module", ["aws", "gcp", "azure"])
+    def test_every_provider_adds_its_credential_through_it(self, module):
+        import importlib
+        import inspect
+
+        try:
+            provider = importlib.import_module(
+                f"yellowdog_cli.utils.cloudwizard.{module}"
+            )
+        except ImportError:
+            pytest.skip(f"the {module} SDK is not installed")
+        source = inspect.getsource(provider)
+        assert "self._add_credential(" in source
+        assert "create_resources(self._ctx, [credential" not in source
+
+    @pytest.mark.parametrize(
+        "failure, kept, counted",
+        [
+            (lambda: ReportedFailure(RequestsConnectionError("gone")), True, 0),
+            (lambda: RuntimeError("400 refused"), False, 1),
+        ],
+    )
+    def test_a_failure_is_kept_or_counted(self, monkeypatch, failure, kept, counted):
+        def create(ctx, resources):
+            raise failure()
+
+        monkeypatch.setattr(cloudwizard_common, "create_resources", create)
+        monkeypatch.setattr(cloudwizard_common, "_ERRORS_REPORTED", 0)
+        monkeypatch.setattr(cloudwizard_common.printing, "print_error", lambda e: None)
+
+        class Provider(cloudwizard_common.CommonCloudConfig):
+            def setup(self):
+                pass
+
+            def teardown(self):
+                pass
+
+        config = Provider(ctx=SimpleNamespace(client=MagicMock()), cloud_provider="X")
+        config._add_credential({"resource": "Credential"})
+        assert isinstance(config.platform_failure, RequestsConnectionError) is kept
+        assert cloudwizard_common.errors_reported() == counted

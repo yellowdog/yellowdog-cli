@@ -193,7 +193,7 @@ class TestOutput:
                 "X86_64",
                 "4",
                 "16",
-                "-",
+                None,
                 "eu-west-2a, eu-west-2b, eu-west-2c",
                 "0.1880",
                 "0.0500",
@@ -211,13 +211,13 @@ class TestTables:
         assert headers[-1] == "Regions"
         assert rows == [["AWS", "g4dn.xlarge", "X86_64", "4", "16", "1 (T4)", "1"]]
 
-    def test_a_type_the_service_says_little_about_shows_dashes(self):
+    def test_a_type_the_service_says_little_about_shows_blanks(self):
         fake = FakeCloudInfo()
         found = instance_types(fake.ctx, CloudInfoQuery(name_glob="u-unknown"))
         _, rows = tables.instance_types_table(found, None)
-        assert rows == [["AWS", "u-unknown", "-", "-", "-", "-", "0"]]
+        assert rows == [["AWS", "u-unknown", None, None, None, None, "0"]]
 
-    def test_a_region_wide_price_has_no_sub_region_and_a_missing_value_a_dash(self):
+    def test_a_region_wide_price_has_no_sub_region_and_a_missing_value_a_blank(self):
         fake = FakeCloudInfo()
         found = prices(
             fake.ctx, CloudInfoQuery(region="eu-west-2", name_glob="t3*.micro")
@@ -241,13 +241,13 @@ class TestTables:
                 "t3.micro",
                 "Spot",
                 "No licence",
-                "-",
+                None,
                 "USD",
             ],
             [
                 "AWS",
                 "eu-west-2",
-                "-",
+                None,
                 "t3a.micro",
                 "On Demand",
                 "No licence",
@@ -256,13 +256,13 @@ class TestTables:
             ],
         ]
 
-    def test_a_priced_type_without_prices_shows_dashes(self):
+    def test_a_priced_type_without_prices_shows_blanks(self):
         fake = FakeCloudInfo()
         [g4dn] = instance_types(fake.ctx, CloudInfoQuery(name_glob="g4dn.xlarge"))
         _, rows = tables.priced_instance_types_table(
             [PricedInstanceType(g4dn, None, None, None)], "eu-west-2"
         )
-        assert rows[0][-5:] == ["eu-west-2a, eu-west-2b", "-", "-", "-", "-"]
+        assert rows[0][-5:] == ["eu-west-2a, eu-west-2b", None, None, None, None]
 
 
 def _parse(*argv: str) -> CLIParser:
@@ -450,7 +450,7 @@ class TestMinors:
         _, rows = tables.priced_instance_types_table(
             [PricedInstanceType(t3, None, Price(value=0.05), "N/A")], "eu-west-2"
         )
-        assert rows[0][-2] == "-"
+        assert rows[0][-2] is None
 
     def test_no_os_licence_does_not_read_as_a_missing_value(self):
         fake = FakeCloudInfo()

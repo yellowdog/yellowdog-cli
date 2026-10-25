@@ -36,7 +36,12 @@ from yellowdog_cli.utils.command_registry import (
 
 @pytest.fixture
 def window(qapp):
-    return YellowDogApp()
+    window = YellowDogApp()
+    yield window
+    # Its timers stopped and children ended, so nothing of it runs in a
+    # later test's event loop
+    window.shutdown()
+    window.close()
 
 
 @pytest.fixture
@@ -234,6 +239,35 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
     assert any(definition.read_text().strip() in line for line in logged), (
         f"the file's contents were never shown; logged: {logged}"
     )
+
+
+@pytest.mark.parametrize("unreadable", ["not UTF-8", "gone"])
+@pytest.mark.parametrize(
+    "action, attribute, description",
+    [
+        ("_show_wr_json_action", "_wr_file", "Work Requirement file"),
+        ("_show_wp_json_action", "_wp_file", "Worker Pool file"),
+        ("_show_config_action", "_config_file", "configuration file"),
+    ],
+)
+def test_a_file_show_cannot_read_is_reported_not_raised(
+    window, monkeypatch, tmp_path, action, attribute, description, unreadable
+):
+    # Raised from a button's slot, the error would abort the application
+    path = tmp_path / "file.json"
+    if unreadable == "not UTF-8":
+        path.write_bytes('{"name": "café"}'.encode("latin-1"))
+    setattr(window, attribute, str(path))
+    monkeypatch.setattr(window, "_check_config_file", lambda: True)
+    logged: list[str] = []
+    monkeypatch.setattr(
+        window._output, "log", lambda text, **kwargs: logged.append(text)
+    )
+
+    getattr(window, action)()
+
+    assert len(logged) == 1
+    assert logged[0].startswith(f"Cannot open {description} '{path}': ")
 
 
 # --- Provision Worker Pool ---------------------------------------------------
@@ -1012,8 +1046,8 @@ def test_a_typed_nf_is_not_given_twice(window, typed):
 
 @pytest.mark.parametrize("command", sorted(UNDECORATED_YD_COMMANDS))
 def test_the_standalone_commands_given_nf_are_those_taking_it(command):
-    # Three of them parse their own arguments outside the registry, so the
-    # list is kept by hand; held here to what each one's '--help' offers
+    # The list is derived from the registry; held here to what each one's
+    # '--help' actually offers
     program, args = cli_program(command, ["--help"])
     result = subprocess.run(
         [program, *args], capture_output=True, text=True, timeout=60, check=False
@@ -1159,3 +1193,79 @@ def test_a_noun_verb_is_not_given_an_option_it_hides(window):
     window.namespace_override.setPlainText("ns")
     assert window._namespace_tag_and_user_vars("yd instance terminate") == []
     assert window._namespace_tag_and_user_vars("yd cr terminate")[:2] == ["-n", "ns"]
+
+
+# --- Small things the review found --------------------------------------------
+
+
+def test_a_typed_end_of_options_keeps_the_added_flags_options(window):
+    # A command typed in the command box: after '--' they would be objects
+    # to delete, named '--nf' and '--pp'
+    args = window._build_command_args(
+        "yd data delete", ["-R", "--", "-odd.txt"], yd_command=False
+    )
+    end = args.index("--")
+    assert {"--nf", "--pp"} <= set(args[:end])
+    assert args[end + 1 :] == ["-odd.txt"]
+
+
+def test_a_commented_out_definition_file_is_not_taken(window, tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[workRequirement]\n# workRequirementData = "old.json"\n'
+        'workRequirementData = "current.json"\n',
+        encoding="utf-8",
+    )
+    window._config_file = str(config)
+    found = window._get_config_data_file("workRequirementData")
+    assert found is not None and found.endswith("current.json")
+
+
+def test_copy_and_save_keep_their_tooltips_unfiltered(window):
+    tooltips = [
+        window.copy_command_output.toolTip(),
+        window.save_command_output.toolTip(),
+    ]
+    window._output.log("a line")
+    assert tooltips[0] and tooltips[1]
+    assert [
+        window.copy_command_output.toolTip(),
+        window.save_command_output.toolTip(),
+    ] == tooltips
+
+
+def test_the_quit_dialog_names_a_yd_command_as_typed(window, monkeypatch):
+    # Its program is the Python interpreter that runs it
+    monkeypatch.setattr(
+        command_running_module, "cli_program", lambda command, args: ("sleep", ["30"])
+    )
+    window._run_command_in_subprocess("yd version", [])
+    process = window._processes[-1]
+    process.waitForStarted(2000)
+    named: list[str] = []
+
+    class Shown(Exception):
+        pass
+
+    def dialog(names):
+        named.extend(names)
+        raise Shown
+
+    monkeypatch.setattr(window, "_build_quit_dialog", dialog)
+    try:
+        with pytest.raises(Shown):
+            window._confirm_quit([process])
+        assert named[0].startswith("yd version")
+    finally:
+        window.shutdown()
+
+
+def test_the_newest_offered_row_is_preselected():
+    from yellowdog_cli.commander.selection import newest_entity_id
+
+    parsed = [
+        {"id": "older", "createdTime": "2026-10-01T00:00:00Z"},
+        {"id": "newer-finishing", "createdTime": "2026-10-09T00:00:00Z"},
+    ]
+    assert newest_entity_id(parsed) == "newer-finishing"
+    assert newest_entity_id(parsed, {"older"}) == "older"

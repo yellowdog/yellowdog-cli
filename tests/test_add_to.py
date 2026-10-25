@@ -603,6 +603,56 @@ class TestPlanExtension:
             submit_module._plan_extension(existing, spec)
 
 
+class TestPositionsForAdding:
+    """
+    A new Task Group's own properties are numbered by where it will be in
+    the Work Requirement: on from the existing Task Groups, among the new
+    ones in the order given, of the Work Requirement's count once added.
+    """
+
+    @staticmethod
+    def _wr_data(*task_groups: dict) -> dict:
+        return {TASK_GROUPS: [{**tg, TASKS: [{"taskType": "x"}]} for tg in task_groups]}
+
+    def test_a_new_task_group_is_numbered_among_the_new_ones(self):
+        from yellowdog_cli.utils.task_groups import create_task_group
+
+        existing = [_make_tg("a"), _make_tg("b")]
+        wr_data = self._wr_data(
+            {NAME: "a"},
+            {NAME: "c", "tag": "tg{{task_group_number}}-of-{{task_group_count}}"},
+        )
+        positions = submit_module._positions_for_adding(
+            ConfigWorkRequirement(), wr_data, existing
+        )
+        assert [(p.spec_index, p.number, p.count) for p in positions] == [
+            (0, 0, 3),
+            (1, 2, 3),
+        ]
+        new = create_task_group(
+            ConfigWorkRequirement(), positions[1], wr_data, wr_data[TASK_GROUPS][1]
+        )
+        # Not 'tg4-of-4', as if 'a' were new too
+        assert new.tag == "tg3-of-3"
+
+    def test_a_name_its_number_makes_an_existing_ones_is_refused(self):
+        # As if new, 'tg_{{task_group_number}}' is 'tg_4', and new; numbered
+        # as new, it becomes 'tg_3', an existing Task Group's name
+        existing = [_make_tg("x"), _make_tg("tg_3")]
+        spec = self._wr_data({NAME: "x"}, {NAME: "tg_{{task_group_number}}"})
+        positions = submit_module._positions_for_adding(
+            ConfigWorkRequirement(), spec, existing
+        )
+        from yellowdog_cli.utils.task_groups import create_task_group
+
+        built = [
+            create_task_group(ConfigWorkRequirement(), p, spec, d)
+            for p, d in zip(positions, spec[TASK_GROUPS])
+        ]
+        with pytest.raises(ValueError, match="named by its number"):
+            submit_module._refuse_renamed_by_numbering(positions, built, existing)
+
+
 class TestAddToFailure:
     """
     The Work Requirement added to is not cancelled when adding fails, so the

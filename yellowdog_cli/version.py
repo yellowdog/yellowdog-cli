@@ -6,7 +6,6 @@ Report version numbers, etc.
 
 import json
 import sys
-from argparse import ArgumentParser
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, metadata
 from importlib.metadata import version as package_version
@@ -19,6 +18,7 @@ from tabulate import tabulate
 
 from yellowdog_cli import __author__, __email__
 from yellowdog_cli._version import __version__
+from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.dataclient.rclone_version import (
     NOT_INSTALLED,
@@ -95,47 +95,7 @@ def _mcp_version() -> str:
 
 def main():
     use_utf8_output()
-    parser = ArgumentParser(
-        prog=selected_prog("yd-version"),
-        description="Report YellowDog CLI and related version numbers.",
-    )
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--cli", action="store_true", help="print CLI version number only"
-    )
-    group.add_argument(
-        "--sdk", action="store_true", help="print SDK version number only"
-    )
-    group.add_argument(
-        "--python", action="store_true", help="print Python version number only"
-    )
-    group.add_argument(
-        "--jsonnet", action="store_true", help="print Jsonnet version number only"
-    )
-    group.add_argument(
-        "--rclone", action="store_true", help="print rclone version number only"
-    )
-    group.add_argument(
-        "--mcp", action="store_true", help="print the MCP SDK version number only"
-    )
-    group.add_argument(
-        "--json",
-        action="store_true",
-        help=(
-            "print the version numbers, author and licence as a JSON object,"
-            " null for a version not installed; with --debug, the Python"
-            " executable and path too"
-        ),
-    )
-    parser.add_argument(
-        "--debug", action="store_true", help="print Python path and executable details"
-    )
-    parser.add_argument(
-        "--no-format",
-        "--nf",
-        action="store_true",
-        help="print the report without colouring",
-    )
+    parser = build_parser(COMMANDS["yd-version"], prog=selected_prog("yd-version"))
     args = parser.parse_args()
     # --no-format, for print_json_text()
     configure_output(args)

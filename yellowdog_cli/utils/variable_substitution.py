@@ -18,7 +18,10 @@ from json import loads as json_loads
 from typing import cast
 
 from yellowdog_cli.utils.exit_codes import ExitCode
-from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
+from yellowdog_cli.utils.limits import (
+    VAR_SUBSTITUTION_MAX_PASSES,
+    VARIABLE_TABLE_MAX_TEXT,
+)
 from yellowdog_cli.utils.misc_utils import (
     PID,
     PROCESS_DISCRIMINATOR,
@@ -274,6 +277,9 @@ VARIABLE_SUBSTITUTIONS = {
 # overrides of 'common.variables'); these always take precedence, including
 # over the contents of an explicitly selected config file
 CLI_DEFINED_VARIABLES: set[str] = set()
+# The variables the selected configuration file defines itself, which a
+# file it imports ('importCommon'), or any other read later, never replaces
+_CONFIG_FILE_VARIABLES: set[str] = set()
 
 # Each variable's definition as written, before any substitution, which is
 # what explain_unset_variable() works from: once the '::' syntax has removed
@@ -427,11 +433,63 @@ def _update_and_resolve_substitutions(merged: dict):
 
     # Populate variables that can now be substituted, stored as strings: a
     # value that is a type-tagged expression ('{{num:count}}') resolves to
-    # its type, and is held as its text, as every other value is
-    for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
-        VARIABLE_SUBSTITUTIONS[key_] = _stringify(
-            process_variable_substitutions(_stringify(value_))
+    # its type, and is held as its text, as every other value is. Repeated
+    # until the table settles, so that a chain of variables however long
+    # ('v0 = "{{v1}}"' ... 'v20 = "end"') is resolved here, not left to the
+    # passes over a specification, whose cap it would exceed: no chain is
+    # longer than the table, and a circular reference that grows its text is
+    # stopped at VARIABLE_TABLE_MAX_TEXT, for the circular check to report
+    for _ in range(len(VARIABLE_SUBSTITUTIONS) + 1):
+        changed = False
+        for key_, value_ in VARIABLE_SUBSTITUTIONS.items():
+            resolved = _resolved_variable(value_)
+            changed = changed or resolved != _stringify(value_)
+            VARIABLE_SUBSTITUTIONS[key_] = resolved
+        if not changed or (
+            sum(map(len, VARIABLE_SUBSTITUTIONS.values())) > VARIABLE_TABLE_MAX_TEXT
+        ):
+            break
+
+
+def _resolved_variable(value) -> str:
+    """
+    A variable's value with the variables it refers to substituted, as the
+    table holds it. An array or table (held as its JSON text, as a TOML one
+    arrives) is substituted through its structure, element by element, so
+    that a value put into it is escaped as JSON: pasted into its text,
+    'C:\\temp' would be read back with a tab in it, and 'say "hi"' would
+    end the string it was put into.
+    """
+    text = _stringify(value)
+    if VAR_OPENING_DELIMITER in text and text.lstrip().startswith(("[", "{")):
+        try:
+            structure = json_loads(text)
+        except ValueError:
+            structure = None
+        if isinstance(structure, (list, dict)):
+            return _stringify(_substituted_within(structure))
+    return _stringify(process_variable_substitutions(text))
+
+
+def _substituted_within(structure):
+    """
+    An array's or table's values (a table's keys too) substituted one by one;
+    one the '::' syntax unsets is left out.
+    """
+    if isinstance(structure, list):
+        items = [_substituted_within(item) for item in structure]
+        return [item for item in items if item is not _UNSET]
+    if isinstance(structure, dict):
+        pairs = (
+            (_substituted_within(key), _substituted_within(item))
+            for key, item in structure.items()
         )
+        return {
+            key: item for key, item in pairs if key is not _UNSET and item is not _UNSET
+        }
+    if isinstance(structure, str):
+        return process_variable_substitutions(structure)
+    return structure
 
 
 def add_substitutions_without_overwriting(
@@ -450,16 +508,19 @@ def add_substitutions_without_overwriting(
 
 
 def add_substitutions_from_config_file(
-    subs: dict, source: str = "'[common.variables]'"
+    subs: dict, source: str = "'[common.variables]'", selected_file: bool = False
 ):
     """
-    Add variable substitutions from a TOML configuration file's
-    [common.variables] section.
+    Add variable substitutions from a TOML file's [common.variables]
+    section: the configuration file's own ('selected_file'), or a file read
+    after it, such as one it imports.
 
     If the config file was explicitly selected using '--config'/'-c', its
     variables override environment-defined variables (but never variables
     set on the command line); otherwise existing definitions take
-    precedence as usual.
+    precedence as usual. Either way, a file read after the configuration
+    file never replaces a variable the configuration file defines itself:
+    the local definition wins over an imported one.
     """
     for name in subs:
         check_user_variable_name(name, source)
@@ -467,7 +528,14 @@ def add_substitutions_from_config_file(
         add_substitutions_without_overwriting(subs, source)
         return
 
-    subs = {k: v for k, v in subs.items() if k not in CLI_DEFINED_VARIABLES}
+    subs = {
+        k: v
+        for k, v in subs.items()
+        if k not in CLI_DEFINED_VARIABLES
+        and (selected_file or k not in _CONFIG_FILE_VARIABLES)
+    }
+    if selected_file:
+        _CONFIG_FILE_VARIABLES.update(subs)
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
 
 

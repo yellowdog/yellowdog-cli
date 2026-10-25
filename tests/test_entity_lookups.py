@@ -122,6 +122,15 @@ def test_a_template_name_in_one_namespace_is_found():
     )
 
 
+def test_a_source_template_name_in_two_namespaces_is_ambiguous():
+    client = MagicMock()
+    client.compute_client.get_compute_source_templates.return_value.list_all.return_value = [
+        SimpleNamespace(id=f"cst-{ns}", namespace=ns, name="aws") for ns in ("b", "a")
+    ]
+    with pytest.raises(AmbiguousNameError, match="a, b"):
+        entity_utils.get_compute_source_template_id_by_name(client, "aws")
+
+
 # ---------------------------------------------------------------------------
 # Names shown in place of IDs
 # ---------------------------------------------------------------------------
@@ -292,3 +301,59 @@ class TestSubstituteIdsForNames:
             entity_utils.substitute_image_family_id_for_name_in_cst(client, cst, True)
             is cst
         )
+
+
+# ---------------------------------------------------------------------------
+# A reused name whose objects have all finished
+# ---------------------------------------------------------------------------
+
+
+def test_a_name_only_finished_work_requirements_share_finds_the_newest(monkeypatch):
+    # Not whichever the search listed first: the latest run of 'nightly'
+    from datetime import datetime, timezone
+
+    from yellowdog_client.model import WorkRequirementStatus
+
+    def summary(id_, day):
+        return SimpleNamespace(
+            id=id_,
+            name="nightly",
+            status=WorkRequirementStatus.COMPLETED,
+            createdTime=datetime(2026, 10, day, tzinfo=timezone.utc),
+        )
+
+    monkeypatch.setattr(
+        entity_utils,
+        "get_filtered_work_requirement_summaries",
+        lambda client, **k: [summary("old", 1), summary("new", 9), summary("mid", 5)],
+    )
+    found = entity_utils.find_work_requirement_by_name(
+        MagicMock(), "nightly", "ns", [WorkRequirementStatus.RUNNING]
+    )
+    assert found.id == "new"
+
+
+def test_a_name_only_terminated_compute_requirements_share_finds_the_newest(
+    monkeypatch,
+):
+    from datetime import datetime, timezone
+
+    from yellowdog_client.model import ComputeRequirementStatus
+
+    def summary(id_, day):
+        return SimpleNamespace(
+            id=id_,
+            name="cr",
+            status=ComputeRequirementStatus.TERMINATED,
+            createdTime=datetime(2026, 10, day, tzinfo=timezone.utc),
+        )
+
+    monkeypatch.setattr(
+        entity_utils,
+        "get_compute_requirement_summaries",
+        lambda client, namespace, **k: [summary("old", 1), summary("new", 9)],
+    )
+    found = entity_utils.find_compute_requirement_by_name(
+        MagicMock(), "cr", "ns", [ComputeRequirementStatus.RUNNING]
+    )
+    assert found.id == "new"

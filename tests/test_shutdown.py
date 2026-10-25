@@ -130,7 +130,9 @@ def platform(monkeypatch):
         lambda client, namespace, name=None, partial_name_matches=True: [
             _summary(pool)
             for pool in fake.pools.values()
-            if pool.namespace == namespace and (name is None or name in pool.name)
+            # No namespace searches them all, as search_namespaces() has it
+            if (not namespace or pool.namespace == namespace)
+            and (name is None or name in pool.name)
         ],
     )
 
@@ -206,6 +208,18 @@ class TestListing:
         platform.pools[WP_C] = _provisioned(WP_C, "other")
         _run(platform, ["wp-*"])
         assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]
+
+    def test_no_namespace_takes_in_every_namespace_searched(
+        self, platform, monkeypatch
+    ):
+        # '-n ""': the search is every namespace's, and none is left out of it
+        platform.config.namespace = ""
+        platform.pools[WP_B] = _provisioned(WP_B, "wp-tag-b")
+        platform.pools[WP_B].namespace = "team-b"
+        _run(platform, [])
+        assert sorted(platform.calls) == sorted(
+            [("shutdown_worker_pool_by_id", WP_A), ("shutdown_worker_pool_by_id", WP_B)]
+        )
 
     @staticmethod
     def _messages(monkeypatch) -> list[str]:

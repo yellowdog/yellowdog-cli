@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import shutil
 from argparse import (
     SUPPRESS,
     Action,
@@ -81,6 +82,7 @@ from yellowdog_cli.utils.limits import (
 )
 from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.settings import DEFAULT_URL, SCHEMA_FAMILIES
+from yellowdog_cli.utils.suggestions import did_you_mean
 from yellowdog_cli.utils.variable_syntax import SECRET_VARIABLE_NAME_PATTERN
 
 Validator = Callable[[Namespace, ArgumentParser], None]
@@ -319,21 +321,91 @@ def build_parser(command: Command | None, prog: str | None = None) -> ArgumentPa
     API common set and nothing else, which is what pytest's own executable
     name gets when args.py is imported under test.
     """
-    parser = ArgumentParser(
+    common = COMMON_OPTIONS[CommandKind.API if command is None else command.kind]
+    own = () if command is None else command.options
+    parser = _Parser(
         prog=prog,
         description=None if command is None else DESCRIPTION_PREFIX + command.purpose,
+        usage=_usage(own, prog) if common else None,
     )
-    items = (
-        COMMON_OPTIONS[CommandKind.API] if command is None else command.all_options()
-    )
+    _register(parser, own)
+    if common:
+        # After the command's own, which say what it does, under a heading
+        # of their own: the same on every command, so read once
+        _register(parser.add_argument_group(COMMON_OPTIONS_TITLE), common)
+    return parser
+
+
+class _Parser(ArgumentParser):
+    """
+    argparse's parser, naming the option meant by each unrecognised one
+    where one is close ('--namepsace': did you mean '--namespace'?).
+    """
+
+    def parse_args(self, args=None, namespace=None):  # type: ignore[override]
+        parsed, extras = self.parse_known_args(args, namespace)
+        if extras:
+            self.error(
+                "unrecognized arguments: "
+                + " ".join(extras)
+                + "".join(f"; {hint}" for hint in self._option_hints(extras))
+            )
+        return parsed
+
+    def _option_hints(self, extras: list[str]) -> list[str]:
+        offered = [
+            flag
+            for action in self._actions
+            if action.help != SUPPRESS
+            for flag in action.option_strings
+            if flag.startswith("--")
+        ]
+        hints = []
+        for extra in extras:
+            if not extra.startswith("--"):
+                continue
+            typed = extra.split("=", 1)[0]
+            suggestion = did_you_mean(typed, offered)
+            if suggestion is not None:
+                hints.append(f"'{typed}': {suggestion}")
+        return hints
+
+
+# The heading over the options every command of a kind shares (the Universal
+# Options of docs/commands.md), and how the
+# usage line stands for them
+COMMON_OPTIONS_TITLE = "universal options"
+COMMON_OPTIONS_USAGE = f"[{COMMON_OPTIONS_TITLE}]"
+
+
+def _register(
+    target: ArgumentParser | _ArgumentGroup, items: Iterable[Option | Exclusive]
+) -> None:
     for item in items:
         if isinstance(item, Exclusive):
-            group = parser.add_mutually_exclusive_group()
+            group = target.add_mutually_exclusive_group()
             for member in item.options:
                 member.register(group)
         else:
-            item.register(parser)
-    return parser
+            item.register(target)
+
+
+def _usage(own: tuple[Option | Exclusive, ...], prog: str | None) -> str:
+    """
+    The usage line with the command's own options in full, as argparse
+    wraps them for a parser of those alone, and the common options as one
+    '[universal options]' at its end, on the last line if it fits there.
+    """
+    alone = ArgumentParser(prog=prog)
+    _register(alone, own)
+    lines = alone.format_usage().removeprefix("usage: ").rstrip("\n").split("\n")
+    indent = " " * (len("usage: ") + len(alone.prog) + 1)
+    width = shutil.get_terminal_size().columns - 2
+    if len("usage: ") + len(lines[-1]) + 1 + len(COMMON_OPTIONS_USAGE) <= width:
+        lines[-1] += " " + COMMON_OPTIONS_USAGE
+    else:
+        lines.append(indent + COMMON_OPTIONS_USAGE)
+    return "\n".join(lines).replace("%", "%%")
 
 
 # --- Entity types (yd-list's positional) ---------------------------------
@@ -519,7 +591,9 @@ def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
             raise ArgumentTypeError(f"empty sort key in '{value}'")
         if key not in valid:
             raise ArgumentTypeError(
-                f"invalid sort key '{key}' (choose from {', '.join(valid)})"
+                f"invalid sort key '{key}' ("
+                + (did_you_mean(key, valid) or f"choose from {', '.join(valid)}")
+                + ")"
             )
     repeated = sorted({key for key in keys if keys.count(key) > 1})
     if repeated:
@@ -590,7 +664,8 @@ CONFIG = option(
     type=str,
     help=(
         "configuration file in TOML format; "
-        "the default to use is 'config.toml' in the current directory"
+        "the default to use is 'config.toml' in the current directory, else"
+        " ~/.config/yellowdog/config.toml"
     ),
     completes=Completes.FILE,
     metavar="<config_file.toml>",
@@ -740,6 +815,14 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         # Machine maintenance, not platform work
         "--upgrade-rclone",
         "--which-rclone",
+        # yd-version's single-version flags, exclusive with the '--json' the
+        # server passes
+        "--cli",
+        "--sdk",
+        "--python",
+        "--jsonnet",
+        "--rclone",
+        "--mcp",
         # A credential in a tool result is a credential in the conversation
         "--show-keyring-passwords",
         "--show-secrets",
@@ -1065,8 +1148,12 @@ def resolve_resource_type(value: str) -> str:
         if resource_type.lower() == value.lower():
             return resource_type
     raise ArgumentTypeError(
-        f"invalid resource type: '{value}' (choose from"
-        f" {', '.join(RESOURCE_TYPE_CHOICES)})"
+        f"invalid resource type: '{value}' ("
+        + (
+            did_you_mean(value, RESOURCE_TYPE_CHOICES)
+            or f"choose from {', '.join(RESOURCE_TYPE_CHOICES)}"
+        )
+        + ")"
     )
 
 
@@ -1302,7 +1389,6 @@ DATA_CLIENT_OPTIONS: tuple[Option, ...] = (
     UPGRADE_RCLONE,
     WHICH_RCLONE,
     DATA_CLIENT_PROFILE,
-    DRY_RUN_TRANSFERS,
 )
 
 
@@ -1351,12 +1437,16 @@ def refuse_parent_segments(
     Refuse a remote path with a '..' segment: it climbs out of the prefix,
     or the bucket, past the checks that refuse deleting or syncing over the
     remote's root or the bucket itself, and object stores do not resolve it
-    as a local disk does.
+    as a local disk does. Both readings of the path are checked, a leading
+    'remote:' and none, since a relative path may hold a ':' of its own
+    ('../run-10:00').
     """
     for remote_path in remote_paths:
         if remote_path is None:
             continue
-        if ".." in remote_path.split(":", 1)[-1].split("/"):
+        if ".." in remote_path.split("/") or (
+            ".." in remote_path.split(":", 1)[-1].split("/")
+        ):
             parser.error(
                 f"'{remote_path}': a remote path cannot contain '..'; name it"
                 " from the remote's root with --no-prefix (or --bucket) instead"
@@ -1894,6 +1984,18 @@ WAIT_TIMEOUT = TIMEOUT.variant(
 )
 
 
+def check_auto_follow_needs_follow(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-provision, yd-shutdown and yd-resize: '-a' follows a pool's Compute
+    Requirement as the pool is followed, so it needs '--follow', as
+    '--exit-on-failure' does, rather than doing nothing without it.
+    """
+    if getattr(args, "auto_follow_compute_requirements", False) and not getattr(
+        args, "follow", False
+    ):
+        parser.error("--auto-follow-compute-requirements needs --follow")
+
+
 def check_wait_options(args: Namespace, parser: ArgumentParser) -> None:
     """
     '--wait' waits for Compute Requirements (on yd-resize, only when the
@@ -2147,6 +2249,7 @@ COMMANDS["yd-copy"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         SRC_PATH,
         DST_PATH,
         DST_PROFILE,
@@ -2350,6 +2453,9 @@ COMMANDS["yd-delete"] = Command(
         TAG,
         YES,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS.variant(
+            help="show what would be deleted without deleting anything"
+        ),
         REMOTE_PATHS.variant(
             nargs="*",
             help=(
@@ -2415,6 +2521,7 @@ COMMANDS["yd-download"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         Option(
             REMOTE_PATHS.flags,
             {**REMOTE_PATHS.kwargs, "nargs": "*"},
@@ -2895,6 +3002,7 @@ COMMANDS["yd-provision"] = Command(
     validators=(
         check_json_excludes_streaming,
         check_hide_user_data_requires_dry_run,
+        check_auto_follow_needs_follow,
     ),
     tool=ToolKind.ACTING,
     tool_description=(
@@ -3093,11 +3201,21 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("within_target", "--within", LIST_WITHIN_TYPES),
         ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
-        if getattr(args, dest, None) and entity_type not in types:
+        # Given at all ('--limit 0' and '--name ""' as much as any other;
+        # by identity, since 0 == False)
+        value = getattr(args, dest, None)
+        if value is not None and value is not False and entity_type not in types:
             parser.error(
                 f"{flag} does not apply to {entity_type}; it applies to "
                 + ", ".join(sorted(types))
             )
+    # '--status ""' (an unset shell variable) names no status: refused, not
+    # taken for no filter, which would list everything
+    statuses = getattr(args, "status_filter", None)
+    if statuses is not None and not any(
+        part.strip() for given in statuses for part in str(given).split(",")
+    ):
+        parser.error("--status needs at least one status")
     # '--count' is exact, read from the Task Groups' own counts where it can
     if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
         parser.error("--limit cannot be used with --count, which is never limited")
@@ -3521,7 +3639,9 @@ NODE_ACTION_STATUS = option(
 def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-nodeaction's options, as they combine: --actions unless --status,
-    which takes neither it nor --validate; node and Worker Pool IDs of the
+    which takes neither it, --validate nor --jsonnet-dry-run (all three are
+    the actions file's), and '--details' only with --status; node and
+    Worker Pool IDs of the
     right kind; and --timeout only with --follow. The YDID parser is
     imported here, so this module still imports nothing at load beyond
     the constants modules and glob_utils.py.
@@ -3531,10 +3651,14 @@ def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
     if args.status:
         if getattr(args, "validate", False):
             parser.error("--validate cannot be used with --status")
+        if getattr(args, "jsonnet_dry_run", False):
+            parser.error("--jsonnet-dry-run cannot be used with --status")
         if args.actions is not None:
             parser.error("--actions cannot be used with --status")
     elif args.actions is None:
         parser.error("--actions is required, unless --status is given")
+    elif getattr(args, "details", False):
+        parser.error("--details needs --status")
     for node_id in args.node or []:
         if get_ydid_type(node_id) != YDIDType.NODE:
             parser.error(f"not a YellowDog Node ID: '{node_id}'")
@@ -3569,6 +3693,7 @@ COMMANDS["yd-nodeaction"] = Command(
             )
         ),
         ACTIONS,
+        JSONNET_DRY_RUN,
         VALIDATE,
         WORKER_POOL.variant(
             help="name of the target worker pool",
@@ -3665,7 +3790,7 @@ COMMANDS["yd-resize"] = Command(
         TAG,
         YES,
         DRY_RUN_ACTION,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         WORKER_POOL_POSITIONAL,
         WORKER_POOL_SIZE,
         RESIZE_COMPUTE_REQUIREMENT,
@@ -3674,7 +3799,11 @@ COMMANDS["yd-resize"] = Command(
         WAIT_FOR_CAPACITY,
         WAIT_TIMEOUT,
     ),
-    validators=(check_resize_target, check_wait_options),
+    validators=(
+        check_resize_target,
+        check_wait_options,
+        check_auto_follow_needs_follow,
+    ),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3772,7 +3901,7 @@ COMMANDS["yd-shutdown"] = Command(
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names,),
+    validators=(check_glob_and_literal_names, check_auto_follow_needs_follow),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3948,7 +4077,8 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
     ignored: '--json-raw' is a complete Platform document, so the options
     that build or extend a specification do not apply to it; '--add-to'
     adds to a Work Requirement that already has its own state and Task
-    Groups; and '--exit-on-failure' needs something to wait on.
+    Groups; '--empty' submits none, so nothing that makes Task Groups or
+    Tasks applies to it; and '--exit-on-failure' needs something to wait on.
     """
     if args.json_raw is not None:
         for dest, flag in (
@@ -3961,6 +4091,9 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
             ("task_group_count", "--task-group-count"),
             ("empty", "--empty"),
             ("validate", "--validate"),
+            ("task_type", "--task-type"),
+            ("overwrite", "--overwrite"),
+            ("content_path", "--content-path"),
         ):
             if getattr(args, dest, None) not in (None, False):
                 parser.error(f"--json-raw cannot be used with {flag}")
@@ -3968,6 +4101,17 @@ def check_submit_combinations(args: Namespace, parser: ArgumentParser) -> None:
         for dest, flag in (("hold", "--hold"), ("empty", "--empty")):
             if getattr(args, dest, False):
                 parser.error(f"--add-to cannot be used with {flag}")
+    if args.empty:
+        for dest, flag in (
+            ("work_requirement", "--work-requirement"),
+            ("work_requirement_file_positional", "a Work Requirement file"),
+            ("csv_file", "--csv-file"),
+            ("process_csv_only", "--process-csv-only"),
+            ("task_count", "--task-count"),
+            ("task_group_count", "--task-group-count"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--empty cannot be used with {flag}")
     if args.exit_on_failure and not (args.follow or args.progress):
         parser.error("--exit-on-failure needs --follow or --progress")
 
@@ -4087,7 +4231,7 @@ COMMANDS["yd-priority"] = Command(
         NAMESPACE,
         DRY_RUN,
         YES,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         PRIORITY,
         PRIORITY_TARGETS,
     ),
@@ -4134,7 +4278,7 @@ COMMANDS["yd-token"] = Command(
         NAMESPACE,
         DRY_RUN,
         YES,
-        ACTIONS_JSON,
+        DRY_RUN_JSON,
         TOKEN_WORKER_POOLS,
         REGENERATE,
         TTL_HOURS,
@@ -4168,6 +4312,7 @@ COMMANDS["yd-upload"] = Command(
         NAMESPACE,
         TAG,
         *DATA_CLIENT_OPTIONS,
+        DRY_RUN_TRANSFERS,
         LOCAL_PATHS,
         DESTINATION,
         RECURSIVE,
@@ -4279,31 +4424,175 @@ COMMANDS["yd-completion"] = Command(
     tool=ToolKind.NONE,
     script=False,
 )
+INIT_USER = option(
+    "--user",
+    action="store_true",
+    required=False,
+    help=(
+        "write your own configuration file, ~/.config/yellowdog/config.toml,"
+        " read wherever a directory has no config.toml, rather than"
+        " config.toml in the current directory"
+    ),
+)
+INIT_OVERWRITE = option(
+    "--overwrite",
+    action="store_true",
+    required=False,
+    help="replace the configuration file if it exists",
+)
+COMMANDS["yd-init"] = Command(
+    name="yd-init",
+    purpose="writing a starter configuration file",
+    summary="Write a starter configuration file",
+    kind=CommandKind.STANDALONE,
+    options=(
+        INIT_USER,
+        INIT_OVERWRITE,
+        YES.variant(
+            help=(
+                "ask nothing: take the key, secret, namespace, tag and URL from"
+                " YD_KEY, YD_SECRET, YD_NAMESPACE, YD_TAG and YD_URL, leaving"
+                " any not set commented out"
+            )
+        ),
+        NO_FORMAT.variant(help="print the messages without colouring"),
+    ),
+    tool=ToolKind.NONE,
+    script=False,
+)
+FORMAT_JSON_FILES = option(
+    "files",
+    nargs="+",
+    metavar="<file.json>",
+    help="the JSON file(s) to reformat",
+    completes=Completes.FILE,
+)
+FORMAT_JSON_CHECK = option(
+    "--check",
+    action="store_true",
+    required=False,
+    help=(
+        "report the files that would be reformatted, without writing"
+        " anything, and exit 1 if there are any"
+    ),
+)
 COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
-    purpose="formatting JSON files using a compact encoder",
+    purpose=(
+        "reformatting JSON files in place with the CLI's compact layout (small"
+        " containers on one line), changing nothing but the layout"
+    ),
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,
+    options=(FORMAT_JSON_FILES, FORMAT_JSON_CHECK),
     tool=ToolKind.NONE,
+)
+HELP_JSON = ACTIONS_JSON.variant(
+    help=(
+        "print the commands as a JSON array: the nouns with their verbs,"
+        " the other commands, and the deprecated ones"
+    )
+)
+HELP_DEPRECATED = option(
+    "--deprecated",
+    action="store_true",
+    required=False,
+    help="list the deprecated yd-* commands and the yd forms that replace them",
 )
 COMMANDS["yd-help"] = Command(
     name="yd-help",
-    purpose="listing available yd-* commands and their purposes",
+    purpose="listing the yd commands and their purposes",
     summary="List available yd-* commands and their purposes",
     kind=CommandKind.STANDALONE,
+    options=(
+        HELP_JSON,
+        HELP_DEPRECATED,
+        NO_FORMAT.variant(
+            help="print the listing, or the --json array, without colouring"
+        ),
+    ),
     tool=ToolKind.NONE,
+)
+JSONNET2JSON_FILES = option(
+    "files",
+    nargs="+",
+    metavar="<file.jsonnet>",
+    help="the Jsonnet file(s), or quoted glob pattern(s), to convert",
+    completes=Completes.FILE,
 )
 COMMANDS["yd-jsonnet2json"] = Command(
     name="yd-jsonnet2json",
-    purpose="converting a Jsonnet file to JSON",
+    purpose=(
+        "converting Jsonnet files to JSON: one file to stdout, or several (or"
+        " a glob pattern) each to <name>.json beside it"
+    ),
     summary="Convert a Jsonnet file to JSON",
     kind=CommandKind.STANDALONE,
+    options=(
+        JSONNET2JSON_FILES,
+        NO_FORMAT.variant(help="print a single file's JSON without colouring"),
+        YES.variant(help="overwrite existing .json files without asking"),
+    ),
     tool=ToolKind.NONE,
+)
+# yd-version's single-version flags, each printing one version number alone,
+# exclusive with one another and with its '--json'
+VERSION_CLI = option(
+    "--cli", action="store_true", required=False, help="print CLI version number only"
+)
+VERSION_SDK = option(
+    "--sdk", action="store_true", required=False, help="print SDK version number only"
+)
+VERSION_PYTHON = option(
+    "--python",
+    action="store_true",
+    required=False,
+    help="print Python version number only",
+)
+VERSION_JSONNET = option(
+    "--jsonnet",
+    action="store_true",
+    required=False,
+    help="print Jsonnet version number only",
+)
+VERSION_RCLONE = option(
+    "--rclone",
+    action="store_true",
+    required=False,
+    help="print rclone version number only",
+)
+VERSION_MCP = option(
+    "--mcp",
+    action="store_true",
+    required=False,
+    help="print the MCP SDK version number only",
+)
+VERSION_JSON = ACTIONS_JSON.variant(
+    help=(
+        "print the version numbers, author and licence as a JSON object,"
+        " null for a version not installed; with --debug, the Python"
+        " executable and path too"
+    )
 )
 COMMANDS["yd-version"] = Command(
     name="yd-version",
-    purpose="reporting version information",
+    purpose="reporting YellowDog CLI and related version numbers",
     summary="Report version information",
     kind=CommandKind.STANDALONE,
+    options=(
+        Exclusive(
+            (
+                VERSION_CLI,
+                VERSION_SDK,
+                VERSION_PYTHON,
+                VERSION_JSONNET,
+                VERSION_RCLONE,
+                VERSION_MCP,
+                VERSION_JSON,
+            )
+        ),
+        DEBUG.variant(help="print Python path and executable details"),
+        NO_FORMAT.variant(help="print the report without colouring"),
+    ),
     tool=ToolKind.READ_ONLY,
 )

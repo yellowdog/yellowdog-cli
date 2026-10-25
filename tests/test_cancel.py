@@ -310,8 +310,12 @@ class TestExplicit:
             "tasks",
         )
 
-    def test_a_finished_task_is_skipped(self, platform, monkeypatch):
-        platform.tasks[TASK].status = TaskStatus.COMPLETED
+    @pytest.mark.parametrize(
+        "status", [status for status in TaskStatus if status.finished]
+    )
+    def test_a_finished_task_is_skipped(self, platform, monkeypatch, status):
+        # RESUBMITTED included: reissued in another Task Group, it is done
+        platform.tasks[TASK].status = status
         _run(platform, [TASK])
         assert platform.calls == []
         assert platform.outcomes() == [(TASK, "tasks", "skipped")]

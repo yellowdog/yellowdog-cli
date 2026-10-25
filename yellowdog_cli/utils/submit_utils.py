@@ -5,7 +5,6 @@ Utility functions for use with the submit command.
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
-from os import chdir, getcwd
 from os.path import abspath, exists, join
 from pathlib import Path
 from typing import cast
@@ -538,7 +537,6 @@ class RcloneUploadedFiles:
         # Requirement's input
         self._rcloned_files: list[RcloneUploadedFile] = []
         self._files_directory = abspath(files_directory)
-        self._working_directory = getcwd()
 
     def upload_dataclient_input_files(self, task_data_inputs: list[dict] | None):
         """
@@ -567,52 +565,50 @@ class RcloneUploadedFiles:
     def _upload_rclone_file(self, local_file: str, rclone_upload_path: str):
         """
         Rclone a DataClient inputs file if it hasn't already been uploaded to
-        the same location.
+        the same location. The file is found from the files directory, by
+        joining the two, never by a chdir(), which would move the whole
+        process while other batches run (an absolute path is itself).
         """
-        chdir(self._files_directory)
-        try:
-            if not exists(local_file):
-                raise FileNotFoundError(
-                    f"File '{Path(self._files_directory) / local_file}' does not exist "
-                    "and cannot be uploaded"
+        local_path = join(self._files_directory, local_file)
+        if not exists(local_path):
+            raise FileNotFoundError(
+                f"File '{local_path}' does not exist and cannot be uploaded"
+            )
+
+        rclone_uploaded_file = RcloneUploadedFile(local_path, rclone_upload_path)
+        if rclone_uploaded_file in self._seen_files:
+            # Duplicate
+            return
+        for uploaded in self._seen_files:
+            # Another file bound for the same place would be skipped as
+            # already there, and its Tasks given the first file's data
+            if uploaded.upload_file_path == rclone_upload_path and abspath(
+                uploaded.local_file_path
+            ) != abspath(local_path):
+                raise ValueError(
+                    f"'{local_path}' and '{uploaded.local_file_path}' are both"
+                    " to be uploaded to"
+                    f" '{self._bucket_and_prefix(rclone_uploaded_file)}'"
                 )
 
-            rclone_uploaded_file = RcloneUploadedFile(local_file, rclone_upload_path)
-            if rclone_uploaded_file in self._seen_files:
-                # Duplicate
-                return
-            for uploaded in self._seen_files:
-                # Another file bound for the same place would be skipped as
-                # already there, and its Tasks given the first file's data
-                if uploaded.upload_file_path == rclone_upload_path and abspath(
-                    uploaded.local_file_path
-                ) != abspath(local_file):
-                    raise ValueError(
-                        f"'{local_file}' and '{uploaded.local_file_path}' are both"
-                        " to be uploaded to"
-                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}'"
-                    )
+        if not self._ctx.args.dry_run:
+            try:
+                created = self._upload_rclone_file_core(rclone_uploaded_file)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Unable to upload '{local_path}' ->"
+                    f" '{self._bucket_and_prefix(rclone_uploaded_file)}': {e}"
+                ) from e
+        else:
+            print_dry_run(
+                f"Would upload '{local_path}' -> "
+                f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
+            )
+            created = False
 
-            if not self._ctx.args.dry_run:
-                try:
-                    created = self._upload_rclone_file_core(rclone_uploaded_file)
-                except Exception as e:
-                    raise RuntimeError(
-                        f"Unable to upload '{local_file}' ->"
-                        f" '{self._bucket_and_prefix(rclone_uploaded_file)}': {e}"
-                    ) from e
-            else:
-                print_dry_run(
-                    f"Would upload '{local_file}' -> "
-                    f"'{self._bucket_and_prefix(rclone_uploaded_file)}'"
-                )
-                created = False
-
-            self._seen_files.append(rclone_uploaded_file)
-            if created:
-                self._rcloned_files.append(rclone_uploaded_file)
-        finally:
-            chdir(self._working_directory)
+        self._seen_files.append(rclone_uploaded_file)
+        if created:
+            self._rcloned_files.append(rclone_uploaded_file)
 
     def _upload_rclone_file_core(self, rclone_upload_file: RcloneUploadedFile) -> bool:
         """

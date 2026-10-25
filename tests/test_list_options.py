@@ -25,6 +25,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_GROUPS,
     ET_INSTANCES,
     ET_ROLES,
+    ET_TASK_GROUPS,
     ET_TASKS,
     ET_WORKER_POOLS,
     ET_WORKERS,
@@ -382,6 +383,31 @@ class TestActiveInstancesAndWorkers:
         )
         yd_list.list_instances(_ctx(), CR_ID)
         assert [i.id.instanceId for i in shown] == ["i-up"]
+
+    def test_active_workers_are_those_the_sdk_calls_available(
+        self, listing, monkeypatch
+    ):
+        # RUNNING is a busy Worker's status; DOING_TASK and SLEEPING are only
+        # single allocation's
+        from yellowdog_client.model import WorkerStatus
+
+        monkeypatch.setattr(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(ET_WORKERS, json_output=True, active_only=True),
+        )
+        workers = [SimpleNamespace(status=status) for status in WorkerStatus]
+        node = SimpleNamespace(details=None, workers=workers, workerPoolName="wp")
+        printed: list = []
+        monkeypatch.setattr(
+            yd_list, "_print_all", lambda _c, objects: printed.append(objects)
+        )
+        yd_list.list_workers(_ctx(), [node])
+        assert {w.status.name for w in printed[0]} == {
+            s.name
+            for s in WorkerStatus
+            if s not in (WorkerStatus.LOST, WorkerStatus.SHUTDOWN)
+        }
 
     def test_a_worker_on_a_node_without_details_is_listed(self, listing, monkeypatch):
         monkeypatch.setattr(
@@ -982,6 +1008,37 @@ def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
     assert printed == [[worker]]
 
 
+@pytest.mark.parametrize("entity_type", [ET_TASKS, ET_TASK_GROUPS])
+def test_a_task_status_does_not_filter_their_task_groups(
+    listing, monkeypatch, entity_type
+):
+    # A Task Group is RUNNING while its Tasks are EXECUTING: '--status' is
+    # the Tasks' when listing Tasks, and the Task Groups' only when listing them
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        _args(entity_type, status_filter=["EXECUTING"]),
+    )
+    task_group = SimpleNamespace(name="tg", status=SimpleNamespace(value="RUNNING"))
+    monkeypatch.setattr(
+        yd_list, "get_task_groups_from_wr_by_id", lambda client, wr_id: [task_group]
+    )
+    monkeypatch.setattr(yd_list, "select", lambda client, objects, **k: objects)
+    shown: list = []
+    monkeypatch.setattr(
+        yd_list, "print_numbered_object_list", lambda _c, objects: shown.extend(objects)
+    )
+    walked: list[str] = []
+    monkeypatch.setattr(
+        yd_list, "list_tasks", lambda _c, tg, _wr: walked.append(tg.name)
+    )
+    yd_list.list_task_groups(_ctx(), SimpleNamespace(id="wr"))
+    if entity_type == ET_TASKS:
+        assert walked == ["tg"]
+    else:
+        assert shown == []
+
+
 def _not_found(*_args, **_kwargs):
     response = Response()
     response.status_code = 404
@@ -1522,3 +1579,69 @@ def test_a_limit_of_one_is_worded_in_the_singular(monkeypatch):
     limit.warn()
     (warning,) = warnings
     assert warning.startswith("Listed the first Instance; more match.")
+
+
+class TestEmit:
+    """
+    The output the resource listers share (list.py's _emit()).
+    """
+
+    @staticmethod
+    def _objects():
+        return [SimpleNamespace(id="b", name="b"), SimpleNamespace(id="a", name="a")]
+
+    def _emit(self, monkeypatch, capsys, **values):
+        printed: dict = {}
+        monkeypatch.setattr(
+            yd_list, "sorted_objects", lambda o: sorted(o, key=lambda x: x.id)
+        )
+        monkeypatch.setattr(
+            yd_list, "print_objects_as_json", lambda o: printed.update(json=o)
+        )
+        monkeypatch.setattr(yd_list, "select", lambda client, o, **k: o)
+        monkeypatch.setattr(
+            yd_list, "print_yd_object_list", lambda o: printed.update(details=o)
+        )
+        monkeypatch.setattr(
+            yd_list, "print_info", lambda m, **k: printed.update(info=m)
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, o, object_type_name=None: printed.update(
+                table=(o, object_type_name)
+            ),
+        )
+        ctx = SimpleNamespace(args=_args("keyrings", **values), client=None)
+        yd_list._emit(
+            ctx,
+            self._objects(),
+            detail=lambda o: f"full {o.id}",
+            extra=lambda o: {"resource": "X"},
+            type_name="Thing",
+            announce="substituting",
+        )
+        return printed, capsys.readouterr().out
+
+    def test_json_with_details_is_each_in_full(self, monkeypatch, capsys):
+        printed, _ = self._emit(monkeypatch, capsys, json_output=True, details=True)
+        assert printed["json"] == ["full a", "full b"]
+
+    def test_ids_are_sorted(self, monkeypatch, capsys):
+        _, out = self._emit(monkeypatch, capsys, ids_only=True)
+        assert out.split() == ["a", "b"]
+
+    def test_the_table_names_the_type(self, monkeypatch, capsys):
+        printed, _ = self._emit(monkeypatch, capsys)
+        assert [o.id for o in printed["table"][0]] == ["a", "b"]
+        assert printed["table"][1] == "Thing"
+
+    def test_details_are_in_full_with_their_extra_after_the_announcement(
+        self, monkeypatch, capsys
+    ):
+        printed, _ = self._emit(monkeypatch, capsys, details=True, substitute_ids=True)
+        assert printed["details"] == [
+            ("full a", {"resource": "X"}),
+            ("full b", {"resource": "X"}),
+        ]
+        assert printed["info"] == "substituting"

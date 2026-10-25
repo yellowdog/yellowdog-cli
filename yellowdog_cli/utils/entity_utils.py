@@ -6,9 +6,10 @@ import fnmatch
 import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from json import loads as json_loads
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from requests import HTTPError, get
 from yellowdog_client import PlatformClient
@@ -222,9 +223,11 @@ def find_work_requirement_by_name(
     Platform matches partially, so the results are filtered for equality),
     never by listing the namespace. A name can be reused once a Work
     Requirement has finished, so the one whose status is in 'statuses' is
-    preferred; with none, one in another state is returned, for the caller
-    to report as such. Raises NotFoundError when nothing has the name, and
-    AmbiguousNameError when two or more in 'statuses' do.
+    preferred; with none, the newest in another state is returned, for the
+    caller to report as such (the latest run of a reused name, never
+    whichever the search happened to list first). Raises NotFoundError when
+    nothing has the name, and AmbiguousNameError when two or more in
+    'statuses' do.
     """
     namespace, name = split_namespace_and_name(name_or_namespaced_name)
     namespace = default_namespace if namespace is None else namespace
@@ -246,7 +249,25 @@ def find_work_requirement_by_name(
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
-    return (preferred or candidates)[0]
+    return preferred[0] if preferred else _newest(candidates)
+
+
+_Summary = TypeVar("_Summary", WorkRequirementSummary, ComputeRequirementSummary)
+
+
+def _newest(summaries: list[_Summary]) -> _Summary:
+    """
+    The most recently created of the summaries (the first listed, where
+    none says when it was created).
+    """
+    created: dict[int, datetime] = {
+        index: when
+        for index, summary in enumerate(summaries)
+        if (when := getattr(summary, "createdTime", None)) is not None
+    }
+    if not created:
+        return summaries[0]
+    return summaries[max(created, key=lambda index: created[index])]
 
 
 def find_compute_requirement_by_name(
@@ -261,7 +282,8 @@ def find_compute_requirement_by_name(
     'default_namespace' unless the name has a 'namespace/' prefix, by a name
     search filtered for equality, preferring the one whose status is in
     'statuses' (a name can be reused once a Compute Requirement has
-    terminated), else one in another state for the caller to report. Raises
+    terminated), else the newest in another state for the caller to report.
+    Raises
     NotFoundError when nothing has the name, and AmbiguousNameError when two
     or more in 'statuses' do.
     """
@@ -285,7 +307,7 @@ def find_compute_requirement_by_name(
             f" named '{name}' ({', '.join(str(s.status) for s in preferred)});"
             " please supply the ID of the one meant"
         )
-    return (preferred or candidates)[0]
+    return preferred[0] if preferred else _newest(candidates)
 
 
 def work_requirement_summary_of(
@@ -372,7 +394,9 @@ def get_compute_source_template_id_by_name(
     """
     Find a Compute Source Template id by name.
     Compute Source Template names are unique within a namespace.
-    Namespace included as part of a name overrides argument.
+    Namespace included as part of a name overrides argument. With neither,
+    the name is looked for in every namespace, and found in two or more
+    raises AmbiguousNameError rather than one of them being picked.
     """
     namespace_, name = split_namespace_and_name(name)  # type: ignore[assignment]
     namespace_ = namespace if namespace_ is None else namespace_
@@ -383,8 +407,13 @@ def get_compute_source_template_id_by_name(
     )
     if not csts:
         return None
+    if len(csts) > 1:
+        namespaces = ", ".join(sorted(str(cst.namespace) for cst in csts))
+        raise AmbiguousNameError(
+            f"Compute Source Templates named '{name}' are in namespaces"
+            f" {namespaces}; please supply 'namespace/{name}' or the ID"
+        )
 
-    # Names are unique within namespaces
     # This will be printed only once per name, due to caching
     print_info(f"Compute Source Template name '{name}' -> ID {(cst_id := csts[0].id)}")
     return cst_id
@@ -753,26 +782,36 @@ def allowances_to_remove(client: PlatformClient, description: str) -> list:
     ]
 
 
-def remove_allowances(client: PlatformClient, allowances: list) -> list[str]:
+def remove_allowances(
+    client: PlatformClient,
+    allowances: list,
+    on_removed: Callable[[str], None],
+) -> list[str]:
     """
     Remove the Allowances allowances_to_remove() chose, returning their IDs.
+    on_removed(<ID>) is called as each goes, so that those removed before a
+    later one fails are recorded too.
     """
     removed = []
     for allowance in allowances:
         client.allowances_client.delete_allowance_by_id(allowance.id)
         print_info(f"Removed Allowance with YellowDog ID {allowance.id}")
         removed.append(cast(str, allowance.id))
+        on_removed(cast(str, allowance.id))
     return removed
 
 
 def remove_allowances_matching_description(
-    client: PlatformClient, description: str
+    client: PlatformClient, description: str, on_removed: Callable[[str], None]
 ) -> list[str]:
     """
     Remove the Allowances matching on the description property that the
-    user chooses (see allowances_to_remove()), returning their IDs.
+    user chooses (see allowances_to_remove()), returning their IDs; see
+    remove_allowances() for 'on_removed'.
     """
-    return remove_allowances(client, allowances_to_remove(client, description))
+    return remove_allowances(
+        client, allowances_to_remove(client, description), on_removed
+    )
 
 
 def iterate_tasks_in_task_group(

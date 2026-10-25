@@ -560,6 +560,25 @@ class TestJsonnetFiles:
         var_module.VARIABLE_SUBSTITUTIONS["path"] = self.PATH
         var_module.VARIABLE_SUBSTITUTIONS["msg"] = self.MESSAGE
 
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "// was {{num:not_a_number}}\n{ a: 1 }",
+            "# was {{myvar}}\n{ a: 1 }",
+            '{ a: 1 /* "{{myvar}}" */ }',
+        ],
+    )
+    def test_an_expression_in_a_comment_is_left_alone(self, code):
+        # Commented out, it is no code: neither substituted, nor taken for a
+        # circular reference left behind, nor failed on its value
+        var_module.VARIABLE_SUBSTITUTIONS["not_a_number"] = "abc"
+        assert (
+            file_module.process_variable_substitutions_in_file_contents(
+                code, jsonnet=True
+            )
+            == code
+        )
+
     @staticmethod
     def _load(tmp_path, text: str) -> dict:
         path = tmp_path / "spec.jsonnet"
@@ -1020,6 +1039,7 @@ class TestAddSubstitutionsFromConfigFile:
     def reset_state(self, monkeypatch):
         monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
         monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
+        monkeypatch.setattr(var_module, "_CONFIG_FILE_VARIABLES", set())
 
     def _set_config_file(self, monkeypatch, value):
         # Whether '--config' selected the file, as register_user_variables()
@@ -1049,6 +1069,27 @@ class TestAddSubstitutionsFromConfigFile:
         self._set_config_file(monkeypatch, "my-config.toml")
         var_module.add_substitutions_from_config_file({"newvar": "world"})
         assert var_module.VARIABLE_SUBSTITUTIONS["newvar"] == "world"
+
+    @pytest.mark.parametrize("selected", [None, "my-config.toml"])
+    def test_the_configuration_files_own_variable_beats_an_imported_one(
+        self, monkeypatch, tmp_path, selected
+    ):
+        # 'importCommon': the local definition wins, with '-c' or without,
+        # and the imported file's other variables are still added
+        self._set_config_file(monkeypatch, selected)
+        main = tmp_path / "config.toml"
+        main.write_text('[common.variables]\nx = "main"\n', encoding="utf-8")
+        shared = tmp_path / "shared.toml"
+        shared.write_text(
+            '[common.variables]\nx = "shared"\ny = "from-shared"\n',
+            encoding="utf-8",
+        )
+        file_module.load_toml_file_with_variable_substitutions(
+            str(main), selected_file=True
+        )
+        file_module.load_toml_file_with_variable_substitutions(str(shared))
+        assert var_module.VARIABLE_SUBSTITUTIONS["x"] == "main"
+        assert var_module.VARIABLE_SUBSTITUTIONS["y"] == "from-shared"
 
 
 # ---------------------------------------------------------------------------
@@ -1269,6 +1310,46 @@ class TestVariableValueRendering:
     @pytest.fixture(autouse=True)
     def use_known_subs(self, patched_subs):
         pass
+
+    @pytest.mark.parametrize(
+        "value",
+        ["C:\\temp\\new", 'say "hi"', "tab\there", "line\nbreak"],
+    )
+    def test_a_variable_in_an_array_or_table_is_escaped_as_json(self, value):
+        # Pasted into the array's text, a backslash would be read back as an
+        # escape ('\\t' a tab) and a quote would end the string
+        var_module.add_substitutions_without_overwriting(
+            {"v": value, "arr": ["{{v}}", "b"], "tbl": {"k": "{{v}}"}}
+        )
+        assert var_module.process_variable_substitutions("{{array:arr}}") == [
+            value,
+            "b",
+        ]
+        assert var_module.process_variable_substitutions("{{table:tbl}}") == {
+            "k": value
+        }
+
+    def test_an_array_element_takes_its_variables_type(self):
+        var_module.add_substitutions_without_overwriting(
+            {"n": "5", "arr": ["{{num:n}}", "{{n}}"]}
+        )
+        assert var_module.process_variable_substitutions("{{array:arr}}") == [5, "5"]
+
+    def test_a_chain_of_variables_however_long_is_resolved(self):
+        # Resolved in the table, not left to the passes over a specification
+        chain = {f"v{i}": f"{{{{v{i + 1}}}}}" for i in range(30)}
+        var_module.add_substitutions_without_overwriting({**chain, "v30": "end"})
+        assert var_module.process_variable_substitutions("{{v0}}") == "end"
+        data = {"name": "{{v0}}"}
+        var_module.resolve_variables_insitu(data)
+        assert data == {"name": "end"}
+
+    def test_a_cycle_that_grows_its_text_stops(self):
+        # Doubling at every pass, it would otherwise outgrow the memory
+        var_module.add_substitutions_without_overwriting(
+            {"a": "{{b}}{{b}}", "b": "{{a}}"}
+        )
+        assert len(var_module.VARIABLE_SUBSTITUTIONS["a"]) < 1_000_000
 
     def test_list_of_strings_round_trips_through_the_array_tag(self):
         var_module.add_substitutions_without_overwriting({"strs": ["a", "b"]})

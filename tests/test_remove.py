@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 from requests import HTTPError, Response
 
+import yellowdog_cli.utils.entity_utils as entity_utils_module
 import yellowdog_cli.utils.resource_removal as yd_remove
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils import resource_processing
@@ -419,15 +420,36 @@ def test_allowances_removed_by_description_are_recorded_each_with_its_id(
     env, monkeypatch
 ):
     env.args.match_allowances_by_description = True
-    monkeypatch.setattr(
-        yd_remove, "remove_allowances_matching_description", lambda *a: ["a1", "a2"]
-    )
+
+    def remove(client, description, on_removed):
+        for removed_id in ("a1", "a2"):
+            on_removed(removed_id)
+        return ["a1", "a2"]
+
+    monkeypatch.setattr(yd_remove, "remove_allowances_matching_description", remove)
     yd_remove.remove_allowance(_ctx(), {"description": "d"})
     assert [(r["id"], r["action"]) for r in env.records] == [
         ("a1", "removed"),
         ("a2", "removed"),
     ]
     assert all("count" not in r for r in env.records)
+
+
+def test_allowances_removed_before_a_failure_are_recorded(env, monkeypatch):
+    # Each as it goes: recorded after the list came back, those removed
+    # before the failure were reported removed and never recorded
+    env.args.match_allowances_by_description = True
+    allowances = [SimpleNamespace(id="a1"), SimpleNamespace(id="a2")]
+    monkeypatch.setattr(
+        entity_utils_module, "allowances_to_remove", lambda client, d: allowances
+    )
+    env.client.allowances_client.delete_allowance_by_id.side_effect = [
+        None,
+        RuntimeError("500"),
+    ]
+    with pytest.raises(RuntimeError):
+        yd_remove.remove_allowance(_ctx(), {"description": "d"})
+    assert [(r["id"], r["action"]) for r in env.records] == [("a1", "removed")]
 
 
 def test_an_allowance_without_a_description_is_skipped_with_a_warning(env, capsys):

@@ -111,3 +111,15 @@ DEFAULT_THEME = {
     "pyexamples.idle": "bold dark_goldenrod",
     "pyexamples.starved": "bold dark_orange",
 }
+
+
+def task_group_status_text(status: object, starved: object, waiting: object) -> str:
+    """
+    A Task Group's status as listings and followed events both show it,
+    with '/STARVED' and '/WAITING' (on a dependency) added where they hold.
+    """
+    return (
+        ("" if status is None else str(status))
+        + ("/STARVED" if starved is True else "")
+        + ("/WAITING" if waiting is True else "")
+    )

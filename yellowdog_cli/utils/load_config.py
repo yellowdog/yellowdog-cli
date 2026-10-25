@@ -37,7 +37,12 @@ from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
 from yellowdog_cli.utils.output_settings import OUTPUT
-from yellowdog_cli.utils.paths import relative_if_possible
+from yellowdog_cli.utils.paths import (
+    default_config_file,
+    is_user_config_file,
+    relative_if_possible,
+    user_config_file,
+)
 from yellowdog_cli.utils.printing import (
     print_debug,
     print_error,
@@ -285,17 +290,41 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
         display_section = ".".join([section, *path[:-1]])
         print_debug(f"Property override: [{display_section}] {path[-1]} = {value!r}")
         if section == COMMON_SECTION and path[0] == VARIABLES and len(path) == 2:
-            try:
-                check_user_variable_name(path[1], f"'--property {override}'")
-                add_or_update_substitution(
-                    path[1], value, source=f"'--property {override}'"
-                )
-            except ValueError as e:
-                print_error(e)
-                exit(ExitCode.CONFIGURATION)
-            # Command-line-defined variables always take precedence,
-            # including over an explicitly selected config file
-            CLI_DEFINED_VARIABLES.add(path[1])
+            _register_variable_override(override, path[1], value)
+
+
+def _register_variable_override(override: str, name: str, value: object) -> None:
+    """
+    A '--property common.variables.<name>=<value>' override, registered as
+    a '-v' variable is: command-line-defined, so taking precedence over the
+    configuration file's definition, including an explicitly selected one.
+    """
+    try:
+        check_user_variable_name(name, f"'--property {override}'")
+        add_or_update_substitution(name, value, source=f"'--property {override}'")
+    except ValueError as e:
+        print_error(e)
+        exit(ExitCode.CONFIGURATION)
+    CLI_DEFINED_VARIABLES.add(name)
+
+
+def _register_variable_overrides(overrides: list[str]) -> None:
+    """
+    Register the '--property common.variables.<name>=...' overrides before
+    the configuration file is read, as '-v' variables are, so that the
+    file's own values, and the variables it builds from them, take the
+    overriding value; applied after, as the other overrides are, the file
+    would already have used its own. A malformed override is left for
+    _apply_property_overrides() to report.
+    """
+    prefix = f"{COMMON_SECTION}.{VARIABLES}."
+    for override in overrides:
+        lhs, equals, value_str = override.partition("=")
+        name = lhs[len(prefix) :]
+        if equals and lhs.startswith(prefix) and name and "." not in name:
+            _register_variable_override(
+                override, name, parse_property_value(value_str, name)
+            )
 
 
 _DATA_CLIENT_PROFILE_KEYS = (DATA_CLIENT_REMOTE, DATA_CLIENT_BUCKET, DATA_CLIENT_PREFIX)
@@ -437,10 +466,12 @@ def _load_config_file() -> None:
         if os.getenv(norm) is None and alt_value is not None:
             os.environ[norm] = alt_value
 
-    # CLI > 'config.toml'
-    # Relative where it can be, absolute where it cannot (Windows, another drive)
-    CONFIG_FILE = relative_if_possible(
-        "config.toml" if _ARGS.config_file is None else _ARGS.config_file
+    # CLI > 'config.toml' > the user's own. Relative where it can be,
+    # absolute where it cannot (Windows, another drive); the user's own
+    # absolute, which names it better than a climb out of the directory
+    chosen = default_config_file() if _ARGS.config_file is None else _ARGS.config_file
+    CONFIG_FILE = (
+        abspath(chosen) if is_user_config_file(chosen) else relative_if_possible(chosen)
     )
 
     if _ARGS.no_config:
@@ -462,7 +493,11 @@ def _load_config_file() -> None:
                 {"config_dir_abs": config_dir_abs, "config_dir_name": config_dir_short}
             )
             print_debug(f"Loading configuration data from: '{CONFIG_FILE}'")
-            CONFIG_TOML = load_toml_file_with_variable_substitutions(CONFIG_FILE)
+            if _ARGS.property_overrides:
+                _register_variable_overrides(_ARGS.property_overrides)
+            CONFIG_TOML = load_toml_file_with_variable_substitutions(
+                CONFIG_FILE, selected_file=True
+            )
             try:
                 # Strip profile sub-tables from [dataClient] before validation;
                 # profile names are user-defined and not in ALL_KEYS.
@@ -500,7 +535,8 @@ def _load_config_file() -> None:
             CONFIG_FILE_DIR = os.getcwd()
             _NO_FILE_REASON = (
                 f"no configuration file was found ('{CONFIG_FILE}' in"
-                f" {os.getcwd()}; another can be named with --config)"
+                f" {os.getcwd()}, or {user_config_file()}; another can be named"
+                " with --config)"
             )
             if _ARGS.property_overrides:
                 _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
@@ -543,18 +579,20 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             key_raw, secret_raw = common_section[KEY], common_section[SECRET]
         else:
             key_raw, secret_raw = common_section.get(KEY), common_section.get(SECRET)
-        key = None if key_raw is None else _resolved_common_value(KEY, key_raw)
+        key = None if key_raw is None else _resolved_common_value(KEY, key_raw, strict)
         secret = (
-            None if secret_raw is None else _resolved_common_value(SECRET, secret_raw)
+            None
+            if secret_raw is None
+            else _resolved_common_value(SECRET, secret_raw, strict)
         )
         if key is not None:
             add_substitutions_without_overwriting(subs={KEY: key})
         if secret is not None:
             add_substitutions_without_overwriting(subs={SECRET: secret})
 
-        namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE])
+        namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE], strict)
         add_substitutions_without_overwriting(subs={NAMESPACE: namespace})
-        name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG])
+        name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG], strict)
         add_substitutions_without_overwriting(subs={NAME_TAG: name_tag})
 
         _set_certificates_bundle(common_section)
@@ -734,11 +772,24 @@ def _resolved_url(common_section: dict, strict: bool = True) -> str:
     return url
 
 
-def _resolved_common_value(key_name: str, value: object) -> str:
+def _resolved_common_value(key_name: str, value: object, strict: bool = True) -> str:
     """
-    A [common] value with its variables substituted.
+    A [common] value with its variables substituted. One that is not text
+    ('tag = 2026', which TOML reads as a number) is a configuration error,
+    and exits, rather than failing later where a name is built from it;
+    without 'strict' (yd-doctor, which reports the configuration rather
+    than exiting on it) it is taken as its text.
     """
-    return cast(str, _resolve_value(value, f"{COMMON_SECTION}.{key_name}"))
+    resolved = _resolve_value(value, f"{COMMON_SECTION}.{key_name}")
+    if not isinstance(resolved, str) and not strict:
+        return str(resolved)
+    if not isinstance(resolved, str):
+        print_error(
+            f"'{COMMON_SECTION}.{key_name}' must be text, not {resolved!r}:"
+            f' quote it in the configuration file ({key_name} = "{resolved}")'
+        )
+        exit(ExitCode.CONFIGURATION)
+    return resolved
 
 
 def _set_certificates_bundle(common_section: dict) -> None:
@@ -911,10 +962,48 @@ def _select_dc_section(base: dict, profile_name: str | None) -> dict:
     return {**scalars, **profile}
 
 
+def _profile_keys(base: dict, profile_name: str | None) -> set[str]:
+    """
+    The fields a named profile sets itself, rather than inheriting them from
+    [dataClient]: those it names, which the environment does not override.
+    """
+    profile = base.get(profile_name) if profile_name is not None else None
+    return set(profile) if isinstance(profile, dict) else set()
+
+
+def _data_client_value(
+    dc_section: dict,
+    profile_keys: set[str],
+    toml_key: str,
+    env_var: str,
+    cli_value: str | None = None,
+) -> str | None:
+    """
+    One [dataClient] field, its variables substituted: the command line's
+    value; else the file's where it outranks the environment (a field the
+    named profile sets itself, or any with the file chosen by '--config');
+    else the environment's; else the file's; else None.
+    """
+    name = f"{DATA_CLIENT_SECTION}.{toml_key}"
+    if cli_value is not None:
+        return cast(str | None, _resolve_value(cli_value, name))
+    toml_value = dc_section.get(toml_key)
+    file_first = config_file_explicitly_selected() or toml_key in profile_keys
+    for value in (
+        toml_value if file_first else None,
+        os.environ.get(env_var),
+        toml_value,
+    ):
+        if value is not None:
+            return cast(str | None, _resolve_value(str(value), name))
+    return None
+
+
 def load_config_data_client() -> ConfigDataClient:
     """
     Load the configuration data for the data client (rclone-backed commands).
-    Priority: CLI flags > environment variables > TOML config.
+    Priority: CLI flags > environment variables > TOML config, except that
+    a field a named profile sets itself beats the environment.
     Named profiles ([dataClient.<name>]) inherit unset fields from [dataClient].
     Resolved values are registered in VARIABLE_SUBSTITUTIONS for use in specs.
     """
@@ -939,31 +1028,12 @@ def load_config_data_client() -> ConfigDataClient:
         dc_section = _select_dc_section(base_section, None)
 
     _resolve_section_variables(dc_section)
+    profile_keys = _profile_keys(base_section, profile_name)
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
-        if cli_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(cli_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        toml_value = dc_section.get(toml_key)
-        if config_file_explicitly_selected() and toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        if toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        return None
+        return _data_client_value(
+            dc_section, profile_keys, toml_key, env_var, cli_value
+        )
 
     remote = _resolve(
         getattr(_ARGS, "remote", None), YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE
@@ -1018,7 +1088,9 @@ def load_config_data_client_for_profile(
     Load a destination data client config for yd-copy.
 
     CLI source-side flags (--remote, --bucket, --prefix, --no-prefix,
-    --data-client-profile) are NOT applied; only TOML + env vars are used.
+    --data-client-profile) are NOT applied; only TOML + env vars are used,
+    a field the named profile sets itself beating the environment, so that
+    the environment cannot turn the destination into the source.
     dst_prefix_override (from --dst-prefix) takes highest priority.
     Pass an empty string to suppress the default prefix entirely.
     """
@@ -1036,26 +1108,10 @@ def load_config_data_client_for_profile(
         print_debug(f"Using destination data client profile: '{profile_name}'")
 
     _resolve_section_variables(dc_section)
+    profile_keys = _profile_keys(base_section, profile_name)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
-        toml_value = dc_section.get(toml_key)
-        if config_file_explicitly_selected() and toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(env_value, f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        if toml_value is not None:
-            return cast(
-                str | None,
-                _resolve_value(str(toml_value), f"{DATA_CLIENT_SECTION}.{toml_key}"),
-            )
-        return None
+        return _data_client_value(dc_section, profile_keys, toml_key, env_var)
 
     remote = _resolve(YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE)
     bucket = _resolve(YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET)

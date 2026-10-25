@@ -23,7 +23,7 @@ import qt_guard
 
 qt_guard.require_qt()
 
-from PyQt6.QtCore import QEventLoop
+from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander import config_discovery
@@ -367,6 +367,43 @@ def type_user_variables(win, text: str) -> None:
         "the reparse never ran"
     )
     QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 10)
+
+
+def test_a_discovery_started_while_another_runs_supersedes_it(win, monkeypatch):
+    # The debounce timer fires in the first discovery's nested event loop:
+    # the second, from the newer inputs, finishes first, and the first must
+    # not then write the older inputs' tag over its result
+    scripts = iter(
+        [
+            'import time; time.sleep(1.5); print(\'{"namespace": "ns", "tag": "old"}\')',
+            'print(\'{"namespace": "ns", "tag": "new"}\')',
+        ]
+    )
+    monkeypatch.setattr(
+        win._discovery,
+        "_yd_variables_command",
+        lambda: (sys.executable, ["-c", next(scripts)]),
+    )
+
+    def edited():
+        win._discovery._mark_stale()
+        win._discovery.reparse_placeholders()
+
+    QTimer.singleShot(300, edited)
+    win._discovery._mark_stale()
+    win._discovery.reparse_placeholders()
+    assert win._discovery.tag == "new"
+    assert not win._discovery._config_parse_invalid
+
+
+@pytest.mark.parametrize("field", ["namespace_override", "tag_override"])
+def test_an_edited_namespace_or_tag_is_discovered_again(win, field):
+    # The scope a dialog names, and the default object path, are built from
+    # what discovery found: an edit left it naming the old namespace or tag
+    win._discovery._user_vars_reparse_timer.stop()
+    getattr(win, field).setPlainText("other")
+    assert win._discovery._user_vars_reparse_timer.isActive()
+    win._discovery._user_vars_reparse_timer.stop()
 
 
 def test_a_half_typed_variable_does_not_run_discovery(win, monkeypatch):

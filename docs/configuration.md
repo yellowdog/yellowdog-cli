@@ -25,12 +25,15 @@ The configuration file has four possible sections:
 3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required.)
 4. A `dataClient` section that configures the remote data store used by the `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` commands.
 
-There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured.
+There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured. To start with the `[common]` properties alone, run `yd init`, which asks for them and writes a `config.toml`, or with `--user` your own file (see [yd init](commands.md#yd-init)).
 
 The name of the configuration file can be supplied in two different ways:
 
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd workrequirement submit -c jobs/config_1.toml`
 2. If not supplied, the commands look for a `config.toml` file in the current directory
+3. If there is none, they read your own configuration file, `~/.config/yellowdog/config.toml` (or `$XDG_CONFIG_HOME/yellowdog/config.toml` where `XDG_CONFIG_HOME` is set, on every platform), so that one set of credentials and defaults serves every directory without a `config.toml` of its own
+
+Your own file is read exactly as a `config.toml` in the current directory would be: environment variables take precedence over it, and paths in it are relative to its directory. A `config.toml` in the current directory, or one named with `--config`, is read in its place, never as well.
 
 Run `yd doctor` to see which configuration file was found and where each value came from.
 
@@ -103,7 +106,7 @@ This could be imported into the main configuration as follows:
     tag = "testing-{{username}}"
 ```
 
-Properties set in the imported file are superseded by any of the same properties that are present in the main configuration file.
+Properties set in the imported file are superseded by any of the same properties that are present in the main configuration file, and so are its `[common.variables]`: a variable both files define takes the main file's value, whether or not the main file was chosen with `--config`.
 
 ### HTTPS Proxy Support
 
@@ -194,6 +197,8 @@ The `.env` file is located by checking the following locations in order:
 
 1. The directory containing the active `config.toml` file (as specified by `--config`, or the default `config.toml` in the current directory). This allows a `.env` file to live alongside its `config.toml` and be found even when commands are run from a different directory.
 2. Searching upward from the current working directory (standard `python-dotenv` behaviour).
+
+When your own configuration file is the one read, the search upward from the current directory comes first, and a `.env` file beside your own file is used only when that finds none.
 
 Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
 

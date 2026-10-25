@@ -530,7 +530,7 @@ class TestInstallation:
         monkeypatch.setattr(dc.sys, "base_prefix", "/usr")
         monkeypatch.setattr(dc.sys, "executable", "/usr/bin/python3")
         r = dc.check_install_kind(_ctx())
-        assert r.status is dc.Status.WARN and "pipx" in (r.remedy or "")
+        assert r.status is dc.Status.WARN and "uv tool install" in (r.remedy or "")
 
     def test_extra_absent_is_ok_optional(self, monkeypatch):
         monkeypatch.setattr(dc, "_module_is_installed", lambda name: False)
@@ -714,6 +714,18 @@ class TestConfiguration:
         }
         assert rows["Authenticated"]["status"] == "SKIP"
         assert code == 1
+
+    def test_the_users_own_file_is_named_as_such(self, tmp_path):
+        home = tmp_path / "xdg"
+        user_file = home / "yellowdog" / "config.toml"
+        user_file.parent.mkdir(parents=True)
+        user_file.write_text('[common]\nnamespace = "n"\n', encoding="utf-8")
+        work = tmp_path / "work"
+        work.mkdir()
+        _, rows = _run_doctor(work, env=_clean_env(XDG_CONFIG_HOME=str(home)))
+        assert rows["Configuration loads"]["detail"] == (
+            f"{user_file} (your own, none here)"
+        )
 
     def test_no_config_with_no_file_present_says_no_file(self, tmp_path):
         _, rows = _run_doctor(tmp_path, "--nc")
@@ -939,7 +951,9 @@ class TestProfileLoadFailure:
         config = (
             '[common]\nkey = "k"\nsecret = "s"\n'
             '[dataClient]\nremote = "loc,type=local"\n'
-            '[dataClient.backup]\nbucket = "b"\n'
+            # A field the profile does not set itself, which the environment
+            # (unlike one it does) still sets
+            '[dataClient.backup]\nprefix = "p"\n'
         )
         _, rows = _run_doctor(
             tmp_path,
@@ -1240,6 +1254,7 @@ class TestLive:
                 raise answer
             return answer
 
+        monkeypatch.setattr(dc, "find_rclone", lambda: "/usr/local/bin/rclone")
         monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: ("remote", None))
         monkeypatch.setattr(dcu, "remote_stat", stat)
         ctx = _ctx(
@@ -1248,6 +1263,22 @@ class TestLive:
             data_client_name=name,
         )
         return dc.check_data_client_remote(ctx)
+
+    def test_data_client_remote_without_rclone_is_skipped(self, monkeypatch):
+        # Building the remote would download rclone, with no time limit
+        monkeypatch.setattr(dc, "find_rclone", lambda: None)
+        monkeypatch.setattr(
+            dc,
+            "_rclone_for_config",
+            lambda cfg: pytest.fail("rclone was to be fetched"),
+        )
+        ctx = _ctx(
+            config_loaded=True,
+            data_client=SimpleNamespace(remote="remote", bucket="b", prefix="p"),
+            data_client_name="backup",
+        )
+        r = dc.check_data_client_remote(ctx)
+        assert (r.status, r.detail) == (dc.Status.SKIP, "rclone not found")
 
     def test_data_client_remote_checks_the_prefix_and_names_the_profile(
         self, monkeypatch
@@ -1508,6 +1539,7 @@ class TestShownRemote:
         rclone = SimpleNamespace(
             ls=lambda path, max_depth: SimpleNamespace(dirs=[], files=[])
         )
+        monkeypatch.setattr(dc, "find_rclone", lambda: "/usr/local/bin/rclone")
         monkeypatch.setattr(dc, "_rclone_for_config", lambda cfg: (":s3", rclone))
         ctx = _ctx(
             config_loaded=True,

@@ -175,7 +175,9 @@ def _run_units(units: list[_Unit], run: _Run) -> None:
             failure = e
         except Exception as e:
             for entity, entity_type in entities:
-                if entity in run.handled:  # a Task ID already recorded
+                # A Task ID already recorded (only an ID can be: an SDK
+                # summary, the entity of an interactive unit, is unhashable)
+                if isinstance(entity, str) and entity in run.handled:
                     continue
                 print_error(f"Unable to abort Tasks for '{_label(entity)}': {e}")
                 advise(e)

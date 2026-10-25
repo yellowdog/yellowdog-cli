@@ -782,3 +782,40 @@ class TestLoadConfigDataClientDestination:
         ):
             lc_module.load_config_data_client_destination()
         load.assert_called_once_with(None, None)
+
+
+class TestANamedProfileBeatsTheEnvironment:
+    """
+    A field a named data client profile sets itself is not overridden by
+    YD_DATA_CLIENT_*; one it inherits from [dataClient] still is, as the
+    base section's are.
+    """
+
+    @pytest.fixture
+    def configured(self, monkeypatch):
+        monkeypatch.setattr(
+            lc_module,
+            "CONFIG_TOML",
+            {
+                "dataClient": {
+                    "remote": "base-remote:",
+                    "bucket": "main",
+                    "backup": {"bucket": "backup-bucket"},
+                }
+            },
+        )
+        monkeypatch.setattr(lc_module, "ensure_config_loaded", lambda *a: None)
+        monkeypatch.setattr(lc_module, "_load_namespace_and_tag", lambda: None)
+        monkeypatch.setattr(lc_module, "config_file_explicitly_selected", lambda: False)
+        monkeypatch.setenv("YD_DATA_CLIENT_BUCKET", "dev-bucket")
+        monkeypatch.setenv("YD_DATA_CLIENT_REMOTE", "env-remote:")
+
+    def test_the_profiles_own_field_wins(self, configured):
+        # yd data copy --dst-profile backup: not turned into the source bucket
+        config = lc_module.load_config_data_client_for_profile("backup", "")
+        assert config.bucket == "backup-bucket"
+        assert config.remote == "env-remote:"  # Inherited: the environment's
+
+    def test_without_a_profile_the_environment_wins(self, configured):
+        config = lc_module.load_config_data_client_for_profile(None, "")
+        assert config.bucket == "dev-bucket"

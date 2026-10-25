@@ -62,10 +62,18 @@ ID_TYPES: dict[str, YDIDType] = {
 def _split(target: str, namespace: str | None) -> tuple[str, str]:
     """
     'namespace/name' as its two parts, the configured namespace for a name
-    given without one.
+    given without one. A name with no namespace, given or configured, is
+    refused (ValueError): an empty namespace searches them all, so it would
+    remove the resource of that name in every namespace.
     """
     prefix, separator, name = target.rpartition(NAMESPACE_PREFIX_SEPARATOR)
-    return (prefix if separator else namespace or ""), name
+    namespace = prefix if separator else namespace
+    if not namespace or not name:
+        raise ValueError(
+            f"'{target}' names no namespace, and none is configured: give"
+            f" --namespace, or 'namespace/{name or target}'"
+        )
+    return namespace, name
 
 
 def _named(target: str, _namespace: str | None) -> dict:

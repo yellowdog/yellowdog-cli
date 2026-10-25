@@ -37,6 +37,7 @@ from yellowdog_cli.commander.selection import path_would_be_globbed
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     NAMESPACE,
+    NO_FORMAT,
     PROPERTY,
     TAG,
     VARIABLE,
@@ -56,12 +57,12 @@ UNDECORATED_YD_COMMANDS = frozenset(
     for spelling in (name, yd_form(name))
 )
 # Those of them that take '--nf', which Commander adds as it does to the rest,
-# since the output window shows no colour. Kept by hand because three of them
-# parse their own arguments outside the registry; a test holds it to each
-# command's '--help'
+# since the output window shows no colour; a test holds it to each command's
+# '--help'
 NO_FORMAT_UNDECORATED_YD_COMMANDS = frozenset(
     spelling
-    for name in ("yd-help", "yd-jsonnet2json", "yd-schema", "yd-version")
+    for name, command in COMMANDS.items()
+    if command.kind is CommandKind.STANDALONE and command.has(NO_FORMAT)
     for spelling in (name, yd_form(name))
 )
 NO_FORMAT_FLAGS = ("--nf", "--no-format")
@@ -525,11 +526,11 @@ class WindowBase(QMainWindow):
             # by specifying them first.
             for index, var in enumerate(self._namespace_tag_and_user_vars(command)):
                 args.insert(index, var)
-            args += ["--nf", "--pp"]
+            args = _before_end_of_options(args, ["--nf", "--pp"])
         elif command in NO_FORMAT_UNDECORATED_YD_COMMANDS and not (
             set(NO_FORMAT_FLAGS) & set(args)
         ):
-            args = [*args, "--nf"]
+            args = _before_end_of_options(args, ["--nf"])
 
         return args
 
@@ -544,5 +545,36 @@ class WindowBase(QMainWindow):
             self._output.log(f"Directory '{directory}' does not (yet) exist")
             return
         file_name = self._file_dialogs.browse(f"Browse '{directory}'", directory)
-        if file_name is not None:
+        if file_name is None:
+            return
+        try:
             self._file_dialogs.open_with_default_application(file_name)
+        except OSError as e:  # On Windows, a file with no application for its type
+            self._output.log(f"Cannot open '{file_name}': {e}")
+
+    def _display_file(self, path: str, description: str):
+        """
+        Show a file's text in the output window, or say why it cannot be read
+        (gone, unreadable, not UTF-8): an exception escaping a button's slot
+        would abort the whole application.
+        """
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            self._output.log(f"Cannot open {description} '{path}': {e}")
+            return
+        self._output.log(f"Displaying contents of '{path}':\n")
+        self._output.log(text, prefix=False)
+
+
+def _before_end_of_options(args: list[str], options: list[str]) -> list[str]:
+    """
+    'args' with 'options' added at their end, or before a '--' typed among
+    them: after it they would be arguments ('yd data delete -R -- -odd.txt'
+    would also delete objects named '--nf' and '--pp').
+    """
+    if "--" in args:
+        end = args.index("--")
+        return [*args[:end], *options, *args[end:]]
+    return [*args, *options]

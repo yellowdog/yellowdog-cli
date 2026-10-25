@@ -216,12 +216,12 @@ def _named(*types: YDIDType) -> frozenset[TargetKind]:
     return frozenset({*types, NAME})
 
 
-def _list(entity_type: str, noun_plural: str) -> Verb:
+def _list_filters_hidden(entity_types: frozenset[str]) -> tuple[str, ...]:
     """
-    yd-list for one entity type, its filters that do not apply to the type
-    hidden (check_list_options refuses them all the same).
+    yd-list's filters that apply to none of the entity types a list verb
+    takes, for it to hide (check_list_options refuses them all the same).
     """
-    hidden = [
+    return tuple(
         flag
         for flag, types in (
             ("--name", LIST_NAME_TYPES),
@@ -238,8 +238,16 @@ def _list(entity_type: str, noun_plural: str) -> Verb:
             ("--within", LIST_WITHIN_TYPES),
             ("--limit", LIST_LIMIT_TYPES),
         )
-        if entity_type not in types
-    ]
+        if not entity_types & types
+    )
+
+
+def _list(entity_type: str, noun_plural: str) -> Verb:
+    """
+    yd-list for one entity type, its filters that do not apply to the type
+    hidden.
+    """
+    hidden = _list_filters_hidden(frozenset({entity_type}))
     return Verb(
         "list",
         "yd-list",
@@ -271,6 +279,8 @@ def _show(
         "--show-exhaustion",
         "--show-members",
         "--type",
+        # Templates and Allowances alone have IDs to show as names
+        "--substitute-ids",
     )
     return Verb(
         "show",
@@ -555,7 +565,8 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-resize",
                 "Resize a Worker Pool",
                 "resizing a Worker Pool",
-                hidden=("--compute-requirement",),
+                # '--wait' is for a Compute Requirement alone
+                hidden=("--compute-requirement", "--wait", "--timeout"),
                 overrides={
                     "worker_pool": {
                         "metavar": "<worker-pool-name-or-ID>",
@@ -822,7 +833,7 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-list",
                 "List resources of a type",
                 "listing resources",
-                hidden=("--active-only", "--status", "--public-ips-only"),
+                hidden=_list_filters_hidden(RESOURCE_LIST_TYPES),
                 overrides={
                     "entity_type": {
                         "help": "the type of resource to list: "
@@ -836,7 +847,7 @@ NOUNS: tuple[Noun, ...] = (
                 "resources",
                 _named(*RESOURCE_YDID_TYPES),
                 "resource-ID-or-name",
-                keep=("--show-members", "--type"),
+                keep=("--show-members", "--type", "--substitute-ids"),
             ),
         ),
     ),
@@ -846,7 +857,12 @@ NOUNS: tuple[Noun, ...] = (
         (
             Verb("boost", "yd-boost", "Boost Allowances", "boosting Allowances"),
             _list(ET_ALLOWANCES, "Allowances"),
-            _show("Allowances", _ids(YDIDType.ALLOWANCE), "allowance-ID"),
+            _show(
+                "Allowances",
+                _ids(YDIDType.ALLOWANCE),
+                "allowance-ID",
+                keep=("--substitute-ids",),
+            ),
         ),
     ),
     Noun(

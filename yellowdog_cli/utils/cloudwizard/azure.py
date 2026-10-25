@@ -13,7 +13,6 @@ from azure.mgmt.subscription import SubscriptionClient
 from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_error
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
@@ -106,10 +105,12 @@ class AzureConfig(CommonCloudConfig):
 
     def teardown(self):
         """
-        Remove all Azure and YellowDog assets.
+        Remove all Azure and YellowDog assets: the YellowDog ones first, as
+        AWS and GCP do, so that an Azure failure (credentials it checks only
+        as they are used, say) cannot keep them from being removed.
         """
-        self._remove_azure_resources()
         self._remove_yellowdog_resources()
+        self._remove_azure_resources()
 
     def _create_azure_resources(self):
         """
@@ -219,7 +220,13 @@ class AzureConfig(CommonCloudConfig):
         also deletes any contained resources.
         """
         print_info("Removing YellowDog resource groups")
-        resource_groups = self._resource_client.resource_groups.list()
+        # Listed in full here, the pager's failure included, so that it is
+        # reported and counted rather than ending the teardown
+        try:
+            resource_groups = list(self._resource_client.resource_groups.list())
+        except Exception as e:
+            print_error(f"Unable to list the Azure resource groups to remove: {e}")
+            return
         count = 0
         for resource_group in resource_groups:
             if resource_group.name.startswith(RESOURCE_GROUP_PREFIX):  # type: ignore[union-attr]
@@ -444,18 +451,9 @@ class AzureConfig(CommonCloudConfig):
         self._create_compute_requirement_templates(resource_prefix=YD_RESOURCE_PREFIX)
 
         # Create Credentials
-        try:
-            credential_resource = self._generate_yd_azure_credential(
-                YD_KEYRING_NAME, YD_CREDENTIAL_NAME
-            )
-            create_resources(self._ctx, [credential_resource])
-        except Exception as e:
-            if classify(e) in SESSION_FAILURES:
-                # Reported by create_resources(): the resource file is still
-                # saved, and the run then exits with this failure's code
-                self.platform_failure = e
-            else:
-                print_error(f"Unable to add credential '{YD_CREDENTIAL_NAME}': {e}")
+        self._add_credential(
+            self._generate_yd_azure_credential(YD_KEYRING_NAME, YD_CREDENTIAL_NAME)
+        )
 
         # Save the list of resources
         # Sequence the Compute Requirement Templates before the Compute Source
@@ -568,6 +566,12 @@ class AzureConfig(CommonCloudConfig):
         security_group_name = self._generate_security_group_name(selected_region)
         security_rule_name = "ssh-inbound"
         if operation == "add-ssh":
+            # Asked first, as AWS's add-ssh asks: it opens a port to anywhere
+            if not confirmed(
+                "Allow SSH (port 22) from anywhere (*) in Azure security group"
+                f" '{security_group_name}' in region '{selected_region}'?"
+            ):
+                return
             print_info(
                 "Adding inbound SSH rule to Azure security group"
                 f" '{security_group_name}'"

@@ -43,6 +43,7 @@ from yellowdog_cli.utils.dataclient.rclone import shown_remote
 from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.output_style import ERROR_MARKER
+from yellowdog_cli.utils.paths import is_user_config_file
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_BUCKET,
     DATA_CLIENT_PREFIX,
@@ -286,8 +287,9 @@ def check_install_kind(ctx: Context) -> Result:
     return Result(
         Status.WARN,
         f"system Python ({exe})",
-        "Install with pipx or uv so the CLI's dependencies cannot collide with"
-        " the system's: see the README's Installation section",
+        "Install it into an environment of its own (uv tool install, or a virtual"
+        " environment) so its dependencies cannot collide with the system's:"
+        " see the README's Installation section",
     )
 
 
@@ -311,7 +313,8 @@ def check_sdk_imports(ctx: Context) -> Result:
             Status.FAIL,
             ctx.sdk_error,
             "Reinstall the CLI with the command you installed it with (e.g."
-            " pipx reinstall yellowdog-cli), which reinstalls the SDK it needs",
+            " uv tool install --reinstall yellowdog-cli), which reinstalls the SDK"
+            " it needs",
         )
     return Result(Status.OK, "imports")
 
@@ -335,7 +338,8 @@ def check_newer_cli_on_pypi(ctx: Context) -> Result:
         return Result(
             Status.WARN,
             f"{latest} available, {CLI_VERSION} installed",
-            "Update with the command you installed with, e.g. pipx upgrade yellowdog-cli",
+            "Update with the command you installed with, e.g. uv tool upgrade"
+            " yellowdog-cli, or pip install -U yellowdog-cli in its environment",
         )
     return Result(Status.OK, f"up to date ({CLI_VERSION})")
 
@@ -609,6 +613,8 @@ def check_config_loads(ctx: Context) -> Result:
         return Result(Status.OK, "no file, environment only")
     if ctx.args.no_config:
         return Result(Status.OK, f"{load_config.CONFIG_FILE} ignored, environment only")
+    if ctx.args.config_file is None and is_user_config_file(load_config.CONFIG_FILE):
+        return Result(Status.OK, f"{load_config.CONFIG_FILE} (your own, none here)")
     return Result(Status.OK, load_config.CONFIG_FILE)
 
 
@@ -1027,6 +1033,10 @@ def check_data_client_remote(ctx: Context) -> Result:
         resolve_remote_path,
     )
 
+    # Without an rclone binary, building the remote would download one, with
+    # no time limit: the rclone row has said what to do about it
+    if find_rclone() is None:
+        return Result(Status.SKIP, "rclone not found")
     profile = f"profile {ctx.data_client_name}"
     _, rclone = _rclone_for_config(ctx.data_client)
     target = resolve_remote_path(ctx.data_client)

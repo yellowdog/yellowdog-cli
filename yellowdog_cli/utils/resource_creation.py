@@ -397,7 +397,10 @@ def create_compute_requirement_template(
 
     # Dynamic templates don't have 'sources'; return '[]'
     for source in resource.get(PROP_SOURCES, []):
-        template_name_or_id = source[PROP_CST_ID]
+        try:
+            template_name_or_id = source[PROP_CST_ID]
+        except KeyError as e:
+            raise missing_property(e) from e
         if get_ydid_type(template_name_or_id) != YDIDType.COMPUTE_SOURCE_TEMPLATE:
             template_id = get_compute_source_template_id_by_name(
                 client=ctx.client, name=template_name_or_id, namespace=namespace
@@ -762,18 +765,9 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
     cwp_response: AddConfiguredWorkerPoolResponse = (
         ctx.client.worker_pool_client.add_configured_worker_pool(cwp_request)
     )
-    print_info(
-        f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
-    )
-    print_info(
-        f"                   Worker Pool Token = '{cwp_response.token.secret}'"  # type: ignore[union-attr]
-    )
-    print_info(
-        "                   Worker Pool Expiry Time = "
-        f"{shown_expiry(cwp_response.token.expiryTime)}"  # type: ignore[union-attr]
-    )
-    # The token too, which '--json' otherwise silences with the prints
-    # above, and which is how a Configured Worker Pool is used
+    # Recorded before anything is printed from the reply, the pool existing
+    # whatever it holds; with its token too, which '--json' otherwise
+    # silences with the prints below, and which is how the pool is used
     token = cwp_response.token
     record_resource(
         RN_CONFIGURED_POOL,
@@ -787,6 +781,17 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
             else token.expiryTime.isoformat()
         ),
     )
+    print_info(
+        f"Created Configured Worker Pool '{name}' ({cwp_response.workerPool.id})"  # type: ignore[union-attr]
+    )
+    if token is None:
+        print_warning("The Platform returned no Worker Pool token")
+    else:
+        print_info(f"                   Worker Pool Token = '{token.secret}'")
+        print_info(
+            "                   Worker Pool Expiry Time = "
+            f"{shown_expiry(token.expiryTime)}"
+        )
     print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
 
@@ -862,8 +867,13 @@ def create_allowance(ctx: RunContext, resource: dict):
     if allowance.id is not None:
         print_quiet_result(allowance.id)
 
-    for removed_id in remove_allowances(ctx.client, to_replace):
-        record_resource(RN_ALLOWANCE, description, removed_id, "removed")
+    remove_allowances(
+        ctx.client,
+        to_replace,
+        on_removed=lambda removed_id: record_resource(
+            RN_ALLOWANCE, description, removed_id, "removed"
+        ),
+    )
 
 
 def _group_shown(ctx: RunContext, group_id: str | None) -> str:
@@ -1088,9 +1098,16 @@ def create_group(ctx: RunContext, resource: dict):
         )
         clear_group_caches()
         print_info(f"Created Group '{group.name}' ({group.id})")
-        added = _add_or_update_roles(
-            ctx, cast(str, group.id), role_specifications or []
-        )
+        try:
+            added = _add_or_update_roles(
+                ctx, cast(str, group.id), role_specifications or []
+            )
+        except BaseException:
+            # The Group exists: recorded as created, with its ID, ahead of
+            # the failure the caller records
+            record_resource(RN_GROUP, name, group.id, "created")
+            print_quiet_result(group.id)
+            raise
         record_resource(RN_GROUP, name, group.id, "created", rolesAdded=added)
         print_quiet_result(group.id)
         return

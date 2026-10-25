@@ -276,7 +276,10 @@ class ComputePanel(WindowDialogs):
             f"Choose the Worker Pool{scope} to resize, and the number of nodes"
             " to resize it to.",
             pools,
-            selected=newest_entity_id(parsed),
+            # The newest that can be chosen, not one awaiting nodes
+            selected=newest_entity_id(
+                parsed, {pool.id for pool in pools if not pool.awaiting_nodes}
+            ),
         )
         if choice is None:
             return
@@ -313,12 +316,7 @@ class ComputePanel(WindowDialogs):
         if path is None:
             self._output.log("No Worker Pool definition file selected")
             return
-        try:
-            with open(path, encoding="utf-8") as f:
-                self._output.log(f"Displaying contents of '{path}':\n")
-                self._output.log(f.read(), prefix=False)
-        except OSError as e:
-            self._output.log(f"Cannot open Worker Pool file '{path}': {e}")
+        self._display_file(path, "Worker Pool file")
 
     def _follow_worker_pool_set(self, checked_state: Qt.CheckState):
         if (

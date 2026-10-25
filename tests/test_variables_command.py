@@ -9,6 +9,7 @@ warnings ahead of it and the wrapper's 'Done' after it, and only JSON under
 
 import os
 import subprocess
+import sys
 from json import loads
 from pathlib import Path
 
@@ -174,6 +175,41 @@ class TestRedaction:
             "secret": REDACTED_VALUE,
             "tag": SUBSTITUTIONS["tag"],
         }
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            SUBSTITUTIONS["secret"],  # 'leak = "{{secret}}"'
+            f"Bearer {SUBSTITUTIONS['secret']}",
+            f"{SUBSTITUTIONS['key']}:{SUBSTITUTIONS['secret']}",
+        ],
+    )
+    @pytest.mark.parametrize("named", [False, True])
+    def test_a_variable_holding_a_credential_is_redacted_whatever_its_name(
+        self, monkeypatch, value, named
+    ):
+        monkeypatch.setattr(
+            variables_module,
+            "VARIABLE_SUBSTITUTIONS",
+            {**SUBSTITUTIONS, "leak": value},
+        )
+        report = report_variables(["leak"] if named else [])
+        assert report.variables["leak"] == REDACTED_VALUE
+        assert report.holding_credentials == ["leak"]
+        shown = report_variables(["leak"], show_secrets=True)
+        assert shown.variables == {"leak": value}
+
+    def test_a_short_credential_is_redacted_only_as_a_whole_value(self, monkeypatch):
+        # No real credential is this short; found inside other values, it
+        # would redact every value holding its letters
+        monkeypatch.setattr(
+            variables_module,
+            "VARIABLE_SUBSTITUTIONS",
+            {"key": "k", "secret": "s", "same": "s", "word": "kites"},
+        )
+        reported = _reported([])
+        assert reported["same"] == REDACTED_VALUE
+        assert reported["word"] == "kites"
 
     def test_unconfigured_credentials_are_null_in_the_full_report(self, monkeypatch):
         # yd-variables runs without credentials; their absence is reported
@@ -348,6 +384,38 @@ class TestCommandOutput:
 
         assert result.returncode == 0, result.stderr
         assert loads(result.stdout) == {"instances": "5"}
+
+    @pytest.mark.parametrize("selected", [True, False])
+    @pytest.mark.parametrize(
+        "given", [["-v", "x=z"], ["--property", "common.variables.x=z"]]
+    )
+    def test_a_variable_given_on_the_command_line_reaches_what_is_built_from_it(
+        self, tmp_path, given, selected
+    ):
+        # '--property common.variables.x' as '-v x' is: in place before the
+        # file is read, so its own values and variables take it
+        (tmp_path / "config.toml").write_text(
+            '[common]\nnamespace = "ns-{{x}}"\n'
+            '[common.variables]\nx = "a"\ny = "{{x}}-b"\n',
+            encoding="utf-8",
+        )
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("YD_VAR_") and name not in ("YD_NAMESPACE", "YD_TAG")
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "yellowdog_cli.yd", "variables"]
+            + (["-c", "config.toml"] if selected else [])
+            + [*given, "-q", "x", "y", "namespace"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=tmp_path,
+            timeout=120,
+        )
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {"namespace": "ns-z", "x": "z", "y": "z-b"}
 
     def test_the_data_clients_prefix_is_its_default_with_no_dataclient_section(
         self, tmp_path

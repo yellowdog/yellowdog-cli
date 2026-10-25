@@ -18,6 +18,7 @@ from yellowdog_cli.utils.command_registry import command_module
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.invocation import invoked_name, select_command
 from yellowdog_cli.utils.noun_registry import NOUNS_BY_NAME, Noun
+from yellowdog_cli.utils.suggestions import did_you_mean
 
 
 def _usage(invoked: str) -> str:
@@ -38,12 +39,17 @@ def noun_help(noun: Noun, invoked: str) -> str:
     return "\n".join(lines)
 
 
-def _refuse(invoked: str, noun: Noun, message: str) -> NoReturn:
-    # As argparse words a usage error, and with its exit code
+def _refuse(
+    invoked: str, noun: Noun, message: str, word: str | None = None
+) -> NoReturn:
+    # As argparse words a usage error, and with its exit code: the verb
+    # meant by a misspelt 'word', where one is close, else them all
+    verbs = [verb.name for verb in noun.verbs]
+    suggestion = None if word is None else did_you_mean(word, verbs)
     print(_usage(invoked), file=sys.stderr)
     print(
-        f"{invoked}: error: {message}; choose from:"
-        f" {', '.join(verb.name for verb in noun.verbs)}",
+        f"{invoked}: error: {message}; "
+        + (suggestion or f"choose from: {', '.join(verbs)}"),
         file=sys.stderr,
     )
     sys.exit(ExitCode.USAGE)
@@ -76,7 +82,7 @@ def run_noun(noun_name: str, invoked: str | None = None) -> None:
     if verb is None:
         if arguments[0].startswith("-"):
             _refuse(invoked, noun, f"a verb must come before '{arguments[0]}'")
-        _refuse(invoked, noun, f"unknown verb '{arguments[0]}'")
+        _refuse(invoked, noun, f"unknown verb '{arguments[0]}'", arguments[0])
 
     select_command(f"yd {noun.name} {verb.name}", f"{invoked} {verb.name}")
     sys.argv = [sys.argv[0], *verb.fixed, *arguments[1:]]

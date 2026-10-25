@@ -68,6 +68,7 @@
       * [yd wait](#yd-wait)
       * [yd application](#yd-application)
       * [yd variables](#yd-variables)
+      * [yd init](#yd-init)
       * [yd doctor](#yd-doctor)
       * [yd help](#yd-help)
       * [yd version](#yd-version)
@@ -108,7 +109,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 
 `yd <noun> --help` lists a noun's verbs, and `yd <noun> <verb> --help` gives a verb's options. A verb offers only the options that apply to its object: one that does not, such as `--namespace` on `yd instance terminate`, which takes Instances by ID alone, is refused (exit code 2), as is a target of the wrong kind, such as a Compute Requirement's ID given to `yd instance terminate`.
 
-The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs. Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished. Every name is looked up before anything else is done, and a name that finds nothing is reported and exits 6. `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
+The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs. Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished: a Work Requirement's or Compute Requirement's name can be reused once it has finished, so a live one is found if there is one, else the newest. Every name is looked up before anything else is done, and a name that finds nothing is reported and exits 6. `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
 The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
@@ -116,13 +117,13 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
 | Option | Effect |
 |---|---|
-| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory |
+| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory, else your own, `~/.config/yellowdog/config.toml` (see [Configuration](configuration.md)) |
 | `--no-config`, `--nc` | Ignore the contents of any TOML configuration file, even one named using `--config` |
 | `--key <app-key-id>`, `-k` | The Application key ID |
 | `--secret <app-key-secret>`, `-s` | The Application key secret |
@@ -201,7 +202,7 @@ Key options:
 - `--progress` — as `--follow`, but showing a single updating progress bar of completed and failed Tasks against the total, rather than per-task event messages
 - `--exit-on-failure`/`-E` — when following, exit with a non-zero code if the Work Requirement ends in a `FAILED` or `CANCELLED` state, or, if it could not be followed to its end (its event stream lost, say) and has not finished, with the code of that failure, since its outcome is not known; needs `--follow` or `--progress`
 - `--hold`/`-H` — submit the Work Requirement in the `HELD` (paused) state; it can later be started with `yd workrequirement start`. It is held before any Task is added, and if holding it fails it is cancelled, as for any failure part-way through a submission
-- `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later
+- `--empty`/`-e` — submit a Work Requirement with no Task Groups, to be populated later; it cannot be combined with a specification file, `--csv-file`, `--process-csv-only`, `--task-count` or `--task-group-count`, and a specification or CSV file named in the configuration (`workRequirementData`, `csvFiles`) is refused with it too
 - `--add-to`/`-A <name-or-id>` — add Task Groups and/or Tasks to an existing Work Requirement
 - `--task-type`/`-T <type>` — the Task Type to use
 - `--task-count`/`-C <n>`, `--task-group-count`/`-G <n>` — submit `n` copies of a single Task or Task Group, overriding `taskCount` or `taskGroupCount` in the specification
@@ -210,7 +211,7 @@ Key options:
 - `--parallel-batches`/`-l <n>` — the maximum number of Task batches uploaded in parallel (default `1`, i.e. sequential); once a batch fails, those not yet started are not submitted
 - `--pause-between-batches`/`-P [<seconds>]` — pause between batch submissions; with no interval, user input is required to advance. Only valid when `--parallel-batches` is `1`
 - `--overwrite`/`-O` — overwrite a file that already exists at the remote destination; by default, existing files are skipped
-- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty` or `--validate`, none of which applies to it
+- `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty`, `--validate`, `--task-type`, `--overwrite` or `--content-path`, none of which applies to it
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found; a relative path in the specification (a `taskDataFile`, a CSV file) is found there, while the specification file itself is always named from the current directory
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
 - `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](../README.md#specification-schemas))
@@ -504,8 +505,8 @@ Once provisioned, the Worker Pool will appear in the **Workers** tab in the Yell
 
 Key options:
 - `--target`/`-T <n>` — override the `targetInstanceCount` from the specification or configuration; a `maxNodes` lower than it is raised to match
-- `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found; a relative path in the specification (a `userDataFile`) is found there, while the specification file itself is always named from the current directory
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--content-path`/`-F <directory>` — the directory in which the User Data files the configuration's `[workerPool]` section names (`userDataFile`, `userDataFiles`) are found, in place of the configuration file's directory; a Worker Pool specification takes its User Data as `userData` alone, and the specification file itself is always named from the current directory
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement; refused without `--follow`
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
 - `--report`/`-r` — report on a test run of the Worker Pool's Compute Requirement Template, without provisioning (see [Test-Running a Dynamic Template](#test-running-a-dynamic-template))
@@ -537,7 +538,7 @@ A YDID is found in whatever namespace it belongs to; a name is looked up in the 
 What cannot be resized is reported before anything is asked. A Worker Pool that does not exist exits with code 6. A Worker Pool fails if it is a Configured Worker Pool, is awaiting nodes, or would be taken outside its minimum or maximum number of nodes; it is skipped if it has already shut down or terminated, or already expects the number of nodes asked for. The confirmation shows the current and new sizes.
 
 Key options:
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirement; refused without `--follow`
 - `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -561,7 +562,7 @@ A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matc
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
-- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements
+- `--auto-follow-compute-requirements`/`-a` — when following, also follow the associated Compute Requirements; refused without `--follow`
 - `--dry-run`/`-D` — show the Worker Pools that would be shut down, whether matched or named, and with `--terminate` the Compute Requirements that would be terminated, without acting
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
@@ -955,9 +956,10 @@ Key options:
 - `--all-nodes` — target all current nodes in the Worker Pool, filtered by `nodeTypes` if present in the spec; cannot be combined with `--node`
 - `--follow`/`-f` — poll the node action queues after submission until every one is `EMPTY` or `FAILED`
 - `--timeout <seconds>` — with `--follow`, stop after this many seconds, failing (exit 1) if any queue has not finished; by default there is no limit
-- `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON
+- `--status` — show the Node Action queue for the selected node(s); `--details`/`-d` shows the full JSON (refused without `--status`)
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
 - `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Specification Schemas](../README.md#specification-schemas))
+- `--jsonnet-dry-run`/`-J` — print the `--actions` Jsonnet file converted to JSON, and stop; refused with `--status`
 - `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -1522,7 +1524,7 @@ yd show [options] <yellowdog-id> [<yellowdog-id> ...]
 yd show [options] --type <resource-type> <name-or-id> [<name-or-id> ...]
 ```
 
-With `--type`, a resource can be given by its name instead: Keyrings, Groups and Applications by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools as `namespace/name`, or by name in the configured namespace; and Users by name or username. `yd resource show --type Keyring team-keys` shows the Keyring named `team-keys` as its ID would show it. The types with no ID are shown by name too, as `yd resource list <type> --details` shows them: a Namespace by its name, a Namespace Policy by its namespace, a String or Numeric Attribute Definition by its name, and a Credential as `keyring/credential` (its name, description and type, as its Keyring holds it). A name that finds nothing is not found (exit 6); an Allowance, which has no name, is shown by its ID; and another type's ID, an ID for a type that has none, and, without `--type`, an argument that is not an ID are refused.
+With `--type`, a resource can be given by its name instead: Keyrings, Groups and Applications by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools as `namespace/name`, or by name in the configured namespace; and Users by name or username. `yd resource show --type Keyring team-keys` shows the Keyring named `team-keys` as its ID would show it. The types with no ID are shown by name too, as `yd resource list <type> --details` shows them: a Namespace by its name, a Namespace Policy by its namespace, a String or Numeric Attribute Definition by its name, and a Credential as `keyring/credential` (its name, description and type, as its Keyring holds it). A name found in more than one namespace, with none configured, is refused as ambiguous rather than one of them shown. A name that finds nothing is not found (exit 6); an Allowance, which has no name, is shown by its ID; and another type's ID, an ID for a type that has none, and, without `--type`, an argument that is not an ID are refused.
 
 It supports IDs referring to:
 
@@ -1721,11 +1723,26 @@ WARNING : Variable 'pool' is unset: 'pool' refers to '{{site::}}', and 'site' is
 
 **Variables whose names look like credentials are redacted too, and the command says so.** `key`, `secret` and the inline remotes are the only variables the CLI can *know* hold credentials: it adds them to the substitution table itself when it loads the configuration, and the rclone connection string's format says which part of it is parameters. Beyond them, the report also redacts any variable of your own — defined in `[common.variables]`, via a `YD_VAR_*` environment variable, or with `--variable`/`-v` — whose name contains `secret`, `password`, `passwd`, `token`, `credential` or `private_key`, in any case, and when it does it prints one line ahead of the JSON saying so: `Redacted N variable(s) whose names match 'secret|password|passwd|token|credential|private_key' (case-insensitive); everything else is shown in full. --show-secrets reports all.` (not under `--quiet`, which leaves the JSON alone). As with the others, this applies to a variable named on the command line too, and `--show-secrets` reports them all.
 
+**A variable whose value holds the configured key or secret is redacted too.** Whatever it is called, a variable defined as `{{secret}}`, or as text holding it (`Bearer {{secret}}`), is the credential, so it is reported as `<REDACTED>`, and the command says so ahead of the JSON: `Redacted N variable(s) whose values hold the configured key or secret. --show-secrets reports all.`
+
 **A variable of your own holding an inline rclone connection string is shown as the data client remotes are.** Whatever it is called, a variable whose value is an inline connection string — `NAME,type=...` or rclone's own `:backend,...` form, with or without a leading `rclone:` and a trailing `:path` — is shown with its prefix, name, type and provider, every other parameter's value (and a trailing path) withheld as `<N parameters redacted>`, so `remote_with_keys = "rclone:S3,type=s3,provider=AWS,access_key_id=...,secret_access_key=...,region=eu-west-2"` is reported as `rclone:S3,type=s3,provider=AWS,<3 parameters redacted>`. A value with a comma in it that has neither form, such as `a,b` or `x,y=z`, is shown in full. When this withholds anything the command says so ahead of the JSON: `Withheld the parameters of N variable(s) holding an inline rclone connection string, keeping its name, type and provider. --show-secrets reports all.` `--show-secrets` reports it in full.
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
-None of `yd completion`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd help`, `yd version` and `yd jsonnet2json` accept; `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd init`, `yd help`, `yd version` and `yd jsonnet2json` accept; `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+
+### yd init
+
+The `yd init` command writes a starter configuration file: `config.toml` in the current directory, or with `--user` your own, `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads (see [Configuration](configuration.md)). It asks for the Application key ID and secret (the secret typed without being shown), the namespace, the tag and the Platform API URL, offering the value of `YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG` or `YD_URL` for Enter to keep, and writes them to its `[common]` section; a value given none is written commented out, so the file shows where it would go. A file holding the secret is readable by its owner alone. Run `yd doctor` afterwards to check it.
+
+```shell
+yd init [options]
+```
+
+- `--user`: write your own configuration file, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set), rather than `config.toml` in the current directory
+- `--overwrite`: replace the file if it exists; without it, an existing file is refused (exit 1) before anything is asked
+- `--yes`, `-y`: ask nothing, taking each value from its environment variable and leaving any not set commented out
+- `--no-format`: print the messages without colouring
 
 ### yd doctor
 
