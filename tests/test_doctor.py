@@ -715,6 +715,18 @@ class TestConfiguration:
         assert rows["Authenticated"]["status"] == "SKIP"
         assert code == 1
 
+    def test_the_users_own_file_is_named_as_such(self, tmp_path):
+        home = tmp_path / "xdg"
+        user_file = home / "yellowdog" / "config.toml"
+        user_file.parent.mkdir(parents=True)
+        user_file.write_text('[common]\nnamespace = "n"\n', encoding="utf-8")
+        work = tmp_path / "work"
+        work.mkdir()
+        _, rows = _run_doctor(work, env=_clean_env(XDG_CONFIG_HOME=str(home)))
+        assert rows["Configuration loads"]["detail"] == (
+            f"{user_file} (your own, none here)"
+        )
+
     def test_no_config_with_no_file_present_says_no_file(self, tmp_path):
         _, rows = _run_doctor(tmp_path, "--nc")
         assert rows["Configuration loads"]["detail"] == "no file, environment only"

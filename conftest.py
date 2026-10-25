@@ -3,6 +3,7 @@ import contextlib
 import io
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -696,6 +697,11 @@ def pytest_configure(config):
     # No test's Tab completion may reach the Platform: a test of the lookups
     # stands its own in and clears this, and every child process inherits it
     os.environ["YD_COMPLETION_LOOKUPS"] = "off"
+    # Nor read the developer's own configuration file (~/.config/yellowdog/
+    # config.toml), which a command reads when its directory has none: a
+    # directory of the session's own, empty, in its place, which every child
+    # process inherits; a test of that file sets its own
+    os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="yd-tests-xdg-")
     _build_what_import_built(config)
     config.addinivalue_line(
         "markers", "demos: mark test to run only when '--run-demos' is specified"

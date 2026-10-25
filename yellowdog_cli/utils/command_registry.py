@@ -664,7 +664,8 @@ CONFIG = option(
     type=str,
     help=(
         "configuration file in TOML format; "
-        "the default to use is 'config.toml' in the current directory"
+        "the default to use is 'config.toml' in the current directory, else"
+        " ~/.config/yellowdog/config.toml"
     ),
     completes=Completes.FILE,
     metavar="<config_file.toml>",

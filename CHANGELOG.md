@@ -15,6 +15,10 @@ These changes alter what an existing script or habit will see:
 - **`yd node action --status --json` gives `null` for a queue's missing status or action**, where it gave `"-"`, as it already did for a node whose queue could not be fetched.
 - **A `[common]` `namespace`, `tag`, `key` or `secret` that is not text** (`tag = 2026`) is a configuration error, exit 3; and **`yd variables` redacts a variable whose value holds the configured key or secret** (one defined as `{{secret}}`), whatever it is called.
 
+### Configuration
+
+- **Your own configuration file**: with no `config.toml` in the current directory and none named with `--config`, `yd` reads `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set), so one set of credentials and defaults serves every directory; a local `config.toml` is read in its place, the environment wins over it as over any `config.toml`, and `yd doctor` names it.
+
 ### Data client
 
 - **Transfers record what happened**: `yd data upload` uploads a symbolic link given among other files, where it recorded it as uploaded and sent nothing; `yd data delete` records files as failed when a deletion and the listing that checks it both fail, where it recorded every file as deleted and exited 0; and `yd data copy --json` records a source that is missing or cannot be reached.

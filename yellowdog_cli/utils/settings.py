@@ -91,3 +91,10 @@ CLOUD_INFO_NO_SUB_REGION = "N/A"
 # The characters no Windows file name may hold, besides the path separators:
 # a ':' would even make 'results/a:b.txt' the drive-relative path 'a:b.txt'
 WINDOWS_RESERVED_CHARACTERS = '<>:"|?*'
+
+# The configuration file read when none is named: in the current directory,
+# else the user's own, CONFIG_FILE_NAME under USER_CONFIG_DIRECTORY in
+# $XDG_CONFIG_HOME (~/.config without it, on every platform; paths.py)
+CONFIG_FILE_NAME = "config.toml"
+USER_CONFIG_DIRECTORY = "yellowdog"
+XDG_CONFIG_HOME = "XDG_CONFIG_HOME"

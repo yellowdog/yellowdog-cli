@@ -43,6 +43,7 @@ from yellowdog_cli.utils.dataclient.rclone import shown_remote
 from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.output_style import ERROR_MARKER
+from yellowdog_cli.utils.paths import is_user_config_file
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_BUCKET,
     DATA_CLIENT_PREFIX,
@@ -612,6 +613,8 @@ def check_config_loads(ctx: Context) -> Result:
         return Result(Status.OK, "no file, environment only")
     if ctx.args.no_config:
         return Result(Status.OK, f"{load_config.CONFIG_FILE} ignored, environment only")
+    if ctx.args.config_file is None and is_user_config_file(load_config.CONFIG_FILE):
+        return Result(Status.OK, f"{load_config.CONFIG_FILE} (your own, none here)")
     return Result(Status.OK, load_config.CONFIG_FILE)
 
 

@@ -244,31 +244,47 @@ Commands are run from the command line. Invoking any command with the `--help` o
 
 ```text
 % yd workrequirement cancel -h
-usage: yd workrequirement cancel [-h] [--docs] [--config <config_file.toml>] [--key <app-key-id>] [--secret <app-key-secret>] [--url <url>]
-                                 [--debug] [--pac] [--no-format] [--quiet] [--env-override] [--print-pid] [--no-config]
-                                 [--property <section.key=value>] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>]
-                                 [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
-                                 [<work-requirement-name-or-ID> ...]
+usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
+                                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
+                                 [<work-requirement-name-or-ID> ...] [universal options]
 
 YellowDog command-line utility for cancelling Work Requirements
 
 positional arguments:
   <work-requirement-name-or-ID>
-                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may
-                        be a glob pattern (e.g. 'proj-*')
+                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may be a glob
+                        pattern (e.g. 'proj-*')
 
 options:
   -h, --help            show this help message and exit
+  --sort <name|created|status|namespace>[,...]
+                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time, earliest
+                        first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in turn (e.g.
+                        'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
+  --reverse             reverse (descending) the whole order --sort gives
+  --variable, -v <var1=v1>
+                        user-defined variable substitution; the option can be supplied multiple times, one per variable
+  --namespace, -n [<namespace>]
+                        the namespace to use when specifying entities; this is set to '' if the option is provided without a value
+  --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without a value
+  --abort, -a           abort running tasks with immediate effect
+  --follow, -f          follow progress after cancelling the work requirement(s)
+  --dry-run, -D         list the entities that would be affected, without acting
+  --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
+  --interactive, -i     list, and interactively select, the items to act on
+  --yes, -y             perform modifying/destructive actions without requiring user confirmation
+
+universal options:
   --docs                provide a link to the documentation for this version
   --config, -c <config_file.toml>
-                        configuration file in TOML format; the default to use is 'config.toml' in the current directory
+                        configuration file in TOML format; the default to use is 'config.toml' in the current directory, else
+                        ~/.config/yellowdog/config.toml
   --key, -k <app-key-id>
                         the application key ID
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error, and the
-                        configuration preamble
+  --debug               display the Python stack trace on error, and the configuration preamble
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
@@ -276,25 +292,8 @@ options:
   --print-pid, --pp     include the process ID of this CLI invocation alongside timestamp in logging messages
   --no-config, --nc     ignore the contents of any TOML configuration file (even if specified on the command line)
   --property <section.key=value>
-                        override a TOML configuration property; format: 'section.key=value', e.g.
-                        'workRequirement.workerTags=["mytag"]'; can be supplied multiple times
-  --sort <name|created|status|namespace>[,...]
-                        order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time,
-                        earliest first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in
-                        turn (e.g. 'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
-  --reverse             reverse (descending) the whole order --sort gives
-  --variable, -v <var1=v1>
-                        user-defined variable substitution; the option can be supplied multiple times, one per variable
-  --namespace, -n [<namespace>]
-                        the namespace to use when specifying entities; this is set to '' if the option is provided without a value
-  --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without
-                        a value
-  --abort, -a           abort running tasks with immediate effect
-  --follow, -f          follow progress after cancelling the work requirement(s)
-  --dry-run, -D         list the entities that would be affected, without acting
-  --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
-  --interactive, -i     list, and interactively select, the items to act on
-  --yes, -y             perform modifying/destructive actions without requiring user confirmation
+                        override a TOML configuration property; format: 'section.key=value', e.g. 'workRequirement.workerTags=["mytag"]'; can be
+                        supplied multiple times
 ```
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.

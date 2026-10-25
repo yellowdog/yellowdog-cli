@@ -37,7 +37,12 @@ from yellowdog_cli.utils.misc_utils import (
     pathname_relative_to_config_file,
 )
 from yellowdog_cli.utils.output_settings import OUTPUT
-from yellowdog_cli.utils.paths import relative_if_possible
+from yellowdog_cli.utils.paths import (
+    default_config_file,
+    is_user_config_file,
+    relative_if_possible,
+    user_config_file,
+)
 from yellowdog_cli.utils.printing import (
     print_debug,
     print_error,
@@ -461,10 +466,12 @@ def _load_config_file() -> None:
         if os.getenv(norm) is None and alt_value is not None:
             os.environ[norm] = alt_value
 
-    # CLI > 'config.toml'
-    # Relative where it can be, absolute where it cannot (Windows, another drive)
-    CONFIG_FILE = relative_if_possible(
-        "config.toml" if _ARGS.config_file is None else _ARGS.config_file
+    # CLI > 'config.toml' > the user's own. Relative where it can be,
+    # absolute where it cannot (Windows, another drive); the user's own
+    # absolute, which names it better than a climb out of the directory
+    chosen = default_config_file() if _ARGS.config_file is None else _ARGS.config_file
+    CONFIG_FILE = (
+        abspath(chosen) if is_user_config_file(chosen) else relative_if_possible(chosen)
     )
 
     if _ARGS.no_config:
@@ -528,7 +535,8 @@ def _load_config_file() -> None:
             CONFIG_FILE_DIR = os.getcwd()
             _NO_FILE_REASON = (
                 f"no configuration file was found ('{CONFIG_FILE}' in"
-                f" {os.getcwd()}; another can be named with --config)"
+                f" {os.getcwd()}, or {user_config_file()}; another can be named"
+                " with --config)"
             )
             if _ARGS.property_overrides:
                 _apply_property_overrides(CONFIG_TOML, _ARGS.property_overrides)
