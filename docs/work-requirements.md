@@ -133,7 +133,7 @@ To stop a property being inherited, set it to `null` at the level that should no
 `null` can be used for any property that is inherited, at any level with a level above it to inherit from (the TOML file counts, so `null` at the Work Requirement level stops a TOML value). The TOML file is the top of the hierarchy, with nothing above it to stop, so it has no need of `null`, which TOML cannot express. Two properties are exceptions:
 
 - `name` and `tag` are not inherited, so there is nothing for `null` to stop.
-- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none: it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
+- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none (though the schema check warns of it, and `--validate` reports it, so leaving the property out is the better way): it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
 
 For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance, with the same result. An inherited `taskData`, `taskDataFile` or `taskDataFiles` is stopped by setting any one of the three, to `null` or to an empty value: the three are one setting, and the first level to set any of them supplies the Task Data.
 
@@ -248,7 +248,7 @@ When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`)
 }
 ```
 
-Destinations are evaluated **in order**; the first matching entry wins. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+Destinations are evaluated **in order**; the first matching entry wins. An entry without `resubmitErrors` matches every error, so only the last should leave it out, or those after it can never be reached; an empty `resubmissionDestinations` list is refused. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
 
 Common use cases:
 
@@ -342,7 +342,7 @@ argumentsPrefix + arguments + argumentsPostfix
 
 This is useful when many Tasks share a common command structure but differ only in their per-task arguments — the shared parts can be set once at the Work Requirement or Task Group level rather than repeated in every Task definition. Variable substitutions are supported in all three lists.
 
-`argumentsPrefix` and `argumentsPostfix` follow the same inheritance hierarchy as `addEnvironment`: they can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), with lower levels taking precedence.
+`argumentsPrefix` and `argumentsPostfix` can be set at the same levels as `addEnvironment`: in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level). Unlike `addEnvironment`, which is merged down the levels, each is taken whole from the lowest level that sets it, as `arguments` is.
 
 ### Example — TOML
 
@@ -381,7 +381,7 @@ The `taskTemplate` property on a Task Group optionally sets default values for `
 
 Any combination of the three fields can be specified; omitted fields are simply not defaulted. Values specified directly on an individual Task take precedence over the template.
 
-`taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` as an alternative to `taskData`, exactly as they can at the Task level — the file contents are read client-side and used as the `taskData` value. `taskDataFiles` concatenates multiple files in order.
+`taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` as an alternative to `taskData`, exactly as they can at the Task level — the file contents are read client-side and used as the `taskData` value. `taskDataFiles` concatenates multiple files in order, a newline after each. Every Task Data file is substituted as it is read, `{{variable}}` by `{{variable}}`, as a User Data file is.
 
 `taskTemplate` can be set in the TOML config (applying globally as a default), at the Work Requirement level, or at the Task Group level. More specific levels take precedence.
 
@@ -422,7 +422,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)): e.g. `mytag_221024-1555241-4f`.
+- The **Work Requirement** name is automatically set using a concatenation of the `[common]` `tag` (not `[workRequirement]`'s), a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)): e.g. `mytag_221024-1555241-4f`.
 - **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
 - **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
 
@@ -459,7 +459,7 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be exactly one Task listed within the Task Group, or `taskCount` is ignored with a warning. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
 
-Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
+Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group; with more than one Task Group listed, it is ignored with a warning. The duplicates must be named apart, so a named Task Group expanded this way includes `{{task_group_number}}` in its name, or the submission is refused. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
 ## Examples
 
@@ -854,7 +854,7 @@ yd workrequirement submit --add-to my-work-requirement my-spec.json
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
 
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
+- **Matching Task Group name**: the new Tasks are appended to the existing Task Group; the specification's own properties for that Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied, the existing Task Group keeping its own. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
 - **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way, numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
 
 Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
@@ -960,7 +960,7 @@ JSON:
 ]
 ```
 
-If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`.
+If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname. A relative one is found from the files directory: the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`, else the specification file's directory, else the configuration file's (as Task Data files and CSV files are). Two different local files given the same upload path are refused.
 
 If `yd workrequirement submit` fails for any reason while submitting a new Work Requirement, the Work Requirement is cancelled and the objects it uploaded are deleted automatically; with `--add-to`, the Tasks already added and the files uploaded for them are left in place, with a warning. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
 
@@ -1007,7 +1007,7 @@ This section discusses the context within which a Task operates when it's execut
 
 When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the following steps are followed:
 
-1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
+1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskData`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
 2. An ephemeral working directory is created. Data Client input objects are downloaded to this directory, and the contents of the `taskData` property (if set) are written to the file `taskdata.txt`.
 3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This is done as a simple `exec` of a subprocess to run the Task.
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
@@ -1092,7 +1092,7 @@ As an example, consider the following JSON Work Requirement `wr.json`:
 }
 ```
 
-Note that the Task Group must contain only a single Task, acting as the prototype.
+Note that the Task Group must contain only a single Task, acting as the prototype. A prototype holding no `<<variable>>` that names a heading of its CSV file is not expanded, with a warning.
 
 Now consider a CSV file `wr_data.csv` with the following contents:
 
@@ -1179,7 +1179,7 @@ The `yd workrequirement submit` command would then be invoked with a separate CS
 yd workrequirement submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
 ```
 
-If there are **fewer** CSV files than Task Groups, a warning will be printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
+If there are **fewer** CSV files than Task Groups, a note is printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
 
 It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g. `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
 
@@ -1206,6 +1206,8 @@ To make use of this:
 3. Specify a single CSV file in the `csvFiles` TOML property, e.g. `csvFiles = ["wr_data.csv"]`, or provide the CSV file on the command line `-V wr_data.csv`; naming more than one is an error, since there is only one Task Group to apply them to
 
 When `yd workrequirement submit` is run, it will expand the Task list to match the number of data rows in the CSV file.
+
+In this form the CSV substitutions are made only in the properties a Task takes: `addYDEnvironment`, `arguments`, `environment`, `setTaskNames`, `taskData`, `taskDataFile`, `taskDataFiles`, `taskDataInputs`, `taskDataOutputs`, `taskGroupName`, `taskName`, `taskTimeout`, `taskType` and `timeout`. A `<<variable>>` anywhere else in the `[workRequirement]` section, such as `argumentsPrefix`, `addEnvironment` or `taskTemplate`, is left as written.
 
 ### Inspecting the Results of CSV Variable Substitution
 
