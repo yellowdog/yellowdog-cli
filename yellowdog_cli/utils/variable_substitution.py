@@ -277,6 +277,10 @@ VARIABLE_SUBSTITUTIONS = {
 # overrides of 'common.variables'); these always take precedence, including
 # over the contents of an explicitly selected config file
 CLI_DEFINED_VARIABLES: set[str] = set()
+# Names of variables defined by YD_VAR_* environment variables (a .env
+# file's included), which outrank the configuration file unless '--config'
+# chose it
+_ENVIRONMENT_DEFINED_VARIABLES: set[str] = set()
 # The variables the selected configuration file defines itself, which a
 # file it imports ('importCommon'), or any other read later, never replaces
 _CONFIG_FILE_VARIABLES: set[str] = set()
@@ -333,6 +337,7 @@ def register_user_variables(
             key = key[len(YD_ENV_VAR_PREFIX) :]
             VARIABLE_SUBSTITUTIONS[key] = value
             _DEFINITIONS[key] = value
+            _ENVIRONMENT_DEFINED_VARIABLES.add(key)
             registered.append(f"'{key}'")
 
     if registered:
@@ -515,24 +520,24 @@ def add_substitutions_from_config_file(
     section: the configuration file's own ('selected_file'), or a file read
     after it, such as one it imports.
 
-    If the config file was explicitly selected using '--config'/'-c', its
-    variables override environment-defined variables (but never variables
-    set on the command line); otherwise existing definitions take
-    precedence as usual. Either way, a file read after the configuration
+    Its variables override the default variables ('username', 'date', ...)
+    but never variables set on the command line, nor, unless the config
+    file was explicitly selected using '--config'/'-c', those set by
+    YD_VAR_* environment variables. A file read after the configuration
     file never replaces a variable the configuration file defines itself:
     the local definition wins over an imported one.
     """
     for name in subs:
         check_user_variable_name(name, source)
-    if not _CONFIG_FILE_SELECTED:
-        add_substitutions_without_overwriting(subs, source)
-        return
-
+    outranking = (
+        CLI_DEFINED_VARIABLES
+        if _CONFIG_FILE_SELECTED
+        else CLI_DEFINED_VARIABLES | _ENVIRONMENT_DEFINED_VARIABLES
+    )
     subs = {
         k: v
         for k, v in subs.items()
-        if k not in CLI_DEFINED_VARIABLES
-        and (selected_file or k not in _CONFIG_FILE_VARIABLES)
+        if k not in outranking and (selected_file or k not in _CONFIG_FILE_VARIABLES)
     }
     if selected_file:
         _CONFIG_FILE_VARIABLES.update(subs)

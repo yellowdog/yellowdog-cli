@@ -122,6 +122,7 @@ The precedence order for setting variables is:
 2. `YD_VAR_` environment variables
 3. `YD_VAR_` variables defined in a `.env` file
 4. TOML configuration file (`[common.variables]`)
+5. The [default variables](#default-variables) (`username`, `date`, `random` and the others, other than the reserved `namespace`, `tag`, `key`, `secret` and `url`)
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
 
