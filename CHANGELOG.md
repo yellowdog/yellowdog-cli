@@ -21,6 +21,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **`workersPerVCPU` keeps a fraction**: `workersPerVCPU = 0.5` establishes one Worker for every two vCPUs, where it was taken as `0`, establishing none.
 
+### Data client
+
+- **`{{dataClient.prefix}}` is empty under `--no-prefix`**, the prefix the command uses, where it kept the default `{{namespace}}/{{tag}}`.
+
 ## 15.2.0 — 2026-10-25
 
 ### Upgrading

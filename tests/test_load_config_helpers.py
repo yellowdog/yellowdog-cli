@@ -933,3 +933,37 @@ class TestPropertyOverridesForSpecifications:
     def test_an_override_to_null_gives_nothing(self, monkeypatch):
         self._with(monkeypatch, ["workRequirement.priority=null"], {"priority": None})
         assert lc_module.property_overrides("workRequirement") == []
+
+
+class TestNoPrefixVariable:
+    """
+    Under '--no-prefix', {{dataClient.prefix}} (and the legacy {{prefix}}) is
+    the prefix the command uses, none, rather than the default.
+    """
+
+    def test_no_prefix_makes_the_prefix_variable_empty(self, monkeypatch):
+        args = MagicMock(
+            no_prefix=True,
+            remote=None,
+            bucket=None,
+            prefix=None,
+            data_client_profile=None,
+        )
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        monkeypatch.setattr(
+            lc_module,
+            "CONFIG_TOML",
+            {"dataClient": {"remote": "r,type=local", "bucket": "b"}},
+        )
+        monkeypatch.setattr(lc_module, "ensure_config_loaded", lambda *a: None)
+        monkeypatch.setattr(lc_module, "_load_namespace_and_tag", lambda: None)
+        monkeypatch.setattr(lc_module, "register_dc_substitutions", lambda: None)
+        monkeypatch.setattr(lc_module, "config_file_explicitly_selected", lambda: False)
+        monkeypatch.delenv("YD_DATA_CLIENT", raising=False)
+        monkeypatch.delenv("YD_DATA_CLIENT_PREFIX", raising=False)
+        subs = {"dataClient.prefix": "ns/tag"}
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", subs)
+        config = lc_module.load_config_data_client()
+        assert config.prefix is None
+        assert subs["dataClient.prefix"] == ""
+        assert subs["prefix"] == ""

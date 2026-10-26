@@ -1127,6 +1127,10 @@ def load_config_data_client() -> ConfigDataClient:
         if prefix is None:
             prefix = cast(str | None, _resolve_value(DEFAULT_DATA_CLIENT_PREFIX))
 
+    # The prefix the variables hold: none under '--no-prefix', not the
+    # default the base section would give them
+    prefix_variable = "" if getattr(_ARGS, "no_prefix", False) else prefix
+
     # Register legacy {{remote/bucket/prefix}} names (backward compat).
     add_substitutions_without_overwriting(
         subs={
@@ -1134,7 +1138,7 @@ def load_config_data_client() -> ConfigDataClient:
             for k, v in {
                 DATA_CLIENT_REMOTE: remote,
                 DATA_CLIENT_BUCKET: bucket,
-                DATA_CLIENT_PREFIX: prefix,
+                DATA_CLIENT_PREFIX: prefix_variable,
             }.items()
             if v is not None
         }
@@ -1146,7 +1150,7 @@ def load_config_data_client() -> ConfigDataClient:
     for key, value in {
         f"{DATA_CLIENT_SECTION}.{DATA_CLIENT_REMOTE}": remote,
         f"{DATA_CLIENT_SECTION}.{DATA_CLIENT_BUCKET}": bucket,
-        f"{DATA_CLIENT_SECTION}.{DATA_CLIENT_PREFIX}": prefix,
+        f"{DATA_CLIENT_SECTION}.{DATA_CLIENT_PREFIX}": prefix_variable,
     }.items():
         if value is not None:
             add_or_update_substitution(key, value)
