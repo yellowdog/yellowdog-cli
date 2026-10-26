@@ -506,6 +506,26 @@ class TestLoadDotenvFile:
         mock = self._run(monkeypatch, tmp_path, env_override_set=False)
         mock.assert_called_once_with(self._FAKE_DOTENV, override=False)
 
+    @pytest.mark.parametrize("value", ["0", "false", "No", " OFF ", ""])
+    def test_env_var_set_to_an_off_word_leaves_the_environment_first(
+        self, monkeypatch, tmp_path, value
+    ):
+        # The words YD_COMPLETION_LOOKUPS reads as off: 'false' must not
+        # turn the override on
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(YD_ENV_OVERRIDE, value)
+        load_dotenv_mock = MagicMock()
+        with (
+            patch(
+                "yellowdog_cli.utils.misc_utils.find_dotenv",
+                return_value=self._FAKE_DOTENV,
+            ),
+            patch("yellowdog_cli.utils.misc_utils.dotenv_values", return_value={}),
+            patch("yellowdog_cli.utils.misc_utils.load_dotenv", load_dotenv_mock),
+        ):
+            load_dotenv_file(None)
+        load_dotenv_mock.assert_called_once_with(self._FAKE_DOTENV, override=False)
+
     def test_args_flag_calls_load_dotenv_with_override_true(
         self, monkeypatch, tmp_path
     ):

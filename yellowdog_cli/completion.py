@@ -41,7 +41,7 @@ from yellowdog_cli.utils.completion import (
 )
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS
-from yellowdog_cli.utils.settings import COMPLETION_LOOKUPS_OFF, YD_COMPLETION_LOOKUPS
+from yellowdog_cli.utils.settings import ENV_OFF_VALUES, YD_COMPLETION_LOOKUPS
 
 COMPLETE_FLAG = "--complete"
 NAMES_FLAG = "--names"
@@ -124,7 +124,7 @@ def lookups_enabled() -> bool:
     off. A script printed with '--names' asks for them.
     """
     value = os.environ.get(YD_COMPLETION_LOOKUPS, "")
-    return value.strip().lower() not in COMPLETION_LOOKUPS_OFF
+    return value.strip().lower() not in ENV_OFF_VALUES
 
 
 def _look_up(request: LookupRequest) -> tuple[Candidate, ...]:

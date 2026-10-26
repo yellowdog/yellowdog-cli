@@ -204,7 +204,7 @@ The `.env` file is located by checking the following locations in order:
 
 When your own configuration file is the one read, the search upward from the current directory comes first, and a `.env` file beside your own file is used only when that finds none.
 
-Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
+Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence. Any value turns it on except `0`, `false`, `no` and `off`, in any case, which leave it off.
 
 With `--debug`, environment variables sourced from a `.env` file whose names start with `YD` are reported as the command starts. Variables whose names do not start with `YD` are never reported, but they are still applied.
 

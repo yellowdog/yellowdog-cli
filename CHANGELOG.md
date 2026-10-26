@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Variables and configuration
+
+- **`YD_ENV_OVERRIDE=false` leaves the override off**: `0`, `false`, `no` and `off`, in any case, are read as off, as `YD_COMPLETION_LOOKUPS` reads them, where any value at all made `.env` win over the environment.
+
 ### Worker Pools
 
 - **`workersPerVCPU` keeps a fraction**: `workersPerVCPU = 0.5` establishes one Worker for every two vCPUs, where it was taken as `0`, establishing none.

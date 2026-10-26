@@ -24,7 +24,11 @@ from yellowdog_cli.utils.paths import (
     relative_if_possible,
 )
 from yellowdog_cli.utils.printing import print_debug, print_warning
-from yellowdog_cli.utils.settings import NAME_START_PREFIX, YD_ENV_OVERRIDE
+from yellowdog_cli.utils.settings import (
+    ENV_OFF_VALUES,
+    NAME_START_PREFIX,
+    YD_ENV_OVERRIDE,
+)
 from yellowdog_cli.utils.type_check import check_str
 
 if TYPE_CHECKING:
@@ -495,14 +499,15 @@ def load_dotenv_file(config_file: str | None, env_override: bool = False):
     """
     Load extra environment variables from a .env file if it exists.
     Do not override existing variables (environment takes precedence)
-    unless --env-override is set or YD_ENV_OVERRIDE is set in the environment.
+    unless --env-override is given or YD_ENV_OVERRIDE is set to anything but
+    an off value ('0', 'false', 'no', 'off').
     Report on YD vars that are taken from .env.
     """
     dotenv_file = dotenv_file_path(config_file)
     if dotenv_file is None:
         return
 
-    env_override = env_override or bool(os.environ.get(YD_ENV_OVERRIDE))
+    env_override = env_override or _environment_override_set()
 
     print_debug(
         f"Loading environment variables from '{dotenv_file}' ("
@@ -522,6 +527,14 @@ def load_dotenv_file(config_file: str | None, env_override: bool = False):
 
     # Actually load the variables (including non-'YD' variables)
     load_dotenv(dotenv_file, override=env_override)
+
+
+def _environment_override_set() -> bool:
+    """
+    Whether YD_ENV_OVERRIDE is set to a value that is not off.
+    """
+    value = os.environ.get(YD_ENV_OVERRIDE, "").strip().lower()
+    return value != "" and value not in ENV_OFF_VALUES
 
 
 def is_http_not_found(e: Exception) -> bool:
