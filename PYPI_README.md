@@ -20,7 +20,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud provider setup** (AWS, Azure, GCP) with the **`yd cloudwizard`** command
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun also has `list` and `show` verbs for its own objects
+- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun for Platform objects (all but `yd data` and `yd cloudinfo`) also has `list` and `show` verbs for its own objects
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
@@ -64,7 +64,7 @@ Four optional extras are available:
 
 | Extra         | Provides                                                         |
 |---------------|------------------------------------------------------------------|
-| `jsonnet`     | Jsonnet templating of resource specifications                    |
+| `jsonnet`     | Jsonnet in place of JSON, for any specification file             |
 | `commander`   | The `yd commander` desktop GUI, described below                  |
 | `cloudwizard` | The cloud provider SDKs required by the `yd cloudwizard` command |
 | `mcp`         | The `yd mcp` MCP server, described below                         |
