@@ -457,7 +457,7 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
+The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be exactly one Task listed within the Task Group, or `taskCount` is ignored with a warning. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
 
 Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
@@ -495,7 +495,8 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     ram = [0.5, 2.0]
     regions = ["eu-west-2"]
     retryPolicy = {maxRetries = 3, retryErrors = {includes = [
-      {processExitCodes = {includes = [143]}, statusesAtFailure = {includes = ["FAILED"]}, errorTypes = {includes = ["ALLOCATION_LOST"]}},
+      {errorTypes = {includes = ["ALLOCATION_LOST"]}},
+      {errorTypes = {includes = ["PROCESS_NON_ZERO_EXIT"]}, processExitCodes = {includes = [143]}},
     ]}}
     setTaskNames = false
     tag = "my_tag"
@@ -552,10 +553,10 @@ Showing all possible properties at the Work Requirement level. `taskData`, `task
     "maxRetries": 3,
     "retryErrors": {
       "includes": [
+        {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
         {
-          "processExitCodes": {"includes": [143]},
-          "statusesAtFailure": {"includes": ["FAILED"]},
-          "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+          "errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]},
+          "processExitCodes": {"includes": [143]}
         }
       ]
     }
@@ -630,10 +631,10 @@ Showing all possible properties at the Task Group level. `taskData`, `taskDataFi
         "maxRetries": 3,
         "retryErrors": {
           "includes": [
+            {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
             {
-              "processExitCodes": {"includes": [143]},
-              "statusesAtFailure": {"includes": ["FAILED"]},
-              "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+              "errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]},
+              "processExitCodes": {"includes": [143]}
             }
           ]
         }
@@ -780,40 +781,41 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 
 ```json
 {
-  "name": "pyex-docker-pwt_240424-1205116-4f",
   "namespace": "pyexamples-pwt",
-  "priority": 0,
-  "tag": "pyex-docker-pwt",
+  "name": "pyex-docker-pwt_240424-1205116-4f",
   "taskGroups": [
     {
-      "finishIfAllTasksFinished": true,
-      "finishIfAnyTaskFailed": false,
       "name": "task_group_1",
-      "priority": 0,
       "runSpecification": {
-        "maximumTaskRetries": 0,
         "taskTypes": ["docker"],
+        "maximumTaskRetries": 0,
         "workerTags": ["pyex-docker-pwt-worker"]
       },
+      "priority": 0,
       "starved": false,
       "waitingOnDependency": false,
+      "finishIfAllTasksFinished": true,
+      "finishIfAnyTaskFailed": false,
       "tasks": [
         {
+          "name": "task_1",
+          "taskType": "docker",
           "arguments": ["my_dockerhub_repo/my_container_image", "1", "2", "3"],
           "environment": {
             "YD_TASK_NAME": "task_1",
             "YD_TASK_NUMBER": "1",
+            "YD_NUM_TASKS": "1",
             "YD_TASK_GROUP_NAME": "task_group_1",
             "YD_TASK_GROUP_NUMBER": "1",
+            "YD_NUM_TASK_GROUPS": "1",
             "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-1205116-4f",
             "YD_NAMESPACE": "pyexamples-pwt"
-          },
-          "name": "task_1",
-          "taskType": "docker"
+          }
         }
       ]
     }
-  ]
+  ],
+  "tag": "pyex-docker-pwt"
 }
 ```
 
@@ -863,7 +865,7 @@ As with a normal `yd workrequirement submit`, `--follow` (or `-f`) can be used t
 
 If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
 
-If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
+If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. A file already at its upload path, from the original submission or otherwise, is skipped by default, whether or not the local file has changed since. Use `--overwrite` (`-O`) to upload it again:
 
 ```bash
 yd workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
@@ -906,7 +908,7 @@ An `rclone` already on your `$PATH` is used in preference and is never modified;
 
 To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
 
-Currently, Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
+Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
 ### Specifying Data Client Inputs
 
@@ -960,7 +962,7 @@ JSON:
 
 If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`.
 
-If `yd workrequirement submit` fails for any reason, the objects it uploaded are deleted automatically. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
+If `yd workrequirement submit` fails for any reason while submitting a new Work Requirement, the Work Requirement is cancelled and the objects it uploaded are deleted automatically; with `--add-to`, the Tasks already added and the files uploaded for them are left in place, with a warning. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
 
 ### Rclone Authentication
 
