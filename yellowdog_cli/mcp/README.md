@@ -41,8 +41,10 @@ pip install -U "yellowdog-cli[mcp]"
 ## Launching
 
 ```shell
-yd mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...]
+yd mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...] [--transport stdio]
 ```
+
+The server talks to its client over standard input and output (`--transport stdio`, the default and the only transport).
 
 A configuration file, given either as the positional argument or with `-c`/`--config` (not both), is read exactly as every other `yd` command reads it, and its directory becomes the working directory of every command the server runs.
 
@@ -195,6 +197,8 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **Configuration and credentials, which the server owns**: `--config`, `--key`, `--secret`, `--url`, `--docs`, `--debug`, `--pac`, `--no-format`, `--quiet`, `--env-override`, `--print-pid`, `--no-config`, `--property`.
 - **Supplied by the server itself, meaningless without a terminal, or refused together with `--json`**: `--json`, `--yes`, `--interactive`, `--progress`, `--report`, `--ids-only`.
 - **Machine maintenance, not platform work**: `--upgrade-rclone`, `--which-rclone`.
+- **`yd version`'s single-version flags**, each refused together with the `--json` the server passes: `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp`.
+- **A resource given on the command line**, which the specification says as well: `yd resource create`'s and `yd resource remove`'s `--type` and `--set`.
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
