@@ -107,6 +107,8 @@ To specify the file containing the JSON document, either populate the `workRequi
 
 `yd workrequirement submit --config myconfig.toml my_workreq.json`
 
+The document may also be written in [Jsonnet](jsonnet.md), or in TOML.
+
 ## Property Inheritance
 
 Work Requirement specifications can be simplified substantially by the property inheritance features in `yd workrequirement submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
