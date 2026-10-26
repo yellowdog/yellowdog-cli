@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Listing and actions
+
+- **`yd instance terminate --follow` and `yd node terminate --follow` end**: they return once the Instances have gone and nothing is changing in their Compute Requirement, where they followed it until Ctrl-C, since terminating some of its Instances leaves it running.
+
 ### Variables and configuration
 
 - **`--property` beats the environment**: `--property common.namespace=x` (and `tag`, `key`, `secret`, `url`, `readTimeout`) is used whatever `YD_NAMESPACE` and the others hold, and `--property dataClient.bucket=x` (or `remote`, `prefix`, for `[dataClient]` or a profile) whatever `YD_DATA_CLIENT_BUCKET` holds, as a command-line value; the environment won unless the file was chosen with `--config`. `--namespace` and the other options still win over `--property`.

@@ -1059,3 +1059,18 @@ class TestFollowingEndsWhenDone:
     def test_a_terminate_follows_to_the_end(self, platform, monkeypatch):
         _run(platform, COMPUTE_TERMINATE, [CR_ID], follow=True)
         assert cac_module.follow_ids.call_args.kwargs["settled"] is None
+
+    def test_terminating_instances_follows_until_nothing_changes(
+        self, platform, monkeypatch
+    ):
+        # The Compute Requirement goes on, so its stream never closes: the
+        # follow ends once its Instances have gone and nothing is changing
+        reached: list = []
+        monkeypatch.setattr(
+            cac_module,
+            "capacity_reached",
+            lambda ctx, done: reached.append(done) or "the test",
+        )
+        _run(platform, COMPUTE_TERMINATE, [f"{CR_ID}.{INSTANCE_ID}"], follow=True)
+        assert reached == [capacity_wait.until_quiet]
+        assert cac_module.follow_ids.call_args.kwargs["settled"] == "the test"

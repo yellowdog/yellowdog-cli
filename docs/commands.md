@@ -197,7 +197,7 @@ A Compute Requirement is *settled* when it is `RUNNING`, as many of its Instance
 | `yd instance restart`, `yd node restart` | each Compute Requirement is settled again, having left it | — |
 | `yd instance deprovision`, `yd node deprovision` | each Compute Requirement is settled at its new, reduced target | — |
 | `yd computerequirement terminate` | each Compute Requirement is terminated | — |
-| `yd instance terminate`, `yd node terminate` | each Instance's Compute Requirement is terminated, which terminating some of its Instances does not make it: Ctrl-C to stop following | — |
+| `yd instance terminate`, `yd node terminate` | nothing is changing, having changed: the Instances gone, and any the Compute Requirement starts in their place running | — |
 | `yd node action` | every node's action queue is `EMPTY` or `FAILED`, polled rather than streamed; `--timeout` stops it first, exiting 1 | — |
 | `yd node shutdown` | at once: Nodes are not followed | — |
 | `yd follow` (and the nouns' `follow`) | every stream has closed, its object finished | — |
@@ -985,7 +985,7 @@ yd instance terminate [options] <cr-id.instance-id> ...
 Key options:
 - `--dry-run`/`-D` — show which Instances would be terminated, without terminating anything
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
-- `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
+- `--follow`/`-f` — follow the affected Compute Requirements' events until the Instances have gone and nothing is changing
 
 ```shell
 yd instance terminate ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185.i-0a1b2c3d4e5f67890 --dry-run
@@ -1107,7 +1107,7 @@ yd node terminate [options] <node-ID> ...
 ```
 
 Key options:
-- `--follow`/`-f` — follow the affected Compute Requirements' event streams after the action is applied
+- `--follow`/`-f` — follow the affected Compute Requirements' events until the Instances have gone and nothing is changing
 - `--dry-run`/`-D` — show which Nodes' Instances would be terminated, without terminating anything
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
