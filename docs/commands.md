@@ -1900,11 +1900,20 @@ A family printed with `yd schema <family>` is exactly what `--write` writes for 
 
 ### yd completion
 
-The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes the word after `yd` (`yd w` → `wait`, `worker`, `workerpool`, `workrequirement`, `wp`, `wr`), a noun's verbs (`yd wr s` → `submit`, `start`, `show`), and the options a command or verb takes (never one it does not).
+The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes:
 
-It also completes the values the CLI knows: an option's fixed choices (a resource type after `--type` in any case, offered in lower case when that is what is being typed, so `--type k` completes to `keyring`), the keys `--sort` takes (each after a comma, too), the entity types `yd list` takes, and local files and directories for the options and arguments that name one, such as a specification file or `--config`. Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help.
+- The word after `yd`: `yd w` → `wait`, `worker`, `workerpool`, `workrequirement`, `wp`, `wr`.
+- A noun's verbs: `yd wr s` → `submit`, `start`, `show`.
+- The options a command or verb takes, never one it does not.
+- An option's fixed choices. A resource type after `--type` is completed in any case, and offered in lower case when that is what is being typed, so `--type k` completes to `keyring`.
+- The keys `--sort` takes, each after a comma too.
+- The entity types `yd list` takes.
+- Local files and directories, for the options and arguments that name one, such as a specification file or `--config`.
+- With `--names`, Work Requirements, Worker Pools and Compute Requirements from the YellowDog Platform, as [described below](#names-and-ids-from-the-platform).
 
-With `--names`, Work Requirements, Worker Pools and Compute Requirements are completed from the YellowDog Platform too, as [described below](#names-and-ids-from-the-platform). The deprecated `yd-*` commands, such as `yd-submit`, are not completed; `yd commander`, `yd mcp`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
+Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help.
+
+The deprecated `yd-*` commands, such as `yd-submit`, are not completed. `yd commander`, `yd mcp`, `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
 
 ```shell
 yd completion bash | zsh | fish | powershell [--names]
@@ -1958,7 +1967,14 @@ Proxy auto-configuration (`--pac`, `usePAC`) is not used for a Tab, since fetchi
 
 The value of [`yd list`](#yd-list)'s `--within` is completed too, with the names of what it lists within: Work Requirements for `yd task list` and `yd taskgroup list` (or `yd list tasks` and `yd list task-groups`), then, once `wr/` is typed, that Work Requirement's Task Groups as `wr/tg`; Compute Requirements for `yd instance list`; and Worker Pools for `yd node list` and `yd worker list`. Since `--within` finds a name in the namespace whatever its tag, these are offered in any status and whatever the tag, at most the 200 newest. A value given as `--within=...` is not completed.
 
-After `--type`, the names or IDs [`yd resource remove`](#yd-resource-remove), `yd resource show` and `yd show` take are completed too, for that resource type: Keyrings, Groups, Applications, Namespaces, Namespace Policies (by namespace), Attribute Definitions and Users (by username) by name; Compute Source and Requirement Templates, Image Families and Configured Worker Pools by name in the configured namespace; a Credential's Keyring, then, once `keyring/` is typed, its Credentials as `keyring/credential`; and Allowances, which have no name, by ID, each shown with its description. At most the first 200 are offered.
+After `--type`, the names or IDs [`yd resource remove`](#yd-resource-remove), `yd resource show` and `yd show` take are completed too, for that resource type:
+
+- Keyrings, Groups, Applications, Namespaces, Namespace Policies (by namespace), Attribute Definitions and Users (by username), by name.
+- Compute Source and Requirement Templates, Image Families and Configured Worker Pools, by name in the configured namespace.
+- Credentials: their Keyring, then, once `keyring/` is typed, its Credentials as `keyring/credential`.
+- Allowances, which have no name, by ID, each shown with its description.
+
+At most the first 200 are offered.
 
 ## Deprecated Commands
 
