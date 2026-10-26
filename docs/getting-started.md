@@ -24,8 +24,8 @@ You will need:
 
 - **The CLI installed**, as described in the [README](../README.md#installation).
 - **A YellowDog Platform account and an Application**, created in the [YellowDog Portal](https://portal.yellowdog.co/#/account/applications), with its **Key ID** and **Key Secret** to hand. The Application must belong to a group allowed to submit Work Requirements and provision Worker Pools in the namespace you will use; the `administrators` group may do everything.
-- **A Compute Requirement Template** to provision instances from. If your account has none yet, the [Cloud Wizard](../README_CLOUDWIZARD.md) creates example templates in your AWS, Azure or Google Cloud account, such as `cloudwizard-aws/cloudwizard-aws-split-ondemand`.
-- **An image with the YellowDog Agent installed**, for the instances to boot: an Image Family, or a cloud provider's image ID. The [YellowDog documentation](https://docs.yellowdog.ai) describes the images available and how to build your own.
+- **A Compute Requirement Template** to provision instances from. If your account has none yet, the [Cloud Wizard](../README_CLOUDWIZARD.md) creates example templates in your AWS, Azure or Google Cloud account, such as `cloudwizard-aws/cloudwizard-aws-split-ondemand`. Its sources' credentials must be in a Keyring your Application may use, or provisioning fails with `Missing credentials`.
+- **An image with the YellowDog Agent installed**, for the instances to boot: an Image Family, or a cloud provider's image ID. The [YellowDog documentation](https://docs.yellowdog.ai) describes the images available and how to build your own. A plain image will do too, with the Agent installed as the instance boots by a `userDataFile` script in `[workerPool]` (see [Worker Pools](worker-pools.md)).
 
 ## 1. Write a Configuration File
 
@@ -105,16 +105,16 @@ WR_ID=$(yd workrequirement submit --quiet)
 yd workrequirement follow "$WR_ID"
 ```
 
-With `--quiet`, `yd workrequirement submit` prints the new Work Requirement's YellowDog ID and nothing else, so the shell can keep it. `yd workrequirement follow` prints the Work Requirement's events as they happen and returns when it has finished, `COMPLETED` once the Task has run. The Task waits until a Worker is ready, so nothing runs until the instance has booted. `yd workrequirement submit --follow` does both in one command.
+With `--quiet`, `yd workrequirement submit` prints the new Work Requirement's YellowDog ID and nothing else, so the shell can keep it. `yd workrequirement follow` prints the Work Requirement's events as they happen and returns when it has finished, `COMPLETED` once the Task has run. The Task waits as `READY` (and its Task Group as `STARVED`) until a Worker is ready, so nothing runs until the instance has booted. `yd workrequirement submit --follow` does both in one command.
 
 ## 6. See What Happened
 
 ```shell
 yd task list --within "$WR_ID"
-yd task list --within "$WR_ID" --details
+yd task list --within "$WR_ID" --auto-select-all
 ```
 
-The first lists the Work Requirement's Tasks and their statuses, and `--details` adds each Task in full as JSON. A Task's console output is written to `taskoutput.txt` on the node, which is deleted with the Task's directory when it finishes; to keep it, upload it as one of the Task's outputs (see [Specifying Data Client Outputs](work-requirements.md#specifying-data-client-outputs)). The YellowDog Portal shows the Work Requirement, its Tasks and the Worker Pool too.
+The first lists the Work Requirement's Tasks and their statuses. The second shows each Task in full as JSON: `--details` does that for the Tasks you choose from the list, and `--auto-select-all` for all of them, without asking. A Task's console output is written to `taskoutput.txt` on the node, which is deleted with the Task's directory when it finishes; to keep it, upload it as one of the Task's outputs (see [Specifying Data Client Outputs](work-requirements.md#specifying-data-client-outputs)). The YellowDog Portal shows the Work Requirement, its Tasks and the Worker Pool too.
 
 ## 7. Clean Up
 

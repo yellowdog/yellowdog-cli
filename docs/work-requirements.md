@@ -230,10 +230,10 @@ The values an `errorTypes` Selection matches:
 
 ### Finding the Errors Your Tasks Hit
 
-A Task keeps every error it has recorded, retried or not, in its `errors` list, so a policy is best written from the errors your Tasks actually hit. `--with-errors` lists the Tasks that recorded one, whatever their status (a Task that completed on a retry included), and `--details` shows each in full:
+A Task keeps every error it has recorded, retried or not, in its `errors` list, so a policy is best written from the errors your Tasks actually hit. `--with-errors` lists the Tasks that recorded one, whatever their status (a Task that completed on a retry included), and `--auto-select-all` shows each in full (as `--details` does for the Tasks you choose from the list), or `--json` gives them all as one array:
 
 ```shell
-yd task list --within my-work-requirement --with-errors --details
+yd task list --within my-work-requirement --with-errors --auto-select-all
 ```
 
 Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` selects on, beside a description, when it happened, and the node and Worker it happened on:
