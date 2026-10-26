@@ -108,8 +108,12 @@ class CLIParser:
     def credentials_required(self) -> bool:
         """
         Whether the configuration must hold the application key and secret:
-        true for every command but those that never use the Platform.
+        true for every command but those that never use the Platform, and
+        for none run with '--validate', which checks a specification and
+        stops without contacting it.
         """
+        if self.validate:
+            return False
         return self.command is None or self.command.requires_credentials
 
     # -----------------------------------------------------------------------

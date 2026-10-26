@@ -1010,3 +1010,54 @@ def test_jsonnet_is_checked_after_evaluation(run, tmp_path, monkeypatch):
     )
     assert run.exit_code == 1
     assert [v["path"] for v in out] == ["actions[0]"]
+
+
+class TestValidateNeedsNoCredentials:
+    """
+    '--validate' contacts nothing, so it runs with no key or secret
+    configured, as a CI job checking specifications has none; the command
+    proper still needs them. Run as a fresh process, since the credential
+    check is the wrapper's, before main().
+    """
+
+    @staticmethod
+    def _yd(tmp_path, *argv):
+        import os
+        import subprocess
+        import sys
+
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if not name.startswith("YD_")
+        }
+        environment["XDG_CONFIG_HOME"] = str(tmp_path)  # no file of your own
+        return subprocess.run(
+            [sys.executable, "-m", "yellowdog_cli.yd", *argv],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+
+    @pytest.mark.parametrize(
+        "argv, document",
+        [
+            (["workrequirement", "submit"], {"nope": 1}),
+            (["workerpool", "provision"], {"nope": 1}),
+            (["computerequirement", "instantiate"], {"nope": 1}),
+            (["resource", "create"], {"resource": "Keyring", "name": "k"}),
+            (["node", "action", "--actions"], {"nope": 1}),
+        ],
+    )
+    def test_each_command_checks_without_credentials(self, tmp_path, argv, document):
+        spec = _write(tmp_path, "spec.json", document)
+        result = self._yd(tmp_path, *argv, spec, "--validate")
+        assert result.returncode == 1, result.stderr
+        assert "unknown property" in result.stderr or "missing" in result.stderr
+
+    def test_the_command_proper_still_needs_them(self, tmp_path):
+        spec = _write(tmp_path, "spec.json", {"taskGroups": []})
+        result = self._yd(tmp_path, "workrequirement", "submit", spec)
+        assert result.returncode == 3

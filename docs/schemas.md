@@ -45,7 +45,7 @@ With `--json`, the result is the array of violations, `[]` for a valid file:
 
 The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. `--validate` is refused where there is no specification file to check: a Work Requirement or Worker Pool built from the configuration file alone, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
 
-Although it contacts nothing, `--validate` runs as the rest of the command does, which needs an Application key and secret to be configured (exit 3 without them). On a machine with none, such as a CI job, any values will do: `YD_KEY=x YD_SECRET=x yd workrequirement submit wr.json --validate`.
+Since it contacts nothing, `--validate` needs no Application key or secret, so it runs on a machine with none configured, such as a CI job.
 
 ## Every Run Checks Too
 
@@ -112,7 +112,6 @@ It exits 0 when the directory is up to date and 1 otherwise, naming what differs
 `--validate`'s exit code makes it a check a script can rely on. For example, to check every Work Requirement specification in a directory, carrying on past a failure and failing at the end if any did:
 
 ```bash
-export YD_KEY=x YD_SECRET=x   # no Platform is contacted; any values will do
 failed=0
 for f in specs/*.wr.json; do
     yd workrequirement submit "$f" --validate --quiet || failed=1
