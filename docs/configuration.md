@@ -27,17 +27,17 @@ The configuration file has four possible sections:
 
 There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured. To start with the `[common]` properties alone, run `yd init`, which asks for them and writes a `config.toml`, or with `--user` your own file (see [yd init](commands.md#yd-init)).
 
-The name of the configuration file can be supplied in two different ways:
+The configuration file is chosen in this order:
 
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd workrequirement submit -c jobs/config_1.toml`
 2. If not supplied, the commands look for a `config.toml` file in the current directory
 3. If there is none, they read your own configuration file, `~/.config/yellowdog/config.toml` (or `$XDG_CONFIG_HOME/yellowdog/config.toml` where `XDG_CONFIG_HOME` is set, on every platform), so that one set of credentials and defaults serves every directory without a `config.toml` of its own
 
-Your own file is read exactly as a `config.toml` in the current directory would be: environment variables take precedence over it, and paths in it are relative to its directory. A `config.toml` in the current directory, or one named with `--config`, is read in its place, never as well.
+Your own file is read exactly as a `config.toml` in the current directory would be: environment variables take precedence over it, and paths in it are relative to its directory (bar `certificates`, which is relative to the current directory, as in any configuration file). A `config.toml` in the current directory, or one named with `--config`, is read in its place, never as well.
 
 Run `yd doctor` to see which configuration file was found and where each value came from.
 
-Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is an error.
+Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. An unknown property name is an error, as is a retired one, the error naming the property that replaces it.
 
 The data client commands (`yd data upload`, `yd data download`, `yd data delete`, `yd data list`, `yd data copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd schema config` prints the schema itself. `yd doctor` reports the same problems in its `Config schema` row.
 
@@ -76,7 +76,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
 | `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
-| `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |
+| `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable); a relative path is relative to the current directory, not the configuration file's |
 
 An example `common` section is shown below:
 
@@ -122,7 +122,7 @@ The proxy that a command ends up using is reported only under `--debug`, whether
 
 ### Specifying Common Properties using the Command Line or Environment Variables
 
-All the common properties can be set using command-line options, or in environment variables.
+The common properties can be set using command-line options, or in environment variables, as listed below; `usePAC` has an option (`--pac`) but no environment variable, `readTimeout` an environment variable but no option, and `certificates`, `importCommon` and `variables` neither.
 
 The **command-line options** are as follows:
 
