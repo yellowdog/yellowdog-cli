@@ -3,6 +3,7 @@
 <!--ts-->
    * [Universal Options](#universal-options)
    * [Shared Options](#shared-options)
+   * [When --follow and --wait Return](#when---follow-and---wait-return)
    * [yd workrequirement](#yd-workrequirement)
       * [yd workrequirement submit](#yd-workrequirement-submit)
       * [yd workrequirement cancel](#yd-workrequirement-cancel)
@@ -80,7 +81,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 08:11:19 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:12:27 GMT 2026 -->
 
 <!--te-->
 
@@ -164,7 +165,7 @@ These options are accepted by many commands, but not by all. The command section
 | `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
-| `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it — `yd workrequirement hold` until the Work Requirement is `HELD`; `stop` until nothing is changing, having stopped; `start`, `deprovision`, `reprovision` and `yd computerequirement resize` until the Compute Requirement is `RUNNING` at its target with no Instance starting, stopping or terminating; `restart` and `yd workerpool resize` of a Provisioned Worker Pool until it is so again, having left it. |
+| `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it. [When `--follow` and `--wait` Return](#when---follow-and---wait-return) gives the end for each command. |
 | `--sort <name\|created\|status\|namespace>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
 | `--reverse` | Reverse (descending) the whole order `--sort` gives |
 | `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
@@ -172,6 +173,36 @@ These options are accepted by many commands, but not by all. The command section
 All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
 
 The `yd data` verbs share a further set of options (`--remote`, `--bucket`, `--prefix`, `--no-prefix` and `--data-client-profile`), which are described under [Data Client](data-client.md).
+
+## When `--follow` and `--wait` Return
+
+`--follow` prints the events of what a command acted on, and returns when the action is done. For an action that finishes its object (a Work Requirement completing, a Worker Pool shutting down, a Compute Requirement terminated) that is when the Platform closes its event stream. For an action that leaves the object alive, whose stream never closes, the command watches for the state the action asked for. `--wait`, on the two Compute Requirement verbs that take it, waits for the same state without printing the events, and with `--timeout <seconds>` gives up after that long, exiting 1.
+
+A Compute Requirement is *settled* when it is `RUNNING`, as many of its Instances are `RUNNING` as its target asks for, and none is starting, stopping or terminating.
+
+| Command | `--follow` returns when | `--wait` |
+|:---|:---|:---|
+| `yd workrequirement submit` | the Work Requirement has finished (`COMPLETED`, `FAILED` or `CANCELLED`); `--progress` shows a progress bar instead of the events, and `-E` exits 1 if it did not complete | — |
+| `yd workrequirement cancel` | each Work Requirement cancelled has finished (Tasks cancelled on their own are not followed) | — |
+| `yd workrequirement hold` | each Work Requirement is `HELD` | — |
+| `yd workrequirement start`, `finish` | each Work Requirement has finished | — |
+| `yd workerpool provision` | the Worker Pool has shut down (`SHUTDOWN` or `TERMINATED`), which its idle timeouts bring about | — |
+| `yd workerpool resize` | the pool's Compute Requirement is settled again, having left it for the new size | — |
+| `yd workerpool shutdown` | each Worker Pool has shut down | — |
+| `yd computerequirement instantiate` | the Compute Requirement is terminated, as nothing else closes its stream (Ctrl-C to stop following) | — |
+| `yd computerequirement resize`, `reprovision` | each Compute Requirement is settled | as for `--follow`, without the events |
+| `yd computerequirement stop`, `yd instance stop`, `yd node stop` | nothing is changing, having changed: the Compute Requirement `RUNNING` or `STOPPED`, with no Instance starting, stopping or terminating | — |
+| `yd computerequirement start`, `yd instance start`, `yd node start` | each Compute Requirement is settled | — |
+| `yd instance restart`, `yd node restart` | each Compute Requirement is settled again, having left it | — |
+| `yd instance deprovision`, `yd node deprovision` | each Compute Requirement is settled at its new, reduced target | — |
+| `yd computerequirement terminate` | each Compute Requirement is terminated | — |
+| `yd instance terminate`, `yd node terminate` | each Instance's Compute Requirement is terminated, which terminating some of its Instances does not make it: Ctrl-C to stop following | — |
+| `yd node action` | every node's action queue is `EMPTY` or `FAILED`, polled rather than streamed; `--timeout` stops it first, exiting 1 | — |
+| `yd node shutdown` | at once: Nodes are not followed | — |
+| `yd follow` (and the nouns' `follow`) | every stream has closed, its object finished | — |
+| `yd wait` (and the nouns' `wait`) | — | every object is in a terminal state: `COMPLETED`, `FAILED` or `CANCELLED` for a Work Requirement, `SHUTDOWN` or `TERMINATED` for a Worker Pool, `TERMINATED` for a Compute Requirement; `--timeout` stops it first |
+
+With `--auto-follow-compute-requirements`/`-a` (on `yd workerpool provision`, `resize` and `shutdown`, and `yd follow`), a Provisioned Worker Pool's Compute Requirement is followed beside the pool, its stream ending by the same rule. A stream that drops is reconnected; one that cannot be followed is reported and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)). Ctrl-C stops following without undoing what was done.
 
 ## yd workrequirement
 
