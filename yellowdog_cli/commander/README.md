@@ -23,9 +23,10 @@
    * [Running Arbitrary Commands](#running-arbitrary-commands)
    * [Sending Input to a Running Command](#sending-input-to-a-running-command)
    * [A Note on Confirmations](#a-note-on-confirmations)
+   * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:02:15 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:34:53 GMT 2026 -->
 
 <!--te-->
 
@@ -359,3 +360,11 @@ Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` subst
 **Resize…** shows its dialog even under `-y`/`--yes`, because the dialog is the only place to give the number of nodes.
 
 **Deselect...** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.
+
+## Troubleshooting
+
+- **Commander does not open.** Without the `commander` extra, `yd commander` exits saying how to install it; install it as you installed the CLI (`uv tool install "yellowdog-cli[commander]"`, or `uv pip install -U` / `pip install -U "yellowdog-cli[commander]"` in its virtual environment). `yd doctor`'s `Commander` row says whether the extra is installed and loads.
+- **On Linux, `Qt cannot start here`.** PyQt6 is installed but a system library Qt needs is missing, which the message names. It also gives the packages to install on Debian and Ubuntu (`libgl1`, `libegl1`, `libglib2.0-0t64`, `libxkbcommon0`, `libdbus-1-3`, `libfontconfig1`); a minimal or container image often lacks them.
+- **The Namespace and Tag placeholders stay empty.** Commander reads them with `yd variables`, and says in the Command Output window why it could not: `Error parsing config with 'yd variables' (Exit 3): ...` is the configuration's own error, which `yd doctor -c <file>` in a terminal shows in full; `Timed out after 10s ...` is a slow first start, retried once on its own; and `the Properties field cannot be used` means its quotes do not balance (see [Quoting](#quoting)).
+- **A command fails.** Its error is in the Command Output window, below the `Executing:` line that shows the command line and the directory it ran in. Running that command in a terminal, from that directory, reproduces it, and `yd doctor` checks the configuration, credentials and connection the commands share.
+- **An action lists nothing.** The listing is by the Namespace and Tag (or the Name pattern) shown at the top, as in [Naming and Matching Assumptions](#naming-and-matching-assumptions): entities named another way are found by giving the **Name** a glob pattern that matches them.
