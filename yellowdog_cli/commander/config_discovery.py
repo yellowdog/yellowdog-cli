@@ -234,7 +234,7 @@ class ConfigDiscovery:
         self._log(
             f"Retrying namespace/tag discovery with a"
             f" {CONFIG_PARSE_RETRY_TIMEOUT_MS // 1000}s timeout; the first"
-            f" 'yd-*' command of a session can be slow to start"
+            f" 'yd' command of a session can be slow to start"
         )
         self._discovery_retry_timer.start(CONFIG_PARSE_RETRY_DELAY_MS)
 

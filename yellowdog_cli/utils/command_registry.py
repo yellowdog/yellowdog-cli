@@ -269,7 +269,7 @@ COMMANDS: dict[str, Command] = {}
 # other.
 OTHER_COMMANDS: dict[str, str] = {
     "yd-commander": "Launch the Commander desktop GUI (needs the commander extra)",
-    "yd-mcp": "Run the MCP server over the yd-* commands (needs the mcp extra)",
+    "yd-mcp": "Run the MCP server over the yd commands (needs the mcp extra)",
 }
 
 _ARGV0_SUFFIX = re.compile(r"(-script)?\.(py|exe)$")
@@ -4417,8 +4417,8 @@ COMPLETION_NAMES = option(
 
 COMMANDS["yd-completion"] = Command(
     name="yd-completion",
-    purpose="printing the shell completion script for the yd-* commands",
-    summary="Print the shell completion script for the yd-* commands",
+    purpose="printing the shell completion script for yd",
+    summary="Print the shell completion script for yd",
     kind=CommandKind.STANDALONE,
     options=(COMPLETION_SHELL, COMPLETION_NAMES),
     tool=ToolKind.NONE,
@@ -4502,7 +4502,7 @@ HELP_DEPRECATED = option(
 COMMANDS["yd-help"] = Command(
     name="yd-help",
     purpose="listing the yd commands and their purposes",
-    summary="List available yd-* commands and their purposes",
+    summary="List available yd commands and their purposes",
     kind=CommandKind.STANDALONE,
     options=(
         HELP_JSON,
