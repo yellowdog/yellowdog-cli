@@ -42,9 +42,15 @@
       * [Cloud Wizard Teardown](#cloud-wizard-teardown-2)
       * [Idempotency](#idempotency-2)
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh-1)
+* [Using What Cloud Wizard Created](#using-what-cloud-wizard-created)
+   * [Claim the Keyring](#claim-the-keyring)
+   * [See the Templates](#see-the-templates)
+   * [Provision From Them](#provision-from-them)
+   * [Try a Dynamic Template First](#try-a-dynamic-template-first)
+   * [Use Another Instance Type](#use-another-instance-type)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 09:13:03 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:31:05 GMT 2026 -->
 
 <!--te-->
 
@@ -544,3 +550,67 @@ Since the rule allows SSH from anywhere, `add-ssh` asks for confirmation first, 
 The rule can be removed using:
 
 `yd cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh`
+
+# Using What Cloud Wizard Created
+
+Once setup has finished, the account has a Keyring holding the cloud provider credential, Compute Source Templates for each region or zone chosen, and seven example Compute Requirement Templates, all in the `cloudwizard-<provider>` namespace (`cloudwizard-aws`, `cloudwizard-gcp` or `cloudwizard-azure`). This section takes AWS as its example; for the others, put `gcp` or `azure` in its place.
+
+## Claim the Keyring
+
+The Keyring can be used at first only by the Application that ran Cloud Wizard. To use the templates from the YellowDog Portal as well, claim the Keyring for your Portal user there, with the password Cloud Wizard displayed at the end of setup. The password is displayed only once; if it has been lost, remove the Keyring (`yd resource remove --type Keyring cloudwizard-aws`) and run the setup again, which creates it anew, with its Credential, and shows the new password.
+
+## See the Templates
+
+```shell
+yd resource list compute-requirement-templates --namespace cloudwizard-aws
+yd resource list compute-source-templates --namespace cloudwizard-aws
+```
+
+The Compute Requirement Templates differ in how they spread instances across the sources, and which:
+
+| Template | Provisions |
+|:---|:---|
+| `cloudwizard-aws-split-ondemand`, `cloudwizard-aws-split-spot` | the instances split across all the on-demand, or all the spot, sources |
+| `cloudwizard-aws-waterfall-ondemand`, `cloudwizard-aws-waterfall-spot` | the instances from the on-demand, or spot, sources in turn, each used before the next |
+| `cloudwizard-aws-waterfall-spot-to-ondemand` | the spot sources in turn, then the on-demand ones |
+| `cloudwizard-aws-dynamic-waterfall-lowestcost`, `cloudwizard-aws-dynamic-split-lowestcost` | whichever instance types with 4GB of memory or more cost least, chosen at provisioning time |
+
+The static templates all use the one instance type Cloud Wizard was given (`t3a.micro` on AWS by default). The [YellowDog documentation](https://docs.yellowdog.ai) describes provisioning strategies in full.
+
+## Provision From Them
+
+None of the templates names an image, so a Worker Pool or Compute Requirement provisioned from one must: an image with the YellowDog Agent installed, as an Image Family name or a cloud provider image ID. In `config.toml`:
+
+```toml
+[workerPool]
+templateId = "cloudwizard-aws/cloudwizard-aws-split-ondemand"
+imagesId = "<namespace>/<image-family>"
+targetInstanceCount = 1
+```
+
+```shell
+yd workerpool provision
+```
+
+A template in another namespace is named with its namespace, `cloudwizard-aws/<template>`, as here. [Getting Started](docs/getting-started.md) goes from such a Worker Pool to a first Task run on it.
+
+## Try a Dynamic Template First
+
+`--report` shows which sources and instance types a dynamic template would choose, without provisioning anything. With the `[workerPool]` section above in `config.toml`, give it the dynamic template in place of its own:
+
+```shell
+yd computerequirement instantiate --report \
+    --property workerPool.templateId=cloudwizard-aws/cloudwizard-aws-dynamic-split-lowestcost
+```
+
+It ranks the candidate sources and instance types as the Platform would provision from them (see [Test-Running a Dynamic Template](docs/commands.md#test-running-a-dynamic-template)). A static template has no such report, and says so.
+
+## Use Another Instance Type
+
+`--instance-type` gives the static templates another type when they are created. To change it afterwards, recreate them from the resource file setup saved, `cloudwizard-aws-yellowdog-resources.json`, which holds the type as the variable `{{instance_type}}` unless `--instance-type` was given:
+
+```shell
+yd resource create -v instance_type=t3a.small cloudwizard-aws-yellowdog-resources.json
+```
+
+`yd resource create` updates the templates that already exist, asking first (`--yes` does not ask). A template can also be edited in the file, or a new one added to it, in the same way: see [Creating, Updating and Removing Resources](docs/resources.md).
