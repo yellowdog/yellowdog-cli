@@ -4,6 +4,17 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`--property` beats a specification**: `--property workRequirement.<key>=<value>` replaces the property wherever a Work Requirement specification sets it, at the Work Requirement, Task Group and Task levels (`name` and `tag` at the Work Requirement level only), and `--property workerPool.<key>` (or `computeRequirement.<key>`) a Worker Pool or Compute Requirement specification's own value, each replacement reported; a specification's own value won, the override only filling in one it lacked.
+- **`--property` beats the environment**: `--property common.namespace=x` (and `tag`, `key`, `secret`, `url`, `readTimeout`) is used whatever `YD_NAMESPACE` and the others hold, and `--property dataClient.bucket=x` (or `remote`, `prefix`, for `[dataClient]` or a profile) whatever `YD_DATA_CLIENT_BUCKET` holds, as a command-line value; the environment won unless the file was chosen with `--config`. `--namespace` and the other options still win over `--property`.
+- **`[common.variables]` overrides the default variables**: `username = "build"` in the configuration file replaces `{{username}}` (as it does `{{date}}`, `{{random}}` and the other defaults) whether or not the file was chosen with `--config`, where it was ignored without it; `-v` and `YD_VAR_*` still win over the file.
+- **`YD_ENV_OVERRIDE=false` leaves the override off**: `0`, `false`, `no` and `off`, in any case, are read as off, as `YD_COMPLETION_LOOKUPS` reads them, where any value at all made `.env` win over the environment.
+- **`{{dataClient.prefix}}` is empty under `--no-prefix`**, the prefix the command uses, where it kept the default `{{namespace}}/{{tag}}`.
+- **`workersPerVCPU` keeps a fraction**: `workersPerVCPU = 0.5` establishes one Worker for every two vCPUs, where it was taken as `0`, establishing none.
+
 ### Listing and actions
 
 - **Options a verb never takes are no longer offered**: each `yd cloudinfo` verb's `--help`, Tab completion and MCP tool leave out the filters it refuses (`yd cloudinfo regions` takes no `--vcpus`), and `yd node shutdown` no `--follow`, which followed nothing; each is still refused if given.
@@ -12,18 +23,6 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Variables and configuration
 
 - **`--validate` needs no credentials**: checking a specification contacts nothing, so it runs with no Application key or secret configured, where it exited 3 without them.
-- **`--property` beats a specification**: `--property workRequirement.<key>=<value>` replaces the property wherever a Work Requirement specification sets it, at the Work Requirement, Task Group and Task levels (`name` and `tag` at the Work Requirement level only), and `--property workerPool.<key>` (or `computeRequirement.<key>`) a Worker Pool or Compute Requirement specification's own value, each replacement reported; a specification's own value won, the override only filling in one it lacked.
-- **`--property` beats the environment**: `--property common.namespace=x` (and `tag`, `key`, `secret`, `url`, `readTimeout`) is used whatever `YD_NAMESPACE` and the others hold, and `--property dataClient.bucket=x` (or `remote`, `prefix`, for `[dataClient]` or a profile) whatever `YD_DATA_CLIENT_BUCKET` holds, as a command-line value; the environment won unless the file was chosen with `--config`. `--namespace` and the other options still win over `--property`.
-- **`[common.variables]` overrides the default variables**: `username = "build"` in the configuration file replaces `{{username}}` (as it does `{{date}}`, `{{random}}` and the other defaults) whether or not the file was chosen with `--config`, where it was ignored without it; `-v` and `YD_VAR_*` still win over the file.
-- **`YD_ENV_OVERRIDE=false` leaves the override off**: `0`, `false`, `no` and `off`, in any case, are read as off, as `YD_COMPLETION_LOOKUPS` reads them, where any value at all made `.env` win over the environment.
-
-### Worker Pools
-
-- **`workersPerVCPU` keeps a fraction**: `workersPerVCPU = 0.5` establishes one Worker for every two vCPUs, where it was taken as `0`, establishing none.
-
-### Data client
-
-- **`{{dataClient.prefix}}` is empty under `--no-prefix`**, the prefix the command uses, where it kept the default `{{namespace}}/{{tag}}`.
 
 ## 15.2.0 — 2026-10-25
 
