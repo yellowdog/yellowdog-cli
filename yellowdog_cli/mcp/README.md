@@ -50,7 +50,7 @@ Without a configuration file, every command runs with `--nc`, so only the enviro
 
 Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call, as is a `-v` variable whose name the CLI would refuse: one that is not `name=value`, a name breaking the CLI's rule for variable names, or one of the names the CLI sets itself (`namespace`, `tag`, `key`, `secret`, `url`), which `-n`/`-t` or the configuration set instead.
 
-A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped` to stderr. A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
+A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped (SIGINT)` or `stopped (SIGTERM)` to stderr (`stopped` on Windows). A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
 
 ## Configuring a Client
 
@@ -142,7 +142,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
 | `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
 
-A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
+A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The four `yd_cloudinfo_*` tools are the exception: each offers every Cloud Info filter, and refuses one its type does not take. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
 
 ## Results and Errors
 
@@ -154,7 +154,7 @@ A run that exits non-zero is still a success when its document holds a record wh
 
 Every other non-zero exit is an error: `isError` is true, `content` carries the command's stderr (the wrapper's friendly message, `Missing configuration data`, an argparse usage error) followed by the document as compact JSON when stdout held one, and `structuredContent` adds `"exitCode"` and `"stderr"` beside `"result"` (`null` when stdout held no document at all).
 
-Some errors carry a document that matters: `yd_wait` with a Work Requirement that failed, `yd_doctor` with a failing check, and `yd_show` with a YDID it could not show all exit 1 with their document on stdout and little or nothing on stderr, so they come back as errors with the document in both places, in the text content and as `result`. The exit code is the CLI's own, so an agent can tell a configuration error (3) from an authentication failure (4) from not found (6); see the CLI README's exit code table.
+Some errors carry a document that matters: `yd_wait` with a Work Requirement that failed, `yd_doctor` with a failing check, and `yd_show` with a YDID it could not show (exit 6 if every one was not found, 5 if every one was refused, else 1) all exit non-zero with their document on stdout and little or nothing on stderr, so they come back as errors with the document in both places, in the text content and as `result`. The exit code is the CLI's own, so an agent can tell a configuration error (3) from an authentication failure (4) from not found (6); see the CLI README's exit code table.
 
 An unknown tool name or an argument that fails validation (an unknown property, the wrong type, both halves of a mutually exclusive pair) is reported the same way, as a tool error with `exitCode: 2`, never as a protocol-level error — so the agent sees the message and can correct itself.
 
@@ -182,7 +182,7 @@ An inline specification is written to a uniquely named `.yd-mcp-*.json` file in 
 
 ## Timeouts and Following
 
-Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result. The command is interrupted first, as a Ctrl-C would, and given a few seconds to write its `--json` document of what it had done (the Tasks a `yd_workrequirement_submit` created, the files a `yd_data_download` fetched) before it is killed; on Windows it is killed at once, and the result holds only what it had written. A command's own wait (`yd_wait`'s `timeout`, `yd_workerpool_resize`'s `wait`) has no limit by default, so set `timeout_seconds` above it when the command should be let finish.
+Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result. The command is interrupted first, as a Ctrl-C would, and given a few seconds to write its `--json` document of what it had done (the Tasks a `yd_workrequirement_submit` created, the files a `yd_data_download` fetched) before it is killed; on Windows it is killed at once, and the result holds only what it had written. A command's own wait (`yd_wait`'s `timeout`, `yd_computerequirement_resize`'s `wait`) has no limit by default, so set `timeout_seconds` above it when the command should be let finish.
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
@@ -198,7 +198,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
-Four commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
+Six commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
 
 ## Namespace, Tag and Variables
 
