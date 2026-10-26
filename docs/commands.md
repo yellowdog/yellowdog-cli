@@ -305,11 +305,11 @@ yd workrequirement cancel [options] [<work-requirement-name-or-ID> ...]
 
 The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/`-t`) are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
 
-A YDID names its Work Requirement or Task in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the Work Requirement of that name that can still be cancelled is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead.
+Names, IDs and glob patterns are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a reused name meaning the Work Requirement of that name that can still be cancelled.
 
 Explicit names and IDs are resolved in the order given, and are confirmed together; the Work Requirements are then cancelled before the Tasks. One that has already finished, or a Task that has, is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Work Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list work-requirements --name 'myproject-*'` to preview the matches first.
+Glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list work-requirements --name 'myproject-*'` to preview the matches first.
 
 By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. A Work Requirement that is already `CANCELLING` is left alone unless `--abort` is given, in which case it is cancelled again to abort its executing Tasks.
 
@@ -351,7 +351,7 @@ yd workrequirement start [options] [<work-requirement-name-or-ID> ...]
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
 
-A YDID names its Work Requirement in whatever namespace it is in. A name is looked up in the configured `namespace` unless it is given as `namespace/name`; since a name can be reused, the `HELD` Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead. A name may also be a glob pattern (e.g. `'proj-*'`), which selects every `HELD` Work Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
+Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, in the `HELD` state: a reused name means the `HELD` Work Requirement of that name, and a glob pattern selects every `HELD` Work Requirement it matches.
 
 Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -622,7 +622,7 @@ Specific Worker Pool names or YDIDs can optionally be supplied as positional arg
 
 They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-A Worker Pool name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Worker Pool names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list worker-pools --name 'wp-*'` to preview the matches first.
+Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `yd list worker-pools --name 'wp-*'` to preview what a pattern matches first.
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
@@ -793,7 +793,7 @@ yd computerequirement stop [options] [<compute-requirement-name-or-ID> ...]
 
 If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of Compute Requirement names or YDIDs.
 
-A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name may also be a glob pattern (e.g. `'cr-*'`), which selects every `RUNNING` Compute Requirement whose name it matches, to be confirmed (or chosen from, with `--interactive`) as the candidates found by `namespace` and `tag` are; glob patterns cannot be mixed with explicit names or IDs.
+Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a glob pattern selecting every `RUNNING` Compute Requirement it matches.
 
 Explicit names and IDs are resolved in the order given, and are confirmed together; the Compute Requirements are then acted on before the Instances. A Compute Requirement that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -876,7 +876,7 @@ yd computerequirement terminate [options] [<compute-requirement-name-or-ID> ...]
 
 Specific Compute Requirement names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
 
-A Compute Requirement name is looked up in the configured namespace unless it is given as `namespace/name`. A name argument can also be a glob pattern (`*`, `?`, `[...]`), matched client-side against Compute Requirement names within the namespace (a name without wildcards matches exactly, so use `*` for partial matches); glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview the matches first.
+Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview what a pattern matches first.
 
 Explicit names and IDs are handled as [`yd computerequirement stop`](#yd-computerequirement-stop) handles them: in the order given, and confirmed together. A Compute Requirement that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 
