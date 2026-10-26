@@ -151,7 +151,7 @@
         <item>
          <widget class="QPushButton" name="submit_work_requirement">
           <property name="toolTip">
-           <string>Submit the Work Requirement with yd-workrequirement submit</string>
+           <string>Submit the Work Requirement with yd workrequirement submit</string>
           </property>
           <property name="font">
            <font>
@@ -167,7 +167,7 @@
          <widget class="QPushButton" name="add_to_work_requirement">
           <property name="toolTip">
            <string>Add the Task Groups and Tasks to an existing Work Requirement,
-chosen from a list (yd-workrequirement submit --add-to)</string>
+chosen from a list (yd workrequirement submit --add-to)</string>
           </property>
           <property name="font">
            <font>
@@ -248,7 +248,7 @@ instead of the one the configuration file names</string>
         <item>
          <widget class="QPlainTextEdit" name="wr_submit_options">
           <property name="toolTip">
-           <string>Extra command-line options added to yd-workrequirement submit</string>
+           <string>Extra command-line options added to yd workrequirement submit</string>
           </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
@@ -349,7 +349,7 @@ instead of the one the configuration file names</string>
         <item>
          <widget class="QPushButton" name="create_worker_pool">
           <property name="toolTip">
-           <string>Provision a Worker Pool with yd-workerpool provision</string>
+           <string>Provision a Worker Pool with yd workerpool provision</string>
           </property>
           <property name="font">
            <font>
@@ -365,7 +365,7 @@ instead of the one the configuration file names</string>
          <widget class="QPushButton" name="resize_worker_pool">
           <property name="toolTip">
            <string>Resize a Worker Pool, chosen from a list, to a number of nodes
-(yd-workerpool resize)</string>
+(yd workerpool resize)</string>
           </property>
           <property name="font">
            <font>
@@ -437,7 +437,7 @@ instead of the one the configuration file names</string>
         <item>
          <widget class="QPlainTextEdit" name="wp_provision_options">
           <property name="toolTip">
-           <string>Extra command-line options added to yd-workerpool provision</string>
+           <string>Extra command-line options added to yd workerpool provision</string>
           </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
