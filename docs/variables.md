@@ -64,12 +64,13 @@ The following substitutions are automatically created and can be used in any sec
 | `{{url}}`             | The Platform `url` property.                                   |                         |
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
+| `{{dataClient.remote}}`, `{{dataClient.bucket}}`, `{{dataClient.prefix}}` | The data client's configuration, and `{{dataClient.<profile>.remote}}` and the others a named profile's; see [Variable Substitutions for Data Client Properties](data-client.md#variable-substitutions-for-data-client-properties) | |
 
 The `namespace`, `tag`, `key`, `secret` and `url` variables always hold the values the command is using, and cannot be redefined or unset as user-defined variables (see [Variable Naming](#variable-naming)); the other default variables can be overridden, as described in [Precedence Order](#precedence-order).
 
 For the `date`, `time`, `datetime`, `random`, `random6`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
-The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
+The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied; with `--no-config`, they are not defined.
 
 The `random` and `random6` directives use base 36 digits rather than hexadecimal, base 36 being the widest alphabet a YellowDog name may be built from, so they carry the most randomness in the fewest characters: `random` has 46,656 possible values and `random6` has 2,176,782,336.
 
@@ -77,7 +78,7 @@ The `pid2` directive is the same two characters that an automatically generated 
 
 ## User-Defined Variables
 
-User-defined variables can be supplied using an option on the command line, by setting environment variables prefixed with `YD_VAR_`, by using general environment variables, or by including properties in the `[common]` section of the TOML configuration file.
+User-defined variables can be supplied using an option on the command line, by setting environment variables prefixed with `YD_VAR_`, by using general environment variables, or by including properties in the `[common.variables]` section of the TOML configuration file.
 
 ### Variable Naming
 
@@ -125,6 +126,8 @@ The precedence order for setting variables is:
 5. The [default variables](#default-variables) (`username`, `date`, `random` and the others, other than the reserved `namespace`, `tag`, `key`, `secret` and `url`)
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
+
+With `--env-override` (or `YD_ENV_OVERRIDE` set), a `.env` file's `YD_VAR_` variables take precedence over the environment's: items 2 and 3 change places.
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 
@@ -294,4 +297,4 @@ In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variab
 
 Variable substitutions can also be used within **User Data** to be supplied to instances, for which the same prefix/postfix requirement applies, **including** for User Data supplied directly using the `userData` property in the `workerPool` section of the TOML file.
 
-The same prefix/postfix requirement applies to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).
+The same prefix/postfix requirement applies to a `yd node action` specification file itself, and to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).
