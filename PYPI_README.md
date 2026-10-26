@@ -14,7 +14,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and aborting running Tasks with **`yd task`**
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
-- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them; listing and showing Workers with **`yd worker`**
 - **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
@@ -26,7 +26,9 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
 - **Completing** commands, verbs, options and their values on Tab, in bash, zsh, fish and PowerShell, with the **`yd completion`** command
 
-Utility commands are also provided: **`yd completion`**, **`yd doctor`**, **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
+The `yd-*` commands, such as `yd-submit` and `yd-list`, are deprecated: they still run, with a warning, until a future release; `yd help --deprecated` says what replaces each.
+
+Utility commands are also provided: **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
 
 The remote data store commands — the `yd data` verbs `upload`, `download`, `delete`, `list` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference and is never modified; otherwise one is downloaded to a per-user cache directory the first time it's needed.
 

@@ -24,6 +24,7 @@
 * [Usage](#usage)
    * [Shell Completion](#shell-completion)
    * [Specification Schemas](#specification-schemas)
+   * [Applications That Can Read Only Some Namespaces](#applications-that-can-read-only-some-namespaces)
    * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
 * [Documentation](#documentation)
@@ -37,7 +38,7 @@
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 08:11:21 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 09:32:48 GMT 2026 -->
 
 <!--te-->
 
@@ -53,7 +54,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and aborting running Tasks with **`yd task`**
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
-- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them
+- **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them; listing and showing Workers with **`yd worker`**
 - **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
@@ -216,10 +217,12 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 # YellowDog Commander (GUI)
 
-Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra and launch it with `yd commander`:
+Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra, as you installed the CLI, and launch it with `yd commander`:
 
 ```commandline
-pip install -U "yellowdog-cli[commander]"
+uv tool install "yellowdog-cli[commander]"      # Option 1
+uv pip install -U "yellowdog-cli[commander]"    # Option 2, in the virtual environment
+pip install -U "yellowdog-cli[commander]"       # Option 3, in the virtual environment
 yd commander
 ```
 
@@ -227,18 +230,22 @@ It works by running `yd` commands on your behalf and displaying their output. Se
 
 # YellowDog MCP Server
 
-`yd mcp` is an MCP server exposing the `yd` commands as tools for an agent. Install it with the `mcp` extra and launch it with `yd mcp`:
+`yd mcp` is an MCP server exposing the `yd` commands as tools for an agent. Install it with the `mcp` extra, as you installed the CLI, and launch it with `yd mcp`:
 
 ```commandline
-pip install -U "yellowdog-cli[mcp]"
+uv tool install "yellowdog-cli[mcp]"      # Option 1
+uv pip install -U "yellowdog-cli[mcp]"    # Option 2, in the virtual environment
+pip install -U "yellowdog-cli[mcp]"       # Option 3, in the virtual environment
 yd mcp config.toml
 ```
+
+The extras can be combined, e.g. `"yellowdog-cli[jsonnet,commander,mcp]"`; the `cloudwizard` extra, for `yd cloudwizard`, is described in [`README_CLOUDWIZARD.md`](README_CLOUDWIZARD.md).
 
 It runs `yd` commands on an agent's behalf and returns their `--json` results. See [`yellowdog_cli/mcp/README.md`](yellowdog_cli/mcp/README.md) for details.
 
 # Usage
 
-All three installation methods add the **`yd`** command to your PATH. Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
+All three installation methods add the **`yd`** command to your PATH (for a virtual environment, while it is active). Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
@@ -296,7 +303,7 @@ universal options:
                         supplied multiple times
 ```
 
-To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace and tag, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
@@ -341,7 +348,9 @@ To keep the check quick, each schema is compiled once and kept, a file of up to 
 
 A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd jsonnet2json` on a Jsonnet file to see that JSON.
 
-**Applications that can read only some namespaces.** Wherever a command searches without a namespace — a name given without `namespace/`, or `yd list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
+## Applications That Can Read Only Some Namespaces
+
+Wherever a command searches without a namespace — a name given without `namespace/`, or `yd list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
 
 ## Machine-readable Output and Exit Codes
 
@@ -372,7 +381,7 @@ yd workerpool provision &
 yd workrequirement submit --follow
 ```
 
-When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout`.
+When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout` (30 minutes by default).
 
 Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools.
 
@@ -390,7 +399,7 @@ Variables, their defaults and where they can be used are described in **[Variabl
 
 ## Work Requirements
 
-Defining and submitting Work Requirements, from their JSON structure and inheritance to CSV data and dry runs, is described in **[Work Requirements](docs/work-requirements.md)**.
+Defining and submitting Work Requirements, from their JSON structure and inheritance to CSV data and dry runs, is described in **[Work Requirements](docs/work-requirements.md)**, and every Work Requirement property, with the levels it can be set at, in the **[Work Requirement Property Dictionary](docs/property-dictionary.md)**.
 
 ## Worker Pools
 
