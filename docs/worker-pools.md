@@ -72,9 +72,9 @@ The following properties are available:
 | `targetInstanceCount`   | The initial number of nodes to create in the Worker Pool.                                                                                         | `1`                     |
 | `templateId`            | The YellowDog Compute Requirement Template ID or name to use for provisioning. (**Required**)                                                     | No default provided     |
 | `userData`              | User Data to be supplied to instances on boot.                                                                                                    |                         |
-| `userDataFile`          | As above, but read the User Data from the filename supplied in this property.                                                                     |                         |
-| `userDataFiles`         | As above, but create the User Data by concatenating the contents of the list of filenames supplied in this property.                              |                         |
-| `workerPoolData`        | The name of a file containing a JSON specification of a Worker Pool (see [Worker Pool JSON](#worker-pool-specification-using-json-documents)).    |                         |
+| `userDataFile`          | As above, but read the User Data from the filename supplied in this property, found from `--content-path`, else the configuration file's directory. |                         |
+| `userDataFiles`         | As above, but create the User Data by concatenating the contents of the list of filenames supplied in this property, a newline after each.       |                         |
+| `workerPoolData`        | The name of a file containing a JSON specification of a Worker Pool (see [Worker Pool JSON](#worker-pool-specification-using-json-documents)), relative to the configuration file; not to be set with `computeRequirementData`. |                         |
 | `workerTag`             | The Worker Tag to publish for each of the Workers on the node(s).                                                                                 |                         |
 | `workersPerNode`        | The number of Workers to establish on each node in the Worker Pool. Used when neither `workersPerVCPU` nor `workersCustomCommand` is set.          | `1`                     |
 | `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool, which may be a fraction (`0.5` is one Worker for every two vCPUs). Takes precedence over `workersPerNode`. |                         |
@@ -88,7 +88,7 @@ Similarly, the `imagesId` property can be populated with the YDID of an Image Fa
 
 ## Large-Scale Provisioning
 
-The platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. When `targetInstanceCount` (for `yd computerequirement instantiate`) or `maxNodes` (for `yd workerpool provision`) exceeds this limit, the CLI automatically splits the request across multiple Compute Requirements, distributing instances as evenly as possible.
+The platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. When `targetInstanceCount` (for `yd computerequirement instantiate`) or `maxNodes` (for `yd workerpool provision`) exceeds this limit, the CLI automatically splits the request across multiple Compute Requirements, distributing instances as evenly as possible. This applies to a Worker Pool or Compute Requirement defined in the configuration file: a JSON specification is provisioned as one, with a warning when its `maxNodes` exceeds the batch size. Each batch's name is the name with its batch number added, and `minNodes` is divided between the batches as the instances are.
 
 The `computeRequirementBatchSize` property controls the maximum number of instances per batch and defaults to 10,000 (the platform maximum). Set it to a smaller value to submit in smaller batches. Values above 10,000 are clamped to 10,000 with a warning, and a value below 1 is an error.
 
@@ -259,11 +259,9 @@ When a JSON Worker Pool specification is used, the following properties from the
 - `requirementName`: obtained from the `name` property in the TOML configuration. (The name will be generated automatically if not supplied in either the TOML file or the JSON specification.)
 - `requirementNamespace`: obtained from the `namespace` property in the `TOML` configuration
 - `requirementTag`: obtained from the `requirementTag` property at the `workerPool` level, or the `tag` in the `common` configuration
-- `targetInstanceCount`
+- `targetInstanceCount`, if the configuration sets it (or `--target` gives it)
 - `templateId`
-- `userData`
-- `userDataFile`
-- `userDataFiles`
+- `userData`: from the configuration's `userData`, or read from its `userDataFile` or `userDataFiles` (which are configuration properties only, not specification ones), if the specification has no `userData` of its own
 
 Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. Similarly, the `imagesId` property can use either a YDID or the Image Family or Image Group name (e.g. `"yd-agent-docker"`).
 
@@ -271,12 +269,14 @@ Note that the `templateId` property can use either the YellowDog ID ('YDID') for
 
 - `idleNodeTimeout` (set to `0` to disable)
 - `idlePoolTimeout` (set to `0` to disable)
-- `maxNodes`
+- `maxNodes`, if the configuration sets it
 - `metricsEnabled`
-- `minNodes`
+- `minNodes`, if the configuration sets it
 - `nodeBootTimeout`
 - `workerTag`
 - `workersPerNode`, `workersPerVCPU`, or `workersCustomCommand` (Note that the default value for `workersPerNode` is `1`; override this with `workersPerNode = 0` if required)
+
+The timeouts, the Worker count and `metricsEnabled` are inserted with their defaults when the configuration does not set them, where `minNodes`, `maxNodes` and `targetInstanceCount` are inserted only when it does.
 
 ## Variable Substitutions in Worker Pool Properties
 
@@ -415,7 +415,7 @@ Grouped actions are submitted as a unit to the pool, but actions are executed by
 | `contentFile`  | Path to a local file whose content is read and written to the node                       | No       |
 | `contentFiles` | List of local file paths whose contents are concatenated and written to the node         | No       |
 
-The `content`, `contentFile`, and `contentFiles` properties are mutually exclusive. All support variable substitutions using the `__{{variable}}__` convention.
+The `content`, `contentFile`, and `contentFiles` properties are mutually exclusive. All support variable substitutions using the `__{{variable}}__` convention. A relative `contentFile` path is found from `--content-path`, else the specification file's directory, else the configuration file's.
 
 #### `createWorkers` Fields
 
@@ -436,7 +436,7 @@ The `content`, `contentFile`, and `contentFiles` properties are mutually exclusi
 
 When submitting actions, target nodes are specified in one of three ways:
 
-- **`--node <id>`**: Submit to a specific node; can be repeated for multiple nodes. If the value is a node YDID, the Worker Pool is resolved automatically without prompting.
+- **`--node <id>`**: Submit to a specific node, given by its YDID; can be repeated for multiple nodes, which must all be in one Worker Pool. The Worker Pool is resolved from them automatically, without prompting, and a node that has finished is skipped with a warning.
 - **`--all-nodes`**: Broadcast to all current nodes in the pool.
 - **Interactive**: If neither flag is given, the Worker Pool's current nodes are displayed for interactive selection.
 
@@ -444,7 +444,7 @@ For grouped actions, `--all-nodes` applies the groups to all nodes; `--node` res
 
 ### Worker Pool Selection
 
-The `--worker-pool` option accepts either a Worker Pool name or a Worker Pool YDID. If omitted, an interactive selection prompt is shown (filtered by the configured `namespace` and `tag`).
+The `--worker-pool` option accepts either a Worker Pool name or a Worker Pool YDID. If omitted, an interactive selection prompt is shown of the unfinished Worker Pools in the configured `namespace` whose names include the `tag`.
 
 When `--node` is given with explicit node YDIDs and `--worker-pool` is omitted, the Worker Pool is resolved automatically from the node, skipping the selection prompt.
 
