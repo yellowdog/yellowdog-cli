@@ -217,16 +217,16 @@ The values an `errorTypes` Selection matches:
 |:--------------------------|:--------------------------------------------------------------------------------------------------------|
 | `ALLOCATION_LOST`         | The Task lost the Worker it was allocated to, as when its instance goes away (a spot instance reclaimed, say). |
 | `RESOURCE_REQUEST_FAILED` | A request for the resources the Task needed failed.                                                     |
-| `TIMED_OUT`               | The Task ran past its timeout (`timeout`, or its Task Group's `taskTimeout`).                           |
+| `TIMED_OUT`               | The Task ran past its timeout (`timeout`, or its Task Group's `taskTimeout`), while `EXECUTING`. Its process, stopped, then records a second error, `PROCESS_NON_ZERO_EXIT` with exit code 143, which did not cause the failure. |
 | `UNABLE_START_PROCESS`    | The Agent could not start the Task's process.                                                           |
 | `PROCESS_NON_ZERO_EXIT`   | The Task was `EXECUTING`, and its process exited with a non-zero code (which `processExitCodes` selects on). |
 | `DATA_CLIENT_DISABLED`    | The Task could not use the data client, which was disabled, while `DOWNLOADING` or `UPLOADING`.        |
-| `INPUT_NOT_FOUND`         | A Task data input was not found.                                                                        |
-| `OUTPUT_NOT_FOUND`        | A Task data output was not found.                                                                       |
+| `INPUT_NOT_FOUND`         | An input was not found. A Task data input (`taskDataInputs`) missing from the data store is recorded as `UNKNOWN_ERROR` at `DOWNLOADING` instead. |
+| `OUTPUT_NOT_FOUND`        | An output was not found. A Task data output (`taskDataOutputs`) the Task did not write is recorded as `UNKNOWN_ERROR` at `UPLOADING` instead. |
 | `UNABLE_WRITE_TASK_DATA`  | The Agent could not write the Task's `taskData` to its file.                                            |
 | `UNKNOWN_ERROR`           | Any other error.                                                                                        |
 
-The SDK describes the conditions for `PROCESS_NON_ZERO_EXIT` and `DATA_CLIENT_DISABLED`; the others are described here by what their names record, and the errors your own Tasks have recorded (below) show what each looks like in practice.
+`PROCESS_NON_ZERO_EXIT`, `TIMED_OUT` and the `UNKNOWN_ERROR` of a missing Task data input or output are as observed on the Platform; the SDK describes `DATA_CLIENT_DISABLED`, and the others are described by what their names record. Because a Task can record more than one error for one failure, as a timeout does, select on the one that caused it: the errors your own Tasks have recorded (below) show which that is.
 
 ### Finding the Errors Your Tasks Hit
 
@@ -251,7 +251,7 @@ Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` s
 }
 ```
 
-`causedFailure` says whether the error was the one that failed the Task. A Task's `retryCount` says how many times it has been retried, and its `resubmittedToTaskId`/`resubmittedFromTaskId` link it to the copy a failure policy made.
+`causedFailure` says whether the error was the one that failed the Task, which is not always the last: a timed-out Task's `TIMED_OUT` is followed by its stopped process's exit code 143. A Task's `retryCount` says how many times it has been retried, and its `resubmittedToTaskId`/`resubmittedFromTaskId` link it to the copy a failure policy made.
 
 ### `retryPolicy`
 
@@ -298,7 +298,45 @@ When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`)
 }
 ```
 
+A destination Task Group must not finish once all its Tasks have finished: the Platform refuses the Work Requirement unless each one sets `"finishIfAllTasksFinished": false` (`task group failure policy destinations ... will finish if all tasks finished`). It therefore stays `RUNNING` after its last Task has finished, and so does the Work Requirement, which ends only when it is finished or cancelled: `yd workrequirement finish` once the work is done (a `--follow` of it does not return until then).
+
 Destinations are evaluated **in order**; the first matching entry wins. An entry without `resubmitErrors` matches every error, so only the last should leave it out, or those after it can never be reached; an empty `resubmissionDestinations` list is refused. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+
+A Task resubmitted counts as finished in its own Task Group, which completes as usual; the copy follows its destination Task Group's policies, not the original's, so it is retried only if that Task Group has a `retryPolicy` of its own.
+
+A complete example, retrying a Task once on exit code 3 and then resubmitting it to a fallback Task Group (on other Workers, say):
+
+```json
+{
+  "taskType": "bash",
+  "taskGroups": [
+    {
+      "name": "first",
+      "workerTags": ["spot"],
+      "retryPolicy": {
+        "maxRetries": 1,
+        "retryErrors": {
+          "includes": [
+            {"errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]}, "processExitCodes": {"includes": [3]}}
+          ]
+        }
+      },
+      "failurePolicy": {
+        "resubmissionDestinations": [{"destinationTaskGroup": "fallback"}]
+      },
+      "tasks": [{"arguments": ["-c", "./run.sh"]}]
+    },
+    {
+      "name": "fallback",
+      "workerTags": ["on-demand"],
+      "finishIfAllTasksFinished": false,
+      "tasks": []
+    }
+  ]
+}
+```
+
+Here the only destination omits `resubmitErrors`, so every error the retries did not clear is resubmitted. Once every Task has finished, wherever it ran, `yd workrequirement finish` ends the Work Requirement.
 
 Common use cases:
 

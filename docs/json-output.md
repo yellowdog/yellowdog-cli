@@ -73,9 +73,9 @@ WR_ID=$(jq -r '.id' <<<"$submitted")
 # Wait for it to finish; yd wait exits non-zero if it did not complete
 if ! yd wait --json "$WR_ID" > wait.json; then
     echo "Work Requirement ended $(jq -r '.[0].status' wait.json)"
-    # Each failed Task's name, and the type of the last error it recorded
+    # Each failed Task's name, and the type of the error that failed it
     yd task list --within "$WR_ID" --status failed --json |
-        jq -r '.[] | "\(.name)\t\((.errors // [])[-1].errorType // "no error recorded")"'
+        jq -r '.[] | "\(.name)\t\((.errors // []) | map(select(.causedFailure)) | last | .errorType // "no error recorded")"'
 fi
 ```
 
