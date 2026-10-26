@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 08:11:20 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:03:56 GMT 2026 -->
 
 <!--te-->
 
@@ -127,7 +127,7 @@ The precedence order for setting variables is:
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
 
-With `--env-override` (or `YD_ENV_OVERRIDE` set), a `.env` file's `YD_VAR_` variables take precedence over the environment's: items 2 and 3 change places.
+With `--env-override` (or `YD_ENV_OVERRIDE` set), a `.env` file's `YD_VAR_` variables take precedence over the environment's: items 2 and 3 change places. [Which Value Wins](configuration.md#which-value-wins) sets this order beside those of the other kinds of setting.
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 

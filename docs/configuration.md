@@ -9,9 +9,10 @@
       * [Overriding Arbitrary TOML Properties on the Command Line](#overriding-arbitrary-toml-properties-on-the-command-line)
       * [Support for .env Files](#support-for-env-files)
       * [Variable Substitutions in Common Properties](#variable-substitutions-in-common-properties)
+   * [Which Value Wins](#which-value-wins)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 08:11:19 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:03:54 GMT 2026 -->
 
 <!--te-->
 
@@ -150,7 +151,7 @@ The **environment variables** are as follows:
 - `YD_TAG`
 - `YD_READ_TIMEOUT` (`readTimeout`; there is no command-line option, but `--property common.readTimeout=<seconds>` sets it)
 
-When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
+When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file; [Which Value Wins](#which-value-wins) gives the whole order.
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its contents take precedence over environment variables (but not over properties set on the command line). This makes it easy to direct a command at a specific configuration without first having to unset environment variables.
 
@@ -219,3 +220,29 @@ With `--debug`, environment variables sourced from a `.env` file whose names sta
 Note the use of `{{username}}` in the value of the `tag` property example above: this is a **variable substitution** that can optionally be used to insert the login username of the user running the commands. So, for username `abc`, the `tag` would be set to `testing-abc`. This can be helpful to disambiguate multiple users running with the same configuration data.
 
 Variable substitutions are described in detail in [Variable Substitutions](variables.md).
+
+## Which Value Wins
+
+A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `readTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
+
+| Source | `[common]` | Variables | `[dataClient]` | Other sections |
+|:---|:---:|:---:|:---:|:---:|
+| The setting's own command-line option: `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret`, `--url`; `--remote`, `--bucket`, `--prefix`; `--task-count`, `--target` and the like | 1 | — | 1 | 1 |
+| `--variable`/`-v`, or `--property common.variables.<name>=<value>` | — | 1 | — | — |
+| `--property <section>.<key>=<value>` | 2 | — | 2 | 3 |
+| A specification file's own value (a Work Requirement, Worker Pool or Compute Requirement) | — | — | — | 2 |
+| The configuration file chosen with `--config`/`-c`, and the file it imports with `importCommon` | 3 | 2 | 3 | 4 |
+| A field the selected data client profile sets itself | — | — | 3 | — |
+| The environment: `YD_KEY`, `YD_NAMESPACE` and the others, `YD_VAR_*`, `YD_DATA_CLIENT_*` | 4 | 3 | 4 | — |
+| A `.env` file (ranked above the environment with `--env-override` or `YD_ENV_OVERRIDE`) | 5 | 4 | 5 | — |
+| The configuration file found without `--config` (`./config.toml`, or your own), and the file it imports | 6 | 5 | 6 | 4 |
+| The CLI's default | 7 | 6 | 7 | 5 |
+
+Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen.
+
+Some notes on the columns:
+
+- **`[common]`**: the reserved `{{namespace}}`, `{{tag}}`, `{{key}}`, `{{secret}}` and `{{url}}` variables always hold the values this column chooses. `--no-config` (`--nc`) leaves out every configuration file row.
+- **Variables**: the default variables (`{{username}}`, `{{date}}`, `{{random}}` and the others) are the last row. A `{{env:NAME}}` substitution reads the environment variable directly and takes no part in the order.
+- **`[dataClient]`**: the profile itself is chosen by `--data-client-profile`/`--profile`, else `YD_DATA_CLIENT`. For the commands other than `yd data`, the `{{dataClient.*}}` variables come from the configuration file alone (with any `--property` override), not from the environment or the `yd data` options.
+- **Other sections**: these have no environment variables. A `--property` override replaces the configuration file's value, so it wins over the file but not over a specification file's own value, which the configuration only fills in where the specification has none. Most command-line options win over the specification too, as each option's description says; `--task-type` is the exception, setting the configuration's `taskType`, which a specification's own `taskType` replaces.

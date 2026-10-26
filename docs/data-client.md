@@ -6,7 +6,7 @@
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 09:25:56 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:03:54 GMT 2026 -->
 
 <!--te-->
 
@@ -26,7 +26,7 @@ These commands share a common `[dataClient]` TOML configuration section:
     prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (default: namespace/tag)
 ```
 
-The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable. As for the rest of the configuration, a file chosen with `--config`/`-c` takes precedence over the environment variables, though not over the command line (see [Configuration](configuration.md)).
+The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable. As for the rest of the configuration, a file chosen with `--config`/`-c` takes precedence over the environment variables, though not over the command line (see [Which Value Wins](configuration.md#which-value-wins) for the whole order).
 
 The `remote` field accepts either:
 - A plain remote name defined in the system `rclone.conf` (e.g. `"yds3"`)
