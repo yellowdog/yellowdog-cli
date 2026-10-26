@@ -1,11 +1,12 @@
 # Data Client
 
 <!--ts-->
+   * [Remote Paths](#remote-paths)
    * [Named Profiles](#named-profiles)
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:12 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 09:25:56 GMT 2026 -->
 
 <!--te-->
 
@@ -14,7 +15,7 @@ The `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and 
 
 This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd data upload](commands.md#yd-data-upload), [yd data download](commands.md#yd-data-download), [yd data delete](commands.md#yd-data-delete), [yd data list](commands.md#yd-data-list), and [yd data copy](commands.md#yd-data-copy).
 
-The `rclone` binary will be automatically downloaded if not already present.
+The commands run `rclone`: one already on your `PATH` is used in preference and never modified; otherwise the binary is downloaded the first time it is needed, into `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows). Every `yd data` verb takes `--which-rclone`, which reports the binary in use and its version, and `--upgrade-rclone`, which downloads the latest into the cache; each then exits.
 
 These commands share a common `[dataClient]` TOML configuration section:
 
@@ -25,12 +26,16 @@ These commands share a common `[dataClient]` TOML configuration section:
     prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (default: namespace/tag)
 ```
 
-The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable.
+The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable. As for the rest of the configuration, a file chosen with `--config`/`-c` takes precedence over the environment variables, though not over the command line (see [Configuration](configuration.md)).
 
 The `remote` field accepts either:
 - A plain remote name defined in the system `rclone.conf` (e.g. `"yds3"`)
 - An inline rclone connection string (e.g. `"S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"`), or rclone's own form, `":s3,provider=AWS,env_auth=true,region=eu-west-2"`, whose backend is its type
 - An `rclone:` prefix can optionally be included
+
+A remote name is looked up in rclone's configuration file: the one the `RCLONE_CONFIG` environment variable names, else `~/.config/rclone/rclone.conf` (`%APPDATA%\rclone\rclone.conf` on Windows); if there is none, the command says so.
+
+An inline connection string carries whatever credentials it is given in its parameters, so in a `config.toml` it puts them in the file: prefer `env_auth=true` (the cloud provider's own credentials, from the environment or the instance), or a named remote in `rclone.conf`. `yd variables` and `yd doctor` show an inline string's name, type and provider only, withholding its other parameters as `<N parameters redacted>`.
 
 A value in an inline connection string is read as rclone reads it: one holding a comma goes in double or single quotes (`secret_access_key="a,b"`), a quote inside it doubled, and spaces around `=` are allowed.
 
@@ -39,6 +44,16 @@ The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` v
 > **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target. A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one; without the `/` it is relative to the remote's default directory (for a local remote, the current directory). With no bucket, the same holds for a prefix beginning with `/`.
 
 > **Note on servers that limit connections:** The `yd data` commands copy up to 128 files at a time, which on cloud object storage (S3, Google Cloud Storage, Azure Blob Storage) is what makes many small files quick. On an SFTP or FTP server, each of those can be a connection of its own, and a server that limits how many connections it accepts at once (OpenSSH's `MaxStartups`, an FTP server's per-user or per-IP limit) refuses the rest. rclone retries a refused connection, so the transfer usually completes, more slowly, but it can fail, and a server that bans an address for repeated dropped connections may ban yours. Cap the connections in the remote itself: `connections` for SFTP (`":sftp,host=files.example.com,user=me,connections=8"`, or `connections = 8` in a named remote in `rclone.conf`) and `concurrency` for FTP.
+
+## Remote Paths
+
+A remote path given to a `yd data` command is relative to the configured base: `docs/a.txt` is `<remote>:<bucket>/<prefix>/docs/a.txt`, without the prefix under `--no-prefix`, and a trailing `/` names a directory. A path beginning with the configured remote's own name and a colon (`myremote:other-bucket/a.txt`) is used as given, with neither the bucket nor the prefix, which is how to reach another bucket on the same remote:
+
+```shell
+yd data list results/                        # myremote:my-bucket/<namespace>/<tag>/results/
+yd data list --no-prefix shared/             # myremote:my-bucket/shared/
+yd data list myremote:other-bucket/inputs/   # as given
+```
 
 ## Named Profiles
 
@@ -58,7 +73,7 @@ bucket = "staging-data"
 # inherits prefix from [dataClient]
 ```
 
-Select a profile with `--data-client-profile <name>`:
+Select a profile with `--data-client-profile <name>` (or `--profile <name>`):
 
 ```
 yd data upload --data-client-profile prod myfile.txt
@@ -82,7 +97,7 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
 | `{{dataClient.<name>.prefix}}` | Named profile's prefix (`{{namespace}}/{{tag}}` when none is set) |
 
-For `yd data upload`/`yd data download`/`yd data delete`/`yd data list`/`yd data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the base `[dataClient]` section. Either way a prefix set nowhere is the default, `{{namespace}}/{{tag}}`, with or without a `[dataClient]` section, so a specification naming `{{dataClient.prefix}}` finds what `yd data upload` put under it; `prefix = ""` is no prefix.
+For `yd data upload`/`yd data download`/`yd data delete`/`yd data list`/`yd data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides). For all other commands, it reflects the configuration file's `[dataClient]` section (with any `--property dataClient.*` override); the `YD_DATA_CLIENT*` environment variables do not apply to it. Either way a prefix set nowhere is the default, `{{namespace}}/{{tag}}`, with or without a `[dataClient]` section, so a specification naming `{{dataClient.prefix}}` finds what `yd data upload` put under it; `prefix = ""` is no prefix.
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 
