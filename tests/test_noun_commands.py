@@ -473,6 +473,14 @@ class TestOptionsAVerbNeverTakesAreHidden:
             ("yd resource list", "--limit"),
             ("yd resource list", "--unhealthy"),
             ("yd resource list", "--with-errors"),
+            ("yd node shutdown", "--follow"),
+            ("yd cloudinfo regions", "--region"),
+            ("yd cloudinfo regions", "--vcpus"),
+            ("yd cloudinfo regions", "--prices"),
+            ("yd cloudinfo sub-regions", "--sub-region"),
+            ("yd cloudinfo prices", "--vcpus"),
+            ("yd cloudinfo prices", "--prices"),
+            ("yd cloudinfo instance-types", "--usage"),
         ],
     )
     def test_hidden(self, command, flag):
@@ -489,6 +497,12 @@ class TestOptionsAVerbNeverTakesAreHidden:
             ("yd allowance show", "--substitute-ids"),
             ("yd resource list", "--name"),
             ("yd computerequirement resize", "--wait"),
+            ("yd workerpool shutdown", "--follow"),
+            ("yd cloudinfo sub-regions", "--region"),
+            ("yd cloudinfo instance-types", "--vcpus"),
+            ("yd cloudinfo instance-types", "--prices"),
+            ("yd cloudinfo prices", "--usage"),
+            ("yd cloudinfo prices", "--os"),
         ],
     )
     def test_still_offered_where_it_applies(self, command, flag):

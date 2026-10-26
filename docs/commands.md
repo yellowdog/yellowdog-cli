@@ -199,7 +199,6 @@ A Compute Requirement is *settled* when it is `RUNNING`, as many of its Instance
 | `yd computerequirement terminate` | each Compute Requirement is terminated | — |
 | `yd instance terminate`, `yd node terminate` | nothing is changing, having changed: the Instances gone, and any the Compute Requirement starts in their place running | — |
 | `yd node action` | every node's action queue is `EMPTY` or `FAILED`, polled rather than streamed; `--timeout` stops it first, exiting 1 | — |
-| `yd node shutdown` | at once: Nodes are not followed | — |
 | `yd follow` (and the nouns' `follow`) | every stream has closed, its object finished | — |
 | `yd wait` (and the nouns' `wait`) | — | every object is in a terminal state: `COMPLETED`, `FAILED` or `CANCELLED` for a Work Requirement, `SHUTDOWN` or `TERMINATED` for a Worker Pool, `TERMINATED` for a Compute Requirement; `--timeout` stops it first |
 
@@ -1423,7 +1422,7 @@ The `yd cloudinfo` verbs list what the YellowDog Platform knows about the cloud 
 yd cloudinfo <regions|sub-regions|instance-types|prices> [options]
 ```
 
-Region and sub-region names are matched exactly, so `--region eu-west-2` does not include the Wavelength Zone `eu-west-2-wl1-lon1`; `--name` takes a glob pattern, and a value without wildcards matches the name exactly. Each option applies only to the verbs listed against it below, and is refused with any other.
+Region and sub-region names are matched exactly, so `--region eu-west-2` does not include the Wavelength Zone `eu-west-2-wl1-lon1`; `--name` takes a glob pattern, and a value without wildcards matches the name exactly. Each option applies only to the verbs listed against it below, and the others do not offer it (it is refused if given).
 
 Key options:
 - `--provider`/`-p <aws|azure|google|oci>` — list only this provider's items; may be repeated (every verb)

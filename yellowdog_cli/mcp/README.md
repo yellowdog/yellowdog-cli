@@ -145,7 +145,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
 | `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
 
-A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The four `yd_cloudinfo_*` tools are the exception: each offers every Cloud Info filter, and refuses one its type does not take. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
+A tool is named for the command it runs, `yd_workrequirement_submit` for `yd workrequirement submit`, and offers that verb's options alone: `yd_instance_terminate` takes Instances and has no `namespace`. The nouns' `list`, `show`, `follow` and `wait` verbs have no tools of their own, since `yd_list`, `yd_show`, `yd_follow` and `yd_wait` take any type.
 
 ## Results and Errors
 

@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Listing and actions
 
+- **Options a verb never takes are no longer offered**: each `yd cloudinfo` verb's `--help`, Tab completion and MCP tool leave out the filters it refuses (`yd cloudinfo regions` takes no `--vcpus`), and `yd node shutdown` no `--follow`, which followed nothing; each is still refused if given.
 - **`yd instance terminate --follow` and `yd node terminate --follow` end**: they return once the Instances have gone and nothing is changing in their Compute Requirement, where they followed it until Ctrl-C, since terminating some of its Instances leaves it running.
 
 ### Variables and configuration
