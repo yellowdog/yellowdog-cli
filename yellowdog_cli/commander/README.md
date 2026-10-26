@@ -119,8 +119,6 @@ Choosing **Quit and Stop** signals each command to finish and forces it to stop 
 
 Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd variables` invocations it makes internally to read your configuration.
 
-Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
-
 ## Naming and Matching Assumptions
 
 Commander's bulk management actions — cancelling Work Requirements, terminating Compute Requirements, shutting down Worker Pools, and downloading or deleting objects — do not act on a specific entity you name. Instead they select every entity that matches the current **namespace** and **tag**, so they assume you are using the CLI's default naming convention, in which the tag is embedded in the names, tags, and object paths of the entities you create.
@@ -138,7 +136,7 @@ Given that convention, the management actions match as follows:
 
 - **Cancel Work Requirements** (`yd workrequirement cancel`) — Work Requirements in the namespace whose tag contains the current tag.
 - **Terminate Compute Requirements** (`yd computerequirement terminate`) — Compute Requirements in the namespace whose tag contains the current tag.
-- **Shut Down Worker Pools** (`yd workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
+- **Shutdown Worker Pools** (`yd workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
 - **Download / Delete Matching Objects** (`yd data download` / `yd data delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
 
 Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind.
@@ -148,7 +146,7 @@ Matching is by substring or prefix, not exact equality, which has two consequenc
 
 Set the Namespace, Tag, and Path fields deliberately, and use the confirmation dialog's listing of affected items to check exactly what will be acted on before you proceed — you can also untick anything in that listing you want left alone.
 
-When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag.
+When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag.
 
 A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on, and you can untick individual matches there, so the pattern only has to get you close.
 
@@ -177,7 +175,7 @@ The file dialogs — choosing a configuration or definition file, and the two di
 
 A binary file is named and sized but not previewed, rather than shown as gibberish. Whether a file counts as text is decided by reading the start of it, not by its extension, so task output named whatever the task named it is previewed all the same.
 
-A text file is previewed from the top: up to 500 lines, or the first 256 kB of it, whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
+A text file is previewed from the top: up to 500 lines, or the first 256 KiB of it (262.1 kB, as the last line shows it), whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
 
 The three selectors accept with a **Select** button rather than Qt's **Open**: they nominate a file for a later command to read, and nothing is opened by pressing it. The two directory-browsing dialogs do say **Open**, because there they really do open the chosen file in the default application for its type.
 
@@ -251,7 +249,9 @@ What neither reports is how much sits inside a matched directory. The download's
 
 The **Namespace** and **Tag** fields override the values from the configuration file for every command. The default values discovered from the configuration are shown as placeholder text, so you can see what will be used if you leave a field blank.
 
-The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** and the Worker Pools **Resize…** offer, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all six actions, so it applies to whichever one you run.
+The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** and the Worker Pools **Resize…** offer, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all six actions, so it applies to whichever one you run.
+
+Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
 
 ## User-Defined Variables
 
@@ -340,6 +340,7 @@ For all five destructive actions that listing is **checkable**:
 
 - Every item is ticked to begin with: untick anything you want left alone, use **All** and **None** to set every item at once, and the count above the list shows how many are currently selected.
 - **Yes** is unavailable while nothing is selected, and acts on precisely the items you have ticked.
+- If the listing itself fails, the output window says so and the confirmation asks about the whole scope instead, with no list: confirming it acts on everything the namespace and tag (or the **Name** pattern) select, as the command would from a terminal. A download whose listing fails fetches the whole pattern, with no chooser.
 - Object deletion is selectable in the same way, with one caveat: the listing shows top-level matches, so unticking works at that level, and a ticked directory is deleted with everything inside it.
 - The dialog offers **Yes**, **No**, and **Yes to All (Don't Ask Again)**. The last acts on every listed item regardless of what you have ticked, and suppresses further prompts for that same action for the rest of the session, after which that action always applies to everything in scope.
 
