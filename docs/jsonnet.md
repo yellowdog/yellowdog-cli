@@ -73,8 +73,10 @@ There are three possibilities for verifying that a Jsonnet specification is doin
 yd jsonnet2json my_file.jsonnet
 ```
 
+It makes no variable substitution, so a `{{variable}}` is left as written, and finds an `import` beside the file importing it, not in the current directory as the commands also do. With several files or a glob pattern, it writes each conversion to a `<name>.json` file beside its source, asking before it replaces one that differs (see [yd jsonnet2json](commands.md#yd-jsonnet2json)).
 
-2. The `jsonnet-dry-run` (`-J`) option of the `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create` and `yd resource remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
+
+2. The `jsonnet-dry-run` (`-J`) option of the `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd node action`, `yd resource create` and `yd resource remove` commands will generate JSON output representing the Jsonnet to JSON processing only, including applicable variable substitutions, but before full property expansion into the JSON that will be submitted to the Platform.
 
 
 3. The `dry-run` (`-D`) option will generate JSON output representing the full processing of the Jsonnet file into what will be submitted to the API. This allows inspection to check that the output matches expectations, prior to submitting to the Platform.
