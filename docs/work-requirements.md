@@ -914,7 +914,7 @@ What is taken from each part of the specification:
 | Part of the specification | For a new Task Group | For an existing Task Group (matched by name) |
 |:---|:---|:---|
 | The Work Requirement's own settings (its name and tag, and its `priority` as the Work Requirement's) | not applied: the target Work Requirement keeps its own | not applied |
-| What the Work Requirement level passes down (`priority`, `workerTags`, `arguments`, `environment` and the other inherited properties) | inherited by the Task Group and its Tasks | inherited by the new Tasks |
+| What the Work Requirement level passes down (`priority`, `workerTags`, `arguments`, `environment` and the other inherited properties) | inherited by the Task Group and its Tasks | the Task properties (`arguments`, `environment` and the like) inherited by the new Tasks; the Task Group's (`priority`, `workerTags` and the like) not applied |
 | The Task Group's own settings (`priority`, the run specification: `taskTypes`, `workerTags`, `dependencies` and the rest) | applied, as the Task Group is created | not applied: the existing Task Group keeps its own |
 | What the Task Group level passes down to its Tasks (`arguments`, `environment`, `taskType`, `timeout`, `taskData` and the rest) | inherited by its Tasks | inherited by the new Tasks |
 | The Tasks | added, numbered from 1 | added, numbered on from the existing Tasks, each `taskType` in the Task Group's `taskTypes` (or the submission is refused) |
