@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:13 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 08:11:20 GMT 2026 -->
 
 <!--te-->
 
@@ -83,7 +83,9 @@ User-defined variables can be supplied using an option on the command line, by s
 
 A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
 
-The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration. Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
+The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration.
+
+Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
 
 The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
@@ -279,7 +281,9 @@ WARNING : Variable '{{site}}' is unset, and has been left unsubstituted in 'name
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd node action` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
-Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named. The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named.
+
+The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 

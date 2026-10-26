@@ -56,7 +56,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:14 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 08:11:21 GMT 2026 -->
 
 <!--te-->
 
@@ -727,7 +727,11 @@ The following naming and numbering substitutions are available for use in TOML a
 | `{{task_group_number}}` | The current Task Group number, zero-padded        | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
 
-`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way. Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list` — where unpadded `task_10` would sort before `task_2`. A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
+`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way.
+
+Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list` — where unpadded `task_10` would sort before `task_2`.
+
+A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
 The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
 
@@ -896,7 +900,11 @@ With tens of thousands of Tasks or more, how the Tasks are sent decides how long
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present.
+
+An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI.
+
+To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
 
 Currently, Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
