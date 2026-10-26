@@ -293,6 +293,22 @@ def _apply_property_overrides(config: dict, overrides: list[str]) -> None:
             _register_variable_override(override, path[1], value)
 
 
+def _set_by_property_override(*path: str) -> bool:
+    """
+    Whether the last '--property' override of the property at 'path'
+    (section, then keys) gives it a value: a command-line value, which
+    outranks the environment, as '--namespace' does. An override to null
+    unsets the file's value and gives none, leaving the environment's.
+    """
+    name = ".".join(path)
+    value_set = False
+    for override in getattr(_ARGS, "property_overrides", None) or []:
+        lhs, equals, value_str = override.partition("=")
+        if equals and lhs == name:
+            value_set = parse_property_value(value_str, path[-1]) is not None
+    return value_set
+
+
 def _register_variable_override(override: str, name: str, value: object) -> None:
     """
     A '--property common.variables.<name>=<value>' override, registered as
@@ -692,6 +708,8 @@ def _apply_common_overrides(
     ... unless the config file was explicitly selected using '--config'/'-c',
     in which case its contents take precedence over the environment:
     command line > config file > environment variable
+    The command line is the property's own option, then a '--property
+    common.<key>' override, which is in the section by now.
     """
     for key_name, args_parser_value, env_var_name in [
         (KEY, _ARGS.key, YD_KEY),
@@ -708,6 +726,9 @@ def _apply_common_overrides(
             print_debug(
                 f"Using '{key_name}' provided on command line (or automatically set)"
             )
+        elif _set_by_property_override(COMMON_SECTION, key_name):
+            CONFIG_SOURCES[key_name] = "command line (--property)"
+            print_debug(f"Using '{key_name}' provided by --property")
         elif config_file_explicitly_selected() and (
             common_section.get(key_name) is not None
         ):
@@ -837,7 +858,9 @@ def _load_namespace_and_tag() -> None:
     """
     Populate VARIABLE_SUBSTITUTIONS with 'namespace' and 'tag' without
     requiring a full common config load (no key/secret needed).
-    Priority: CLI flags > environment variables > [common] section in config.toml > defaults.
+    Priority: CLI flags (the option, then a '--property common.<key>'
+    override) > environment variables > [common] section in config.toml >
+    defaults, the file ahead of the environment when chosen by '--config'.
     Safe to call before load_config_common(); won't overwrite values it sets.
     """
     common_section = dict(CONFIG_TOML.get(COMMON_SECTION, {}))
@@ -854,6 +877,8 @@ def _load_namespace_and_tag() -> None:
 
     if _ARGS.namespace is not None:
         namespace = _ARGS.namespace
+    elif _set_by_property_override(COMMON_SECTION, NAMESPACE):
+        namespace = str(common_section[NAMESPACE])
     elif explicit_config and common_section.get(NAMESPACE) is not None:
         namespace = str(common_section[NAMESPACE])
     elif os.environ.get(YD_NAMESPACE) is not None:
@@ -866,6 +891,8 @@ def _load_namespace_and_tag() -> None:
 
     if _ARGS.tag is not None:
         name_tag = _ARGS.tag
+    elif _set_by_property_override(COMMON_SECTION, NAME_TAG):
+        name_tag = str(common_section[NAME_TAG])
     elif explicit_config and common_section.get(NAME_TAG) is not None:
         name_tag = str(common_section[NAME_TAG])
     elif os.environ.get(YD_TAG) is not None:
@@ -973,6 +1000,7 @@ def _profile_keys(base: dict, profile_name: str | None) -> set[str]:
 
 def _data_client_value(
     dc_section: dict,
+    profile_name: str | None,
     profile_keys: set[str],
     toml_key: str,
     env_var: str,
@@ -981,14 +1009,22 @@ def _data_client_value(
     """
     One [dataClient] field, its variables substituted: the command line's
     value; else the file's where it outranks the environment (a field the
-    named profile sets itself, or any with the file chosen by '--config');
-    else the environment's; else the file's; else None.
+    named profile sets itself, one a '--property' override set, in the
+    profile or in the [dataClient] it inherits from, or any with the file
+    chosen by '--config'); else the environment's; else the file's; else
+    None.
     """
     name = f"{DATA_CLIENT_SECTION}.{toml_key}"
     if cli_value is not None:
         return cast(str | None, _resolve_value(cli_value, name))
     toml_value = dc_section.get(toml_key)
-    file_first = config_file_explicitly_selected() or toml_key in profile_keys
+    overridden = _set_by_property_override(DATA_CLIENT_SECTION, toml_key) or (
+        profile_name is not None
+        and _set_by_property_override(DATA_CLIENT_SECTION, profile_name, toml_key)
+    )
+    file_first = (
+        config_file_explicitly_selected() or toml_key in profile_keys or overridden
+    )
     for value in (
         toml_value if file_first else None,
         os.environ.get(env_var),
@@ -1032,7 +1068,7 @@ def load_config_data_client() -> ConfigDataClient:
 
     def _resolve(cli_value: str | None, env_var: str, toml_key: str) -> str | None:
         return _data_client_value(
-            dc_section, profile_keys, toml_key, env_var, cli_value
+            dc_section, profile_name, profile_keys, toml_key, env_var, cli_value
         )
 
     remote = _resolve(
@@ -1111,7 +1147,9 @@ def load_config_data_client_for_profile(
     profile_keys = _profile_keys(base_section, profile_name)
 
     def _resolve(env_var: str, toml_key: str) -> str | None:
-        return _data_client_value(dc_section, profile_keys, toml_key, env_var)
+        return _data_client_value(
+            dc_section, profile_name, profile_keys, toml_key, env_var
+        )
 
     remote = _resolve(YD_DATA_CLIENT_REMOTE, DATA_CLIENT_REMOTE)
     bucket = _resolve(YD_DATA_CLIENT_BUCKET, DATA_CLIENT_BUCKET)

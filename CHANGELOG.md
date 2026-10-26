@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Variables and configuration
 
+- **`--property` beats the environment**: `--property common.namespace=x` (and `tag`, `key`, `secret`, `url`, `readTimeout`) is used whatever `YD_NAMESPACE` and the others hold, and `--property dataClient.bucket=x` (or `remote`, `prefix`, for `[dataClient]` or a profile) whatever `YD_DATA_CLIENT_BUCKET` holds, as a command-line value; the environment won unless the file was chosen with `--config`. `--namespace` and the other options still win over `--property`.
 - **`YD_ENV_OVERRIDE=false` leaves the override off**: `0`, `false`, `no` and `off`, in any case, are read as off, as `YD_COMPLETION_LOOKUPS` reads them, where any value at all made `.env` win over the environment.
 
 ### Worker Pools

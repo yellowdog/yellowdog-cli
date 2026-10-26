@@ -161,6 +161,17 @@ class TestLoadNamespaceAndTag:
         )
         assert subs[NAMESPACE] == "env-ns"
 
+    def test_property_override_beats_env_var(self):
+        # '--property common.namespace=...', in the section by now
+        args = _mock_args()
+        args.property_overrides = ["common.namespace=prop-ns", "common.tag=prop-tag"]
+        subs = self._call(
+            toml_common={NAMESPACE: "prop-ns", NAME_TAG: "prop-tag"},
+            args=args,
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert (subs[NAMESPACE], subs[NAME_TAG]) == ("prop-ns", "prop-tag")
+
     def test_toml_namespace_beats_default(self):
         subs = self._call(toml_common={NAMESPACE: "toml-ns"})
         assert subs[NAMESPACE] == "toml-ns"
@@ -332,6 +343,45 @@ class TestLoadConfigCommonPrecedence:
         config = self._call(
             toml_common={KEY: "k", SECRET: "s"},
             args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "env-ns"
+
+    # --- '--property common.<key>=...', in the section by now ---
+
+    def test_a_property_override_beats_env(self):
+        args = _common_mock_args()
+        args.property_overrides = ["common.namespace=prop-ns", "common.tag=prop-tag"]
+        config = self._call(
+            toml_common={
+                KEY: "k",
+                SECRET: "s",
+                NAMESPACE: "prop-ns",
+                NAME_TAG: "prop-tag",
+            },
+            args=args,
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert (config.namespace, config.name_tag) == ("prop-ns", "prop-tag")
+        assert lc_module.CONFIG_SOURCES[NAMESPACE] == "command line (--property)"
+
+    def test_the_option_beats_a_property_override(self):
+        args = _common_mock_args(namespace="cli-ns")
+        args.property_overrides = ["common.namespace=prop-ns"]
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "prop-ns"},
+            args=args,
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "cli-ns"
+
+    def test_a_property_override_to_null_leaves_env(self):
+        # null unsets the file's value; it sets none of its own
+        args = _common_mock_args()
+        args.property_overrides = ["common.namespace=null"]
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: None},
+            args=args,
             env={YD_NAMESPACE: "env-ns"},
         )
         assert config.namespace == "env-ns"
@@ -827,3 +877,25 @@ class TestANamedProfileBeatsTheEnvironment:
     def test_without_a_profile_the_environment_wins(self, configured):
         config = lc_module.load_config_data_client_for_profile(None, "")
         assert config.bucket == "dev-bucket"
+
+    @pytest.mark.parametrize(
+        "override",
+        ["dataClient.bucket=prop-bucket", "dataClient.backup.bucket=prop-bucket"],
+    )
+    def test_a_property_override_beats_the_environment(
+        self, configured, monkeypatch, override
+    ):
+        # Applied to the file's data by now, as _apply_property_overrides() does
+        section = lc_module.CONFIG_TOML["dataClient"]
+        if override.startswith("dataClient.backup."):
+            section["backup"]["bucket"] = "prop-bucket"
+            profile = "backup"
+        else:
+            section["bucket"] = "prop-bucket"
+            profile = None
+        args = MagicMock()
+        args.property_overrides = [override]
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        config = lc_module.load_config_data_client_for_profile(profile, "")
+        assert config.bucket == "prop-bucket"
+        assert config.remote == "env-remote:"  # Not overridden: the environment's

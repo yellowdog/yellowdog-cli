@@ -25,7 +25,7 @@ These commands share a common `[dataClient]` TOML configuration section:
     prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (default: namespace/tag)
 ```
 
-The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely.
+The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable.
 
 The `remote` field accepts either:
 - A plain remote name defined in the system `rclone.conf` (e.g. `"yds3"`)

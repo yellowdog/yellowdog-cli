@@ -185,7 +185,7 @@ yd workrequirement submit --property 'workRequirement.taskCount=3' \
           --property 'workRequirement.priority=1.5'
 ```
 
-`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. `{{variable}}` substitutions within values are resolved in the normal way.
+`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. They are command-line values, so they also take precedence over environment variables: `--property common.namespace=myproject` is used whatever `YD_NAMESPACE` holds, and `--property dataClient.bucket=b` whatever `YD_DATA_CLIENT_BUCKET` holds. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. An override to `null` removes the file's value without supplying one, so an environment variable then applies. `{{variable}}` substitutions within values are resolved in the normal way.
 
 Use `--dry-run` to verify the effect of an override before submitting:
 
