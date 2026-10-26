@@ -52,7 +52,7 @@ The following substitutions are automatically created and can be used in any sec
 | `{{username}}`        | The current user's login username, lower case, spaces replaced | jane_smith              |
 | `{{date}}`            | The current date (UTC): YYMMDD                                 | 221027                  |
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
-| `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
+| `{{datetime}}`        | The date and the time to the second (UTC): YYMMDD-HHMMSS       | 221027-163026           |
 | `{{random}}`          | Three random base 36 digits (0-9, a-z), lower case             | a1c                     |
 | `{{random6}}`         | Six random base 36 digits (0-9, a-z), lower case               | a1c9z0                  |
 | `{{pid}}`             | The process ID (PID) of the running command                    | 48213                   |
