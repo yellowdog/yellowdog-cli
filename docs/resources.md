@@ -435,7 +435,7 @@ An example specification, illustrating a containment hierarchy of Image Family -
       "images": [
         {
           "metadata": {},
-          "name": "win-2022-yd-agent-5_0_16",
+          "name": "win-2022-yd-agent-5_0_16-eu-west-1",
           "osType": "WINDOWS",
           "provider": "AWS",
           "providerImageId": "ami-0cb09e7f49c1eb021",
@@ -444,7 +444,7 @@ An example specification, illustrating a containment hierarchy of Image Family -
         },
         {
           "metadata": {},
-          "name": "win-2022-yd-agent-5_0_16",
+          "name": "win-2022-yd-agent-5_0_16-eu-west-2",
           "osType": "WINDOWS",
           "provider": "AWS",
           "providerImageId": "ami-0cb09e7f49c1eb022",
@@ -457,7 +457,7 @@ An example specification, illustrating a containment hierarchy of Image Family -
 }
 ```
 
-Note that if the name of an Image Group or an Image is changed in the resource specification, the existing resource with the previous name will be removed from the Platform because it's no longer present in the resource specification. To prevent this, retain the previous resource in your specification, and add resources as required.
+Image Groups and Images are matched to the existing ones by name when an Image Family is updated, so each Image within a Group needs a name of its own. Note that if the name of an Image Group or an Image is changed in the resource specification, the existing resource with the previous name will be removed from the Platform, after confirmation (which `--yes` skips), because it's no longer present in the resource specification. To prevent this, retain the previous resource in your specification, and add resources as required.
 
 ## Configured Worker Pools
 
