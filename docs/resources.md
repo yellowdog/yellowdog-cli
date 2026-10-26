@@ -78,6 +78,13 @@ Resources are updated by re-running the `yd resource create` command with the sa
 
 The update action will create any resources that are not already present in the Platform, and it will update any resources that are already present. The command does not check for specific differences, so an unchanged resource specification will still cause an update.
 
+Four resource types are the exceptions:
+
+- A **Credential** is put into its Keyring, replacing one of the same name, without a prompt.
+- A **Namespace** that already exists is reported with a warning and skipped.
+- An **Allowance** is created again, as a second Allowance, unless `--match-allowances-by-description`/`-M` is given, which replaces those with the same description.
+- A **Configured Worker Pool** is always added as a new pool.
+
 ### Resource Removal
 
 Resources are removed by running the `yd resource remove` command, with the same form of resource specifications. For example:
@@ -174,7 +181,11 @@ yd resource remove -y csts.json crts.json ifs.json
 
 **Step 3: Change the namespace in all the resources**
 
-Use an editor's search and replace function, or a command-line tool such as `sed` to replace all occurrences of `"ns-1"` with `"ns-2"`, for every `namespace` property, in each of the JSON files.
+Replace the namespace wherever the files name it: in every `namespace` property (`"ns-1"`), and in the references `--substitute-ids` wrote, which name a resource by its namespace (`"ns-1/<name>"`, a Compute Requirement Template's sources, and `"yd/ns-1/<family>"`, an Image Family). Left unchanged, a reference would point at the resource removed in step 2. With `sed`, for example:
+
+```shell
+sed -i.bak -e 's#"ns-1"#"ns-2"#g' -e 's#"ns-1/#"ns-2/#g' -e 's#"yd/ns-1/#"yd/ns-2/#g' csts.json crts.json ifs.json
+```
 
 **Step 4: Recreate all resources in the new namespace**
 
@@ -245,8 +256,17 @@ or to specify two Keyrings at once:
 When a new Keyring is created it's usable only by the YellowDog application which created it. A **system-generated password** is also returned as a one-time response, which would allow the Keyring also to be claimed by YellowDog Portal users. For security reasons the password is not displayed, but this behaviour can be overridden using the `--show-keyring-passwords` command-line option, e.g.:
 
 ```shell
+% yd resource create --show-keyring-passwords keyring.json
+...
+Created Keyring 'my-keyring-1' (ydid:keyring:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa): Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
+...
+```
+
+With `--quiet` as well, the command prints the Keyring's ID and its password alone, separated by a space:
+
+```shell
 % yd resource create --quiet --show-keyring-passwords keyring.json
-Keyring 'my-keyring-1': Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
+ydid:keyring:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
 ```
 
 Re-running `yd resource create` on an existing Keyring **updates its description in place**, after confirmation, and leaves its credentials and accessors as they are: the description is the only property the Platform allows to change, and the name is what an existing Keyring is matched on. To recreate a Keyring — for a fresh password, say — remove it with `yd resource remove` and create it again, which loses its credentials.
@@ -308,7 +328,7 @@ An example Compute Source resource specification is found below:
 }
 ```
 
-The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the resource specification file. Variable substitutions using the `__variable__` syntax are applied to the file contents.
+The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the resource specification file. Variable substitutions using the `__{{variable}}__` syntax are applied to the file contents, as they are to an inline `userData`.
 
 In the Compute Source Template `imageId` property, an Image Family name **namespace/family-name** or Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imageId": "yellowdog/yd-agent-docker"`. The `yd resource create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
 
