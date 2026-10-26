@@ -303,7 +303,7 @@ universal options:
                         supplied multiple times
 ```
 
-To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+For a first run from start to finish, a configuration file to a Task run on a Worker Pool, follow **[Getting Started](docs/getting-started.md)**. To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
@@ -387,7 +387,7 @@ Note that there is no fixed 1:1 relationship between Work Requirements and Worke
 
 # Documentation
 
-Beyond this page, the documentation is in the `docs` directory, one page per topic, each introduced below. Machine-readable output and exit codes, under [Usage](#usage) above, have a page of their own too.
+Beyond this page, the documentation is in the `docs` directory, one page per topic, each introduced below, starting with **[Getting Started](docs/getting-started.md)**, a first Work Requirement from start to finish. Machine-readable output and exit codes, under [Usage](#usage) above, have a page of their own too.
 
 ## Configuration
 
