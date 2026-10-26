@@ -58,3 +58,52 @@ The exception is a failure every later request would repeat, an authentication f
 `yd resource create` and `yd resource remove` stop in the same way, recording the resources not attempted as `skipped`, and otherwise carry on past a failed resource and exit with the code their failures share (6 if every one was a resource not found, for example), or 1 if they had different causes. `yd show` likewise exits with the code the IDs it could not show share (6 if none of them exists, 5 if the Application may read none of them), or 1 if their causes differed. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
 
 Exit codes 2 (usage) and 3 (configuration) occur before the command runs, so stdout is empty: a script should check the exit code before parsing stdout.
+
+## Scripting with `--json`
+
+The examples below use [jq](https://jqlang.org) to read the documents, and follow one rule: take the exit code first, then read the document. A failure part-way still emits what was done, so the document is worth reading either way, but only the exit code says whether everything succeeded.
+
+### Submit, Wait, and Report the Failures
+
+```bash
+# Submit, keeping the new Work Requirement's ID; stop if the submission failed
+submitted=$(yd workrequirement submit --json) || exit $?
+WR_ID=$(jq -r '.id' <<<"$submitted")
+
+# Wait for it to finish; yd wait exits non-zero if it did not complete
+if ! yd wait --json "$WR_ID" > wait.json; then
+    echo "Work Requirement ended $(jq -r '.[0].status' wait.json)"
+    # Each failed Task's name, and the type of the last error it recorded
+    yd task list --within "$WR_ID" --status failed --json |
+        jq -r '.[] | "\(.name)\t\((.errors // [])[-1].errorType // "no error recorded")"'
+fi
+```
+
+`yd workrequirement submit --json` emits one object naming what it created, `{"id", "name", "namespace", "type"}`; `yd wait --json` an array of `{"id", "name", "status", "succeeded"}`; and `yd task list --json` the Tasks themselves, each with the `errors` it recorded (see [Finding the Errors Your Tasks Hit](work-requirements.md#finding-the-errors-your-tasks-hit)).
+
+### Act, and See What Happened to Each Target
+
+```bash
+yd workrequirement cancel --yes --json run-a run-b > cancel.json
+code=$?
+# Each target's outcome, with the reason where it failed
+jq -r '.[] | "\(.name): \(.outcome)\(if .error then " (\(.error))" else "" end)"' cancel.json
+case $code in
+    0) ;;                                    # every target cancelled (or skipped)
+    6) echo "no such Work Requirement" ;;    # every failure was a target not found
+    *) exit $code ;;                         # anything else: credentials, connection, ...
+esac
+```
+
+An action command records every target, `outcome` saying what happened to it (`cancelled`, `skipped`, `failed`, or `would cancel` under `--dry-run`), and exits with the code its failures share, so a script can tell a mistyped name (6) from a permission it lacks (5) or a lost connection (8).
+
+### Transfer Files, and Retry the Ones That Failed
+
+```bash
+if ! yd data download --json --into fetched 'results/*' > download.json; then
+    # Each file that did not arrive, and why
+    jq -r '.[] | select(.action == "failed") | "\(.source): \(.error)"' download.json
+fi
+```
+
+Every path given is attempted, so the files that could be downloaded are, and the document records each file, `downloaded` or `failed` with its `error`. The same holds for `yd data upload` and `yd data copy`, and `yd data delete` records each item it deleted.
