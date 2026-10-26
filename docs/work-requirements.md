@@ -8,6 +8,8 @@
    * [Automatic taskTypes Population](#automatic-tasktypes-population)
    * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
       * [Selecting errors (Selection&lt;TaskErrorSelector&gt;)](#selecting-errors-selectiontaskerrorselector)
+      * [Task Error Types](#task-error-types)
+      * [Finding the Errors Your Tasks Hit](#finding-the-errors-your-tasks-hit)
       * [retryPolicy](#retrypolicy)
       * [failurePolicy](#failurepolicy)
       * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
@@ -56,7 +58,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 08:11:21 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:22:37 GMT 2026 -->
 
 <!--te-->
 
@@ -202,8 +204,52 @@ Each `TaskErrorSelector` has three optional fields, each itself a Selection of p
 | Field               | Selection of      | Description                                                                                                |
 |:--------------------|:------------------|:-----------------------------------------------------------------------------------------------------------|
 | `errorTypes`        | strings           | Task error types — e.g. `"ALLOCATION_LOST"`, `"PROCESS_NON_ZERO_EXIT"`, `"TIMED_OUT"`.                     |
-| `statusesAtFailure` | TaskStatus names  | Task status at the time of the error — e.g. `"FAILED"`.                                                    |
+| `statusesAtFailure` | TaskStatus names  | The status the Task was in when the error happened — e.g. `"EXECUTING"`, `"DOWNLOADING"`, `"UPLOADING"`. |
 | `processExitCodes`  | integers          | The Task process exit code — e.g. `137` (OOM), `143` (SIGTERM). Implies `errorType = PROCESS_NON_ZERO_EXIT`. |
+
+### Task Error Types
+
+The values an `errorTypes` Selection matches:
+
+| Error type                | When it is recorded                                                                                     |
+|:--------------------------|:--------------------------------------------------------------------------------------------------------|
+| `ALLOCATION_LOST`         | The Task lost the Worker it was allocated to, as when its instance goes away (a spot instance reclaimed, say). |
+| `RESOURCE_REQUEST_FAILED` | A request for the resources the Task needed failed.                                                     |
+| `TIMED_OUT`               | The Task ran past its timeout (`timeout`, or its Task Group's `taskTimeout`).                           |
+| `UNABLE_START_PROCESS`    | The Agent could not start the Task's process.                                                           |
+| `PROCESS_NON_ZERO_EXIT`   | The Task was `EXECUTING`, and its process exited with a non-zero code (which `processExitCodes` selects on). |
+| `DATA_CLIENT_DISABLED`    | The Task could not use the data client, which was disabled, while `DOWNLOADING` or `UPLOADING`.        |
+| `INPUT_NOT_FOUND`         | A Task data input was not found.                                                                        |
+| `OUTPUT_NOT_FOUND`        | A Task data output was not found.                                                                       |
+| `UNABLE_WRITE_TASK_DATA`  | The Agent could not write the Task's `taskData` to its file.                                            |
+| `UNKNOWN_ERROR`           | Any other error.                                                                                        |
+
+The SDK describes the conditions for `PROCESS_NON_ZERO_EXIT` and `DATA_CLIENT_DISABLED`; the others are described here by what their names record, and the errors your own Tasks have recorded (below) show what each looks like in practice.
+
+### Finding the Errors Your Tasks Hit
+
+A Task keeps every error it has recorded, retried or not, in its `errors` list, so a policy is best written from the errors your Tasks actually hit. `--with-errors` lists the Tasks that recorded one, whatever their status (a Task that completed on a retry included), and `--details` shows each in full:
+
+```shell
+yd task list --within my-work-requirement --with-errors --details
+```
+
+Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` selects on, beside a description, when it happened, and the node and Worker it happened on:
+
+```jsonc
+{
+  "timestamp": "<when it happened>",
+  "error": "<the Agent's description of the error>",
+  "nodeId": "ydid:node:000000:...",
+  "workerId": "ydid:wrkr:000000:...",
+  "errorType": "PROCESS_NON_ZERO_EXIT",
+  "statusAtFailure": "EXECUTING",
+  "processExitCode": 137,
+  "causedFailure": true
+}
+```
+
+`causedFailure` says whether the error was the one that failed the Task. A Task's `retryCount` says how many times it has been retried, and its `resubmittedToTaskId`/`resubmittedFromTaskId` link it to the copy a failure policy made.
 
 ### `retryPolicy`
 
