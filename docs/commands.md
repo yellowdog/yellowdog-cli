@@ -249,7 +249,7 @@ Key options:
 - `--json-raw`/`-j <file>` — submit a 'raw' JSON Work Requirement file; it cannot be combined with a specification file, `--add-to`, `--csv-file`, `--process-csv-only`, `--task-count`, `--task-group-count`, `--empty`, `--validate`, `--task-type`, `--overwrite` or `--content-path`, none of which applies to it
 - `--content-path`/`-F <directory>` — the directory in which files for upload, user data, or CSV data are found; a relative path in the specification (a `taskDataFile`, a CSV file) is found there, while the specification file itself is always named from the current directory
 - `--dry-run`/`-D` — inspect the Work Requirement, Task Groups and Tasks that would be submitted, in JSON format
-- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Specification Schemas](../README.md#specification-schemas))
+- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than submitting it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--json` — emit a JSON object naming the created Work Requirement (`id`, `name`, `namespace` and `type`); with `--dry-run`, the processed specification; refused with `--progress`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -546,7 +546,7 @@ Key options:
 - `--dry-run`/`-D` — inspect the Worker Pool specification that would be submitted, in JSON format
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full; refused without `--dry-run`
 - `--report`/`-r` — report on a test run of the Worker Pool's Compute Requirement Template, without provisioning (see [Test-Running a Dynamic Template](#test-running-a-dynamic-template))
-- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Specification Schemas](../README.md#specification-schemas))
+- `--validate` — check the specification file against its schema and stop, reporting every violation, rather than provisioning it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--json` — emit a JSON object naming the created Worker Pool (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -671,7 +671,7 @@ Key options:
 - `--content-path`/`-F <directory>` — the directory in which files for upload or user data are found
 - `--dry-run`/`-D` — inspect the Compute Requirement specification that would be submitted, in JSON format; the JSON output can itself be used with `yd computerequirement instantiate`
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
-- `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Specification Schemas](../README.md#specification-schemas))
+- `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--follow`/`-f` — follow the Compute Requirement's events after it is created, until it is terminated or Ctrl-C is pressed (its stream stays open while it lives)
 - `--jsonnet-dry-run`/`-J` — print the Jsonnet specification converted to JSON, and stop; it and `--validate` are refused when the Compute Requirement comes from the configuration alone, with no specification file
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
@@ -1003,7 +1003,7 @@ Key options:
 - `--timeout <seconds>` — with `--follow`, stop after this many seconds, failing (exit 1) if any queue has not finished; by default there is no limit
 - `--status` — show the Node Action queue for the selected node(s), or with `--all-nodes` for every running node in the pool; with `--follow`, poll the queues until each is done. `--details`/`-d` shows the full JSON (refused without `--status`)
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
-- `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Specification Schemas](../README.md#specification-schemas))
+- `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--jsonnet-dry-run`/`-J` — print the `--actions` Jsonnet file converted to JSON, and stop; refused with `--status`
 - `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
@@ -1159,7 +1159,7 @@ Key options:
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
 - `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
-- `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Specification Schemas](../README.md#specification-schemas))
+- `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell

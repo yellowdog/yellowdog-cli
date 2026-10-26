@@ -34,11 +34,12 @@
    * [Worker Pools](#worker-pools)
    * [Data Client](#data-client)
    * [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources)
+   * [Checking Specifications](#checking-specifications)
    * [Jsonnet Support](#jsonnet-support)
    * [Command List](#command-list)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 09:32:48 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:19:38 GMT 2026 -->
 
 <!--te-->
 
@@ -325,28 +326,7 @@ See [yd completion](docs/commands.md#yd-completion) for what it completes.
 
 ## Specification Schemas
 
-A Work Requirement, Worker Pool, Compute Requirement, resource, or Node Action specification each has a JSON Schema describing exactly what it accepts, and the `yd schema` command prints, writes or checks them (see [yd schema](docs/commands.md#yd-schema)). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](docs/property-dictionary.md#work-requirement-property-dictionary); every other property is described from the installed YellowDog SDK. Upgrading either the CLI or the SDK can therefore change a schema, so re-run `yd schema --write <dir>` afterwards, or `yd schema --check <dir>` first to see whether it is needed. The TOML configuration file has a schema too, `config`, which every command checks the file against (see [Configuration](docs/configuration.md#configuration)).
-
-Point an editor's JSON Schema support at the files `yd schema --write` produces, to get inline validation and autocomplete while writing a specification. In VS Code, add an entry to `settings.json`:
-
-```json
-"json.schemas": [
-  {
-    "fileMatch": ["*.wr.json", "work-requirement*.json"],
-    "url": "./schemas/work-requirement.schema.json"
-  }
-]
-```
-
-A specification file can instead name its own schema directly, with a `$schema` key at the top of the file; the CLI accepts this key and ignores it, so it is never sent on to the Platform. JetBrains IDEs offer the same association under Preferences → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings.
-
-Every run of `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create` and `yd node action` checks the specification it is given against its schema, and warns of each violation it finds, naming the file and where in it the violation is, without stopping; the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. If a schema cannot be built from the installed SDK, the run warns once that the file went unchecked and carries on as it would without a schema, and `yd schema` with that specification's type shows why.
-
-`--validate` checks the specification and stops there instead of continuing: it prints every violation and exits with a non-zero status, or reports the file valid and exits zero; under `--json` its result is the array of violations, an empty array for a valid file. It is refused wherever there is no specification file to check against a schema, and together with `--json-raw` or `--status`, neither of which names one.
-
-To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it; it is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
-
-A `{{variable}}` substitution, the `{{name::}}` unset form included, is accepted wherever a plain value is otherwise expected, because a specification is checked after its variables have already been substituted, so an unresolved reference is never itself reported as a violation. One consequence of this: a resource's `resource` property, or a Node Action's `type` property, chooses which further properties are checked, so a `{{variable}}` left unresolved there means the rest of that resource or action is not checked either. A Jsonnet or TOML specification is checked after it has been converted to JSON, so an editor validates the JSON that conversion produces rather than the source file itself; run `yd jsonnet2json` on a Jsonnet file to see that JSON.
+Every kind of specification, and the configuration file, has a JSON Schema describing exactly what it accepts. Every run checks the file it is given against its schema and warns of what it finds; `--validate` checks a file and stops, and `yd schema --write` writes the schemas for an editor to check files against as they are written. None of this contacts the Platform. See **[Checking Specifications](docs/schemas.md)**.
 
 ## Applications That Can Read Only Some Namespaces
 
@@ -412,6 +392,10 @@ Configuring the data client, which moves files to and from object storage, is de
 ## Creating, Updating and Removing YellowDog Resources
 
 Creating, updating and removing resources such as templates, Keyrings, Image Families and Applications is described in **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)**.
+
+## Checking Specifications
+
+The specifications' schemas, checking a file with `--validate`, in an editor or in CI, and keeping the schemas current are described in **[Checking Specifications](docs/schemas.md)**.
 
 ## Jsonnet Support
 
