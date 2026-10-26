@@ -902,12 +902,24 @@ yd workrequirement submit --add-to my-work-requirement my-spec.json
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
 
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group; the specification's own properties for that Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied, the existing Task Group keeping its own. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
+- **Matching Task Group name**: the new Tasks are appended to the existing Task Group; the specification's own settings for that Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied, the existing Task Group keeping its own, though the properties its Tasks inherit are taken from it, as below. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
 - **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way, numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
 
 Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
 
 A single `yd workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
+
+What is taken from each part of the specification:
+
+| Part of the specification | For a new Task Group | For an existing Task Group (matched by name) |
+|:---|:---|:---|
+| The Work Requirement's own settings (its name and tag, and its `priority` as the Work Requirement's) | not applied: the target Work Requirement keeps its own | not applied |
+| What the Work Requirement level passes down (`priority`, `workerTags`, `arguments`, `environment` and the other inherited properties) | inherited by the Task Group and its Tasks | inherited by the new Tasks |
+| The Task Group's own settings (`priority`, the run specification: `taskTypes`, `workerTags`, `dependencies` and the rest) | applied, as the Task Group is created | not applied: the existing Task Group keeps its own |
+| What the Task Group level passes down to its Tasks (`arguments`, `environment`, `taskType`, `timeout`, `taskData` and the rest) | inherited by its Tasks | inherited by the new Tasks |
+| The Tasks | added, numbered from 1 | added, numbered on from the existing Tasks, each `taskType` in the Task Group's `taskTypes` (or the submission is refused) |
+
+So a specification written to add Tasks to an existing Task Group can carry the Task-level defaults those Tasks need at its Task Group level, as a new submission would, while the Task Group's scheduling stays as it was submitted.
 
 As with a normal `yd workrequirement submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
 
