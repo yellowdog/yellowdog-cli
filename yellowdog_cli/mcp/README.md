@@ -13,10 +13,11 @@
    * [What Is Not Exposed, and Why](#what-is-not-exposed-and-why)
    * [Namespace, Tag and Variables](#namespace-tag-and-variables)
    * [Logging](#logging)
+   * [Troubleshooting](#troubleshooting)
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:15 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:34:29 GMT 2026 -->
 
 <!--te-->
 
@@ -215,6 +216,14 @@ Nothing is written to stdout, which is the MCP transport; the server logs to std
 It logs its own start, and, for each tool call, the full command line it runs and the child's exit code — which is what a client's server log shows.
 
 Because that command line includes the variables, both the launch-time `-v` values and a tool call's own `variable` argument, a variable holding a secret is logged in full there; keep secrets in the configuration file or the environment instead, neither of which is logged this way.
+
+## Troubleshooting
+
+- **The client cannot start the server.** Run the same command in a terminal: `yd mcp --help` shows whether it runs at all, and `yd doctor`'s `MCP Server` row whether the `mcp` extra is installed and loads (a `FAIL` gives the reason). Without the extra, `yd mcp` exits saying how to install it; install it as you installed the CLI (`uv tool install "yellowdog-cli[mcp]"`, or `uv pip install -U` / `pip install -U "yellowdog-cli[mcp]"` in its virtual environment).
+- **`yd` is not found.** A desktop client starts the server with a minimal `PATH`. Give the full path to `yd` as the `command` (`which yd`, or `where yd` on Windows, prints it).
+- **Every call fails with exit code 3 or 4.** The server's commands take their configuration and credentials from the configuration file named at launch, or from the environment the client started the server with, which is not your shell's: a desktop client does not see `YD_KEY` set in a terminal. Name the configuration file in the server's arguments, as in [Configuring a Client](#configuring-a-client), and run `yd doctor` with that file (`yd doctor -c /path/to/config.toml`) to check it.
+- **A call fails.** Its result carries the command's `exitCode` and `stderr`, and the exit code says what kind of failure it was (see the CLI's [exit codes](../../docs/json-output.md)). The client's log of the server's stderr shows the command line each call ran; running it in a terminal as `yd ...` reproduces it.
+- **A call comes back `stopped: true`.** It ran past its `timeout_seconds` (300 by default, 60 for `yd_follow`) and was stopped, returning what it had done; give a longer `timeout_seconds` (see [Timeouts and Following](#timeouts-and-following)).
 
 ## Security Notes
 
