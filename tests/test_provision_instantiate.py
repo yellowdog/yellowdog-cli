@@ -1085,3 +1085,52 @@ class TestInstantiateReporting:
         assert (
             "The report is for the first of 3 Compute Requirements, of 17 instance(s)"
         ) in out + run.err
+
+
+class TestPropertyOverridesBeatTheSpecification:
+    """
+    '--property workerPool.<key>=<value>' (or computeRequirement.<key>)
+    replaces the specification's own value, where the configuration's value
+    otherwise only fills in one the specification lacks.
+    """
+
+    @staticmethod
+    def _overriding(monkeypatch, module, *keys: str) -> None:
+        monkeypatch.setattr(
+            module,
+            "worker_pool_property_overridden",
+            lambda *toml_keys: any(key in keys for key in toml_keys),
+        )
+
+    def test_provision_takes_an_overridden_value(self, run, wp_file, monkeypatch):
+        self._overriding(monkeypatch, yd_provision, "imagesId", "maxNodes")
+        path = wp_file({"imagesId": "spec-image"}, {"maxNodes": 3, "workerTag": "w"})
+        document = _provision_dry_run(
+            run,
+            path,
+            ConfigWorkerPool(images_id="cli-image", max_nodes=5, max_nodes_set=True),
+        )
+        assert document["requirementTemplateUsage"]["imagesId"] == "cli-image"
+        assert document["provisionedProperties"]["maxNodes"] == 5
+        assert document["provisionedProperties"]["workerTag"] == "w"  # Not overridden
+
+    def test_an_idle_timeout_is_overridden_by_its_toml_name(
+        self, run, wp_file, monkeypatch
+    ):
+        self._overriding(monkeypatch, yd_provision, "idleNodeTimeout")
+        path = wp_file({}, {"idleNodeShutdown": {"enabled": True, "timeout": "PT1M"}})
+        document = _provision_dry_run(run, path, ConfigWorkerPool(idle_node_timeout=7))
+        assert (
+            document["provisionedProperties"]["idleNodeShutdown"]["timeout"] == "PT7M"
+        )
+
+    def test_instantiate_takes_an_overridden_value(self, run, cr_file, monkeypatch):
+        self._overriding(monkeypatch, yd_instantiate, "imagesId")
+        out, _ = run(
+            yd_instantiate,
+            ConfigWorkerPool(images_id="cli-image"),
+            dry_run=True,
+            json_output=True,
+            compute_requirement_file_positional=cr_file({"imagesId": "spec-image"}),
+        )
+        assert json_loads(out)["imagesId"] == "cli-image"

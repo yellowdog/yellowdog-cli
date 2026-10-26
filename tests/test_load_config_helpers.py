@@ -899,3 +899,37 @@ class TestANamedProfileBeatsTheEnvironment:
         config = lc_module.load_config_data_client_for_profile(profile, "")
         assert config.bucket == "prop-bucket"
         assert config.remote == "env-remote:"  # Not overridden: the environment's
+
+
+class TestPropertyOverridesForSpecifications:
+    """
+    property_overrides() gives a specification the '--property' overrides
+    of a section that set a value, the value as the loaded section holds it.
+    """
+
+    def _with(self, monkeypatch, overrides, section):
+        args = MagicMock()
+        args.property_overrides = overrides
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        monkeypatch.setattr(lc_module, "CONFIG_TOML", {"workRequirement": section})
+        monkeypatch.setattr(lc_module, "ensure_config_loaded", lambda *a: None)
+
+    def test_each_path_once_with_the_sections_value(self, monkeypatch):
+        self._with(
+            monkeypatch,
+            [
+                "workRequirement.priority=1",
+                "workRequirement.retryPolicy.maxRetries=4",
+                "workRequirement.priority=2",
+                "workerPool.maxNodes=3",
+            ],
+            {"priority": 2.0, "retryPolicy": {"maxRetries": 4}},
+        )
+        assert lc_module.property_overrides("workRequirement") == [
+            (["priority"], 2.0),
+            (["retryPolicy", "maxRetries"], 4),
+        ]
+
+    def test_an_override_to_null_gives_nothing(self, monkeypatch):
+        self._with(monkeypatch, ["workRequirement.priority=null"], {"priority": None})
+        assert lc_module.property_overrides("workRequirement") == []

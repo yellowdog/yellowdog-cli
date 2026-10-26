@@ -192,7 +192,7 @@ yd workrequirement submit --property 'workRequirement.taskCount=3' \
           --property 'workRequirement.priority=1.5'
 ```
 
-`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. They are command-line values, so they also take precedence over environment variables: `--property common.namespace=myproject` is used whatever `YD_NAMESPACE` holds, and `--property dataClient.bucket=b` whatever `YD_DATA_CLIENT_BUCKET` holds. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. An override to `null` removes the file's value without supplying one, so an environment variable then applies. `{{variable}}` substitutions within values are resolved in the normal way.
+`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. An override in `workRequirement`, `workerPool` or `computeRequirement` also replaces a specification file's own value for the property, wherever the specification sets it (each replacement is reported as the command starts), so `--property workRequirement.priority=5` is the priority however the specification sets it; a longer path, such as `workRequirement.retryPolicy.maxRetries`, replaces only that part of the property. They are command-line values, so they also take precedence over environment variables: `--property common.namespace=myproject` is used whatever `YD_NAMESPACE` holds, and `--property dataClient.bucket=b` whatever `YD_DATA_CLIENT_BUCKET` holds. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. An override to `null` removes the file's value without supplying one, so an environment variable then applies. `{{variable}}` substitutions within values are resolved in the normal way.
 
 Use `--dry-run` to verify the effect of an override before submitting:
 
@@ -229,8 +229,8 @@ A setting can come from several places at once. The table gives each source's ra
 |:---|:---:|:---:|:---:|:---:|
 | The setting's own command-line option: `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret`, `--url`; `--remote`, `--bucket`, `--prefix`; `--task-count`, `--target` and the like | 1 | — | 1 | 1 |
 | `--variable`/`-v`, or `--property common.variables.<name>=<value>` | — | 1 | — | — |
-| `--property <section>.<key>=<value>` | 2 | — | 2 | 3 |
-| A specification file's own value (a Work Requirement, Worker Pool or Compute Requirement) | — | — | — | 2 |
+| `--property <section>.<key>=<value>` | 2 | — | 2 | 2 |
+| A specification file's own value (a Work Requirement, Worker Pool or Compute Requirement) | — | — | — | 3 |
 | The configuration file chosen with `--config`/`-c`, and the file it imports with `importCommon` | 3 | 2 | 3 | 4 |
 | A field the selected data client profile sets itself | — | — | 3 | — |
 | The environment: `YD_KEY`, `YD_NAMESPACE` and the others, `YD_VAR_*`, `YD_DATA_CLIENT_*` | 4 | 3 | 4 | — |
@@ -245,4 +245,4 @@ Some notes on the columns:
 - **`[common]`**: the reserved `{{namespace}}`, `{{tag}}`, `{{key}}`, `{{secret}}` and `{{url}}` variables always hold the values this column chooses. `--no-config` (`--nc`) leaves out every configuration file row.
 - **Variables**: the default variables (`{{username}}`, `{{date}}`, `{{random}}` and the others) are the last row. A `{{env:NAME}}` substitution reads the environment variable directly and takes no part in the order.
 - **`[dataClient]`**: the profile itself is chosen by `--data-client-profile`/`--profile`, else `YD_DATA_CLIENT`. For the commands other than `yd data`, the `{{dataClient.*}}` variables come from the configuration file alone (with any `--property` override), not from the environment or the `yd data` options.
-- **Other sections**: these have no environment variables. A `--property` override replaces the configuration file's value, so it wins over the file but not over a specification file's own value, which the configuration only fills in where the specification has none. Most command-line options win over the specification too, as each option's description says; `--task-type` is the exception, setting the configuration's `taskType`, which a specification's own `taskType` replaces.
+- **Other sections**: these have no environment variables. A `--property` override wins over a specification file's own value wherever the specification sets the property: at the Work Requirement, Task Group and Task levels alike, and in a Worker Pool or Compute Requirement specification. Where the specification does not set it, the configuration's value, the override included, fills it in, as ever. `name` and `tag`, which are each level's own, are replaced at the Work Requirement level only. Most command-line options win over the specification too, as each option's description says; `--task-type` is the exception, setting the configuration's `taskType`, which a specification's own `taskType` replaces.

@@ -25,6 +25,7 @@ from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
+    worker_pool_property_overridden,
 )
 from yellowdog_cli.utils.misc_utils import add_batch_number_postfix, link_entity
 from yellowdog_cli.utils.printing import (
@@ -259,24 +260,35 @@ def _merge_into_template_usage(
 ) -> None:
     """
     Insert the configuration's values into a specification's
-    'requirementTemplateUsage' where it has none, and '--target' over its own.
+    'requirementTemplateUsage' where it has none, or where '--property' gave
+    one (each value's TOML names), and '--target' over its own.
     """
-    for key, value in [
-        ("requirementName", name),
-        ("requirementNamespace", ctx.config.namespace),
-        ("requirementTag", requirement_tag(CONFIG_WP, ctx.config.name_tag)),
-        (TEMPLATE_ID, CONFIG_WP.template_id),
-        (IMAGES_ID, CONFIG_WP.images_id),
-        (INSTANCE_TAGS, CONFIG_WP.instance_tags),
+    for key, value, toml_keys in [
+        ("requirementName", name, ("name",)),
+        ("requirementNamespace", ctx.config.namespace, ()),
+        (
+            "requirementTag",
+            requirement_tag(CONFIG_WP, ctx.config.name_tag),
+            ("requirementTag",),
+        ),
+        (TEMPLATE_ID, CONFIG_WP.template_id, (TEMPLATE_ID,)),
+        (IMAGES_ID, CONFIG_WP.images_id, (IMAGES_ID,)),
+        (INSTANCE_TAGS, CONFIG_WP.instance_tags, (INSTANCE_TAGS,)),
     ]:
-        if reqt_template_usage.get(key) is None and value is not None:
+        if value is not None and (
+            reqt_template_usage.get(key) is None
+            or worker_pool_property_overridden(*toml_keys)
+        ):
             print_info(
                 f"Setting 'requirementTemplateUsage.{key}': '{shown_value(value)}'"
             )
             reqt_template_usage[key] = value
 
-    # The TOML user data is read only if the specification has none
-    if reqt_template_usage.get(USERDATA) is None:
+    # The TOML user data is read only if the specification has none, or
+    # '--property' gave it
+    if reqt_template_usage.get(USERDATA) is None or worker_pool_property_overridden(
+        USERDATA, "userDataFile", "userDataFiles"
+    ):
         user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
         if user_data is not None:
             # Its source and size, never the script itself
@@ -295,7 +307,9 @@ def _merge_into_template_usage(
             reqt_template_usage[TARGET_INSTANCE_COUNT] = ctx.args.target
     elif (
         reqt_template_usage.get(TARGET_INSTANCE_COUNT) is None
-        and CONFIG_WP.target_instance_count is not None
+        or worker_pool_property_overridden(TARGET_INSTANCE_COUNT)
+    ) and (
+        CONFIG_WP.target_instance_count is not None
         and CONFIG_WP.target_instance_count_set is True
     ):
         print_info(
@@ -308,26 +322,37 @@ def _merge_into_template_usage(
 def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
     """
     Insert the configuration's values into a specification's
-    'provisionedProperties' where it has none.
+    'provisionedProperties' where it has none, or where '--property' gave
+    one (each value's TOML names).
     """
-    for key, value in [
-        (WORKER_TAG, CONFIG_WP.worker_tag),
+    for key, value, toml_keys in [
+        (WORKER_TAG, CONFIG_WP.worker_tag, (WORKER_TAG,)),
         (
             NODE_BOOT_TIMEOUT,
             iso_timedelta_format(timedelta(minutes=CONFIG_WP.node_boot_timeout)),
+            (NODE_BOOT_TIMEOUT,),
         ),
         (
             "idleNodeShutdown",
             auto_shutdown_json(auto_shutdown(CONFIG_WP.idle_node_timeout)),
+            ("idleNodeTimeout",),
         ),
         (
             "idlePoolShutdown",
             auto_shutdown_json(auto_shutdown(CONFIG_WP.idle_pool_timeout)),
+            ("idlePoolTimeout",),
         ),
-        ("createNodeWorkers", _node_workers_json(_node_workers())),
-        ("metricsEnabled", CONFIG_WP.metrics_enabled),
+        (
+            "createNodeWorkers",
+            _node_workers_json(_node_workers()),
+            ("workersPerNode", "workersPerVCPU", "workersCustomCommand"),
+        ),
+        ("metricsEnabled", CONFIG_WP.metrics_enabled, ("metricsEnabled",)),
     ]:
-        if provisioned_properties.get(key) is None and value is not None:
+        if value is not None and (
+            provisioned_properties.get(key) is None
+            or worker_pool_property_overridden(*toml_keys)
+        ):
             print_info(f"Setting 'provisionedProperties.{key}': '{shown_value(value)}'")
             provisioned_properties[key] = value
 
@@ -337,9 +362,8 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
     ]:
         if (
             provisioned_properties.get(key) is None
-            and value is not None
-            and is_set is True
-        ):
+            or worker_pool_property_overridden(key)
+        ) and (value is not None and is_set is True):
             print_info(f"Setting 'provisionedProperties.{key}': '{value}'")
             provisioned_properties[key] = value
 

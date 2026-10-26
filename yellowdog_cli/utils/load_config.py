@@ -309,6 +309,44 @@ def _set_by_property_override(*path: str) -> bool:
     return value_set
 
 
+def worker_pool_property_overridden(*keys: str) -> bool:
+    """
+    Whether a '--property workerPool.<key>' or 'computeRequirement.<key>'
+    override gives one of 'keys' (the TOML names of what fills one
+    specification property) a value: a command-line value, which replaces
+    a Worker Pool or Compute Requirement specification's own.
+    """
+    return any(
+        _set_by_property_override(section, key)
+        for section in (WORKER_POOL_SECTION, COMPUTE_REQUIREMENT_SECTION)
+        for key in keys
+    )
+
+
+def property_overrides(section: str) -> list[tuple[list[str], Any]]:
+    """
+    The '--property <section>.<path>=<value>' overrides that give a value,
+    each path once (the last given wins) in the order first given, each with
+    its value as the loaded section holds it, its variables substituted:
+    for a specification to take, where a command-line value beats a file's.
+    """
+    ensure_config_loaded()
+    paths: dict[tuple[str, ...], None] = {}
+    for override in getattr(_ARGS, "property_overrides", None) or []:
+        lhs, equals, _ = override.partition("=")
+        name, _, rest = lhs.partition(".")
+        if equals and name == section and rest:
+            paths[tuple(rest.split("."))] = None
+    found = []
+    for path in paths:
+        value: Any = CONFIG_TOML.get(section, {})
+        for part in path:
+            value = value.get(part) if isinstance(value, dict) else None
+        if value is not None:
+            found.append((list(path), value))
+    return found
+
+
 def _register_variable_override(override: str, name: str, value: object) -> None:
     """
     A '--property common.variables.<name>=<value>' override, registered as

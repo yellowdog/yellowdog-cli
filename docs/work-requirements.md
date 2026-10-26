@@ -119,6 +119,8 @@ This means that a property set in the `workRequirement` section of the TOML file
 
 Overridden properties are also inherited at lower levels in the hierarchy. E.g. if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
 
+A `--property workRequirement.<key>=<value>` override is the exception to lower levels winning: it replaces the property wherever the JSON document sets it, at every level, as a command-line value beats a file's (see [Which Value Wins](configuration.md#which-value-wins)).
+
 ### Stopping Inheritance with `null`
 
 To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, exactly as if it had been set nowhere: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on, as the [Property Dictionary](property-dictionary.md) gives them. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:

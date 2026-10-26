@@ -21,6 +21,7 @@ from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import (
     load_config_worker_pool,
     warn_of_undefined_worker_pool_variables,
+    worker_pool_property_overridden,
 )
 from yellowdog_cli.utils.misc_utils import (
     add_batch_number_postfix,
@@ -332,13 +333,17 @@ def _create_compute_requirement_from_json(
     # Some values are configurable via the TOML configuration file;
     # values in the JSON file override values in the TOML file, and
     # '--target' overrides both
-    for key, value in [
-        ("requirementName", name),
-        ("requirementNamespace", ctx.config.namespace),
-        ("requirementTag", requirement_tag(CONFIG_WP, ctx.config.name_tag)),
-        ("templateId", CONFIG_WP.template_id),
-        ("imagesId", CONFIG_WP.images_id),
-        ("instanceTags", CONFIG_WP.instance_tags),
+    for key, value, toml_keys in [
+        ("requirementName", name, ("name",)),
+        ("requirementNamespace", ctx.config.namespace, ()),
+        (
+            "requirementTag",
+            requirement_tag(CONFIG_WP, ctx.config.name_tag),
+            ("requirementTag",),
+        ),
+        ("templateId", CONFIG_WP.template_id, ("templateId",)),
+        ("imagesId", CONFIG_WP.images_id, ("imagesId",)),
+        ("instanceTags", CONFIG_WP.instance_tags, ("instanceTags",)),
         # Only a count the configuration actually gives: its default, 0, is
         # no count at all, and would provision an empty Compute Requirement
         (
@@ -348,8 +353,13 @@ def _create_compute_requirement_from_json(
                 if CONFIG_WP.target_instance_count_set
                 else None
             ),
+            ("targetInstanceCount",),
         ),
-        ("maintainInstanceCount", CONFIG_WP.maintain_instance_count),
+        (
+            "maintainInstanceCount",
+            CONFIG_WP.maintain_instance_count,
+            ("maintainInstanceCount",),
+        ),
         (
             "autoShutdown",
             (
@@ -357,14 +367,20 @@ def _create_compute_requirement_from_json(
                 if CONFIG_WP.auto_shutdown_timeout is None
                 else auto_shutdown_json(auto_shutdown(CONFIG_WP.auto_shutdown_timeout))
             ),
+            ("autoShutdownTimeout",),
         ),
     ]:
-        if cr_data.get(key) is None and value is not None:
+        if value is not None and (
+            cr_data.get(key) is None or worker_pool_property_overridden(*toml_keys)
+        ):
             print_info(f"Setting '{key}' to '{shown_value(value)}'")
             cr_data[key] = value
 
-    # The TOML user data is read only if the specification has none
-    if cr_data.get("userData") is None:
+    # The TOML user data is read only if the specification has none, or
+    # '--property' gave it
+    if cr_data.get("userData") is None or worker_pool_property_overridden(
+        "userData", "userDataFile", "userDataFiles"
+    ):
         user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
         if user_data is not None:
             # Its source and size, never the script itself

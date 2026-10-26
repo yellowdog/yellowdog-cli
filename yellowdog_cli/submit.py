@@ -45,6 +45,7 @@ from yellowdog_cli.utils.limits import (
 from yellowdog_cli.utils.load_config import (
     config_file_dir,
     load_config_work_requirement,
+    property_overrides,
 )
 from yellowdog_cli.utils.misc_utils import (
     format_yd_name,
@@ -72,6 +73,7 @@ from yellowdog_cli.utils.property_names import (
     TASK_COUNT,
     TASK_GROUPS,
     TASKS,
+    WORK_REQUIREMENT_SECTION,
     WR_TAG,
 )
 from yellowdog_cli.utils.results import record_document, record_entity
@@ -83,6 +85,7 @@ from yellowdog_cli.utils.specs.loading import (
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
+    apply_property_overrides,
     formatted_number_str,
     update_config_work_requirement_object,
 )
@@ -423,6 +426,9 @@ def _specification(run: _Submission, wr_data: dict | None) -> dict:
         )
     check_dict(wr_data)
     check_task_groups(wr_data)
+    # Before 'taskType' is promoted to 'taskTypes', which an override of it
+    # must reach
+    apply_property_overrides(wr_data, property_overrides(WORK_REQUIREMENT_SECTION))
     promote_task_type(wr_data)
     return wr_data
 

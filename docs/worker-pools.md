@@ -250,7 +250,7 @@ The next example is of a more complex JSON specification of an Advanced Worker P
 
 ### TOML Properties Inherited by Worker Pool JSON Specifications
 
-When a JSON Worker Pool specification is used, the following properties from the `config.toml` file will be inherited if the value is absent in the JSON file:
+When a JSON Worker Pool specification is used, the following properties from the `config.toml` file will be inherited if the value is absent in the JSON file, and replace the JSON file's own value where `--property workerPool.<key>=<value>` gave them (see [Which Value Wins](configuration.md#which-value-wins)):
 
 **Properties Inherited within the `requirementTemplateUsage` property**
 
