@@ -1431,7 +1431,9 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         worker_pool_data_file, compute_requirement_data_file = _wp_data_files(
             wp_section
         )
-        workers_per_vcpu = cast(int | None, _number(wp_section, WORKERS_PER_VCPU, int))
+        workers_per_vcpu = cast(
+            float | None, _number(wp_section, WORKERS_PER_VCPU, float)
+        )
         cr_batch_size = _wp_batch_size(wp_section)
 
         return ConfigWorkerPool(

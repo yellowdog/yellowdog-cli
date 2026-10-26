@@ -120,4 +120,4 @@ class ConfigWorkerPool:
     worker_tag: str | None = None
     workers_custom_command: str | None = None
     workers_per_node: int = 1
-    workers_per_vcpu: int | None = None
+    workers_per_vcpu: float | None = None

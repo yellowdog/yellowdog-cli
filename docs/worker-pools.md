@@ -77,7 +77,7 @@ The following properties are available:
 | `workerPoolData`        | The name of a file containing a JSON specification of a Worker Pool (see [Worker Pool JSON](#worker-pool-specification-using-json-documents)).    |                         |
 | `workerTag`             | The Worker Tag to publish for each of the Workers on the node(s).                                                                                 |                         |
 | `workersPerNode`        | The number of Workers to establish on each node in the Worker Pool. Mutually exclusive with `workersPerVCPU` and `workersCustomCommand`.          | `1`                     |
-| `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool. Mutually exclusive with `workersPerNode` and `workersCustomCommand`. |                         |
+| `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool, which may be a fraction (`0.5` is one Worker for every two vCPUs). Mutually exclusive with `workersPerNode` and `workersCustomCommand`. |                         |
 | `workersCustomCommand`  | A command run on the node to determine the number of Workers to establish. Mutually exclusive with `workersPerNode` and `workersPerVCPU`.         |                         |
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families

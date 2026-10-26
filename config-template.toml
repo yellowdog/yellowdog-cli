@@ -436,7 +436,8 @@
     # Optional — default: 1
     # workersPerNode = 1
 
-    # Number of workers per vCPU.
+    # Number of workers per vCPU; a fraction is allowed (0.5 is one Worker
+    # for every two vCPUs).
     # Mutually exclusive with workersPerNode and workersCustomCommand.
     # Optional
     # workersPerVCPU = 1

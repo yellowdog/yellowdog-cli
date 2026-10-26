@@ -600,7 +600,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property("workersPerNode", INT_CAST, description="Workers started per node"),
     Property(
         "workersPerVCPU",
-        INT_CAST,
+        FLOAT_CAST,
         description="Workers started per vCPU, in place of workersPerNode",
     ),
     Property("workerTag", STR, description="the tag the pool's Workers carry"),

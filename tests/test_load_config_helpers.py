@@ -12,7 +12,8 @@ Covers here:
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
   - load_config_worker_pool: name type checking; maxNodes and
-    computeRequirementBatchSize cast with int(), the batch size at least 1
+    computeRequirementBatchSize cast with int(), the batch size at least 1;
+    workersPerVCPU with float(), keeping a fraction
   - _resolve_section_variables: a circular variable reference in a section
     is reported and exits
   - load_config_data_client_destination: yd-copy's --dst-profile and
@@ -585,6 +586,13 @@ class TestLoadConfigWorkerPool:
         result = self._call(toml_wp_section={"maxNodes": value})
         assert result.max_nodes == expected
         assert isinstance(result.max_nodes, int)
+
+    @pytest.mark.parametrize("value, expected", [(0.5, 0.5), ("1.5", 1.5), (2, 2.0)])
+    def test_workers_per_vcpu_keeps_a_fraction(self, value, expected):
+        # The SDK's per-vCPU target is a float: half a Worker per vCPU is one
+        # Worker on a 2-vCPU node, where int() would have made it none
+        result = self._call(toml_wp_section={"workersPerVCPU": value})
+        assert result.workers_per_vcpu == expected
 
     def test_batch_size_is_cast(self):
         result = self._call(toml_wp_section={"computeRequirementBatchSize": "50"})
