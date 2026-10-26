@@ -4,9 +4,15 @@
    * [Remote Paths](#remote-paths)
    * [Named Profiles](#named-profiles)
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
+   * [Worked Examples](#worked-examples)
+      * [Trying It Out on Your Own Machine](#trying-it-out-on-your-own-machine)
+      * [Amazon S3](#amazon-s3)
+      * [An SFTP Server, Named in rclone.conf](#an-sftp-server-named-in-rcloneconf)
+      * [Several Stores, One Configuration](#several-stores-one-configuration)
+   * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:03:54 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:06:03 GMT 2026 -->
 
 <!--te-->
 
@@ -122,3 +128,126 @@ Example use in a `userdata` script (double underscores required):
 #!/bin/bash
 rclone copy __{{dataClient.prod.remote}}__:__{{dataClient.prod.bucket}}__/configs /tmp/configs
 ```
+
+## Worked Examples
+
+### Trying It Out on Your Own Machine
+
+rclone's `local` backend makes a directory on your own machine the data store, so the commands can be tried with no cloud account and no credentials. In `config.toml`:
+
+```toml
+[common]
+namespace = "getting-started"
+tag = "first-run"
+
+[dataClient]
+remote = "store,type=local"
+bucket = "/tmp/yd-store/main"
+
+[dataClient.backup]
+bucket = "/tmp/yd-store/backup"
+```
+
+The remote is an inline connection string named `store`, and the bucket an absolute directory. The prefix is the default, `{{namespace}}/{{tag}}`, so every relative path is under `/tmp/yd-store/main/getting-started/first-run`:
+
+```shell
+# Upload a directory: to store:/tmp/yd-store/main/getting-started/first-run/inputs
+yd data upload --recursive inputs
+
+# List what is under the prefix, then one directory in full
+yd data list
+yd data list --recursive --long inputs
+
+# Download one file into the current directory, then every match of a wildcard into results/
+yd data download inputs/b.csv
+yd data download --into results 'inputs/*.txt'
+
+# Copy the directory to the backup profile's bucket, under the same prefix
+yd data copy --recursive --dst-profile backup inputs inputs
+yd data list --profile backup --recursive inputs
+
+# Reach a path outside the bucket and prefix, by the remote's own name
+yd data list store:/tmp/yd-store/other
+
+# See what a deletion would remove, then remove it (asking first)
+yd data delete --dry-run --recursive inputs
+yd data delete --recursive inputs
+```
+
+The recursive listing of `inputs` shows the tree:
+
+```text
+├── sub/
+│   └── c.txt  6  2026-10-26T10:04:57
+├── a.txt  4  2026-10-26T10:04:57
+└── b.csv  8  2026-10-26T10:04:57
+```
+
+Each command first names the full remote path it works on (`Uploading 'inputs' → 'store:/tmp/yd-store/main/getting-started/first-run/inputs'`), which is the quickest way to see where a relative path lands. The same commands work unchanged against any of the stores below: only `[dataClient]` differs.
+
+### Amazon S3
+
+```toml
+[dataClient]
+remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"
+bucket = "my-bucket"
+```
+
+`env_auth=true` has rclone find the AWS credentials as the AWS tools do (the `AWS_*` environment variables, `~/.aws/credentials`, or an instance's role), so the configuration file holds none.
+
+### An SFTP Server, Named in `rclone.conf`
+
+A remote defined in rclone's own configuration file keeps its credentials there, and `[dataClient]` names it:
+
+```ini
+# ~/.config/rclone/rclone.conf
+[files]
+type = sftp
+host = files.example.com
+user = me
+key_file = ~/.ssh/id_ed25519
+connections = 8
+```
+
+```toml
+[dataClient]
+remote = "files"
+bucket = "/data/yellowdog"
+```
+
+`bucket` is the server directory under which the prefix is added, absolute because it begins with `/`. `connections` caps how many connections rclone opens at once, which an SFTP server may limit (see the note on servers that limit connections, above).
+
+### Several Stores, One Configuration
+
+Each store can be a profile, and a command picks one with `--profile`, or `YD_DATA_CLIENT` for every command in a shell:
+
+```toml
+[dataClient]
+prefix = "{{namespace}}/{{tag}}"
+
+[dataClient.s3]
+remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"
+bucket = "my-bucket"
+
+[dataClient.files]
+remote = "files"
+bucket = "/data/yellowdog"
+```
+
+```shell
+yd data upload --profile s3 --recursive inputs
+yd data copy --profile s3 --dst-profile files --recursive results results
+```
+
+A Work Requirement can name the same stores through the `{{dataClient.<profile>.*}}` variables (see [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)).
+
+## Troubleshooting
+
+Before anything else, run `yd doctor`: its `Data client profile` rows show, for `[dataClient]` and for each profile, the remote (an inline string's credentials withheld) and the full path relative paths are taken from, without contacting anything, and its `Remote reachable` row checks that the remote can be reached at that path. Adding `--dry-run` to a command shows what it would do, and the paths it would use, without doing it.
+
+- **`RCLONE_CONFIG names an rclone configuration file that does not exist`**, or **`No rclone configuration file found`**: a remote given by name is looked up in `rclone.conf`, which was not found. Set `RCLONE_CONFIG` to the file, create it where the message says it looked, or give the remote as an inline connection string instead.
+- **`didn't find section in config file ("myremote")`**: `rclone.conf` was found but defines no remote of that name. The binary `--which-rclone` reports lists the names it does define: `<that binary> listremotes`.
+- **`... does not exist`**: the path is relative to the bucket and prefix, which may not be where the file is. The full path is in the message; `yd data list` (with `--recursive`) shows what is there, `--no-prefix` leaves the prefix out, and a path beginning with the remote's name and a colon is used as given.
+- **Which rclone is running**: `yd data list --which-rclone` (or any `yd data` verb) prints the binary's path and version, and `--upgrade-rclone` downloads the latest into the CLI's cache. One on your `PATH` is used in preference and never touched, so while it is there the downloaded copy, upgraded or not, is not the one that runs.
+- **Transfers failing or slowing on an SFTP or FTP server**: the server may be refusing connections; cap them in the remote (see the note on servers that limit connections, above).
+- **A download refused on Windows** because the remote item's name holds a character Windows does not allow in a file name: give `--destination` to name the local file.
