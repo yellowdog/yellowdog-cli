@@ -9,9 +9,10 @@
       * [Overriding Arbitrary TOML Properties on the Command Line](#overriding-arbitrary-toml-properties-on-the-command-line)
       * [Support for .env Files](#support-for-env-files)
       * [Variable Substitutions in Common Properties](#variable-substitutions-in-common-properties)
+   * [Which Value Wins](#which-value-wins)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:12 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:03:54 GMT 2026 -->
 
 <!--te-->
 
@@ -22,22 +23,28 @@ The configuration file has four possible sections:
 
 1. A `common` section that contains required security properties for interacting with the YellowDog platform, sets the Namespace in which YellowDog assets and objects are created, and a Tag that is used for tagging and naming assets and objects.
 2. A `workRequirement` section that defines the properties of Work Requirements to be submitted to the YellowDog platform.
-3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required.)
+3. A `workerPool` section that defines the properties of Provisioned Worker Pools to be created using the YellowDog platform. (This can be substituted by a `computeRequirement` section if instance provisioning is all that's required; both may be present, and are merged, a property set in both being an error.)
 4. A `dataClient` section that configures the remote data store used by the `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` commands.
+
+Each section's properties are described with what they configure: [Work Requirements](work-requirements.md), [Worker Pools](worker-pools.md) and the [data client](data-client.md).
 
 There is a documented template TOML file provided in [config-template.toml](../config-template.toml), containing the main properties that can be configured. To start with the `[common]` properties alone, run `yd init`, which asks for them and writes a `config.toml`, or with `--user` your own file (see [yd init](commands.md#yd-init)).
 
-The name of the configuration file can be supplied in two different ways:
+The configuration file is chosen in this order:
 
 1. On the command line, using the `--config` or `-c` options, e.g.:<br>`yd workrequirement submit -c jobs/config_1.toml`
 2. If not supplied, the commands look for a `config.toml` file in the current directory
 3. If there is none, they read your own configuration file, `~/.config/yellowdog/config.toml` (or `$XDG_CONFIG_HOME/yellowdog/config.toml` where `XDG_CONFIG_HOME` is set, on every platform), so that one set of credentials and defaults serves every directory without a `config.toml` of its own
 
-Your own file is read exactly as a `config.toml` in the current directory would be: environment variables take precedence over it, and paths in it are relative to its directory. A `config.toml` in the current directory, or one named with `--config`, is read in its place, never as well.
+Your own file is read exactly as a `config.toml` in the current directory would be: environment variables take precedence over it, and paths in it are relative to its directory (bar `certificates`, which is relative to the current directory, as in any configuration file). A `config.toml` in the current directory, or one named with `--config`, is read in its place, never as well.
 
 Run `yd doctor` to see which configuration file was found and where each value came from.
 
-Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer`. A property that no section reads, or one that is no longer supported, is an error. The data client commands (`yd data upload`, `yd data download`, `yd data delete`, `yd data list`, `yd data copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd schema config` prints the schema itself. `yd doctor` reports the same problems in its `Config schema` row.
+`--no-config` (or `--nc`) reads no configuration file at all, even one named with `--config`: the command takes its configuration from the command line and the environment alone, and `{{config_dir_abs}}` and `{{config_dir_name}}` are not defined.
+
+Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping: a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it (e.g., `minNodes` under `[workRequirement]`), or an unknown property given with `--property`. Each warning names the file and the property, e.g., `'config.toml': workerPool.maxNodes: must be an integer (see yd schema config)`. Under `--quiet`, which suppresses warnings, the check is not made at all. An unknown property name is an error, as is a retired one, the error naming the property that replaces it.
+
+The data client commands (`yd data upload`, `yd data download`, `yd data delete`, `yd data list`, `yd data copy`) check only the `[common]` and `[dataClient]` sections, the only ones they read. A `{{variable}}` substitution is accepted wherever a value is expected, a value such as `idleNodeTimeout = "5"` that the CLI converts to a number is accepted as it stands, and `yd schema config` prints the schema itself. `yd doctor` reports the same problems in its `Config schema` row.
 
 ## Naming Rules
 
@@ -45,12 +52,14 @@ All entity names used within the YellowDog Platform must comply with the followi
 
 - Names can only contain the following: lowercase letters, digits, hyphens and underscores (note that spaces are not permitted)
 - Names must start with a letter
-- Names must end with a letter or digit
+- Names must end with a letter or digit (which the adjustment below does not correct: a name ending `-` or `_` is passed on as it is)
 - Name length must be 60 characters or fewer
 
 These restrictions apply to entities including Namespaces, Tags, Work Requirements, Task Groups, Tasks, Worker Pools, and Compute Requirements, and also apply to entities that are currently used indirectly by these commands, including Usernames, Credentials, Keyrings, Compute Sources and Compute Templates.
 
-Work Requirement, Task Group and Task names supplied to `yd workrequirement submit` are automatically adjusted to comply with these rules: characters are switched to lower case, spaces and full stops become underscores, forward slashes become hyphens, any remaining invalid characters are discarded, and the result is truncated to 60 characters. Discarding characters and truncating are each warned of the first time they change a name in a run (Task names, formatted one per Task, would otherwise give a warning each); the other adjustments are not. Task Group names must be unique once adjusted: with `taskGroupCount`, include `{{task_group_number}}` in the name. If the adjusted name doesn't start with a letter it is prefixed with `yd_` — e.g. `2024-run` becomes `yd_2024-run` — and a warning is printed naming both the supplied name and the one that will be used in its place. A name left with no usable characters at all is an error rather than something to correct, as is a name that isn't a string: `name = 123` is reported as a configuration error.
+Work Requirement, Task Group and Task names supplied to `yd workrequirement submit` are automatically adjusted to comply with these rules: characters are switched to lower case, spaces and full stops become underscores, forward slashes become hyphens, any remaining invalid characters are discarded, and the result is truncated to 60 characters. Discarding characters and truncating are each warned of the first time they change a name in a run (Task names, formatted one per Task, would otherwise give a warning each); the other adjustments are not. Task Group names must be unique once adjusted: with `taskGroupCount`, include `{{task_group_number}}` in the name.
+
+If the adjusted name doesn't start with a letter it is prefixed with `yd_` — e.g. `2024-run` becomes `yd_2024-run` — and a warning is printed naming both the supplied name and the one that will be used in its place. A name left with no usable characters at all is an error rather than something to correct, as is a name that isn't a string: `name = 123` is reported as a configuration error.
 
 When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `my-tag_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits. The last two characters are deliberately separated by a hyphen because they are not part of the timestamp: they are what stops commands launched simultaneously, from `yd commander` or from a shell loop, generating the same name. The generated suffix occupies 18 characters, so the tag must be 42 characters or fewer.
 
@@ -72,7 +81,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
 | `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
-| `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable) |
+| `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable); a relative path is relative to the current directory, not the configuration file's |
 
 An example `common` section is shown below:
 
@@ -106,6 +115,8 @@ This could be imported into the main configuration as follows:
     tag = "testing-{{username}}"
 ```
 
+The imported file's path is relative to the main configuration file's directory, and may contain `{{variable}}` substitutions. Only its `[common]` section is read, and an `importCommon` within it is ignored: imports do not chain.
+
 Properties set in the imported file are superseded by any of the same properties that are present in the main configuration file, and so are its `[common.variables]`: a variable both files define takes the main file's value, whether or not the main file was chosen with `--config`.
 
 ### HTTPS Proxy Support
@@ -118,7 +129,7 @@ The proxy that a command ends up using is reported only under `--debug`, whether
 
 ### Specifying Common Properties using the Command Line or Environment Variables
 
-All the common properties can be set using command-line options, or in environment variables.
+The common properties can be set using command-line options, or in environment variables, as listed below; `usePAC` has an option (`--pac`) but no environment variable, `readTimeout` an environment variable but no option, and `certificates`, `importCommon` and `variables` neither.
 
 The **command-line options** are as follows:
 
@@ -140,7 +151,7 @@ The **environment variables** are as follows:
 - `YD_TAG`
 - `YD_READ_TIMEOUT` (`readTimeout`; there is no command-line option, but `--property common.readTimeout=<seconds>` sets it)
 
-When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file.
+When setting the value of the above properties, a property set on the command line takes precedence over one set via an environment variable, and both take precedence over a value set in the configuration file; [Which Value Wins](#which-value-wins) gives the whole order.
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its contents take precedence over environment variables (but not over properties set on the command line). This makes it easy to direct a command at a specific configuration without first having to unset environment variables.
 
@@ -181,7 +192,7 @@ yd workrequirement submit --property 'workRequirement.taskCount=3' \
           --property 'workRequirement.priority=1.5'
 ```
 
-`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. `{{variable}}` substitutions within values are resolved in the normal way.
+`--property` overrides are applied after the TOML file is loaded, so they take effect regardless of what the file contains. An override in `workRequirement`, `workerPool` or `computeRequirement` also replaces a specification file's own value for the property, wherever the specification sets it (each replacement is reported as the command starts), so `--property workRequirement.priority=5` is the priority however the specification sets it; a longer path, such as `workRequirement.retryPolicy.maxRetries`, replaces only that part of the property. They are command-line values, so they also take precedence over environment variables: `--property common.namespace=myproject` is used whatever `YD_NAMESPACE` holds, and `--property dataClient.bucket=b` whatever `YD_DATA_CLIENT_BUCKET` holds. Specific CLI flags (`--namespace`, `--tag`, etc.) are applied on top of them. An override to `null` removes the file's value without supplying one, so an environment variable then applies. `{{variable}}` substitutions within values are resolved in the normal way.
 
 Use `--dry-run` to verify the effect of an override before submitting:
 
@@ -200,7 +211,7 @@ The `.env` file is located by checking the following locations in order:
 
 When your own configuration file is the one read, the search upward from the current directory comes first, and a `.env` file beside your own file is used only when that finds none.
 
-Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence.
+Entries in the `.env` file will not overwrite existing environment variables — i.e. environment variables take precedence over entries in the `.env` file. This precedence can be reversed by using the `--env-override` command-line option, or by setting the `YD_ENV_OVERRIDE` environment variable (e.g. in `.bashrc`/`.zshrc`) to make `.env` values always take precedence. Any value turns it on except `0`, `false`, `no` and `off`, in any case, which leave it off.
 
 With `--debug`, environment variables sourced from a `.env` file whose names start with `YD` are reported as the command starts. Variables whose names do not start with `YD` are never reported, but they are still applied.
 
@@ -209,3 +220,29 @@ With `--debug`, environment variables sourced from a `.env` file whose names sta
 Note the use of `{{username}}` in the value of the `tag` property example above: this is a **variable substitution** that can optionally be used to insert the login username of the user running the commands. So, for username `abc`, the `tag` would be set to `testing-abc`. This can be helpful to disambiguate multiple users running with the same configuration data.
 
 Variable substitutions are described in detail in [Variable Substitutions](variables.md).
+
+## Which Value Wins
+
+A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `readTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
+
+| Source | `[common]` | Variables | `[dataClient]` | Other sections |
+|:---|:---:|:---:|:---:|:---:|
+| The setting's own command-line option: `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret`, `--url`; `--remote`, `--bucket`, `--prefix`; `--task-count`, `--target` and the like | 1 | — | 1 | 1 |
+| `--variable`/`-v`, or `--property common.variables.<name>=<value>` | — | 1 | — | — |
+| `--property <section>.<key>=<value>` | 2 | — | 2 | 2 |
+| A specification file's own value (a Work Requirement, Worker Pool or Compute Requirement) | — | — | — | 3 |
+| The configuration file chosen with `--config`/`-c`, and the file it imports with `importCommon` | 3 | 2 | 3 | 4 |
+| A field the selected data client profile sets itself | — | — | 3 | — |
+| The environment: `YD_KEY`, `YD_NAMESPACE` and the others, `YD_VAR_*`, `YD_DATA_CLIENT_*` | 4 | 3 | 4 | — |
+| A `.env` file (ranked above the environment with `--env-override` or `YD_ENV_OVERRIDE`) | 5 | 4 | 5 | — |
+| The configuration file found without `--config` (`./config.toml`, or your own), and the file it imports | 6 | 5 | 6 | 4 |
+| The CLI's default | 7 | 6 | 7 | 5 |
+
+Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen.
+
+Some notes on the columns:
+
+- **`[common]`**: the reserved `{{namespace}}`, `{{tag}}`, `{{key}}`, `{{secret}}` and `{{url}}` variables always hold the values this column chooses. `--no-config` (`--nc`) leaves out every configuration file row.
+- **Variables**: the default variables (`{{username}}`, `{{date}}`, `{{random}}` and the others) are the last row. A `{{env:NAME}}` substitution reads the environment variable directly and takes no part in the order.
+- **`[dataClient]`**: the profile itself is chosen by `--data-client-profile`/`--profile`, else `YD_DATA_CLIENT`. For the commands other than `yd data`, the `{{dataClient.*}}` variables come from the configuration file alone (with any `--property` override), not from the environment or the `yd data` options.
+- **Other sections**: these have no environment variables. A `--property` override wins over a specification file's own value wherever the specification sets the property: at the Work Requirement, Task Group and Task levels alike, and in a Worker Pool or Compute Requirement specification. Where the specification does not set it, the configuration's value, the override included, fills it in, as ever. `name` and `tag`, which are each level's own, are replaced at the Work Requirement level only. Most command-line options win over the specification too, as each option's description says; `--task-type` is the exception, setting the configuration's `taskType`, which a specification's own `taskType` replaces.

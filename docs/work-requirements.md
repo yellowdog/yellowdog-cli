@@ -8,6 +8,8 @@
    * [Automatic taskTypes Population](#automatic-tasktypes-population)
    * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
       * [Selecting errors (Selection&lt;TaskErrorSelector&gt;)](#selecting-errors-selectiontaskerrorselector)
+      * [Task Error Types](#task-error-types)
+      * [Finding the Errors Your Tasks Hit](#finding-the-errors-your-tasks-hit)
       * [retryPolicy](#retrypolicy)
       * [failurePolicy](#failurepolicy)
       * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
@@ -56,7 +58,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:14 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:22:37 GMT 2026 -->
 
 <!--te-->
 
@@ -107,6 +109,8 @@ To specify the file containing the JSON document, either populate the `workRequi
 
 `yd workrequirement submit --config myconfig.toml my_workreq.json`
 
+The document may also be written in [Jsonnet](jsonnet.md), or in TOML.
+
 ## Property Inheritance
 
 Work Requirement specifications can be simplified substantially by the property inheritance features in `yd workrequirement submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
@@ -114,6 +118,8 @@ Work Requirement specifications can be simplified substantially by the property 
 This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level). Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
 
 Overridden properties are also inherited at lower levels in the hierarchy. E.g. if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
+
+A `--property workRequirement.<key>=<value>` override is the exception to lower levels winning: it replaces the property wherever the JSON document sets it, at every level, as a command-line value beats a file's (see [Which Value Wins](configuration.md#which-value-wins)).
 
 ### Stopping Inheritance with `null`
 
@@ -133,7 +139,7 @@ To stop a property being inherited, set it to `null` at the level that should no
 `null` can be used for any property that is inherited, at any level with a level above it to inherit from (the TOML file counts, so `null` at the Work Requirement level stops a TOML value). The TOML file is the top of the hierarchy, with nothing above it to stop, so it has no need of `null`, which TOML cannot express. Two properties are exceptions:
 
 - `name` and `tag` are not inherited, so there is nothing for `null` to stop.
-- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none: it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
+- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none (though the schema check warns of it, and `--validate` reports it, so leaving the property out is the better way): it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
 
 For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance, with the same result. An inherited `taskData`, `taskDataFile` or `taskDataFiles` is stopped by setting any one of the three, to `null` or to an empty value: the three are one setting, and the first level to set any of them supplies the Task Data.
 
@@ -200,8 +206,52 @@ Each `TaskErrorSelector` has three optional fields, each itself a Selection of p
 | Field               | Selection of      | Description                                                                                                |
 |:--------------------|:------------------|:-----------------------------------------------------------------------------------------------------------|
 | `errorTypes`        | strings           | Task error types — e.g. `"ALLOCATION_LOST"`, `"PROCESS_NON_ZERO_EXIT"`, `"TIMED_OUT"`.                     |
-| `statusesAtFailure` | TaskStatus names  | Task status at the time of the error — e.g. `"FAILED"`.                                                    |
+| `statusesAtFailure` | TaskStatus names  | The status the Task was in when the error happened — e.g. `"EXECUTING"`, `"DOWNLOADING"`, `"UPLOADING"`. |
 | `processExitCodes`  | integers          | The Task process exit code — e.g. `137` (OOM), `143` (SIGTERM). Implies `errorType = PROCESS_NON_ZERO_EXIT`. |
+
+### Task Error Types
+
+The values an `errorTypes` Selection matches:
+
+| Error type                | When it is recorded                                                                                     |
+|:--------------------------|:--------------------------------------------------------------------------------------------------------|
+| `ALLOCATION_LOST`         | The Task lost the Worker it was allocated to, as when its instance goes away (a spot instance reclaimed, say). |
+| `RESOURCE_REQUEST_FAILED` | A request for the resources the Task needed failed.                                                     |
+| `TIMED_OUT`               | The Task ran past its timeout (`timeout`, or its Task Group's `taskTimeout`), while `EXECUTING`. Its process, stopped, then records a second error, `PROCESS_NON_ZERO_EXIT` with exit code 143, which did not cause the failure. |
+| `UNABLE_START_PROCESS`    | The Agent could not start the Task's process.                                                           |
+| `PROCESS_NON_ZERO_EXIT`   | The Task was `EXECUTING`, and its process exited with a non-zero code (which `processExitCodes` selects on). |
+| `DATA_CLIENT_DISABLED`    | The Task could not use the data client, which was disabled, while `DOWNLOADING` or `UPLOADING`.        |
+| `INPUT_NOT_FOUND`         | An input was not found. A Task data input (`taskDataInputs`) missing from the data store is recorded as `UNKNOWN_ERROR` at `DOWNLOADING` instead. |
+| `OUTPUT_NOT_FOUND`        | An output was not found. A Task data output (`taskDataOutputs`) the Task did not write is recorded as `UNKNOWN_ERROR` at `UPLOADING` instead. |
+| `UNABLE_WRITE_TASK_DATA`  | The Agent could not write the Task's `taskData` to its file.                                            |
+| `UNKNOWN_ERROR`           | Any other error.                                                                                        |
+
+`PROCESS_NON_ZERO_EXIT`, `TIMED_OUT` and the `UNKNOWN_ERROR` of a missing Task data input or output are as observed on the Platform; the SDK describes `DATA_CLIENT_DISABLED`, and the others are described by what their names record. Because a Task can record more than one error for one failure, as a timeout does, select on the one that caused it: the errors your own Tasks have recorded (below) show which that is.
+
+### Finding the Errors Your Tasks Hit
+
+A Task keeps every error it has recorded, retried or not, in its `errors` list, so a policy is best written from the errors your Tasks actually hit. `--with-errors` lists the Tasks that recorded one, whatever their status (a Task that completed on a retry included), and `--auto-select-all` shows each in full (as `--details` does for the Tasks you choose from the list), or `--json` gives them all as one array:
+
+```shell
+yd task list --within my-work-requirement --with-errors --auto-select-all
+```
+
+Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` selects on, beside a description, when it happened, and the node and Worker it happened on:
+
+```jsonc
+{
+  "timestamp": "<when it happened>",
+  "error": "<the Agent's description of the error>",
+  "nodeId": "ydid:node:000000:...",
+  "workerId": "ydid:wrkr:000000:...",
+  "errorType": "PROCESS_NON_ZERO_EXIT",
+  "statusAtFailure": "EXECUTING",
+  "processExitCode": 137,
+  "causedFailure": true
+}
+```
+
+`causedFailure` says whether the error was the one that failed the Task, which is not always the last: a timed-out Task's `TIMED_OUT` is followed by its stopped process's exit code 143. A Task's `retryCount` says how many times it has been retried, and its `resubmittedToTaskId`/`resubmittedFromTaskId` link it to the copy a failure policy made.
 
 ### `retryPolicy`
 
@@ -248,7 +298,45 @@ When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`)
 }
 ```
 
-Destinations are evaluated **in order**; the first matching entry wins. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+A destination Task Group must not finish once all its Tasks have finished: the Platform refuses the Work Requirement unless each one sets `"finishIfAllTasksFinished": false` (`task group failure policy destinations ... will finish if all tasks finished`). It therefore stays `RUNNING` after its last Task has finished, and so does the Work Requirement, which ends only when it is finished or cancelled: `yd workrequirement finish` once the work is done (a `--follow` of it does not return until then).
+
+Destinations are evaluated **in order**; the first matching entry wins. An entry without `resubmitErrors` matches every error, so only the last should leave it out, or those after it can never be reached; an empty `resubmissionDestinations` list is refused. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+
+A Task resubmitted counts as finished in its own Task Group, which completes as usual; the copy follows its destination Task Group's policies, not the original's, so it is retried only if that Task Group has a `retryPolicy` of its own.
+
+A complete example, retrying a Task once on exit code 3 and then resubmitting it to a fallback Task Group (on other Workers, say):
+
+```json
+{
+  "taskType": "bash",
+  "taskGroups": [
+    {
+      "name": "first",
+      "workerTags": ["spot"],
+      "retryPolicy": {
+        "maxRetries": 1,
+        "retryErrors": {
+          "includes": [
+            {"errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]}, "processExitCodes": {"includes": [3]}}
+          ]
+        }
+      },
+      "failurePolicy": {
+        "resubmissionDestinations": [{"destinationTaskGroup": "fallback"}]
+      },
+      "tasks": [{"arguments": ["-c", "./run.sh"]}]
+    },
+    {
+      "name": "fallback",
+      "workerTags": ["on-demand"],
+      "finishIfAllTasksFinished": false,
+      "tasks": []
+    }
+  ]
+}
+```
+
+Here the only destination omits `resubmitErrors`, so every error the retries did not clear is resubmitted. Once every Task has finished, wherever it ran, `yd workrequirement finish` ends the Work Requirement.
 
 Common use cases:
 
@@ -342,7 +430,7 @@ argumentsPrefix + arguments + argumentsPostfix
 
 This is useful when many Tasks share a common command structure but differ only in their per-task arguments — the shared parts can be set once at the Work Requirement or Task Group level rather than repeated in every Task definition. Variable substitutions are supported in all three lists.
 
-`argumentsPrefix` and `argumentsPostfix` follow the same inheritance hierarchy as `addEnvironment`: they can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), with lower levels taking precedence.
+`argumentsPrefix` and `argumentsPostfix` can be set at the same levels as `addEnvironment`: in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level). Unlike `addEnvironment`, which is merged down the levels, each is taken whole from the lowest level that sets it, as `arguments` is.
 
 ### Example — TOML
 
@@ -381,7 +469,7 @@ The `taskTemplate` property on a Task Group optionally sets default values for `
 
 Any combination of the three fields can be specified; omitted fields are simply not defaulted. Values specified directly on an individual Task take precedence over the template.
 
-`taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` as an alternative to `taskData`, exactly as they can at the Task level — the file contents are read client-side and used as the `taskData` value. `taskDataFiles` concatenates multiple files in order.
+`taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` as an alternative to `taskData`, exactly as they can at the Task level — the file contents are read client-side and used as the `taskData` value. `taskDataFiles` concatenates multiple files in order, a newline after each. Every Task Data file is substituted as it is read, `{{variable}}` by `{{variable}}`, as a User Data file is.
 
 `taskTemplate` can be set in the TOML config (applying globally as a default), at the Work Requirement level, or at the Task Group level. More specific levels take precedence.
 
@@ -422,7 +510,7 @@ In addition to the property inheritance mechanism, some properties are set autom
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)): e.g. `mytag_221024-1555241-4f`.
+- The **Work Requirement** name is automatically set using a concatenation of the `[common]` `tag` (not `[workRequirement]`'s), a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)): e.g. `mytag_221024-1555241-4f`.
 - **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
 - **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
 
@@ -457,9 +545,9 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be zero or one Task(s) listed within each Task Group or `taskCount` is ignored. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
+The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be exactly one Task listed within the Task Group, or `taskCount` is ignored with a warning. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
 
-Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
+Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group; with more than one Task Group listed, it is ignored with a warning. The duplicates must be named apart, so a named Task Group expanded this way includes `{{task_group_number}}` in its name, or the submission is refused. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
 
 ## Examples
 
@@ -495,7 +583,8 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     ram = [0.5, 2.0]
     regions = ["eu-west-2"]
     retryPolicy = {maxRetries = 3, retryErrors = {includes = [
-      {processExitCodes = {includes = [143]}, statusesAtFailure = {includes = ["FAILED"]}, errorTypes = {includes = ["ALLOCATION_LOST"]}},
+      {errorTypes = {includes = ["ALLOCATION_LOST"]}},
+      {errorTypes = {includes = ["PROCESS_NON_ZERO_EXIT"]}, processExitCodes = {includes = [143]}},
     ]}}
     setTaskNames = false
     tag = "my_tag"
@@ -552,10 +641,10 @@ Showing all possible properties at the Work Requirement level. `taskData`, `task
     "maxRetries": 3,
     "retryErrors": {
       "includes": [
+        {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
         {
-          "processExitCodes": {"includes": [143]},
-          "statusesAtFailure": {"includes": ["FAILED"]},
-          "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+          "errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]},
+          "processExitCodes": {"includes": [143]}
         }
       ]
     }
@@ -630,10 +719,10 @@ Showing all possible properties at the Task Group level. `taskData`, `taskDataFi
         "maxRetries": 3,
         "retryErrors": {
           "includes": [
+            {"errorTypes": {"includes": ["ALLOCATION_LOST"]}},
             {
-              "processExitCodes": {"includes": [143]},
-              "statusesAtFailure": {"includes": ["FAILED"]},
-              "errorTypes": {"includes": ["ALLOCATION_LOST"]}
+              "errorTypes": {"includes": ["PROCESS_NON_ZERO_EXIT"]},
+              "processExitCodes": {"includes": [143]}
             }
           ]
         }
@@ -727,7 +816,11 @@ The following naming and numbering substitutions are available for use in TOML a
 | `{{task_group_number}}` | The current Task Group number, zero-padded        | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
 
-`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way. Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list` — where unpadded `task_10` would sort before `task_2`. A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
+`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way.
+
+Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list` — where unpadded `task_10` would sort before `task_2`.
+
+A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
 The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
 
@@ -776,40 +869,41 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
 
 ```json
 {
-  "name": "pyex-docker-pwt_240424-1205116-4f",
   "namespace": "pyexamples-pwt",
-  "priority": 0,
-  "tag": "pyex-docker-pwt",
+  "name": "pyex-docker-pwt_240424-1205116-4f",
   "taskGroups": [
     {
-      "finishIfAllTasksFinished": true,
-      "finishIfAnyTaskFailed": false,
       "name": "task_group_1",
-      "priority": 0,
       "runSpecification": {
-        "maximumTaskRetries": 0,
         "taskTypes": ["docker"],
+        "maximumTaskRetries": 0,
         "workerTags": ["pyex-docker-pwt-worker"]
       },
+      "priority": 0,
       "starved": false,
       "waitingOnDependency": false,
+      "finishIfAllTasksFinished": true,
+      "finishIfAnyTaskFailed": false,
       "tasks": [
         {
+          "name": "task_1",
+          "taskType": "docker",
           "arguments": ["my_dockerhub_repo/my_container_image", "1", "2", "3"],
           "environment": {
             "YD_TASK_NAME": "task_1",
             "YD_TASK_NUMBER": "1",
+            "YD_NUM_TASKS": "1",
             "YD_TASK_GROUP_NAME": "task_group_1",
             "YD_TASK_GROUP_NUMBER": "1",
+            "YD_NUM_TASK_GROUPS": "1",
             "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-1205116-4f",
             "YD_NAMESPACE": "pyexamples-pwt"
-          },
-          "name": "task_1",
-          "taskType": "docker"
+          }
         }
       ]
     }
-  ]
+  ],
+  "tag": "pyex-docker-pwt"
 }
 ```
 
@@ -848,18 +942,30 @@ yd workrequirement submit --add-to my-work-requirement my-spec.json
 
 The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
 
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
+- **Matching Task Group name**: the new Tasks are appended to the existing Task Group; the specification's own settings for that Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied, the existing Task Group keeping its own, though the properties its Tasks inherit are taken from it, as below. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
 - **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way, numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
 
 Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
 
 A single `yd workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
 
+What is taken from each part of the specification:
+
+| Part of the specification | For a new Task Group | For an existing Task Group (matched by name) |
+|:---|:---|:---|
+| The Work Requirement's own settings (its name and tag, and its `priority` as the Work Requirement's) | not applied: the target Work Requirement keeps its own | not applied |
+| What the Work Requirement level passes down (`priority`, `workerTags`, `arguments`, `environment` and the other inherited properties) | inherited by the Task Group and its Tasks | the Task properties (`arguments`, `environment` and the like) inherited by the new Tasks; the Task Group's (`priority`, `workerTags` and the like) not applied |
+| The Task Group's own settings (`priority`, the run specification: `taskTypes`, `workerTags`, `dependencies` and the rest) | applied, as the Task Group is created | not applied: the existing Task Group keeps its own |
+| What the Task Group level passes down to its Tasks (`arguments`, `environment`, `taskType`, `timeout`, `taskData` and the rest) | inherited by its Tasks | inherited by the new Tasks |
+| The Tasks | added, numbered from 1 | added, numbered on from the existing Tasks, each `taskType` in the Task Group's `taskTypes` (or the submission is refused) |
+
+So a specification written to add Tasks to an existing Task Group can carry the Task-level defaults those Tasks need at its Task Group level, as a new submission would, while the Task Group's scheduling stays as it was submitted.
+
 As with a normal `yd workrequirement submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
 
 If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
 
-If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. If a file was already uploaded during the original submission and has not changed, it will be skipped by default. Use `--overwrite` (`-O`) to force re-uploading:
+If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. A file already at its upload path, from the original submission or otherwise, is skipped by default, whether or not the local file has changed since. Use `--overwrite` (`-O`) to upload it again:
 
 ```bash
 yd workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
@@ -896,9 +1002,13 @@ With tens of thousands of Tasks or more, how the Tasks are sent decides how long
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present. An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
+The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present.
 
-Currently, Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
+An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI.
+
+To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
+
+Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
 
 ### Specifying Data Client Inputs
 
@@ -950,9 +1060,9 @@ JSON:
 ]
 ```
 
-If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname, and the base files directory can be adjusted using the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`.
+If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname. A relative one is found from the files directory: the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`, else the specification file's directory, else the configuration file's (as Task Data files and CSV files are). Two different local files given the same upload path are refused.
 
-If `yd workrequirement submit` fails for any reason, the objects it uploaded are deleted automatically. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
+If `yd workrequirement submit` fails for any reason while submitting a new Work Requirement, the Work Requirement is cancelled and the objects it uploaded are deleted automatically; with `--add-to`, the Tasks already added and the files uploaded for them are left in place, with a warning. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
 
 ### Rclone Authentication
 
@@ -997,7 +1107,7 @@ This section discusses the context within which a Task operates when it's execut
 
 When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the following steps are followed:
 
-1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskdata`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
+1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskData`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
 2. An ephemeral working directory is created. Data Client input objects are downloaded to this directory, and the contents of the `taskData` property (if set) are written to the file `taskdata.txt`.
 3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This is done as a simple `exec` of a subprocess to run the Task.
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
@@ -1082,7 +1192,7 @@ As an example, consider the following JSON Work Requirement `wr.json`:
 }
 ```
 
-Note that the Task Group must contain only a single Task, acting as the prototype.
+Note that the Task Group must contain only a single Task, acting as the prototype. A prototype holding no `<<variable>>` that names a heading of its CSV file is not expanded, with a warning.
 
 Now consider a CSV file `wr_data.csv` with the following contents:
 
@@ -1169,7 +1279,7 @@ The `yd workrequirement submit` command would then be invoked with a separate CS
 yd workrequirement submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
 ```
 
-If there are **fewer** CSV files than Task Groups, a warning will be printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
+If there are **fewer** CSV files than Task Groups, a note is printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
 
 It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g. `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
 
@@ -1196,6 +1306,8 @@ To make use of this:
 3. Specify a single CSV file in the `csvFiles` TOML property, e.g. `csvFiles = ["wr_data.csv"]`, or provide the CSV file on the command line `-V wr_data.csv`; naming more than one is an error, since there is only one Task Group to apply them to
 
 When `yd workrequirement submit` is run, it will expand the Task list to match the number of data rows in the CSV file.
+
+In this form the CSV substitutions are made only in the properties a Task takes: `addYDEnvironment`, `arguments`, `environment`, `setTaskNames`, `taskData`, `taskDataFile`, `taskDataFiles`, `taskDataInputs`, `taskDataOutputs`, `taskGroupName`, `taskName`, `taskTimeout`, `taskType` and `timeout`. A `<<variable>>` anywhere else in the `[workRequirement]` section, such as `argumentsPrefix`, `addEnvironment` or `taskTemplate`, is left as written.
 
 ### Inspecting the Results of CSV Variable Substitution
 

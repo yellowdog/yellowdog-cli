@@ -13,10 +13,11 @@
    * [What Is Not Exposed, and Why](#what-is-not-exposed-and-why)
    * [Namespace, Tag and Variables](#namespace-tag-and-variables)
    * [Logging](#logging)
+   * [Troubleshooting](#troubleshooting)
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:15 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:34:29 GMT 2026 -->
 
 <!--te-->
 
@@ -41,8 +42,10 @@ pip install -U "yellowdog-cli[mcp]"
 ## Launching
 
 ```shell
-yd mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...]
+yd mcp [config.toml] [-c config.toml] [-n namespace] [-t tag] [-v name=value ...] [--transport stdio]
 ```
+
+The server talks to its client over standard input and output (`--transport stdio`, the default and the only transport).
 
 A configuration file, given either as the positional argument or with `-c`/`--config` (not both), is read exactly as every other `yd` command reads it, and its directory becomes the working directory of every command the server runs.
 
@@ -50,7 +53,7 @@ Without a configuration file, every command runs with `--nc`, so only the enviro
 
 Giving the configuration file twice, or naming one that does not exist, is refused at launch rather than at the first tool call, as is a `-v` variable whose name the CLI would refuse: one that is not `name=value`, a name breaking the CLI's rule for variable names, or one of the names the CLI sets itself (`namespace`, `tag`, `key`, `secret`, `url`), which `-n`/`-t` or the configuration set instead.
 
-A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped` to stderr. A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
+A single Ctrl-C, or a `SIGTERM`, stops the server at once, logging `stopped (SIGINT)` or `stopped (SIGTERM)` to stderr (`stopped` on Windows). A command a tool call is still running is not waited for: Ctrl-C from a terminal interrupts it along with the server, and after a `SIGTERM` it is left running with nowhere to write its output, so it may stop part-way; a specification written for that call (see Specifications) is left behind in the working directory.
 
 ## Configuring a Client
 
@@ -154,7 +157,7 @@ A run that exits non-zero is still a success when its document holds a record wh
 
 Every other non-zero exit is an error: `isError` is true, `content` carries the command's stderr (the wrapper's friendly message, `Missing configuration data`, an argparse usage error) followed by the document as compact JSON when stdout held one, and `structuredContent` adds `"exitCode"` and `"stderr"` beside `"result"` (`null` when stdout held no document at all).
 
-Some errors carry a document that matters: `yd_wait` with a Work Requirement that failed, `yd_doctor` with a failing check, and `yd_show` with a YDID it could not show all exit 1 with their document on stdout and little or nothing on stderr, so they come back as errors with the document in both places, in the text content and as `result`. The exit code is the CLI's own, so an agent can tell a configuration error (3) from an authentication failure (4) from not found (6); see the CLI README's exit code table.
+Some errors carry a document that matters: `yd_wait` with a Work Requirement that failed, `yd_doctor` with a failing check, and `yd_show` with a YDID it could not show (exit 6 if every one was not found, 5 if every one was refused, else 1) all exit non-zero with their document on stdout and little or nothing on stderr, so they come back as errors with the document in both places, in the text content and as `result`. The exit code is the CLI's own, so an agent can tell a configuration error (3) from an authentication failure (4) from not found (6); see the CLI README's exit code table.
 
 An unknown tool name or an argument that fails validation (an unknown property, the wrong type, both halves of a mutually exclusive pair) is reported the same way, as a tool error with `exitCode: 2`, never as a protocol-level error — so the agent sees the message and can correct itself.
 
@@ -182,7 +185,7 @@ An inline specification is written to a uniquely named `.yd-mcp-*.json` file in 
 
 ## Timeouts and Following
 
-Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result. The command is interrupted first, as a Ctrl-C would, and given a few seconds to write its `--json` document of what it had done (the Tasks a `yd_workrequirement_submit` created, the files a `yd_data_download` fetched) before it is killed; on Windows it is killed at once, and the result holds only what it had written. A command's own wait (`yd_wait`'s `timeout`, `yd_workerpool_resize`'s `wait`) has no limit by default, so set `timeout_seconds` above it when the command should be let finish.
+Every tool takes a `timeout_seconds` argument (default 300; `yd_follow`'s default is 60). Past it, the command is stopped and whatever it had already produced is returned, with `stopped: true` in the result. The command is interrupted first, as a Ctrl-C would, and given a few seconds to write its `--json` document of what it had done (the Tasks a `yd_workrequirement_submit` created, the files a `yd_data_download` fetched) before it is killed; on Windows it is killed at once, and the result holds only what it had written. A command's own wait (`yd_wait`'s `timeout`, `yd_computerequirement_resize`'s `wait`) has no limit by default, so set `timeout_seconds` above it when the command should be let finish.
 
 `yd_follow` collects the event stream for up to `timeout_seconds` and returns the events collected as its result; it does not run to completion, since a Work Requirement, Worker Pool or Compute Requirement has no fixed lifetime to wait out.
 
@@ -195,10 +198,12 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **Configuration and credentials, which the server owns**: `--config`, `--key`, `--secret`, `--url`, `--docs`, `--debug`, `--pac`, `--no-format`, `--quiet`, `--env-override`, `--print-pid`, `--no-config`, `--property`.
 - **Supplied by the server itself, meaningless without a terminal, or refused together with `--json`**: `--json`, `--yes`, `--interactive`, `--progress`, `--report`, `--ids-only`.
 - **Machine maintenance, not platform work**: `--upgrade-rclone`, `--which-rclone`.
+- **`yd version`'s single-version flags**, each refused together with the `--json` the server passes: `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp`.
+- **A resource given on the command line**, which the specification says as well: `yd resource create`'s and `yd resource remove`'s `--type` and `--set`.
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
-Four commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
+Six commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated commands the nouns replace (`yd-submit`, `yd-terminate` and the rest): their noun verbs' tools stand in for them.
 
 ## Namespace, Tag and Variables
 
@@ -211,6 +216,14 @@ Nothing is written to stdout, which is the MCP transport; the server logs to std
 It logs its own start, and, for each tool call, the full command line it runs and the child's exit code — which is what a client's server log shows.
 
 Because that command line includes the variables, both the launch-time `-v` values and a tool call's own `variable` argument, a variable holding a secret is logged in full there; keep secrets in the configuration file or the environment instead, neither of which is logged this way.
+
+## Troubleshooting
+
+- **The client cannot start the server.** Run the same command in a terminal: `yd mcp --help` shows whether it runs at all, and `yd doctor`'s `MCP Server` row whether the `mcp` extra is installed and loads (a `FAIL` gives the reason). Without the extra, `yd mcp` exits saying how to install it; install it as you installed the CLI (`uv tool install "yellowdog-cli[mcp]"`, or `uv pip install -U` / `pip install -U "yellowdog-cli[mcp]"` in its virtual environment).
+- **`yd` is not found.** A desktop client starts the server with a minimal `PATH`. Give the full path to `yd` as the `command` (`which yd`, or `where yd` on Windows, prints it).
+- **Every call fails with exit code 3 or 4.** The server's commands take their configuration and credentials from the configuration file named at launch, or from the environment the client started the server with, which is not your shell's: a desktop client does not see `YD_KEY` set in a terminal. Name the configuration file in the server's arguments, as in [Configuring a Client](#configuring-a-client), and run `yd doctor` with that file (`yd doctor -c /path/to/config.toml`) to check it.
+- **A call fails.** Its result carries the command's `exitCode` and `stderr`, and the exit code says what kind of failure it was (see the CLI's [exit codes](../../docs/json-output.md)). The client's log of the server's stderr shows the command line each call ran; running it in a terminal as `yd ...` reproduces it.
+- **A call comes back `stopped: true`.** It ran past its `timeout_seconds` (300 by default, 60 for `yd_follow`) and was stopped, returning what it had done; give a longer `timeout_seconds` (see [Timeouts and Following](#timeouts-and-following)).
 
 ## Security Notes
 

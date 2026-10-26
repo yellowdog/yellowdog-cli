@@ -32,12 +32,11 @@ from yellowdog_cli.utils.wrapper import main_wrapper
 #
 # Beyond them, the report also redacts every variable whose name matches
 # SECRET_VARIABLE_NAME_PATTERN (variable_syntax.py). Name-pattern redaction
-# was once rejected because it catches identifiers, misses badly-named
-# secrets, and would read as a guarantee the command cannot keep. That
-# objection was to a *silent* heuristic: this one is applied visibly, the
-# command printing the count and the pattern itself whenever it redacts by it,
-# and saying that everything else is shown in full -- so what is withheld, and
-# what is not, is stated rather than implied.
+# catches identifiers and misses badly-named secrets, so as a *silent*
+# heuristic it would read as a guarantee the command cannot keep. This one is
+# applied visibly, the command printing the count and the pattern itself
+# whenever it redacts by it, and saying that everything else is shown in full
+# -- so what is withheld, and what is not, is stated rather than implied.
 #
 # The one other thing the CLI can *know* is that an inline rclone connection
 # string carries credentials in its parameters: it registers the
@@ -52,12 +51,11 @@ from yellowdog_cli.utils.wrapper import main_wrapper
 # the name pattern, it is stated whenever it withholds anything from a
 # variable the CLI did not register itself.
 #
-# All of it applies to a variable named on the command line too. Naming one
-# once reported it in full, as an explicit request for it; but the MCP
-# server withholds --show-secrets from its tools so that a credential held
-# in the configuration cannot be asked back out through a tool result, and
-# naming 'secret' did exactly that. --show-secrets is now the one way to see
-# a redacted value, named or not.
+# All of it applies to a variable named on the command line too, since the
+# MCP server withholds --show-secrets from its tools so that a credential
+# held in the configuration cannot be asked back out through a tool result,
+# and naming 'secret' would otherwise do exactly that. --show-secrets is the
+# one way to see a redacted value, named or not.
 SECRET_VARIABLES = (KEY, SECRET)
 
 # A configured key or secret at least this long is found inside another

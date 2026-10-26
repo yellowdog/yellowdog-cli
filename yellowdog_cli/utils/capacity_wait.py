@@ -205,6 +205,14 @@ def until_stopped(capacity: Capacity, changed: bool) -> bool:
     return changed and capacity.quiet
 
 
+def until_quiet(capacity: Capacity, changed: bool) -> bool:
+    """
+    Nothing changing, having changed: Instances terminated, and any started
+    in their place running, their Compute Requirement going on.
+    """
+    return changed and capacity.quiet
+
+
 def capacity_reached(
     ctx: RunContext, done: DoneWhen
 ) -> Callable[[str], Callable[[dict], bool]]:

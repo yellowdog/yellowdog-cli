@@ -12,7 +12,8 @@ Covers here:
   - load_config_work_requirement: no section, basic fields, CLI overrides, csv
     conflict, name type checking
   - load_config_worker_pool: name type checking; maxNodes and
-    computeRequirementBatchSize cast with int(), the batch size at least 1
+    computeRequirementBatchSize cast with int(), the batch size at least 1;
+    workersPerVCPU with float(), keeping a fraction
   - _resolve_section_variables: a circular variable reference in a section
     is reported and exits
   - load_config_data_client_destination: yd-copy's --dst-profile and
@@ -159,6 +160,17 @@ class TestLoadNamespaceAndTag:
             env={YD_NAMESPACE: "env-ns"},
         )
         assert subs[NAMESPACE] == "env-ns"
+
+    def test_property_override_beats_env_var(self):
+        # '--property common.namespace=...', in the section by now
+        args = _mock_args()
+        args.property_overrides = ["common.namespace=prop-ns", "common.tag=prop-tag"]
+        subs = self._call(
+            toml_common={NAMESPACE: "prop-ns", NAME_TAG: "prop-tag"},
+            args=args,
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert (subs[NAMESPACE], subs[NAME_TAG]) == ("prop-ns", "prop-tag")
 
     def test_toml_namespace_beats_default(self):
         subs = self._call(toml_common={NAMESPACE: "toml-ns"})
@@ -331,6 +343,45 @@ class TestLoadConfigCommonPrecedence:
         config = self._call(
             toml_common={KEY: "k", SECRET: "s"},
             args=_common_mock_args(config_file="my-config.toml"),
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "env-ns"
+
+    # --- '--property common.<key>=...', in the section by now ---
+
+    def test_a_property_override_beats_env(self):
+        args = _common_mock_args()
+        args.property_overrides = ["common.namespace=prop-ns", "common.tag=prop-tag"]
+        config = self._call(
+            toml_common={
+                KEY: "k",
+                SECRET: "s",
+                NAMESPACE: "prop-ns",
+                NAME_TAG: "prop-tag",
+            },
+            args=args,
+            env={YD_NAMESPACE: "env-ns", YD_TAG: "env-tag"},
+        )
+        assert (config.namespace, config.name_tag) == ("prop-ns", "prop-tag")
+        assert lc_module.CONFIG_SOURCES[NAMESPACE] == "command line (--property)"
+
+    def test_the_option_beats_a_property_override(self):
+        args = _common_mock_args(namespace="cli-ns")
+        args.property_overrides = ["common.namespace=prop-ns"]
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: "prop-ns"},
+            args=args,
+            env={YD_NAMESPACE: "env-ns"},
+        )
+        assert config.namespace == "cli-ns"
+
+    def test_a_property_override_to_null_leaves_env(self):
+        # null unsets the file's value; it sets none of its own
+        args = _common_mock_args()
+        args.property_overrides = ["common.namespace=null"]
+        config = self._call(
+            toml_common={KEY: "k", SECRET: "s", NAMESPACE: None},
+            args=args,
             env={YD_NAMESPACE: "env-ns"},
         )
         assert config.namespace == "env-ns"
@@ -586,6 +637,13 @@ class TestLoadConfigWorkerPool:
         assert result.max_nodes == expected
         assert isinstance(result.max_nodes, int)
 
+    @pytest.mark.parametrize("value, expected", [(0.5, 0.5), ("1.5", 1.5), (2, 2.0)])
+    def test_workers_per_vcpu_keeps_a_fraction(self, value, expected):
+        # The SDK's per-vCPU target is a float: half a Worker per vCPU is one
+        # Worker on a 2-vCPU node, where int() would have made it none
+        result = self._call(toml_wp_section={"workersPerVCPU": value})
+        assert result.workers_per_vcpu == expected
+
     def test_batch_size_is_cast(self):
         result = self._call(toml_wp_section={"computeRequirementBatchSize": "50"})
         assert result.compute_requirement_batch_size == 50
@@ -819,3 +877,93 @@ class TestANamedProfileBeatsTheEnvironment:
     def test_without_a_profile_the_environment_wins(self, configured):
         config = lc_module.load_config_data_client_for_profile(None, "")
         assert config.bucket == "dev-bucket"
+
+    @pytest.mark.parametrize(
+        "override",
+        ["dataClient.bucket=prop-bucket", "dataClient.backup.bucket=prop-bucket"],
+    )
+    def test_a_property_override_beats_the_environment(
+        self, configured, monkeypatch, override
+    ):
+        # Applied to the file's data by now, as _apply_property_overrides() does
+        section = lc_module.CONFIG_TOML["dataClient"]
+        if override.startswith("dataClient.backup."):
+            section["backup"]["bucket"] = "prop-bucket"
+            profile = "backup"
+        else:
+            section["bucket"] = "prop-bucket"
+            profile = None
+        args = MagicMock()
+        args.property_overrides = [override]
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        config = lc_module.load_config_data_client_for_profile(profile, "")
+        assert config.bucket == "prop-bucket"
+        assert config.remote == "env-remote:"  # Not overridden: the environment's
+
+
+class TestPropertyOverridesForSpecifications:
+    """
+    property_overrides() gives a specification the '--property' overrides
+    of a section that set a value, the value as the loaded section holds it.
+    """
+
+    def _with(self, monkeypatch, overrides, section):
+        args = MagicMock()
+        args.property_overrides = overrides
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        monkeypatch.setattr(lc_module, "CONFIG_TOML", {"workRequirement": section})
+        monkeypatch.setattr(lc_module, "ensure_config_loaded", lambda *a: None)
+
+    def test_each_path_once_with_the_sections_value(self, monkeypatch):
+        self._with(
+            monkeypatch,
+            [
+                "workRequirement.priority=1",
+                "workRequirement.retryPolicy.maxRetries=4",
+                "workRequirement.priority=2",
+                "workerPool.maxNodes=3",
+            ],
+            {"priority": 2.0, "retryPolicy": {"maxRetries": 4}},
+        )
+        assert lc_module.property_overrides("workRequirement") == [
+            (["priority"], 2.0),
+            (["retryPolicy", "maxRetries"], 4),
+        ]
+
+    def test_an_override_to_null_gives_nothing(self, monkeypatch):
+        self._with(monkeypatch, ["workRequirement.priority=null"], {"priority": None})
+        assert lc_module.property_overrides("workRequirement") == []
+
+
+class TestNoPrefixVariable:
+    """
+    Under '--no-prefix', {{dataClient.prefix}} (and the legacy {{prefix}}) is
+    the prefix the command uses, none, rather than the default.
+    """
+
+    def test_no_prefix_makes_the_prefix_variable_empty(self, monkeypatch):
+        args = MagicMock(
+            no_prefix=True,
+            remote=None,
+            bucket=None,
+            prefix=None,
+            data_client_profile=None,
+        )
+        monkeypatch.setattr(lc_module, "_ARGS", args)
+        monkeypatch.setattr(
+            lc_module,
+            "CONFIG_TOML",
+            {"dataClient": {"remote": "r,type=local", "bucket": "b"}},
+        )
+        monkeypatch.setattr(lc_module, "ensure_config_loaded", lambda *a: None)
+        monkeypatch.setattr(lc_module, "_load_namespace_and_tag", lambda: None)
+        monkeypatch.setattr(lc_module, "register_dc_substitutions", lambda: None)
+        monkeypatch.setattr(lc_module, "config_file_explicitly_selected", lambda: False)
+        monkeypatch.delenv("YD_DATA_CLIENT", raising=False)
+        monkeypatch.delenv("YD_DATA_CLIENT_PREFIX", raising=False)
+        subs = {"dataClient.prefix": "ns/tag"}
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", subs)
+        config = lc_module.load_config_data_client()
+        assert config.prefix is None
+        assert subs["dataClient.prefix"] == ""
+        assert subs["prefix"] == ""

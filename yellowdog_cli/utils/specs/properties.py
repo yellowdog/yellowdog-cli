@@ -103,13 +103,15 @@ TASK_DATA_INPUT: dict[str, Any] = {
     "properties": {
         "source": {
             **STR,
-            "description": "the object path to download, relative to the namespace",
+            "description": (
+                "the object to download, as an rclone path: 'rclone:<remote>:<path>'"
+            ),
         },
         "destination": {
             **STR,
             "description": (
-                "where the object is placed on the node, relative to the Task's"
-                " working directory"
+                "where the object is placed on the node, as 'local:<path>',"
+                " relative to the Task's working directory"
             ),
         },
         "localPath": {
@@ -135,13 +137,16 @@ TASK_DATA_OUTPUT: dict[str, Any] = {
         "source": {
             **STR,
             "description": (
-                "the file on the node to upload, relative to the Task's working"
-                " directory"
+                "the file on the node to upload, as 'local:<path>', relative to"
+                " the Task's working directory"
             ),
         },
         "destination": {
             **STR,
-            "description": "the object path to upload it to, relative to the namespace",
+            "description": (
+                "where the file is uploaded to, as an rclone path:"
+                " 'rclone:<remote>:<path>'"
+            ),
         },
         "alwaysUpload": {
             **BOOL,
@@ -600,7 +605,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property("workersPerNode", INT_CAST, description="Workers started per node"),
     Property(
         "workersPerVCPU",
-        INT_CAST,
+        FLOAT_CAST,
         description="Workers started per vCPU, in place of workersPerNode",
     ),
     Property("workerTag", STR, description="the tag the pool's Workers carry"),

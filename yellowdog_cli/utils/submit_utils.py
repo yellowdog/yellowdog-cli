@@ -65,6 +65,7 @@ from yellowdog_cli.utils.property_names import (
     TASKS,
 )
 from yellowdog_cli.utils.settings import RCLONE_PREFIX
+from yellowdog_cli.utils.specs.properties import WORK_REQUIREMENT_PROPERTIES, Level
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_insitu,
@@ -119,6 +120,49 @@ def merge_environment(
     if not additions:
         return base
     return {**additions, **(base or {})}
+
+
+def apply_property_overrides(
+    wr_data: dict, overrides: list[tuple[list[str], object]]
+) -> None:
+    """
+    Apply the '--property workRequirement.<path>=<value>' overrides to a
+    specification: wherever it sets the property itself, at a level the
+    property may be set at, the override's value replaces its own, as a
+    command-line value beats a file's; where it does not, the configuration's
+    value, which the override already is, is inherited as ever. A property
+    not inherited ('name', 'tag') is the Work Requirement's alone at the TOML
+    level, so is replaced there only. A longer path replaces only that leaf.
+    """
+    properties = {prop.name: prop for prop in WORK_REQUIREMENT_PROPERTIES}
+    for path, value in overrides:
+        prop = properties.get(path[0])
+        if prop is None or Level.TOML not in prop.levels:
+            continue
+        nodes: list[tuple[str, Level, dict]] = [("", Level.WORK_REQUIREMENT, wr_data)]
+        if prop.inherited:
+            for g, task_group in enumerate(wr_data.get(TASK_GROUPS) or []):
+                nodes.append((f"{TASK_GROUPS}[{g}].", Level.TASK_GROUP, task_group))
+                for k, task in enumerate(task_group.get(TASKS) or []):
+                    where = f"{TASK_GROUPS}[{g}].{TASKS}[{k}]."
+                    nodes.append((where, Level.TASK, task))
+        for where, level, node in nodes:
+            if level in prop.levels and isinstance(node, dict) and path[0] in node:
+                if _set_at_path(node, path, deepcopy(value)):
+                    print_info(f"Setting '{where}{'.'.join(path)}' from '--property'")
+
+
+def _set_at_path(node: dict, path: list[str], value: object) -> bool:
+    """
+    Set 'value' at 'path' within 'node', whose first key it holds; False,
+    setting nothing, where a step along a longer path is not a table.
+    """
+    for key in path[:-1]:
+        if not isinstance(node.get(key), dict):
+            return False
+        node = node[key]
+    node[path[-1]] = value
+    return True
 
 
 def update_config_work_requirement_object(

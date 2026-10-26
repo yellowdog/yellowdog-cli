@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from yellowdog_cli.utils.command_registry import (
+    CLOUD_INFO_OPTION_TYPES,
     COMMANDS,
     LIST_ACTIVE_TYPES,
     LIST_DELETABLE_TYPES,
@@ -434,6 +435,9 @@ def _priority(noun_plural: str) -> Verb:
 
 
 def _cloud_info(name: str, info_type: str, summary: str) -> Verb:
+    """
+    A Cloud Info verb, hiding the filters its type takes none of.
+    """
     return Verb(
         name,
         "yd-cloud-info",
@@ -441,6 +445,9 @@ def _cloud_info(name: str, info_type: str, summary: str) -> Verb:
         "listing " + summary.removeprefix("List "),
         fixed=(info_type,),
         fixed_options=("cloud_info_type",),
+        hidden=tuple(
+            flag for _, flag, types in CLOUD_INFO_OPTION_TYPES if info_type not in types
+        ),
     )
 
 
@@ -757,9 +764,11 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-shutdown",
                 "Shut down Nodes",
                 "shutting down Nodes",
+                # Nodes have no stream to follow: only a pool shut down is
                 hidden=(
                     *_SELECTION_OPTIONS,
                     "--terminate",
+                    "--follow",
                     "--auto-follow-compute-requirements",
                 ),
                 overrides={

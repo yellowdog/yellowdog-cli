@@ -419,7 +419,7 @@ class WindowBase(QMainWindow):
         '-n' and '-t' from the Namespace and Tag fields, '-v' for each user
         variable and '--property' for each property override. Given the
         'command', only those it takes: typed into the command box, a
-        command without '-n' (yd show) would fail on it, and one without '-v'
+        command without '-t' (yd show) would fail on it, and one without '-v'
         (yd cloudinfo) would read the namespace as its own positional.
 
         Each property is passed joined to its flag, '--property=section.key=value',

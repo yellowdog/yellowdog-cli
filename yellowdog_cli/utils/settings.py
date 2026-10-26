@@ -26,10 +26,12 @@ YD_DATA_CLIENT_BUCKET = "YD_DATA_CLIENT_BUCKET"
 YD_DATA_CLIENT_PREFIX = "YD_DATA_CLIENT_PREFIX"
 YD_DATA_CLIENT_REMOTE = "YD_DATA_CLIENT_REMOTE"
 YD_ENV_VAR_PREFIX = "YD_VAR_"
-# Tab completion's Platform lookups (yd-completion) are on unless this is set
-# to one of the COMPLETION_LOOKUPS_OFF values, in any case
+# The values an on/off environment variable reads as off, in any case and
+# with any space around them (an unset or empty one is off too)
+ENV_OFF_VALUES = frozenset({"0", "false", "no", "off"})
+# Tab completion's Platform lookups (yd-completion) are on unless this is off
 YD_COMPLETION_LOOKUPS = "YD_COMPLETION_LOOKUPS"
-COMPLETION_LOOKUPS_OFF = frozenset({"0", "false", "no", "off"})
+# '.env' values override the environment's when this is set and not off
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 # Alternative env.var names
 YD_KEY_ALT = "YD_API_KEY_ID"

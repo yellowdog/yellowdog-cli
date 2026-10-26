@@ -44,6 +44,7 @@ from yellowdog_cli.utils.action_runner import (
 from yellowdog_cli.utils.capacity_wait import (
     DoneWhen,
     capacity_reached,
+    until_quiet,
     until_settled,
     until_settled_again,
     until_stopped,
@@ -98,6 +99,9 @@ class ComputeAction:
     # When '--follow' is done, the Compute Requirement being left alive (its
     # stream never closes); None to follow it to its end, as a terminate does
     done_when: DoneWhen | None = None
+    # When '--follow' is done after acting on Instances, where that differs:
+    # a terminate of some of them leaves their Compute Requirement alive
+    instances_done_when: DoneWhen | None = None
     # The '--json' record's 'action', where the name is a phrase
     record_name: str | None = None
     # Passed to the Compute Requirement method after the ID
@@ -206,6 +210,7 @@ COMPUTE_TERMINATE = ComputeAction(
         InstanceStatus.UNKNOWN,
     ],
     confirmation_verb="Immediately terminate",
+    instances_done_when=until_quiet,
 )
 
 COMPUTE_DEPROVISION = ComputeAction(
@@ -575,30 +580,40 @@ def _carry_out(ctx: RunContext, action: ComputeAction, items: list[Item]):
     ]
 
     actioned_ids: list[str] = []
+    acted_on_instances = False
     for unit in carry_out(units, action.recorder()):
         value = unit.items[0].value
+        acted_on_instances = acted_on_instances or isinstance(value, _Instance)
         cr_id = value.cr_id if isinstance(value, _Instance) else cast(str, value.id)
         if cr_id not in actioned_ids:
             actioned_ids.append(cr_id)
 
     if actioned_ids:
-        _after(ctx, action, actioned_ids)
+        _after(
+            ctx,
+            action,
+            actioned_ids,
+            action.instances_done_when if acted_on_instances else None,
+        )
 
 
-def _after(ctx: RunContext, action: ComputeAction, actioned_ids: list[str]):
+def _after(
+    ctx: RunContext,
+    action: ComputeAction,
+    actioned_ids: list[str],
+    done_when: DoneWhen | None = None,
+):
     """
     Follow (--follow) or wait for (--wait, yd-compute-reprovision's) the
-    Compute Requirements acted on; the registry refuses the two together.
+    Compute Requirements acted on, '--follow' ending by 'done_when' (by
+    default the action's own); the registry refuses the two together.
     """
+    done_when = action.done_when if done_when is None else done_when
     if ctx.args.follow:
         follow_ids(
             ctx,
             actioned_ids,
-            settled=(
-                None
-                if action.done_when is None
-                else capacity_reached(ctx, action.done_when)
-            ),
+            settled=None if done_when is None else capacity_reached(ctx, done_when),
         )
     elif ctx.args.wait:
         wait_for_capacity(ctx, actioned_ids, ctx.args.timeout)

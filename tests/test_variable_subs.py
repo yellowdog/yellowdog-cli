@@ -1039,6 +1039,7 @@ class TestAddSubstitutionsFromConfigFile:
     def reset_state(self, monkeypatch):
         monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", dict(KNOWN_SUBS))
         monkeypatch.setattr(var_module, "CLI_DEFINED_VARIABLES", set())
+        monkeypatch.setattr(var_module, "_ENVIRONMENT_DEFINED_VARIABLES", set())
         monkeypatch.setattr(var_module, "_CONFIG_FILE_VARIABLES", set())
 
     def _set_config_file(self, monkeypatch, value):
@@ -1046,10 +1047,30 @@ class TestAddSubstitutionsFromConfigFile:
         # is told
         monkeypatch.setattr(var_module, "_CONFIG_FILE_SELECTED", value is not None)
 
-    def test_default_existing_value_wins(self, monkeypatch):
+    def test_an_environment_variable_wins(self, monkeypatch):
+        # YD_VAR_myvar, without '-c'
         self._set_config_file(monkeypatch, None)
+        var_module._ENVIRONMENT_DEFINED_VARIABLES.add("myvar")
         var_module.add_substitutions_from_config_file({"myvar": "from-toml"})
         assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "hello"
+
+    def test_a_cli_variable_wins(self, monkeypatch):
+        self._set_config_file(monkeypatch, None)
+        var_module.CLI_DEFINED_VARIABLES.add("myvar")
+        var_module.add_substitutions_from_config_file({"myvar": "from-toml"})
+        assert var_module.VARIABLE_SUBSTITUTIONS["myvar"] == "hello"
+
+    @pytest.mark.parametrize("selected", [None, "my-config.toml"])
+    def test_the_file_overrides_a_default_variable(self, monkeypatch, selected):
+        # A default variable ('username', 'date', ...) is below the file in
+        # the precedence order, whether or not '-c' chose it
+        self._set_config_file(monkeypatch, selected)
+        monkeypatch.setitem(var_module.VARIABLE_SUBSTITUTIONS, "username", "login")
+        var_module.add_substitutions_from_config_file(
+            {"username": "from-toml", "run": "{{username}}-1"}
+        )
+        assert var_module.VARIABLE_SUBSTITUTIONS["username"] == "from-toml"
+        assert var_module.VARIABLE_SUBSTITUTIONS["run"] == "from-toml-1"
 
     def test_explicit_config_toml_overrides_existing(self, monkeypatch):
         self._set_config_file(monkeypatch, "my-config.toml")

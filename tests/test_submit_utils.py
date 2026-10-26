@@ -949,3 +949,63 @@ class TestOnlyFilesThisRunCreatedAreDeleted:
             tmp_path, remote_exists=False, overwrite=False
         )
         assert deleted == [self._UPLOAD_PATH]
+
+
+class TestPropertyOverridesBeatTheSpecification:
+    """
+    '--property workRequirement.<key>=<value>' replaces the specification's
+    own value wherever it is set, at the Work Requirement, Task Group and
+    Task levels, as a command-line value beats a file's.
+    """
+
+    @staticmethod
+    def _spec() -> dict:
+        return {
+            "priority": 1.0,
+            "arguments": ["wr"],
+            "name": "spec-wr",
+            "taskGroups": [
+                {
+                    "name": "tg",
+                    "priority": 2.0,
+                    "retryPolicy": {"maxRetries": 1, "retryErrors": {"includes": []}},
+                    "tasks": [{"name": "t", "arguments": ["task"]}, {"name": "u"}],
+                }
+            ],
+        }
+
+    def test_an_inherited_property_is_replaced_at_every_level_setting_it(self):
+        spec = self._spec()
+        su.apply_property_overrides(spec, [(["arguments"], ["cli"])])
+        assert spec["arguments"] == ["cli"]
+        assert spec["taskGroups"][0]["tasks"][0]["arguments"] == ["cli"]
+        # Not added where the specification does not set it: inherited
+        assert "arguments" not in spec["taskGroups"][0]
+        assert "arguments" not in spec["taskGroups"][0]["tasks"][1]
+
+    def test_a_level_the_property_cannot_be_at_is_left_alone(self):
+        spec = self._spec()
+        su.apply_property_overrides(spec, [(["priority"], 9.0)])
+        assert spec["priority"] == 9.0
+        assert spec["taskGroups"][0]["priority"] == 9.0
+
+    def test_a_name_is_the_work_requirements_alone(self):
+        # TOML 'name' names the Work Requirement, never a Task Group or Task
+        spec = self._spec()
+        su.apply_property_overrides(spec, [(["name"], "cli-wr")])
+        assert spec["name"] == "cli-wr"
+        assert spec["taskGroups"][0]["name"] == "tg"
+        assert spec["taskGroups"][0]["tasks"][0]["name"] == "t"
+
+    def test_a_nested_override_replaces_only_its_leaf(self):
+        spec = self._spec()
+        su.apply_property_overrides(spec, [(["retryPolicy", "maxRetries"], 5)])
+        assert spec["taskGroups"][0]["retryPolicy"] == {
+            "maxRetries": 5,
+            "retryErrors": {"includes": []},
+        }
+
+    def test_a_property_no_specification_takes_is_ignored(self):
+        spec = self._spec()
+        su.apply_property_overrides(spec, [(["csvFiles"], ["a.csv"])])
+        assert spec == self._spec()

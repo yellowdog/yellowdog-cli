@@ -110,7 +110,7 @@ def parse_args(argv: list[str] | None = None) -> ServerSettings:
         "--transport",
         choices=TRANSPORTS,
         default="stdio",
-        help="the MCP transport (stdio only, for now)",
+        help="the MCP transport: stdio, the only one",
     )
     args = parser.parse_args(argv)
     if args.config_file is not None and args.config_option is not None:

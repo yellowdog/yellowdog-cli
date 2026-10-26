@@ -54,7 +54,7 @@ The commands **yd resource create** and **yd resource remove** allow the creatio
 
 ## Overview of Operation
 
-The **yd resource create** and **yd resource remove** commands operate on a list of one or more resource specification files in JSON (or Jsonnet) format.
+The **yd resource create** and **yd resource remove** commands operate on a list of one or more resource specification files in JSON or Jsonnet format, or TOML, a TOML file holding one resource. `yd resource create --validate` checks the files against their schema and stops, and `yd schema resources` prints that schema, without contacting the Platform.
 
 Each resource specification file can contain a single resource specification or a list of resource specifications. Different resource types can be mixed together in the same list.
 
@@ -78,6 +78,13 @@ Resources are updated by re-running the `yd resource create` command with the sa
 
 The update action will create any resources that are not already present in the Platform, and it will update any resources that are already present. The command does not check for specific differences, so an unchanged resource specification will still cause an update.
 
+Four resource types are the exceptions:
+
+- A **Credential** is put into its Keyring, replacing one of the same name, without a prompt.
+- A **Namespace** that already exists is reported with a warning and skipped.
+- An **Allowance** is created again, as a second Allowance, unless `--match-allowances-by-description`/`-M` is given, which replaces those with the same description.
+- A **Configured Worker Pool** is always added as a new pool.
+
 ### Resource Removal
 
 Resources are removed by running the `yd resource remove` command, with the same form of resource specifications. For example:
@@ -87,7 +94,7 @@ yd resource remove resources_1.json <resources_2.json, ...>
 ```
 Destructive operations will prompt the user for approval: as in other commands, this can be overridden using the `--yes` command-line option.
 
-The `yd resource remove` command can also remove resources by their `ydid` resource IDs, given as arguments in place of, or alongside, specification files: Compute Source and Compute Requirement Templates, Machine Image Families, Image Groups and Images, Keyrings, Allowances, Groups and Applications can be removed, and Worker Pools shut down. Every ID is checked before anything is removed, and one of another type is refused; an ID given twice is removed once. Files and IDs given together are removed in one run, ordered so that a resource is removed before those it refers to. The `--ids` option is optional: it says every argument is an ID, refusing anything else. Each resource is fetched before it is removed, so one that does not exist is reported, without a prompt, as not found (exit code 6), and a Worker Pool that has already been shut down is skipped. For example:
+The `yd resource remove` command can also remove resources by their `ydid` resource IDs, given as arguments in place of, or alongside, specification files: Compute Source and Compute Requirement Templates, Machine Image Families, Image Groups and Images, Keyrings, Allowances, Groups and Applications can be removed, and Worker Pools shut down. Every ID is checked before anything is removed, and one of another type is refused; an ID given twice is removed once. Files and IDs given together are removed in one run, ordered so that a resource is removed before those it refers to. The `--ids` option is optional: it says every argument is an ID, refusing anything else. Each resource is fetched before it is removed, so one given by ID that does not exist is reported, without a prompt, as not found (exit code 6); one named in a specification file, or by name with `--type`, that does not exist is warned of and recorded as `skipped` instead, with exit code 0, and a Worker Pool that has already been shut down is skipped. For example:
 
 ```shell
 yd resource remove ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:imgfam:D9C548:4bc3cc57-1387-49a6-85d4-132bcf3a65fd
@@ -101,7 +108,7 @@ However, this means that **caution is required** when updating or removing resou
 
 ## Resource Specification Definitions
 
-The JSON specification used to define each type of resource can be found by inspecting the YellowDog Platform REST API documentation at https://docs.yellowdog.ai/api.
+The JSON specification used to define each type of resource can be found by inspecting the YellowDog Platform REST API documentation at https://docs.yellowdog.ai/api, or as a schema, built from the installed SDK, with `yd schema resources`.
 
 For example, to obtain the JSON schema for creating a Compute Source Template, take a look at the REST API models for the Compute API: https://docs.yellowdog.ai/api?spec=Compute%20API.
 
@@ -174,7 +181,11 @@ yd resource remove -y csts.json crts.json ifs.json
 
 **Step 3: Change the namespace in all the resources**
 
-Use an editor's search and replace function, or a command-line tool such as `sed` to replace all occurrences of `"ns-1"` with `"ns-2"`, for every `namespace` property, in each of the JSON files.
+Replace the namespace wherever the files name it: in every `namespace` property (`"ns-1"`), and in the references `--substitute-ids` wrote, which name a resource by its namespace (`"ns-1/<name>"`, a Compute Requirement Template's sources, and `"yd/ns-1/<family>"`, an Image Family). Left unchanged, a reference would point at the resource removed in step 2. With `sed`, for example:
+
+```shell
+sed -i.bak -e 's#"ns-1"#"ns-2"#g' -e 's#"ns-1/#"ns-2/#g' -e 's#"yd/ns-1/#"yd/ns-2/#g' csts.json crts.json ifs.json
+```
 
 **Step 4: Recreate all resources in the new namespace**
 
@@ -219,7 +230,7 @@ generate-keyrings | yd resource create -
 
 ## Preprocessing Resource Specifications
 
-The `--dry-run`/`-D` and `--jsonnet-dry-run`/`-J` options can be used with `yd resource create` to display the processed JSON data structures without any resources being created or updated.
+The `--dry-run`/`-D` and `--jsonnet-dry-run`/`-J` options can be used with `yd resource create` to display the processed JSON data structures without any resources being created or updated. The printed form leaves out each specification's `resource` property (`--json` keeps it), and a dry run still contacts the Platform, to look names up.
 
 Below, we'll discuss each item type with example specifications.
 
@@ -233,6 +244,8 @@ An example Keyring specification is shown below:
 {"resource": "Keyring", "name": "my-keyring-1", "description": "My First Keyring"}
 ```
 
+Both `name` and `description` are required.
+
 or to specify two Keyrings at once:
 
 ```json
@@ -245,8 +258,17 @@ or to specify two Keyrings at once:
 When a new Keyring is created it's usable only by the YellowDog application which created it. A **system-generated password** is also returned as a one-time response, which would allow the Keyring also to be claimed by YellowDog Portal users. For security reasons the password is not displayed, but this behaviour can be overridden using the `--show-keyring-passwords` command-line option, e.g.:
 
 ```shell
+% yd resource create --show-keyring-passwords keyring.json
+...
+Created Keyring 'my-keyring-1' (ydid:keyring:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa): Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
+...
+```
+
+With `--quiet` as well, the command prints the Keyring's ID and its password alone, separated by a space:
+
+```shell
 % yd resource create --quiet --show-keyring-passwords keyring.json
-Keyring 'my-keyring-1': Password = 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
+ydid:keyring:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa 4OQAdcZagUX7ZiHaYvqC4yuKb4KCyN9lk4Z7mCcTYXA
 ```
 
 Re-running `yd resource create` on an existing Keyring **updates its description in place**, after confirmation, and leaves its credentials and accessors as they are: the description is the only property the Platform allows to change, and the name is what an existing Keyring is matched on. To recreate a Keyring — for a fresh password, say — remove it with `yd resource remove` and create it again, which loses its credentials.
@@ -308,7 +330,7 @@ An example Compute Source resource specification is found below:
 }
 ```
 
-The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the resource specification file. Variable substitutions using the `__variable__` syntax are applied to the file contents.
+The `userData` property inside the `source` object accepts an inline script string. As an alternative, `userDataFile` accepts a path to a single script file, and `userDataFiles` accepts a list of paths whose contents are concatenated in order. These three properties are mutually exclusive. Relative paths are resolved from the directory containing the resource specification file. Variable substitutions using the `__{{variable}}__` syntax are applied to the file contents, as they are to an inline `userData`.
 
 In the Compute Source Template `imageId` property, an Image Family name **namespace/family-name** or Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imageId": "yellowdog/yd-agent-docker"`. The `yd resource create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
 
@@ -334,11 +356,11 @@ An example Compute Requirement resource specification is found below, for a **st
 }
 ```
 
-Note that Compute Source Template **namespace/names** in the form `namespace/compute_source_template_name` can be used instead of their IDs: the **yd resource create** command will look up the IDs and make the substitutions. The Compute Source Templates must already exist.
+Note that Compute Source Template **namespace/names** in the form `namespace/compute_source_template_name`, or a name alone, looked up in the Compute Requirement Template's own namespace, can be used instead of their IDs: the **yd resource create** command will look up the IDs and make the substitutions. The Compute Source Templates must already exist. A source's `imageId` is resolved as a Compute Source Template's is.
 
 The top-level `userData` property accepts an inline script string. As with Compute Source Templates, `userDataFile` and `userDataFiles` are also supported as mutually exclusive alternatives (see above).
 
-Also, in the `imagesId` property, an Image Family name **namespace/family-name** or an Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imagesId": "yellowdog/yd-agent-docker/latest"`. The `yd resource create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
+Also, in the `imagesId` property, an Image Family name **namespace/family-name** or an Image Group name **namespace/family-name/group-name** may be used instead of an ID. For example: `"imagesId": "yellowdog/yd-agent-docker/latest"`, where a trailing `/latest` is allowed and ignored, naming the Image Family itself. The `yd resource create` command will look up the Image Family name and substitute with a well-formed name or ID. A **`yd/`** prefix may also optionally be used.
 
 A **dynamic** template example is:
 
@@ -413,7 +435,7 @@ An example specification, illustrating a containment hierarchy of Image Family -
       "images": [
         {
           "metadata": {},
-          "name": "win-2022-yd-agent-5_0_16",
+          "name": "win-2022-yd-agent-5_0_16-eu-west-1",
           "osType": "WINDOWS",
           "provider": "AWS",
           "providerImageId": "ami-0cb09e7f49c1eb021",
@@ -422,7 +444,7 @@ An example specification, illustrating a containment hierarchy of Image Family -
         },
         {
           "metadata": {},
-          "name": "win-2022-yd-agent-5_0_16",
+          "name": "win-2022-yd-agent-5_0_16-eu-west-2",
           "osType": "WINDOWS",
           "provider": "AWS",
           "providerImageId": "ami-0cb09e7f49c1eb022",
@@ -435,11 +457,11 @@ An example specification, illustrating a containment hierarchy of Image Family -
 }
 ```
 
-Note that if the name of an Image Group or an Image is changed in the resource specification, the existing resource with the previous name will be removed from the Platform because it's no longer present in the resource specification. To prevent this, retain the previous resource in your specification, and add resources as required.
+Image Groups and Images are matched to the existing ones by name when an Image Family is updated, so each Image within a Group needs a name of its own. Note that if the name of an Image Group or an Image is changed in the resource specification, the existing resource with the previous name will be removed from the Platform, after confirmation (which `--yes` skips), because it's no longer present in the resource specification. To prevent this, retain the previous resource in your specification, and add resources as required.
 
 ## Configured Worker Pools
 
-The Configured Worker Pool models can be found in the Scheduler API at: https://docs.yellowdog.ai/api?spec=Scheduler%20API.
+The Configured Worker Pool models can be found in the Scheduler API at: https://docs.yellowdog.ai/api?spec=Scheduler%20API. `yd resource create` requires its `namespace`, which the API leaves optional.
 
 Example:
 
@@ -495,7 +517,7 @@ Example:
 
 The `effectiveFrom` and `effectiveUntil` date-time string fields can use any format supported by the **[dateparser](https://dateparser.readthedocs.io/en/latest/)** library, including some natural language formulations. In a TOML resource specification, a TOML date or date-time value can be used as it is. A dry run shows the parsed dates in ISO 8601 form.
 
-Compute Source Template and Compute Requirement Template IDs can use names instead of IDs, and the IDs will be substituted by `yd resource create`. However, if a Source allowance is created (type `co.yellowdog.platform.model.SourceAllowance`), then the Compute Source ID (note: **not** the Compute Source Template ID) itself must be used in the `sourceId` property.
+Compute Source Template and Compute Requirement Template IDs can use names instead of IDs, and the IDs will be substituted by `yd resource create`: the `sourceCreatedFromId` of a Sources Allowance (`co.yellowdog.platform.model.SourcesAllowance`) and the `requirementCreatedFromId` of a Requirements Allowance, a name without a namespace being looked up in the configured namespace. However, if a Source allowance is created (type `co.yellowdog.platform.model.SourceAllowance`), then the Compute Source ID (note: **not** the Compute Source Template ID) itself must be used in the `sourceId` property.
 
 Allowances **cannot be updated** (edited) once they have been created; they can only be removed and recreated. However, if using `yd resource create` to update existing Allowances, the `--match-allowances-by-description`/`-M` option can be used, in which case Allowances will be matched using their `description` property. If matches are found, the user is asked which ones to remove (selecting from them when there are several, a selection `--yes` does not skip) and to confirm each removal, all before the new Allowance is created; the chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place, and a run that cannot be asked (no terminal to answer from) fails before anything has changed.
 

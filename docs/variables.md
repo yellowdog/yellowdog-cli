@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:13 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:03:56 GMT 2026 -->
 
 <!--te-->
 
@@ -52,7 +52,7 @@ The following substitutions are automatically created and can be used in any sec
 | `{{username}}`        | The current user's login username, lower case, spaces replaced | jane_smith              |
 | `{{date}}`            | The current date (UTC): YYMMDD                                 | 221027                  |
 | `{{time}}`            | The current time (UTC): HHMMSSss                               | 16302699                |
-| `{{datetime}}`        | Concatenation of the date and time, with a '-' separator       | 221027-163026           |
+| `{{datetime}}`        | The date and the time to the second (UTC): YYMMDD-HHMMSS       | 221027-163026           |
 | `{{random}}`          | Three random base 36 digits (0-9, a-z), lower case             | a1c                     |
 | `{{random6}}`         | Six random base 36 digits (0-9, a-z), lower case               | a1c9z0                  |
 | `{{pid}}`             | The process ID (PID) of the running command                    | 48213                   |
@@ -64,12 +64,13 @@ The following substitutions are automatically created and can be used in any sec
 | `{{url}}`             | The Platform `url` property.                                   |                         |
 | `{{config_dir_abs}}`  | The absolute directory path of the configuration file          | /yellowdog/workloads    |
 | `{{config_dir_name}}` | The immediate containing directory of the configuration file   | workloads               |
+| `{{dataClient.remote}}`, `{{dataClient.bucket}}`, `{{dataClient.prefix}}` | The data client's configuration, and `{{dataClient.<profile>.remote}}` and the others a named profile's; see [Variable Substitutions for Data Client Properties](data-client.md#variable-substitutions-for-data-client-properties) | |
 
 The `namespace`, `tag`, `key`, `secret` and `url` variables always hold the values the command is using, and cannot be redefined or unset as user-defined variables (see [Variable Naming](#variable-naming)); the other default variables can be overridden, as described in [Precedence Order](#precedence-order).
 
 For the `date`, `time`, `datetime`, `random`, `random6`, `pid` and `pid2` directives, the same values will be used for the duration of a command — i.e. if `{{time}}` is used within multiple properties, the identical value will be used for each substitution.
 
-The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied.
+The `config_dir_` substitutions use the name of the directory containing the nominated TOML configuration file, or the invocation directory if no configuration file is supplied; with `--no-config`, they are not defined.
 
 The `random` and `random6` directives use base 36 digits rather than hexadecimal, base 36 being the widest alphabet a YellowDog name may be built from, so they carry the most randomness in the fewest characters: `random` has 46,656 possible values and `random6` has 2,176,782,336.
 
@@ -77,13 +78,15 @@ The `pid2` directive is the same two characters that an automatically generated 
 
 ## User-Defined Variables
 
-User-defined variables can be supplied using an option on the command line, by setting environment variables prefixed with `YD_VAR_`, by using general environment variables, or by including properties in the `[common]` section of the TOML configuration file.
+User-defined variables can be supplied using an option on the command line, by setting environment variables prefixed with `YD_VAR_`, by using general environment variables, or by including properties in the `[common.variables]` section of the TOML configuration file.
 
 ### Variable Naming
 
 A variable name must start with a letter, a digit or an underscore, and may contain only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`), e.g. `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined — on the command line, in a `YD_VAR_` environment variable, in `[common.variables]`, or with `--property common.variables.<name>` — and the error names the definition.
 
-The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration. Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
+The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration, and defining a variable with one of them is an error at any of those sources. Such a variable would change only what `{{tag}}` (for example) substitutes, not the tag the command actually uses to name and select entities, and one unset with `{{::}}` would simply be defined again from the configuration.
+
+Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables). Names differing only in case, such as `TAG`, are not reserved.
 
 The same rule decides what a substitution refers to: a `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is, which is what allows text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, to pass through unchanged. This is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
@@ -120,8 +123,11 @@ The precedence order for setting variables is:
 2. `YD_VAR_` environment variables
 3. `YD_VAR_` variables defined in a `.env` file
 4. TOML configuration file (`[common.variables]`)
+5. The [default variables](#default-variables) (`username`, `date`, `random` and the others, other than the reserved `namespace`, `tag`, `key`, `secret` and `url`)
 
 **Exception**: if the configuration file is explicitly selected using the `--config`/`-c` option, its `[common.variables]` definitions take precedence over `YD_VAR_` environment variables (items 2 and 3), but never over variables set on the command line.
+
+With `--env-override` (or `YD_ENV_OVERRIDE` set), a `.env` file's `YD_VAR_` variables take precedence over the environment's: items 2 and 3 change places. [Which Value Wins](configuration.md#which-value-wins) sets this order beside those of the other kinds of setting.
 
 (Substitutions using the `{{env:NAME}}` syntax are resolved directly from the named environment variable at the point of use, and do not participate in this precedence order.)
 
@@ -279,7 +285,9 @@ WARNING : Variable '{{site}}' is unset, and has been left unsubstituted in 'name
 
 This applies wherever variables are substituted: specifications and the TOML configuration file, including the `namespace`, `tag` and `url` properties and the `[dataClient]` section and its profiles; the contents of User Data files, Task Data files (`taskDataFile`/`taskDataFiles`) and `yd node action` `writeFile` content files, where the warning names the file; and the paths given to the data client commands.
 
-Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named. The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named.
+
+The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 
@@ -289,4 +297,4 @@ In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variab
 
 Variable substitutions can also be used within **User Data** to be supplied to instances, for which the same prefix/postfix requirement applies, **including** for User Data supplied directly using the `userData` property in the `workerPool` section of the TOML file.
 
-The same prefix/postfix requirement applies to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).
+The same prefix/postfix requirement applies to a `yd node action` specification file itself, and to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).

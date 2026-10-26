@@ -23,9 +23,10 @@
    * [Running Arbitrary Commands](#running-arbitrary-commands)
    * [Sending Input to a Running Command](#sending-input-to-a-running-command)
    * [A Note on Confirmations](#a-note-on-confirmations)
+   * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 12 11:02:15 BST 2026 -->
+<!-- Added by: pwt, at: Mon Oct 26 10:34:53 GMT 2026 -->
 
 <!--te-->
 
@@ -119,8 +120,6 @@ Choosing **Quit and Stop** signals each command to finish and forces it to stop 
 
 Commander only asks about commands you started from the buttons or the command field, not about the short-lived `yd variables` invocations it makes internally to read your configuration.
 
-Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
-
 ## Naming and Matching Assumptions
 
 Commander's bulk management actions — cancelling Work Requirements, terminating Compute Requirements, shutting down Worker Pools, and downloading or deleting objects — do not act on a specific entity you name. Instead they select every entity that matches the current **namespace** and **tag**, so they assume you are using the CLI's default naming convention, in which the tag is embedded in the names, tags, and object paths of the entities you create.
@@ -138,7 +137,7 @@ Given that convention, the management actions match as follows:
 
 - **Cancel Work Requirements** (`yd workrequirement cancel`) — Work Requirements in the namespace whose tag contains the current tag.
 - **Terminate Compute Requirements** (`yd computerequirement terminate`) — Compute Requirements in the namespace whose tag contains the current tag.
-- **Shut Down Worker Pools** (`yd workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
+- **Shutdown Worker Pools** (`yd workerpool shutdown`) — Worker Pools in the namespace whose name contains the current tag.
 - **Download / Delete Matching Objects** (`yd data download` / `yd data delete`) — objects whose path matches the **Path** field, defaulting to `<tag>*` (objects whose path begins with the current tag).
 
 Matching is by substring or prefix, not exact equality, which has two consequences worth keeping in mind.
@@ -148,7 +147,7 @@ Matching is by substring or prefix, not exact equality, which has two consequenc
 
 Set the Namespace, Tag, and Path fields deliberately, and use the confirmation dialog's listing of affected items to check exactly what will be acted on before you proceed — you can also untick anything in that listing you want left alone.
 
-When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag.
+When the default convention does not fit — because you have named entities your own way — the **Name** field is the escape hatch: enter a glob pattern (`*`, `?`, `[…]`) and Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, and Terminate Compute Requirements select entities whose **name** matches that pattern within the namespace, instead of matching by tag.
 
 A value without wildcards matches the name exactly, so use `*` for partial matches (for example `myproject-*`). The confirmation dialog still lists exactly what the pattern matched before anything is acted on, and you can untick individual matches there, so the pattern only has to get you close.
 
@@ -177,7 +176,7 @@ The file dialogs — choosing a configuration or definition file, and the two di
 
 A binary file is named and sized but not previewed, rather than shown as gibberish. Whether a file counts as text is decided by reading the start of it, not by its extension, so task output named whatever the task named it is previewed all the same.
 
-A text file is previewed from the top: up to 500 lines, or the first 256 kB of it, whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
+A text file is previewed from the top: up to 500 lines, or the first 256 KiB of it (262.1 kB, as the last line shows it), whichever comes first. The last line of the preview says which, so a preview that stops short says so — `… first 500 lines shown`, or `… first 262.1 kB shown` for a file whose lines are long. A single line beyond 2,000 characters is cut there and marked with an ellipsis; minified JSON and single-record output are otherwise slow to draw. The heading always reports the whole file's size, so the two together tell you how much of it you are looking at.
 
 The three selectors accept with a **Select** button rather than Qt's **Open**: they nominate a file for a later command to read, and nothing is opened by pressing it. The two directory-browsing dialogs do say **Open**, because there they really do open the chosen file in the default application for its type.
 
@@ -204,7 +203,11 @@ Use the **Select** button to choose a `config.toml` file. The selected file's fu
 ## Submitting and Managing Work (Panel 2)
 
 - **Submit Work Requirement** — runs `yd workrequirement submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
-- **Add to…** — runs `yd workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that are running or held, the only ones that can take new Tasks) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it. The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, except that **Follow Progress** does not follow a Work Requirement that a command still running in this window is following already (the **Submit Work Requirement** that created it, an earlier **Add to…**, or a `yd follow` from the command box), which would show each of its events twice; the output window says when this happens. A dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
+- **Add to…** — runs `yd workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one. It first lists the Work Requirements that can still be added to (those matching the current namespace and tag, or the **Name** pattern, that are running or held, the only ones that can take new Tasks) and asks you to choose one, with the most recently created chosen to begin with; double-click a row, or press **Add**, to add to it.
+
+  The **Dry Run**, **Follow Progress** and **Extra Options** settings apply exactly as they do to **Submit Work Requirement**, except that **Follow Progress** does not follow a Work Requirement that a command still running in this window is following already (the **Submit Work Requirement** that created it, an earlier **Add to…**, or a `yd follow` from the command box), which would show each of its events twice; the output window says when this happens.
+
+  A dry run reads the chosen Work Requirement to report what would be added, without adding it. If nothing can be added to, or the listing fails, the output window says so and nothing is submitted. With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. Once a file is selected the button's label becomes `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force; hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
 - **Follow Work Requirement Progress** — when ticked the command follows the Work Requirement's progress until it concludes.
@@ -215,7 +218,11 @@ Use the **Select** button to choose a `config.toml` file. The selected file's fu
 ## Provisioning and Managing Compute (Panel 3)
 
 - **Provision Worker Pool** — runs `yd workerpool provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
-- **Resize…** — runs `yd workerpool resize` on a Worker Pool you choose. It first lists the active Worker Pools matching the current namespace and tag (or the **Name** pattern), each with its status and the number of nodes it expects now, and opens a dialog in which you choose one and set **Target nodes**. The count starts at the pool's current one and is kept within the pool's minimum and maximum; **Resize** is unavailable until you change it, and a warning appears if you are reducing it, since nodes will be shut down and tasks running on them may be interrupted. The dialog is the confirmation, so no second one follows. Configured (on-premise) Worker Pools are not listed, as their nodes are not a number the platform can change. A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived; if every matching pool is awaiting nodes, the output window says so and no dialog opens. The **Dry Run** and **Follow** checkboxes apply to creation only. If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
+- **Resize…** — runs `yd workerpool resize` on a Worker Pool you choose. It first lists the active Worker Pools matching the current namespace and tag (or the **Name** pattern), each with its status and the number of nodes it expects now, and opens a dialog in which you choose one and set **Target nodes**.
+
+  The count starts at the pool's current one and is kept within the pool's minimum and maximum; **Resize** is unavailable until you change it, and a warning appears if you are reducing it, since nodes will be shut down and tasks running on them may be interrupted. The dialog is the confirmation, so no second one follows.
+
+  Configured (on-premise) Worker Pools are not listed, as their nodes are not a number the platform can change. A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived; if every matching pool is awaiting nodes, the output window says so and no dialog opens. The **Dry Run** and **Follow** checkboxes apply to creation only. If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
 - **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
 - **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
@@ -243,7 +250,9 @@ What neither reports is how much sits inside a matched directory. The download's
 
 The **Namespace** and **Tag** fields override the values from the configuration file for every command. The default values discovered from the configuration are shown as placeholder text, so you can see what will be used if you leave a field blank.
 
-The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shut Down Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** and the Worker Pools **Resize…** offer, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all six actions, so it applies to whichever one you run.
+The **Name** field is different in scope: it is a glob pattern applied only to the bulk management actions (Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, and Terminate Compute Requirements) and to the Work Requirements **Add to…** and the Worker Pools **Resize…** offer, selecting entities by name rather than by tag (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)). Leave it blank to keep the default tag-based matching. A single Name field is shared by all six actions, so it applies to whichever one you run.
+
+Reading the configuration is bounded by a 10-second timeout: it contacts nothing, but the first `yd` command of a session can be slow to start (on Windows especially), so a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
 
 ## User-Defined Variables
 
@@ -296,7 +305,11 @@ When several commands are running at once their output is interleaved, each mess
 
 While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual; output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*. Click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window to see everything again, in the order it arrived. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted, unless the window was following the output at its end, in which case it still is.
 
-To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. The dialog lists Commander's own messages and then each command in the order it started, with its PID, its command line as you gave it (without the configuration and formatting options Commander adds), when it started, whether it is still running or how it ended, and how many lines of output it has in the window. A command whose output has been cleared is not listed unless it is still running. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return; hover a row for its full command line. The rows ticked when the dialog opens are the processes being shown, otherwise the command of the line you right-clicked, otherwise the latest. With several processes shown, their output is interleaved as it arrived and the bar names each of them, and right-clicking a line of one of them offers to narrow the view to that one alone.
+To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. The dialog lists Commander's own messages and then each command in the order it started, with its PID, its command line as you gave it (without the configuration and formatting options Commander adds), when it started, whether it is still running or how it ended, and how many lines of output it has in the window.
+
+A command whose output has been cleared is not listed unless it is still running. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return; hover a row for its full command line. The rows ticked when the dialog opens are the processes being shown, otherwise the command of the line you right-clicked, otherwise the latest.
+
+With several processes shown, their output is interleaved as it arrived and the bar names each of them, and right-clicking a line of one of them offers to narrow the view to that one alone.
 
 To see only the lines containing some text, type it in the *Filter lines* field at the right of the *Command Output* heading, or press Cmd+F (Ctrl+F on Windows and Linux) to get there. The output is filtered a moment after you stop typing, or at once if you press Return. Each line is matched on its own, as `grep` would: a message wrapped onto several lines is shown only where the text falls, and a line of a table or JSON document is shown only if it contains the text itself. Case is ignored, the text can fall anywhere in the line, and two characters are wildcards: `*` matches any run of characters and `?` any single one, so `ydid:task:*` finds every line naming a Task and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
 
@@ -306,7 +319,13 @@ The text filter works together with the filter by process, so filtering to one c
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. If the command begins with `yd` (or a deprecated `yd-*` name), the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, each only where the command takes it (`yd show` takes no namespace or tag, and `yd cloudinfo` none of them); a noun and its verb, such as `yd wr submit`, are one command, as is a command such as `yd list`, the additions coming after it; a `yd` command it does not recognise is still run as the CLI's, which reports it, never handed to the shell, where another `yd` on your `PATH` could run; and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`). The exceptions are `yd version`, `yd help`, `yd schema`, `yd format-json` and `yd jsonnet2json`, which need no configuration and take none of those options, so they are run as typed, with only `--nf` added to those that accept it (all of them but `yd format-json`). Any other command is run through the system shell (`%ComSpec%`, normally `cmd.exe`, on Windows; `/bin/sh` elsewhere), so wildcards, pipes and redirection work as they would in a terminal. The `<` and `>` buttons step back and forth through your command history.
+The **Run Command in Config Directory** field runs any command in the configuration file's directory.
+
+If the command begins with `yd` (or a deprecated `yd-*` name), the selected configuration file, the namespace/tag overrides, the user-defined variables and the properties are added to it automatically, each only where the command takes it (`yd show` takes no tag, and `yd cloudinfo` none of them); a noun and its verb, such as `yd wr submit`, are one command, as is a command such as `yd list`, the additions coming after it; a `yd` command it does not recognise is still run as the CLI's, which reports it, never handed to the shell, where another `yd` on your `PATH` could run; and it is split as described in [Quoting](#quoting) (unless you supply your own `-c`/`--config`/`--no-config`).
+
+The exceptions are `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json` and `yd jsonnet2json`, which need no configuration and take none of those options, so they are run as typed, with only `--nf` added to those that accept it (all of them but `yd format-json` and `yd completion`).
+
+Any other command is run through the system shell (`%ComSpec%`, normally `cmd.exe`, on Windows; `/bin/sh` elsewhere), so wildcards, pipes and redirection work as they would in a terminal. The `<` and `>` buttons step back and forth through your command history.
 
 ## Sending Input to a Running Command
 
@@ -322,6 +341,7 @@ For all five destructive actions that listing is **checkable**:
 
 - Every item is ticked to begin with: untick anything you want left alone, use **All** and **None** to set every item at once, and the count above the list shows how many are currently selected.
 - **Yes** is unavailable while nothing is selected, and acts on precisely the items you have ticked.
+- If the listing itself fails, the output window says so and the confirmation asks about the whole scope instead, with no list: confirming it acts on everything the namespace and tag (or the **Name** pattern) select, as the command would from a terminal. A download whose listing fails fetches the whole pattern, with no chooser.
 - Object deletion is selectable in the same way, with one caveat: the listing shows top-level matches, so unticking works at that level, and a ticked directory is deleted with everything inside it.
 - The dialog offers **Yes**, **No**, and **Yes to All (Don't Ask Again)**. The last acts on every listed item regardless of what you have ticked, and suppresses further prompts for that same action for the rest of the session, after which that action always applies to everything in scope.
 
@@ -340,3 +360,11 @@ Objects whose names contain a wildcard character (`*`, `?`, `[`) or a `{{` subst
 **Resize…** shows its dialog even under `-y`/`--yes`, because the dialog is the only place to give the number of nodes.
 
 **Deselect...** also shows a dialog, but it is a chooser rather than a confirmation: nothing it does is destructive or irreversible, so it has no **Don't Ask Again** option and its default button is **Deselect**. It is not suppressed by `-y`/`--yes`, because it is the only way to deselect one file and not the others; accepting it unchanged deselects everything, so it costs a single keypress.
+
+## Troubleshooting
+
+- **Commander does not open.** Without the `commander` extra, `yd commander` exits saying how to install it; install it as you installed the CLI (`uv tool install "yellowdog-cli[commander]"`, or `uv pip install -U` / `pip install -U "yellowdog-cli[commander]"` in its virtual environment). `yd doctor`'s `Commander` row says whether the extra is installed and loads.
+- **On Linux, `Qt cannot start here`.** PyQt6 is installed but a system library Qt needs is missing, which the message names. It also gives the packages to install on Debian and Ubuntu (`libgl1`, `libegl1`, `libglib2.0-0t64`, `libxkbcommon0`, `libdbus-1-3`, `libfontconfig1`); a minimal or container image often lacks them.
+- **The Namespace and Tag placeholders stay empty.** Commander reads them with `yd variables`, and says in the Command Output window why it could not: `Error parsing config with 'yd variables' (Exit 3): ...` is the configuration's own error, which `yd doctor -c <file>` in a terminal shows in full; `Timed out after 10s ...` is a slow first start, retried once on its own; and `the Properties field cannot be used` means its quotes do not balance (see [Quoting](#quoting)).
+- **A command fails.** Its error is in the Command Output window, below the `Executing:` line that shows the command line and the directory it ran in. Running that command in a terminal, from that directory, reproduces it, and `yd doctor` checks the configuration, credentials and connection the commands share.
+- **An action lists nothing.** The listing is by the Namespace and Tag (or the Name pattern) shown at the top, as in [Naming and Matching Assumptions](#naming-and-matching-assumptions): entities named another way are found by giving the **Name** a glob pattern that matches them.

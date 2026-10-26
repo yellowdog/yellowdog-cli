@@ -1,12 +1,12 @@
 # Machine-readable Output and Exit Codes
 
-For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. For a command with a `--dry-run`, the real run's document has the same shape as the dry run's, without the `would ` prefix. The contract is:
+For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. For an action or data client command with a `--dry-run`, the real run's document has the same shape as the dry run's, without the `would ` prefix; the commands that create something from a specification (`yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create`) are the exception, their dry run's document being the processed specification. The contract is:
 
-1. With `--json`, stdout carries one JSON document and nothing else: no status messages, no tables, no bare IDs. A command that acted on nothing emits an empty array (`[]`). In every family, any record whose `action` or `outcome` is `failed` makes the exit code 1, even where the command carried on and completed; this holds with or without `--json`.
+1. With `--json`, stdout carries one JSON document and nothing else: no status messages, no tables, no bare IDs. A command that acted on nothing emits an empty array (`[]`). In every family, any record whose `action` or `outcome` is `failed` makes the exit code non-zero, even where the command carried on and completed: the code the failures share where the command records their cause (6 if every target was not found, for example; see below), else 1. This holds with or without `--json`.
 2. Warnings go to stderr under `--json`, as errors always do. A confirmation or selection prompt also writes to stderr under `--json`, so an interactive run still parses on stdout; a prompt that finds stdin at end of input (a script that omitted `--yes`, or a redirect from `/dev/null`) fails with an error saying so and exit code 1, with the document holding whatever was recorded before it. Items not chosen in an interactive selection (`--interactive`) are absent from the document rather than recorded as `skipped`, except in `yd task abort`, which records each Task not chosen as `skipped` with the error `not selected`.
 3. There is no envelope: the document is a bare array or object, as `yd list`, `yd show` and `yd doctor` emit.
-4. `--dry-run` with `--json` gives the same shape, with each outcome prefixed `would ` (e.g., `would cancel`, `would delete`).
-5. `--quiet` is unchanged and independent: the bare ID printed under `--quiet` stays, and `--quiet --json` emits only the JSON.
+4. `--dry-run` with `--json` gives the same shape for the action and data client commands, with each outcome prefixed `would ` (e.g., `would cancel`, `would delete`); for the commands that create from a specification it gives the processed specification.
+5. Without `--json`, `--quiet` prints the bare result (an ID, or the token or password of a command that creates one); with `--json`, stdout holds the document alone, `--quiet` or not.
 6. `--strip-ids` and `--hide-user-data`, where a command has them, apply to the JSON.
 7. On a failure part-way through, whatever was done is still emitted before the process exits non-zero, so a script sees what happened.
 8. `--json` is refused together with an option that writes its own output to stdout: `--progress` and the `--report` of `yd workerpool provision` and `yd computerequirement instantiate`. `--follow` alone is fine, its status messages being silenced by `--json` like any other; the event stream itself is `yd follow --json`.
@@ -29,27 +29,81 @@ The documents, by command:
 | Following | `yd follow` | each event as a JSON document of its own, printed as it arrives (indented, so a document can span lines), and nothing after the last, so a run with no events emits nothing at all rather than `[]`; refused with `--progress` |
 | Data client | `yd data list` | an array of rclone's `lsjson` entries, `{"Path", "Name", "Size", "ModTime", "IsDir"}`, as rclone spells them, `Path` relative to the directory listed (for a wildcard, the directory holding the matches), with `"Listing"` added, the remote path it was listed under; several paths' entries are concatenated, and a path that does not exist adds none and exits 1 |
 | Data client | `yd data upload`, `yd data download`, `yd data copy` | an array of `{"source", "destination", "size", "action"}`, one per file (a directory transferred is recorded as the files in it), `action` one of `uploaded`, `downloaded`, `copied`, `skipped` (an empty directory `yd data upload --flatten` was given), `failed` (plus `"error"`; a local path that does not exist, a directory `yd data upload` was not told to recurse into, or every file of a transfer rclone failed), or `would upload`, `would download`, `would copy` under `--dry-run`, and `would delete` (with a `null` source) for each remote file a `yd data upload --sync` or `yd data copy --sync` dry run would remove, or local file a `yd data download --sync` dry run would. `yd data download` adds `"match"`, the remote item the path given matched (the file itself, or the directory it is in). A file rclone left alone because it was unchanged is still recorded as transferred, and the files `--sync` deletes are not recorded. A `failed` record exits the command 1, so `yd data upload` given a local path that does not exist, or one whose upload fails, exits 1 although it carries on with the others, and so does `yd data download` given a remote path that does not exist or a wildcard that matches nothing. Under `--json`, a wildcard `yd data download` whose listing of a matched item's files fails aborts rather than transferring what it can, the listing being what the records are built from |
-| Data client | `yd data delete` | an array of `{"path", "action"}`, one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
+| Data client | `yd data delete` | an array of `{"path", "action", "name", "isDir"}` (`name` being the item's own name, a directory's with a trailing `/`), one per item deleted (a directory deleted with `--recursive` is one item), `action` one of `deleted`, `failed` (plus `"error"`; a directory given or matched without `--recursive` among them), `skipped` (a path that does not exist, a wildcard matching nothing, or a deletion declined) or `would delete`, with the item's display `"name"` (a directory's ending in `/`) and `"isDir"` |
 | Comparison | `yd workrequirement compare` | an array of one object per Worker Pool compared with each Task Group: `"taskGroupName"` and `"taskGroupId"`, the summary table's columns (`workerPoolName`, `status`, `workerPoolId`, `workerPoolMatch`), and the detailed report's rows under `"properties"` (`property`, `taskGroupRunSpecification`, `workerPool`, `matchStatus`), each table keyed by its column headings in `lowerCamelCase`; a Worker Pool that could not be compared has `workerPoolMatch` `FAILED`, its `"error"`, and no properties |
 | Node actions | `yd node action` | an array of `{"workerPoolId", "nodeId", "actionGroups", "actions", "outcome"}`, one per node submitted to (`nodeId` null for a submission to all of a Worker Pool's nodes), `outcome` one of `submitted`, `skipped` (declined) or `failed` (plus `"error"`), a `failed` submission to one node exiting the command 1 although it carries on with the others; with `--status`, the queue table's rows, `{"nodeId", "status", "waiting", "executing", "failed"}` (with `--follow`, as the queues finished), a node whose queue could not be fetched given with its other fields `null` and an `"error"`, the command then exiting with the code those failures share (6 for nodes not found) |
 | Utility | `yd version` | `{"cli", "sdk", "python", "jsonnet", "rclone", "mcp", "author", "licence"}`, `author` being `{"name", "email"}`, `null` for a component not installed or whose version could not be read; `--debug` adds `"executable"` and `"path"` |
-| Utility | `yd help` | an array of `{"command", "summary"}`, with `"extra"` and `"installed"` for a command needing an optional extra |
+| Utility | `yd help` | an array of `{"command", "summary"}`, one per command: a noun adds `"alias"` and `"verbs"` (each `{"verb", "summary", "replaces"}`), a deprecated `yd-*` command `"deprecated": true` and `"replacedBy"`, and a command needing an optional extra `"extra"` and `"installed"` |
+| Validation | `--validate` on `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create` and `yd node action` | an array of `{"source", "path", "message"}`, one per violation of the specification's schema, `[]` for a valid file; any violation exits 1 |
 
 The exit codes, with or without `--json`:
 
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | The operation failed, the work failed (`yd wait`, `yd workrequirement submit -E`), a check failed (`yd doctor`), or any record's `outcome` or `action` is `failed`, in any family (even if the command handled the error itself and did not raise) |
+| 1 | The operation failed, the work failed (`yd wait`, `yd workrequirement submit -E`), a check failed (`yd doctor`), or a record's `outcome` or `action` is `failed` with no cause the failures share (even if the command handled the error itself and did not raise) |
 | 2 | A usage error: an unknown option or a missing argument |
 | 3 | A configuration error: missing configuration data, an unreadable or invalid TOML file, a variable error at load, or a `--config` file that does not exist |
 | 4 | Authentication failed: the Application key ID and secret were not recognised (HTTP 401) |
 | 5 | Permission denied: the Application lacks a required permission (HTTP 403) |
-| 6 | Not found: an entity named by an ID does not exist (HTTP 404) |
+| 6 | Not found: an entity named by an ID or a name does not exist (HTTP 404) |
 | 7 | A platform error (HTTP 5xx) |
 | 8 | A connection error or timeout reaching the platform |
 | 130 | Interrupted from the keyboard |
 
-A failure a command handles per item, such as a 404 for one of several IDs, is reported in that item's record's `error`. The action commands (those above) and `yd node action` then exit with the code their failures share (6 if every target was not found, 5 if the Application was refused each one), or 1 if the causes differ; the other commands exit 1 whatever its cause, and a script wanting the cause reads `error`. The exception is a failure every later request would repeat, an authentication failure (4) or a connection failure (8): it stops the action commands (those above), which record the item that failed as `failed` and those not attempted as `skipped`, and exit with that failure's code. `yd resource create` and `yd resource remove` stop in the same way, recording the resources not attempted as `skipped`, and otherwise carry on past a failed resource and exit with the code their failures share (6 if every one was a resource not found, for example), or 1 if they had different causes. `yd show` likewise exits with the code the IDs it could not show share (6 if none of them exists, 5 if the Application may read none of them), or 1 if their causes differed. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
+A failure a command handles per item, such as a 404 for one of several IDs, is reported in that item's record's `error`. The action commands (those above) and `yd node action` then exit with the code their failures share (6 if every target was not found, 5 if the Application was refused each one), or 1 if the causes differ; the other commands exit 1 whatever its cause, and a script wanting the cause reads `error`.
+
+The exception is a failure every later request would repeat, an authentication failure (4) or a connection failure (8): it stops the action commands (those above), which record the item that failed as `failed` and those not attempted as `skipped`, and exit with that failure's code.
+
+`yd resource create` and `yd resource remove` stop in the same way, recording the resources not attempted as `skipped`, and otherwise carry on past a failed resource and exit with the code their failures share (6 if every one was a resource not found, for example), or 1 if they had different causes. `yd show` likewise exits with the code the IDs it could not show share (6 if none of them exists, 5 if the Application may read none of them), or 1 if their causes differed. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
 
 Exit codes 2 (usage) and 3 (configuration) occur before the command runs, so stdout is empty: a script should check the exit code before parsing stdout.
+
+## Scripting with `--json`
+
+The examples below use [jq](https://jqlang.org) to read the documents, and follow one rule: take the exit code first, then read the document. A failure part-way still emits what was done, so the document is worth reading either way, but only the exit code says whether everything succeeded.
+
+### Submit, Wait, and Report the Failures
+
+```bash
+# Submit, keeping the new Work Requirement's ID; stop if the submission failed
+submitted=$(yd workrequirement submit --json) || exit $?
+WR_ID=$(jq -r '.id' <<<"$submitted")
+
+# Wait for it to finish; yd wait exits non-zero if it did not complete
+if ! yd wait --json "$WR_ID" > wait.json; then
+    echo "Work Requirement ended $(jq -r '.[0].status' wait.json)"
+    # Each failed Task's name, and the type of the error that failed it
+    yd task list --within "$WR_ID" --status failed --json |
+        jq -r '.[] | "\(.name)\t\((.errors // []) | map(select(.causedFailure)) | last | .errorType // "no error recorded")"'
+fi
+```
+
+`yd workrequirement submit --json` emits one object naming what it created, `{"id", "name", "namespace", "type"}`; `yd wait --json` an array of `{"id", "name", "status", "succeeded"}`; and `yd task list --json` the Tasks themselves, each with the `errors` it recorded (see [Finding the Errors Your Tasks Hit](work-requirements.md#finding-the-errors-your-tasks-hit)).
+
+### Act, and See What Happened to Each Target
+
+```bash
+yd workrequirement cancel --yes --json run-a run-b > cancel.json
+code=$?
+# Each target's outcome, with the reason where it failed
+jq -r '.[] | "\(.name): \(.outcome)\(if .error then " (\(.error))" else "" end)"' cancel.json
+case $code in
+    0) ;;                                    # every target cancelled (or skipped)
+    6) echo "no such Work Requirement" ;;    # every failure was a target not found
+    *) exit $code ;;                         # anything else: credentials, connection, ...
+esac
+```
+
+An action command records every target, `outcome` saying what happened to it (`cancelled`, `skipped`, `failed`, or `would cancel` under `--dry-run`), and exits with the code its failures share, so a script can tell a mistyped name (6) from a permission it lacks (5) or a lost connection (8).
+
+### Transfer Files, and Retry the Ones That Failed
+
+```bash
+if ! yd data download --json --into fetched 'results/*' > download.json; then
+    # Each file that did not arrive, and why
+    jq -r '.[] | select(.action == "failed") | "\(.source): \(.error)"' download.json
+fi
+```
+
+Every path given is attempted, so the files that could be downloaded are, and the document records each file, `downloaded` or `failed` with its `error`. The same holds for `yd data upload` and `yd data copy`, and `yd data delete` records each item it deleted.
