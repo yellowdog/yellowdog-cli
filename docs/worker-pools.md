@@ -76,9 +76,9 @@ The following properties are available:
 | `userDataFiles`         | As above, but create the User Data by concatenating the contents of the list of filenames supplied in this property.                              |                         |
 | `workerPoolData`        | The name of a file containing a JSON specification of a Worker Pool (see [Worker Pool JSON](#worker-pool-specification-using-json-documents)).    |                         |
 | `workerTag`             | The Worker Tag to publish for each of the Workers on the node(s).                                                                                 |                         |
-| `workersPerNode`        | The number of Workers to establish on each node in the Worker Pool. Mutually exclusive with `workersPerVCPU` and `workersCustomCommand`.          | `1`                     |
-| `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool, which may be a fraction (`0.5` is one Worker for every two vCPUs). Mutually exclusive with `workersPerNode` and `workersCustomCommand`. |                         |
-| `workersCustomCommand`  | A command run on the node to determine the number of Workers to establish. Mutually exclusive with `workersPerNode` and `workersPerVCPU`.         |                         |
+| `workersPerNode`        | The number of Workers to establish on each node in the Worker Pool. Used when neither `workersPerVCPU` nor `workersCustomCommand` is set.          | `1`                     |
+| `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool, which may be a fraction (`0.5` is one Worker for every two vCPUs). Takes precedence over `workersPerNode`. |                         |
+| `workersCustomCommand`  | A command run on the node to determine the number of Workers to establish. Takes precedence over `workersPerNode` and `workersPerVCPU`.         |                         |
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families
 
@@ -286,6 +286,8 @@ An important distinction when using variable substitutions within Worker Pool (o
 
 In general, double underscores are **not** required in variable substitutions within the `workerPool` and/or `computeRequirement` sections of a TOML file. The exception to this is if the `userData` property is supplied, in which case double underscores **are** required. They are also required within any files referenced by the `userDataFile` or `userDataFiles` properties.
 
+Use `--follow` (`-f`) to track the Worker Pool after submission: `yd workerpool provision` reports its node events and does not return until the Worker Pool has shut down (or Ctrl-C is pressed). Add `--auto-follow-compute-requirements` (`-a`) to follow its Compute Requirements too.
+
 ## Dry-Running Worker Pool Provisioning
 
 To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command-line option when running `yd workerpool provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform. Add `--hide-user-data` to show the User Data as a summary of its size, where a long script would otherwise swamp the rest of the specification.
@@ -293,8 +295,6 @@ To examine the JSON that will actually be sent to the YellowDog API after all pr
 The generated JSON is produced after all processing (incorporating `config.toml` properties, variable substitutions, etc.) has been concluded, so the dry-run is useful for inspecting the results of all the processing that's been performed.
 
 To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
-
-Use `--follow` (`-f`) to track the provisioning progress after submission — `yd workerpool provision` will report on node events and not return until the Worker Pool reaches a stable state.
 
 The JSON dry-run output could itself be used by `yd workerpool provision`, if captured in a file, e.g.:
 

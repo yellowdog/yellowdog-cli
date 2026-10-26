@@ -438,7 +438,7 @@
 
     # Number of workers per vCPU; a fraction is allowed (0.5 is one Worker
     # for every two vCPUs).
-    # Mutually exclusive with workersPerNode and workersCustomCommand.
+    # Takes precedence over workersPerNode.
     # Optional
     # workersPerVCPU = 1
 
@@ -447,7 +447,7 @@
     # workerTag = "my-worker-tag"
 
     # A command run on the node to determine the number of workers.
-    # Mutually exclusive with workersPerNode and workersPerVCPU.
+    # Takes precedence over workersPerNode and workersPerVCPU.
     # Optional
     # workersCustomCommand = "/opt/my-agent/start.sh"
 
