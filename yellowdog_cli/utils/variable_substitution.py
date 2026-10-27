@@ -39,6 +39,7 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.property_names import (
+    PROP_NODE_EVENTS,
     USERDATA,
 )
 from yellowdog_cli.utils.settings import YD_ENV_VAR_PREFIX
@@ -92,6 +93,13 @@ _UNSET_MARKER = "\ue000"
 # built, after the last pass over a specification no later pass sees.
 _RAW_OPENING = "\ue001"
 _RAW_CLOSING = "\ue002"
+
+# The properties holding text for the Platform's own Mustache processing, in
+# which only the Worker Pool delimiters ('__{{x}}__') are substituted and
+# checked, whatever the pass's own, so that the Platform's '{{provider}}' or
+# '{{node.details.hostname}}' is neither substituted nor reported: User Data,
+# and a Worker Pool's Node Actions ('nodeEvents', everything under it)
+_PLATFORM_MUSTACHE_PROPERTIES = frozenset({USERDATA, PROP_NODE_EVENTS})
 
 # Whether an expression left unsubstituted is reported as an undefined
 # variable. Off until a command's own processing begins (the command
@@ -707,13 +715,13 @@ def _substitute_insitu_pass(
 ) -> list[str]:
     """
     One substitution pass over 'data', in-situ, returning the paths of the
-    properties it changed or removed (e.g. 'taskGroups[0].name').
+    properties it changed or removed (e.g. 'taskGroups[0].name'). Within the
+    _PLATFORM_MUSTACHE_PROPERTIES, the Worker Pool delimiters are used.
     """
     changed: list[str] = []
 
-    def _substitute(key_, value_: str, path: str):
-        # Require the use of post/prefix only for userData in TOML
-        if key_ == USERDATA:
+    def _substitute(value_: str, path: str, mustache: bool):
+        if mustache:
             result = process_variable_substitutions(
                 value_, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
             )
@@ -725,23 +733,24 @@ def _substitute_insitu_pass(
             changed.append(path)
         return result
 
-    def _walk_data(data: dict | list, path: str):
+    def _walk_data(data: dict | list, path: str, mustache: bool):
         """
         Helper function to walk the data structure performing
-        variable substitutions.
+        variable substitutions; 'mustache' within a Platform Mustache property.
         """
         if isinstance(data, dict):
             keys_to_delete = []
             for key_, value_ in data.items():
                 key_path = f"{path}.{key_}" if path else str(key_)
+                key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
                 if isinstance(value_, str):
-                    result = _substitute(key_, value_, key_path)
+                    result = _substitute(value_, key_path, key_mustache)
                     if result is _UNSET:
                         keys_to_delete.append(key_)
                     else:
                         data[key_] = result
                 elif isinstance(value_, dict) or isinstance(value_, list):
-                    _walk_data(value_, key_path)
+                    _walk_data(value_, key_path, key_mustache)
             for key_ in keys_to_delete:
                 del data[key_]
         elif isinstance(data, list):
@@ -749,18 +758,17 @@ def _substitute_insitu_pass(
             for index, item in enumerate(data):
                 index_path = f"{path}[{index}]"
                 if isinstance(item, str):
-                    # A list element is never userData, so no key applies
-                    result = _substitute(None, item, index_path)
+                    result = _substitute(item, index_path, mustache)
                     if result is _UNSET:
                         indices_to_delete.append(index)
                     else:
                         data[index] = result
                 elif isinstance(item, dict) or isinstance(item, list):
-                    _walk_data(item, index_path)
+                    _walk_data(item, index_path, mustache)
             for index in reversed(indices_to_delete):
                 del data[index]
 
-    _walk_data(data, "")
+    _walk_data(data, "", False)
     return changed
 
 
@@ -1017,7 +1025,8 @@ def _unsubstituted_references(
     """
     The (expression, variable reference, property path) of every variable
     reference left in 'data' in the delimiters being substituted -- the
-    Worker Pool ones for 'userData', as the passes use. The reference is the
+    Worker Pool ones within the _PLATFORM_MUSTACHE_PROPERTIES, as the passes
+    use. The reference is the
     expression's variable name, or 'env:' and the environment variable's,
     without delimiters or type tag. An expression that is not a reference
     itself but contains one ('{{template_{{x}}}}') yields the one inside.
@@ -1048,7 +1057,7 @@ def _unsubstituted_references(
                     unspaced = opening + inner.strip() + closing
                     spaced.append((expression, match.group(1), unspaced, path))
 
-    def _walk_data(data: dict | list, path: str):
+    def _walk_data(data: dict | list, path: str, mustache: bool):
         items = (
             (
                 (key_, f"{path}.{key_}" if path else str(key_), value_)
@@ -1058,8 +1067,9 @@ def _unsubstituted_references(
             else ((None, f"{path}[{index}]", item) for index, item in enumerate(data))
         )
         for key_, item_path, value_ in items:
+            key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
             if isinstance(value_, str):
-                if key_ == USERDATA:
+                if key_mustache:
                     opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
                 else:
                     opening, closing = prefix, postfix
@@ -1068,9 +1078,9 @@ def _unsubstituted_references(
                 if opening in value_:
                     _check(value_, opening, closing, item_path)
             elif isinstance(value_, (dict, list)):
-                _walk_data(value_, item_path)
+                _walk_data(value_, item_path, key_mustache)
 
-    _walk_data(data, "")
+    _walk_data(data, "", False)
     return found
 
 

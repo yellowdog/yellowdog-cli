@@ -1643,7 +1643,7 @@ class TestSubstitutionPasses:
         """
         calls = []
 
-        def _pass(data, prefix="", postfix=""):
+        def _pass(data, prefix="", postfix="", skipped=frozenset()):
             calls.append(None)
             return ["p"] if len(calls) <= changing else []
 

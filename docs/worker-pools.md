@@ -25,7 +25,7 @@
       * [Following Progress](#following-progress)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 08:49:46 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:12:01 GMT 2026 -->
 
 <!--te-->
 
@@ -282,7 +282,7 @@ The timeouts, the Worker count and `metricsEnabled` are inserted with their defa
 
 Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files. See [Variable Substitutions](variables.md) for more details. This is a powerful feature that allows Worker Pools to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
 
-In a Worker Pool (or Compute Requirement) JSON/Jsonnet specification, and in User Data wherever it is given, a substitution is written with a double underscore before and after it, e.g. `__{{username}}__`, so that a plain `{{...}}` is left for the Platform's Mustache processing; the other properties of the configuration file's `workerPool` and `computeRequirement` sections take the plain `{{username}}`. The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
+In User Data, wherever it is given, and in Node Actions (`nodeEvents`), in a Worker Pool specification or a Configured Worker Pool resource, a substitution is written with a double underscore before and after it, e.g. `__{{username}}__`, so that a plain `{{...}}` is left for the Platform's Mustache processing. Every other property of a Worker Pool (or Compute Requirement) JSON/Jsonnet specification takes either `__{{username}}__` or the plain `{{username}}`, as the configuration file's `workerPool` and `computeRequirement` sections take the plain form. The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 
 Use `--follow` (`-f`) to track the Worker Pool after submission: `yd workerpool provision` reports its node events and does not return until the Worker Pool has shut down (or Ctrl-C is pressed). Add `--auto-follow-compute-requirements` (`-a`) to follow its Compute Requirements too.
 

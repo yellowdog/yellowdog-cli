@@ -185,6 +185,7 @@ def create_worker_pool_from_json(ctx: RunContext, wp_json_file: str, name: str) 
         prefix=WP_VARIABLES_PREFIX,
         postfix=WP_VARIABLES_POSTFIX,
         other_extensions_as_json=True,
+        also_plain=True,
     )
     literal_text(wp_data)
 

@@ -30,7 +30,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:13 BST 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:12:00 GMT 2026 -->
 
 <!--te-->
 
@@ -490,6 +490,8 @@ Example:
   }
 }
 ```
+
+The Node Actions in `nodeEvents` are processed by the Platform's own Mustache templating (`{{node.details.hostname}}`, `{{nodesByType.slurmctld.0.details.privateIpAddress}}`), so a variable substitution of ours within them is written `__{{variable}}__`, and a plain `{{...}}` there is left for the Platform (see [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1; an event in `nodeEvents`, if given, must have at least one action group. The pool's token never expires unless `tokenTtl` is given, as an ISO 8601 duration alongside `name` and `namespace` (`"tokenTtl": "PT720H"` for 30 days). A Configured Worker Pool cannot be updated, and `yd resource remove` shuts it down rather than deleting it. Its token, which `yd resource create` reports when it creates the pool and `yd show --show-token` shows, can be refreshed or regenerated with [`yd workerpool token`](commands.md#yd-workerpool-token). A pool that has been shut down stays listed under its name, so a name can match several pools: `yd resource remove` shuts down those that have not finished, and leaves the rest.
 

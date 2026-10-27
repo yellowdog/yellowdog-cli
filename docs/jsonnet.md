@@ -7,7 +7,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 08:49:43 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:11:59 GMT 2026 -->
 
 <!--te-->
 
@@ -52,7 +52,7 @@ pip install -U "yellowdog-cli[jsonnet]"
 
 ## Variable Substitutions in Jsonnet Files
 
-The commands provide full support for variable substitutions in Jsonnet files. Remember that for **Worker Pool** and **Compute Requirement** specifications, variable substitutions must be prefixed and postfixed by double underscores (`__`), e.g. `"__{{username}}__"` (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
+The commands provide full support for variable substitutions in Jsonnet files. In **Worker Pool** and **Compute Requirement** specifications, a variable substitution the Jsonnet code computes with (`std.parseInt("__{{count}}__")`, a comparison) must be prefixed and postfixed by double underscores (`__`), since the plain form is substituted there only after evaluation; one that is simply part of a string can take either form (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 Variable substitution is performed before Jsonnet expansion into JSON, **and** again after the expansion. Variables are fully resolved before the expansion, including those whose values themselves contain variable references, so Jsonnet code can compute with their values, e.g. `local count = std.parseInt('{{count}}');`.
 

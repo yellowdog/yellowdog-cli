@@ -15,7 +15,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 08:51:25 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:12:00 GMT 2026 -->
 
 <!--te-->
 
@@ -316,15 +316,17 @@ Everything after `raw:` is text, as written: a type tag, a default, the unset su
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
-Text that goes on to the Platform's own Mustache processing — User Data, and Worker Pool, Compute Requirement and Node Action specifications — may hold `{{...}}` for the Platform. There, a substitution is written with a double underscore before and after it, `__{{username}}__`, and a plain `{{...}}` is left for the Platform, unsubstituted and unreported. Everywhere else the plain form is used:
+The Platform processes Mustache templates of its own in two places: **User Data**, whose templates can use the instance's details (`{{provider}}`, `{{region}}`, `{{#imageOs:linux}}`...), and **Node Actions**, whose `writeFile` and `runCommand` actions can use the Nodes' (`{{node.details.hostname}}`, `{{nodesByType.type1}}`...). There a substitution of ours is written with a double underscore before and after it, `__{{username}}__`, and a plain `{{...}}` is left for the Platform, unsubstituted and unreported. Everywhere else the plain form is used, and Worker Pool and Compute Requirement specifications take either:
 
 | Where | Form |
 |---|---|
-| Worker Pool and Compute Requirement specification files (JSON or Jsonnet), every property | `__{{variable}}__` |
-| `yd node action` specification files, every property, and the files named by a `writeFile` action's `contentFile` and `contentFiles` | `__{{variable}}__` |
 | User Data, wherever it is given: a `userData` property (in the `[workerPool]` or `[computeRequirement]` section of the configuration file, or in any specification, a Compute Requirement Template resource's included), and the files named by `userDataFile` and `userDataFiles` | `__{{variable}}__` |
-| Every other property of the configuration file's `[workerPool]` and `[computeRequirement]` sections | `{{variable}}` |
-| Work Requirement specifications, resource specifications (bar their `userData`), Task Data files, and the rest of the configuration file | `{{variable}}` |
+| `yd node action` specification files, every property, and the files named by a `writeFile` action's `contentFile` and `contentFiles` | `__{{variable}}__` |
+| Node Actions in a Worker Pool specification or a Configured Worker Pool resource (`nodeEvents`, everything in it) | `__{{variable}}__` |
+| Every other property of a Worker Pool or Compute Requirement specification file (JSON or Jsonnet) | `__{{variable}}__` or `{{variable}}` |
+| Work Requirement specifications, resource specifications (bar their User Data and Node Actions), Task Data files, and the rest of the configuration file, `[workerPool]` and `[computeRequirement]` included | `{{variable}}` |
 | A CSV file's values in a prototype Task | `<<column>>` (see [CSV Variable Substitutions](work-requirements.md#csv-variable-substitutions)) |
 
-So a property may take a different form in the configuration file and in a specification file: a Worker Pool's `workerTag` is `"{{site}}"` in `[workerPool]` and `"__{{site}}__"` in a Worker Pool specification. Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting, [writing one literally](#writing-a-substitution-literally) — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`, and `__{{raw:name}}__` for the text `__{{name}}__`.
+So a Worker Pool's `workerTag` can be `"{{site}}"` in `[workerPool]` and in a Worker Pool specification alike; in a Worker Pool or Compute Requirement specification the `__{{variable}}__` form is substituted first, then the plain one.
+
+A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name — and is made in the file's own form only, since the text says nothing of which property it is in: `__{{variable}}__` in a Worker Pool or Compute Requirement specification, the plain `{{variable}}` in any other file, where a `__{{variable}}__` is left for the second. The second makes the rest, as the table says. So in a Worker Pool or Compute Requirement specification a plain `{{variable}}` in a string comes out substituted, but the code cannot compute with it; and in a Jsonnet resource file a plain `{{variable}}` in its User Data or Node Actions is substituted before evaluation if it is defined, so a Platform template there with the name of a variable of ours, `{{region}}` say, is written `{{raw:region}}` (see [Writing a Substitution Literally](#writing-a-substitution-literally)). See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files). Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting, [writing one literally](#writing-a-substitution-literally) — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`, and `__{{raw:name}}__` for the text `__{{name}}__`.

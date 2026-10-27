@@ -325,6 +325,7 @@ def _create_compute_requirement_from_json(
         prefix=prefix,
         postfix=postfix,
         other_extensions_as_json=True,
+        also_plain=True,
     )
     literal_text(cr_data)
 
