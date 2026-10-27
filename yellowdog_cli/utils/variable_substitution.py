@@ -12,10 +12,11 @@ import math
 import os
 import re
 from copy import deepcopy
+from dataclasses import fields, is_dataclass
 from getpass import getuser
 from json import dumps as json_dumps
 from json import loads as json_loads
-from typing import cast
+from typing import TypeVar, cast
 
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.limits import (
@@ -51,6 +52,7 @@ from yellowdog_cli.utils.variable_syntax import (
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
+    RAW_PREFIX,
     RESERVED_VARIABLE_NAMES,
     TABLE_TYPE_TAG,
     TYPE_TAG_DEFAULT_GUARD,
@@ -69,6 +71,8 @@ from yellowdog_cli.utils.variable_syntax import (
 # a dict/list (i.e. _walk_data) use this to delete the property entirely.
 _UNSET = object()
 
+T = TypeVar("T")
+
 # Stands in for an unset expression nested inside another one while the outer
 # expression is resolved. Whether the outer one is then unset too depends on
 # whether the value was needed -- to build a name, or as a default that is
@@ -76,6 +80,18 @@ _UNSET = object()
 # there, it was. A private-use character, which no delimiter, separator or
 # regular expression below can match, and no variable value will contain.
 _UNSET_MARKER = "\ue000"
+
+# Stand in for the delimiters of the literal text a '{{raw:...}}' expression
+# gives, from the pass that writes it until the value leaves the CLI, so that
+# no later pass substitutes it, and no check takes it for a reference: a
+# specification is resolved more than once ('yd workrequirement submit'
+# resolves it as it is loaded, once the Work Requirement is named, and for
+# each Task Group and Task), and the literal '{{name}}' would be substituted
+# by the pass after the one that wrote it. literal_text() puts them back, at
+# each place a value leaves: as an SDK object or a configuration section is
+# built, after the last pass over a specification no later pass sees.
+_RAW_OPENING = "\ue001"
+_RAW_CLOSING = "\ue002"
 
 # Whether an expression left unsubstituted is reported as an undefined
 # variable. Off until a command's own processing begins (the command
@@ -553,11 +569,13 @@ def add_or_update_substitution(key: str, value, source: str = "a variable defini
     VARIABLE_SUBSTITUTIONS[key] = _DEFINITIONS[key] = _stringify(value)
 
 
-def get_user_variable(variable_name: str) -> str | None:
+def get_user_variable(variable_name: str, literal: bool = True) -> str | None:
     """
-    Get the value of a variable.
+    Get the value of a variable: with 'literal', the literal text of any
+    '{{raw:...}}' in it; without, as the table holds it.
     """
-    return VARIABLE_SUBSTITUTIONS.get(variable_name)
+    value = VARIABLE_SUBSTITUTIONS.get(variable_name)
+    return literal_text(value) if literal else value
 
 
 def get_unset_variable_names() -> list[str]:
@@ -663,9 +681,10 @@ def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
 
 def get_all_user_variables() -> dict:
     """
-    Return all the user variables. Copy to avoid amendment.
+    Return all the user variables, with the literal text of any
+    '{{raw:...}}' in them. Copy to avoid amendment.
     """
-    return deepcopy(VARIABLE_SUBSTITUTIONS)
+    return literal_text(deepcopy(VARIABLE_SUBSTITUTIONS))
 
 
 def process_variable_substitutions_insitu(
@@ -1107,6 +1126,14 @@ def process_variable_substitutions(
             if type_tag != ""
             else element
         )
+        if type_tag and element_minus_type_tag.startswith(
+            opening_delimiter + RAW_PREFIX
+        ):
+            raise ValueError(
+                f"Cannot substitute '{element}': '{RAW_PREFIX}' gives text, which"
+                f" has no type; to write the text '{element_minus_type_tag.replace(RAW_PREFIX, type_tag, 1)}',"
+                f" write '{opening_delimiter}{RAW_PREFIX}{type_tag}{element_minus_type_tag[len(opening_delimiter) + len(RAW_PREFIX) :]}'"
+            )
 
         element_processed = process_untyped_variable_substitutions(
             element_minus_type_tag, opening_delimiter, closing_delimiter
@@ -1198,6 +1225,11 @@ def process_untyped_variable_substitutions(
         return input_string
 
     inner = input_string[len(opening_delimiter) : -len(closing_delimiter)]
+    if inner.startswith(RAW_PREFIX):
+        # Taken as written, its own nested expressions included
+        return _protected(
+            opening_delimiter + inner[len(RAW_PREFIX) :] + closing_delimiter
+        )
     unset = inner.endswith(VAR_UNSET_SUFFIX)
     if unset:
         inner = inner[: -len(VAR_UNSET_SUFFIX)]
@@ -1279,6 +1311,45 @@ def _pieces(text: str, opening_delimiter: str, closing_delimiter: str) -> list[s
     if opening_delimiter in text and closing_delimiter in text:
         return split_delimited_string(text, opening_delimiter, closing_delimiter)
     return [text]
+
+
+def _protected(text: str) -> str:
+    """
+    The text a '{{raw:...}}' expression gives, its delimiters replaced by the
+    raw markers, which literal_text() puts back.
+    """
+    return text.replace(VAR_OPENING_DELIMITER, _RAW_OPENING).replace(
+        VAR_CLOSING_DELIMITER, _RAW_CLOSING
+    )
+
+
+def literal_text(value: T) -> T:
+    """
+    'value' with the literal text of each '{{raw:...}}' expression in it put
+    back, at any depth: a string, a list or dict (in place), or a dataclass
+    (an SDK object or a configuration section, in place). Called where a
+    value leaves the CLI, never before its last substitution pass, which
+    would then substitute the literal text.
+    """
+    if type(value) is str:  # Not a str-valued enum, which is left as it is
+        if _RAW_OPENING not in value and _RAW_CLOSING not in value:
+            return value
+        return cast(
+            T,
+            value.replace(_RAW_OPENING, VAR_OPENING_DELIMITER).replace(
+                _RAW_CLOSING, VAR_CLOSING_DELIMITER
+            ),
+        )
+    if isinstance(value, list):
+        value[:] = [literal_text(item) for item in value]
+    elif isinstance(value, dict):
+        items = [(literal_text(k), literal_text(v)) for k, v in value.items()]
+        value.clear()
+        value.update(items)
+    elif is_dataclass(value) and not isinstance(value, type):
+        for field in fields(value):
+            setattr(value, field.name, literal_text(getattr(value, field.name)))
+    return value
 
 
 def _value_of(name: str) -> str | None:

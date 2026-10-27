@@ -78,6 +78,7 @@ from yellowdog_cli.utils.variable_substitution import (
     add_or_update_substitution,
     add_substitutions_without_overwriting,
     check_user_variable_name,
+    literal_text,
     register_user_variables,
     resolve_variables_in_string,
     resolve_variables_insitu,
@@ -652,16 +653,18 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         _set_certificates_bundle(common_section)
         register_dc_substitutions()
 
-        return ConfigCommon(
-            # Required
-            key=key,
-            secret=secret,
-            namespace=namespace,
-            name_tag=name_tag,
-            # Optional
-            url=url,
-            use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
-            read_timeout=_read_timeout(common_section.get(READ_TIMEOUT)),
+        return literal_text(
+            ConfigCommon(
+                # Required
+                key=key,
+                secret=secret,
+                namespace=namespace,
+                name_tag=name_tag,
+                # Optional
+                url=url,
+                use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
+                read_timeout=_read_timeout(common_section.get(READ_TIMEOUT)),
+            )
         )
 
     except KeyError as e:
@@ -1155,7 +1158,7 @@ def load_config_data_client() -> ConfigDataClient:
         if value is not None:
             add_or_update_substitution(key, value)
 
-    return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
+    return literal_text(ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix))
 
 
 def load_config_data_client_for_profile(
@@ -1203,7 +1206,7 @@ def load_config_data_client_for_profile(
         if prefix is None:
             prefix = cast(str | None, _resolve_value(DEFAULT_DATA_CLIENT_PREFIX))
 
-    return ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix)
+    return literal_text(ConfigDataClient(remote=remote, bucket=bucket, prefix=prefix))
 
 
 def load_config_data_client_destination() -> ConfigDataClient:
@@ -1516,7 +1519,7 @@ def load_config_worker_pool() -> ConfigWorkerPool:
         )
         cr_batch_size = _wp_batch_size(wp_section)
 
-        return ConfigWorkerPool(
+        config_wp = ConfigWorkerPool(
             auto_shutdown_timeout=cast(
                 float | None, _number(wp_section, AUTO_SHUTDOWN_TIMEOUT, float)
             ),
@@ -1570,6 +1573,12 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             workers_per_vcpu=workers_per_vcpu,
             workers_per_node=cast(int, _number(wp_section, WORKERS_PER_NODE, int, 1)),
         )
+        # Its User Data is substituted again as the Worker Pool is provisioned
+        # (get_user_data_property()), so keeps any '{{raw:...}}' until then
+        user_data = config_wp.user_data
+        literal_text(config_wp)
+        config_wp.user_data = user_data
+        return config_wp
 
     except Exception as e:
         # A configuration error (a property of the wrong type), as a rule;

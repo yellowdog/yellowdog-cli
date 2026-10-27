@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Variables and configuration
 
+- **`{{raw:name}}` writes `{{name}}` literally**: text meant for another tool that holds a `{{name}}` this CLI would substitute, such as `{{date}}` or `{{task_name}}`, can be passed through unchanged by writing `raw:` after its opening braces; everything after `raw:` is text, and nothing substitutes it later. It works in every specification, the configuration file, CSV cells, the files substituted as text, and the `__{{raw:name}}__` form of Worker Pool specifications and User Data.
 - **`{{ name }}` with spaces is warned of**: a substitution written with space inside its braces is not a substitution and is left as it is, as before, but where the name inside is a variable that would be substituted (defined, an environment variable set, or one of the Task variables) a warning now says so and gives the form without the space; text naming nothing, such as another tool's template, is not reported.
 
 ## 15.3.0 — 2026-10-26

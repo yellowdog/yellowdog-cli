@@ -84,7 +84,10 @@ from yellowdog_cli.utils.tables import (
     node_action_queue_table,
     print_node_action_queue_table,
 )
-from yellowdog_cli.utils.variable_substitution import warn_of_undefined_variables
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    warn_of_undefined_variables,
+)
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -524,7 +527,8 @@ def _parse_actions(
         action = _parse_action(spec, source_dir)
         if action is None:
             return None
-        actions.append(action)
+        # Its content files are substituted as it is parsed
+        actions.append(literal_text(action))
     return actions
 
 
@@ -565,7 +569,7 @@ def _load_spec(ctx: RunContext, spec_file: str) -> dict | None:
         print_error(f"Spec file '{spec_file}' must be a JSON object")
         return None
 
-    return spec
+    return literal_text(spec)
 
 
 def _submission_error(

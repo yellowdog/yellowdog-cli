@@ -11,10 +11,11 @@
       * [Removing Properties Using the Unset Suffix](#removing-properties-using-the-unset-suffix)
          * [Unset Properties and Property Inheritance](#unset-properties-and-property-inheritance)
       * [Undefined Variables](#undefined-variables)
+      * [Writing a Substitution Literally](#writing-a-substitution-literally)
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 08:49:44 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 08:51:25 GMT 2026 -->
 
 <!--te-->
 
@@ -295,7 +296,23 @@ A substitution must have no space inside its braces: `{{ region }}` is not a sub
 WARNING : '{{ region }}' has space inside its braces, so it is not a variable substitution, and has been left unchanged in 'taskGroups[0].tasks[0].arguments[1]'; write '{{region}}' to substitute it
 ```
 
+To pass `{{region}}` itself through, unsubstituted, write it as described under [Writing a Substitution Literally](#writing-a-substitution-literally).
+
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
+
+### Writing a Substitution Literally
+
+Text meant for another tool, such as a template for a program a Task runs, may contain `{{name}}` where `name` is also a variable here, one of the [default variables](#default-variables) such as `{{date}}` or `{{username}}`, or one of the Task variables such as `{{task_name}}`, and would be substituted. To have the text itself, write `raw:` after the opening braces: `{{raw:name}}` becomes `{{name}}`, which is substituted no further, whatever `name` is.
+
+| Written | Becomes |
+|---|---|
+| `{{raw:date}}` | `{{date}}` |
+| `"--template={{raw:task_number}}-{{task_number}}"` | `"--template={{task_number}}-1"` |
+| `{{raw:num:count}}` | `{{num:count}}` |
+| `{{raw:region:=eu}}` | `{{region:=eu}}` |
+| `{{raw:prefix_{{site}}}}` | `{{prefix_{{site}}}}` |
+
+Everything after `raw:` is text, as written: a type tag, a default, the unset suffix and a substitution nested inside it are not acted on. A type tag cannot come before `raw:`, since the text has no type: `{{num:raw:count}}` is an error, saying to write `{{raw:num:count}}`. A `raw:` substitution can be a default, `{{region:={{raw:region}}}}` giving `{{region}}` where `region` is undefined, and a variable can hold one: with `-v template={{raw:date}}`, `{{template}}` becomes `{{date}}`. It works wherever substitutions do, in the `__{{raw:name}}__` form in Worker Pool and Compute Requirement specifications and User Data (becoming `__{{name}}__`), in a CSV file's cells, and in the files substituted as text; in a Jsonnet file it is written inside a string.
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
@@ -310,4 +327,4 @@ Text that goes on to the Platform's own Mustache processing — User Data, and W
 | Work Requirement specifications, resource specifications (bar their `userData`), Task Data files, and the rest of the configuration file | `{{variable}}` |
 | A CSV file's values in a prototype Task | `<<column>>` (see [CSV Variable Substitutions](work-requirements.md#csv-variable-substitutions)) |
 
-So a property may take a different form in the configuration file and in a specification file: a Worker Pool's `workerTag` is `"{{site}}"` in `[workerPool]` and `"__{{site}}__"` in a Worker Pool specification. Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`.
+So a property may take a different form in the configuration file and in a specification file: a Worker Pool's `workerTag` is `"{{site}}"` in `[workerPool]` and `"__{{site}}__"` in a Worker Pool specification. Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting, [writing one literally](#writing-a-substitution-literally) — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`, and `__{{raw:name}}__` for the text `__{{name}}__`.

@@ -39,7 +39,10 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.results import json_requested, record
-from yellowdog_cli.utils.variable_substitution import resolve_variables_in_string
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    resolve_variables_in_string,
+)
 
 # The keys of an rclone 'lsjson' entry that yd-ls records under '--json',
 # spelled as rclone spells them; others vary by backend ('MimeType', 'IsBucket')
@@ -413,9 +416,11 @@ def resolve_remote_path(
     # Each named, in an error or a warning, by the path itself, which is all
     # there is to name it by
     if relative_path is not None:
-        relative_path = cast(str, resolve_variables_in_string(relative_path))
+        relative_path = literal_text(
+            cast(str, resolve_variables_in_string(relative_path))
+        )
     if filename is not None:
-        filename = cast(str, resolve_variables_in_string(filename))
+        filename = literal_text(cast(str, resolve_variables_in_string(filename)))
 
     # Absolute rclone path — used as given, bar its '.' segments
     if relative_path is not None and names_remote(config, relative_path):

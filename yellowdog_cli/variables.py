@@ -178,11 +178,15 @@ def main(ctx: RunContext):
     # A redacted value is REDACTED_VALUE here, and so carries no reference
     # to check. 'key' and 'secret', which --show-secrets reports in full, are
     # left out of the check by name
+    # Checked as the table holds them, a '{{raw:...}}' literal still marked,
+    # since its text, '{{name}}', is no reference to report
     warn_of_undefined_variables(
         {
-            name: value
+            name: get_user_variable(name, literal=False)
             for name, value in report.variables.items()
-            if name not in SECRET_VARIABLES and value is not None
+            if name not in SECRET_VARIABLES
+            and value is not None
+            and value != REDACTED_VALUE
         }
     )
     explain_unset_variables(variable_names)
