@@ -382,7 +382,7 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 | Page | What it covers |
 |---|---|
 | **[Command List](docs/commands.md)** | Every command, the options they share, and each command's own options and examples |
-| **[Work Requirement Property Dictionary](docs/property-dictionary.md)** | Every Work Requirement property, its type, and the levels it can be set at |
+| **[Work Requirement Property Dictionary](docs/work-requirement-property-dictionary.md)** | Every Work Requirement property, its type, and the levels it can be set at |
 | **[Machine-readable Output and Exit Codes](docs/json-output.md)** | What `--json` prints for each command, and the exit codes every command uses |
 
 ## Optional Extensions

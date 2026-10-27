@@ -271,7 +271,7 @@ make build        # builds the distribution into dist/
 make pypi_check   # checks the distribution with twine
 ```
 
-The specification schemas' property descriptions are extracted from the Work Requirement Property Dictionary (`docs/property-dictionary.md`) into `yellowdog_cli/spec_data/descriptions.json`, which ships with the package. Regenerate it after editing the dictionary, as the `toc` targets regenerate the tables of contents; `tests/test_spec_properties.py` fails while the shipped file is stale:
+The specification schemas' property descriptions are extracted from the Work Requirement Property Dictionary (`docs/work-requirement-property-dictionary.md`) into `yellowdog_cli/spec_data/descriptions.json`, which ships with the package. Regenerate it after editing the dictionary, as the `toc` targets regenerate the tables of contents; `tests/test_spec_properties.py` fails while the shipped file is stale:
 
 ```shell
 make schema_descriptions

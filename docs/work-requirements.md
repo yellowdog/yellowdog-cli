@@ -67,7 +67,7 @@ A **Work Requirement** is the top-level unit of work submitted to the YellowDog 
 
 The `workRequirement` section of the configuration file is optional. It's used only by the `yd workrequirement submit` command, and controls the Work Requirement that is submitted to the Platform.
 
-**Jump to:** [Property Dictionary](property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
+**Jump to:** [Property Dictionary](work-requirement-property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
 
 The details of a Work Requirement to be submitted can be captured entirely within the TOML configuration file for simple (single Task Group) examples. More complex examples capture the Work Requirement in a combination of the TOML file plus a JSON document, or in a JSON document only.
 
@@ -123,7 +123,7 @@ A `--property workRequirement.<key>=<value>` override is the exception to lower 
 
 ### Stopping Inheritance with `null`
 
-To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, exactly as if it had been set nowhere: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on, as the [Property Dictionary](property-dictionary.md) gives them. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:
+To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, exactly as if it had been set nowhere: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on, as the [Property Dictionary](work-requirement-property-dictionary.md) gives them. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:
 
 ```json
 {
@@ -147,7 +147,7 @@ For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance,
 
 ## Work Requirement Property Dictionary
 
-Every property available for defining Work Requirements, and the levels at which each can be set, is listed in the **[Work Requirement Property Dictionary](property-dictionary.md)**.
+Every property available for defining Work Requirements, and the levels at which each can be set, is listed in the **[Work Requirement Property Dictionary](work-requirement-property-dictionary.md)**.
 
 ## Automatic `taskTypes` Population
 

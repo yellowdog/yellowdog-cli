@@ -13,7 +13,7 @@
 
 <!--te-->
 
-Every kind of specification the CLI reads has a JSON Schema describing exactly what it accepts: a Work Requirement (`work-requirement`), a Worker Pool (`worker-pool`), a Compute Requirement (`compute-requirement`), resources (`resources`), Node Actions (`node-actions`), and the TOML configuration file (`config`). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](property-dictionary.md); every other property is described from the installed YellowDog SDK. A file can be checked against its schema from the command line, in a script, or in an editor as it is written, and none of these contacts the YellowDog Platform.
+Every kind of specification the CLI reads has a JSON Schema describing exactly what it accepts: a Work Requirement (`work-requirement`), a Worker Pool (`worker-pool`), a Compute Requirement (`compute-requirement`), resources (`resources`), Node Actions (`node-actions`), and the TOML configuration file (`config`). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](work-requirement-property-dictionary.md); every other property is described from the installed YellowDog SDK. A file can be checked against its schema from the command line, in a script, or in an editor as it is written, and none of these contacts the YellowDog Platform.
 
 ## Checking a File Before Submitting It
 

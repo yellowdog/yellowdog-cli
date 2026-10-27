@@ -61,7 +61,7 @@ yellowdog_cli/
 ├── mcp/                         # yd-mcp, the MCP server (.claude/rules/mcp-server.md)
 ├── completion.py                # yd completion: prints a shell's completion script (completion_scripts/); '--complete' answers a Tab before any parser is built, printing nothing on a failure
 ├── completion_scripts/          # yd.bash, yd.zsh, yd.fish, yd.ps1: package data (no modules), registering completion for 'yd' alone
-├── spec_data/                   # descriptions.json, generated from docs/property-dictionary.md by 'make schema_descriptions'; never hand-edited. Not named 'schema', which would shadow schema.py
+├── spec_data/                   # descriptions.json, generated from docs/work-requirement-property-dictionary.md by 'make schema_descriptions'; never hand-edited. Not named 'schema', which would shadow schema.py
 └── utils/
     ├── wrapper.py               # @main_wrapper; CLIENT and CONFIG_COMMON as lazy stand-ins (CLIENT built on first use only, so unused means no SDK import)
     ├── command_runner.py        # prepare_run() (command line, config, lazy values, before main(), so bad args/config exit first) and run_command(), shared by both wrappers; imports neither wrapper
@@ -308,7 +308,7 @@ Documentation here is spread across several files, each with its own audience, a
 | File | Update it when |
 |---|---|
 | `README.md` | The landing page: what the CLI is, prerequisites, installation, usage, the typical workflow, and the documentation map, its Documentation section, a table row per page saying what it covers; a new `docs/` page or extension README gets a row (`tests/test_docs_map.py`), and a page whose scope changes gets its row's description changed. Run `make toc` afterwards — never hand-edit the table of contents |
-| `docs/*.md` | User-visible CLI behaviour changes, on the page for the topic: `commands.md` (the Command List) for a new command or flag or a change in what one does; `property-dictionary.md` for a new Work Requirement property (then `make schema_descriptions`); `configuration.md`, `variables.md`, `work-requirements.md`, `worker-pools.md`, `data-client.md`, `resources.md`, `jsonnet.md`, `json-output.md` for the rest; and `schemas.md` for the specification schemas, `--validate` and `yd schema`. Run `make toc_docs` afterwards; a link to a section moved between files is fixed where it points, which `tests/test_doc_links.py` checks for every relative link |
+| `docs/*.md` | User-visible CLI behaviour changes, on the page for the topic: `commands.md` (the Command List) for a new command or flag or a change in what one does; `work-requirement-property-dictionary.md` for a new Work Requirement property (then `make schema_descriptions`); `configuration.md`, `variables.md`, `work-requirements.md`, `worker-pools.md`, `data-client.md`, `resources.md`, `jsonnet.md`, `json-output.md` for the rest; and `schemas.md` for the specification schemas, `--validate` and `yd schema`. Run `make toc_docs` afterwards; a link to a section moved between files is fixed where it points, which `tests/test_doc_links.py` checks for every relative link |
 | `README_CLOUDWIZARD.md` | Cloud Wizard behaviour changes (`make toc_cloudwizard` for its TOC) |
 | `PYPI_README.md` | The command list or the headline description changes — it is the PyPI landing page, so it summarises rather than documents |
 | `yellowdog_cli/commander/README.md` | Commander's GUI behaviour changes: a new button, dialog, or a change in what an action does (`make toc_commander` for its TOC, which the Help window shows too) |

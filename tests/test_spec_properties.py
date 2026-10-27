@@ -1,8 +1,9 @@
 """
-utils/specs/properties.py against docs/property-dictionary.md: the Work
-Requirement dictionary's rows, levels and descriptions are the registry's,
-and the shipped descriptions.json is a fresh extraction. Needs no SDK call
-and no network.
+utils/specs/properties.py against
+docs/work-requirement-property-dictionary.md: the Work Requirement
+dictionary's rows, levels and descriptions are the registry's, and the
+shipped descriptions.json is a fresh extraction. Needs no SDK call and no
+network.
 """
 
 import json
@@ -20,7 +21,7 @@ from yellowdog_cli.utils.specs.properties import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
-DICTIONARY = REPO / "docs" / "property-dictionary.md"
+DICTIONARY = REPO / "docs" / "work-requirement-property-dictionary.md"
 DESCRIPTIONS = REPO / "yellowdog_cli" / "spec_data" / "descriptions.json"
 
 

@@ -384,7 +384,7 @@ yd workrequirement finish my-analysis-run
 
 ### yd workrequirement priority
 
-The `yd workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
+The `yd workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](work-requirement-property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
 
 ```shell
 yd workrequirement priority [options] <priority> <target> [<target> ...]
