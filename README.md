@@ -34,7 +34,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:50:49 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:12:20 GMT 2026 -->
 
 <!--te-->
 
@@ -51,11 +51,11 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
 - **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them; listing and showing Workers with **`yd worker`**
-- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or on the command line, and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun for Platform objects (all but `yd data` and `yd cloudinfo`) also has `list` and `show` verbs for its own objects
+- **Inspecting** — listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**. Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
@@ -299,7 +299,15 @@ universal options:
                         supplied multiple times
 ```
 
-For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation. To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+To start, run **[`yd init`](docs/commands.md#yd-init)**. It asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory:
+
+```shell
+yd init
+```
+
+With `--user`, it writes them to your own `~/.config/yellowdog/config.toml` instead, which every directory without a `config.toml` of its own reads.
+
+For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
@@ -325,7 +333,9 @@ Every kind of specification, and the configuration file, has a JSON Schema descr
 
 ## Applications That Can Read Only Some Namespaces
 
-Wherever a command searches without a namespace — a name given without `namespace/`, or `yd list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
+An Application without global read access can still find items by name. Wherever a command searches without a namespace, it searches only the namespaces the Application can read: for example, a name given without `namespace/`, or `yd list` with an empty namespace.
+
+The Platform refuses a search across every namespace from such an Application, which is why the search is narrowed. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
 
 ## Machine-readable Output and Exit Codes
 
@@ -333,7 +343,31 @@ What `--json` prints, its shapes and the exit codes every command uses are descr
 
 # Typical Workflow
 
-A common pattern when using YellowDog is to submit a Work Requirement and provision a Worker Pool simultaneously, then follow both to completion. The `--quiet` flag returns just the YDID, making it easy to compose commands in shell scripts:
+A common pattern when using YellowDog is to submit a Work Requirement and provision a Worker Pool simultaneously, then follow both to completion.
+
+Both commands read their settings from `config.toml`. This one runs ten Bash Tasks on up to two nodes:
+
+```toml
+[common]
+    # key and secret, as 'yd init' writes them
+    namespace = "image-processing"
+    tag = "thumbnails"
+
+[workRequirement]
+    taskType = "bash"
+    arguments = ["-c", "echo Processing frame {{task_number}}"]
+    taskCount = 10
+    workerTag = "thumbnails"
+
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    maxNodes = 2
+    workerTag = "thumbnails"
+```
+
+`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID. The [Cloud Wizard](README_CLOUDWIZARD.md) can create one for you. The matching `workerTag` values send the Tasks to this pool's Workers. The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
+
+With `--quiet`, each command prints just the YellowDog ID (YDID) of what it created, so its output can be captured in a shell script:
 
 ```bash
 # Submit a Work Requirement and capture its YDID

@@ -1,69 +1,110 @@
 # Data Client
 
 <!--ts-->
+   * [Configuration](#configuration)
+      * [Details](#details)
    * [Remote Paths](#remote-paths)
    * [Named Profiles](#named-profiles)
+      * [Details](#details-1)
    * [Variable Substitutions for Data Client Properties](#variable-substitutions-for-data-client-properties)
+      * [Details](#details-2)
    * [Worked Examples](#worked-examples)
       * [Trying It Out on Your Own Machine](#trying-it-out-on-your-own-machine)
       * [Amazon S3](#amazon-s3)
       * [An SFTP Server, Named in rclone.conf](#an-sftp-server-named-in-rcloneconf)
       * [Several Stores, One Configuration](#several-stores-one-configuration)
    * [Troubleshooting](#troubleshooting)
+      * [Servers That Limit Connections](#servers-that-limit-connections)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:11:58 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:12:22 GMT 2026 -->
 
 <!--te-->
 
 
-The `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` commands provide direct access to remote data stores (object storage buckets) via **[rclone](https://rclone.org)**. They do **not** require a YellowDog Application key or secret — only the data store connection details.
+The `yd data` commands upload, download, list, delete and copy files in a remote data store, such as an S3 bucket, through **[rclone](https://rclone.org)**. They do **not** need a YellowDog Application key or secret, only the store's connection details, in the `[dataClient]` section of `config.toml`:
 
-This section describes the configuration shared by all five commands; each command is documented individually in the Command List, under [yd data upload](commands.md#yd-data-upload), [yd data download](commands.md#yd-data-download), [yd data delete](commands.md#yd-data-delete), [yd data list](commands.md#yd-data-list), and [yd data copy](commands.md#yd-data-copy).
+```toml
+[common]
+namespace = "image-processing"
+tag = "thumbnails"
 
-The commands run `rclone`: one already on your `PATH` is used in preference and never modified; otherwise the binary is downloaded the first time it is needed, into `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows). Every `yd data` verb takes `--which-rclone`, which reports the binary in use and its version, and `--upgrade-rclone`, which downloads the latest into the cache; each then exits.
+[dataClient]
+remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"
+bucket = "my-photos"
+```
 
-These commands share a common `[dataClient]` TOML configuration section:
+A path in the store is relative to the bucket and a prefix, which by default is `{{namespace}}/{{tag}}`:
+
+```shell
+yd data upload --recursive results       # to S3:my-photos/image-processing/thumbnails/results
+yd data list results/
+yd data download results/summary.csv     # into the current directory
+```
+
+Each command is documented in the Command List, under [yd data upload](commands.md#yd-data-upload), [yd data download](commands.md#yd-data-download), [yd data delete](commands.md#yd-data-delete), [yd data list](commands.md#yd-data-list), and [yd data copy](commands.md#yd-data-copy). To try them with no cloud account, see [Trying It Out on Your Own Machine](#trying-it-out-on-your-own-machine).
+
+## Configuration
+
+All five commands share the `[dataClient]` section:
 
 ```toml
 [dataClient]
-    remote = "myremote"               # rclone remote name (from rclone.conf) or inline connection string
-    bucket = "my-bucket"              # bucket / container / root path (see note below)
-    prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (default: namespace/tag)
+    remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"  # rclone remote name (from rclone.conf) or inline connection string
+    bucket = "my-photos"              # bucket, container or root directory
+    prefix = "{{namespace}}/{{tag}}"  # path prefix within the bucket (the default)
 ```
 
-The `remote`, `bucket`, and `prefix` values can also be supplied via command-line options (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or environment variables (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag disables the prefix entirely. A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, taking precedence over the environment variable. As for the rest of the configuration, a file chosen with `--config`/`-c` takes precedence over the environment variables, though not over the command line (see [Which Value Wins](configuration.md#which-value-wins) for the whole order).
-
 The `remote` field accepts either:
-- A plain remote name defined in the system `rclone.conf` (e.g. `"yds3"`)
+- A plain remote name defined in rclone's configuration file, `rclone.conf` (e.g. `"photos-s3"`)
 - An inline rclone connection string (e.g. `"S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"`), or rclone's own form, `":s3,provider=AWS,env_auth=true,region=eu-west-2"`, whose backend is its type
 - An `rclone:` prefix can optionally be included
 
-A remote name is looked up in rclone's configuration file: the one the `RCLONE_CONFIG` environment variable names, else `~/.config/rclone/rclone.conf` (`%APPDATA%\rclone\rclone.conf` on Windows); if there is none, the command says so.
+The `bucket` property is named after S3 and Google Cloud Storage terminology, but applies to any rclone storage backend. It is the container name for Azure Blob Storage, the root directory for SFTP, a local directory or Google Drive, or the equivalent top-level path component for your storage target.
 
-An inline connection string carries whatever credentials it is given in its parameters, so in a `config.toml` it puts them in the file: prefer `env_auth=true` (the cloud provider's own credentials, from the environment or the instance), or a named remote in `rclone.conf`. `yd variables` and `yd doctor` show an inline string's name, type and provider only, withholding its other parameters as `<N parameters redacted>`.
+The default prefix, `{{namespace}}/{{tag}}`, uses the `namespace` and `tag` values from the `[common]` section, or their environment variable or command-line equivalents.
 
-A value in an inline connection string is read as rclone reads it: one holding a comma goes in double or single quotes (`secret_access_key="a,b"`), a quote inside it doubled, and spaces around `=` are allowed.
+Each of the three can also be given on the command line (`--remote`/`-r`, `--bucket`/`-b`, `--prefix`/`-p`) or in an environment variable (`YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET`, `YD_DATA_CLIENT_PREFIX`). The `--no-prefix` flag leaves the prefix out entirely.
 
-The default prefix is `{{namespace}}/{{tag}}`, using the `namespace` and `tag` values from the `[common]` section (or their environment variable / command-line equivalents). Variable substitutions (`{{...}}`) are supported in all `[dataClient]` values and also in the remote path arguments passed to `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy` on the command line. All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) are available. Arguments containing `{{...}}` should be quoted to prevent shell interpretation.
+Variable substitutions (`{{...}}`) work in every `[dataClient]` value, and in the remote paths given to `yd data upload`, `yd data download`, `yd data delete`, `yd data list` and `yd data copy` on the command line. Quote an argument containing `{{...}}` to prevent shell interpretation:
 
-> **Note on `bucket`:** The `bucket` property is named after S3/GCS terminology but applies equally to other rclone storage backends — use it to specify the container name (Azure Blob Storage), the root directory (SFTP, local, Google Drive), or the equivalent top-level path component for your storage target. A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one; without the `/` it is relative to the remote's default directory (for a local remote, the current directory). With no bucket, the same holds for a prefix beginning with `/`.
+```shell
+yd data list '{{username}}/inputs/'
+```
 
-> **Note on servers that limit connections:** The `yd data` commands copy up to 128 files at a time, which on cloud object storage (S3, Google Cloud Storage, Azure Blob Storage) is what makes many small files quick. On an SFTP or FTP server, each of those can be a connection of its own, and a server that limits how many connections it accepts at once (OpenSSH's `MaxStartups`, an FTP server's per-user or per-IP limit) refuses the rest. rclone retries a refused connection, so the transfer usually completes, more slowly, but it can fail, and a server that bans an address for repeated dropped connections may ban yours. Cap the connections in the remote itself: `connections` for SFTP (`":sftp,host=files.example.com,user=me,connections=8"`, or `connections = 8` in a named remote in `rclone.conf`) and `concurrency` for FTP.
+### Details
+
+**Which value wins.** A `--property dataClient.<key>=<value>` override (or `dataClient.<profile>.<key>`) is a command-line value too, so it takes precedence over the environment variable. As for the rest of the configuration, a file chosen with `--config`/`-c` takes precedence over the environment variables, though not over the command line. See [Which Value Wins](configuration.md#which-value-wins) for the whole order.
+
+**Variables available.** All built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`, etc.) and user-defined variables (`YD_VAR_*` / `[common.variables]`) can be used in `[dataClient]` values and remote paths.
+
+**Where a named remote is looked up.** A remote name is looked up in rclone's configuration file: the one the `RCLONE_CONFIG` environment variable names, else `~/.config/rclone/rclone.conf` (`%APPDATA%\rclone\rclone.conf` on Windows). If there is none, the command says so.
+
+**Credentials in an inline connection string.** An inline connection string carries whatever credentials it is given in its parameters, so in a `config.toml` it puts them in the file. Prefer `env_auth=true`, which uses the cloud provider's own credentials from the environment or the instance, or a named remote in `rclone.conf`. `yd variables` and `yd doctor` show an inline string's name, type and provider only, withholding its other parameters as `<N parameters redacted>`.
+
+**Commas and quotes in an inline connection string.** A value in an inline connection string is read as rclone reads it. A value holding a comma goes in double or single quotes (`secret_access_key="a,b"`), with a quote inside it doubled. Spaces around `=` are allowed.
+
+**Absolute and relative root directories.** A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one. Without the `/`, it is relative to the remote's default directory: for a local remote, the current directory. With no bucket, the same holds for a prefix beginning with `/`.
+
+**The rclone binary.** The commands run `rclone`. One already on your `PATH` is used in preference, and is never modified. Otherwise the binary is downloaded the first time it is needed, into `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows). Every `yd data` verb takes `--which-rclone`, which reports the binary in use and its version, and `--upgrade-rclone`, which downloads the latest into the cache; each then exits.
+
+**Many files at once.** The `yd data` commands copy up to 128 files at a time, which on cloud object storage (S3, Google Cloud Storage, Azure Blob Storage) is what makes many small files quick. An SFTP or FTP server may refuse that many connections: see [Servers That Limit Connections](#servers-that-limit-connections).
 
 ## Remote Paths
 
-A remote path given to a `yd data` command is relative to the configured base: `docs/a.txt` is `<remote>:<bucket>/<prefix>/docs/a.txt`, without the prefix under `--no-prefix`, and a trailing `/` names a directory. A path beginning with the configured remote's own name and a colon (`myremote:other-bucket/a.txt`) is used as given, with neither the bucket nor the prefix, which is how to reach another bucket on the same remote:
+A remote path given to a `yd data` command is relative to the configured bucket and prefix. With the configuration above, `results/summary.csv` is `S3:my-photos/image-processing/thumbnails/results/summary.csv`. A trailing `/` names a directory.
 
 ```shell
-yd data list results/                        # myremote:my-bucket/<namespace>/<tag>/results/
-yd data list --no-prefix shared/             # myremote:my-bucket/shared/
-yd data list myremote:other-bucket/inputs/   # as given
+yd data list results/                  # S3:my-photos/image-processing/thumbnails/results/
+yd data list --no-prefix shared/       # S3:my-photos/shared/
+yd data list S3:my-thumbnails/inputs/  # as given
 ```
+
+Under `--no-prefix`, the path is relative to the bucket alone. To reach another bucket on the same remote, begin the path with the configured remote's own name and a colon (`S3:my-thumbnails/inputs/`): such a path is used as given, with neither the bucket nor the prefix.
 
 ## Named Profiles
 
-Multiple named profiles can be defined as sub-tables of `[dataClient]`. A named profile overrides only the fields it specifies; any field not set in the profile inherits the corresponding value from the base `[dataClient]` section.
+To work with more than one store, define each as a named profile, a sub-table of `[dataClient]`. A profile overrides only the fields it sets, and inherits the rest from the base `[dataClient]` section:
 
 ```toml
 [dataClient]
@@ -79,16 +120,20 @@ bucket = "staging-data"
 # inherits prefix from [dataClient]
 ```
 
-Select a profile with `--data-client-profile <name>` (or `--profile <name>`):
+Select a profile with `--data-client-profile <name>` (or `--profile <name>`), or for every command in a shell with the `YD_DATA_CLIENT` environment variable:
 
+```shell
+yd data upload --data-client-profile prod frames.zip
+yd data download --profile staging results/
 ```
-yd data upload --data-client-profile prod myfile.txt
-yd data download --data-client-profile staging results/
-```
 
-The active profile can also be set via the `YD_DATA_CLIENT` environment variable. The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation. The `YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET` and `YD_DATA_CLIENT_PREFIX` environment variables do not override a field the selected profile sets itself, only those it inherits from `[dataClient]`: a profile is chosen by name, so `yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names even with `YD_DATA_CLIENT_BUCKET` set for the source.
+The `--remote`, `--bucket`, `--prefix`, and `--no-prefix` flags still apply on top of the selected profile, so individual fields can be overridden per invocation.
 
-Profile names are free-form; the only reserved names are `remote`, `bucket`, and `prefix` (the scalar field names of `[dataClient]` itself). A profile takes only those three keys: any other, such as a misspelt `bukcet`, is an error, as an unknown key elsewhere in the file is, rather than being ignored while the profile uses the base section's value.
+### Details
+
+**Environment variables and profiles.** The `YD_DATA_CLIENT_REMOTE`, `YD_DATA_CLIENT_BUCKET` and `YD_DATA_CLIENT_PREFIX` environment variables do not override a field the selected profile sets itself, only those it inherits from `[dataClient]`. A profile is chosen by name, so `yd data copy --dst-profile backup` reaches the bucket `[dataClient.backup]` names even with `YD_DATA_CLIENT_BUCKET` set for the source.
+
+**Profile names and keys.** Profile names are free-form; the only reserved names are `remote`, `bucket`, and `prefix` (the scalar field names of `[dataClient]` itself). A profile takes only those three keys. Any other, such as a misspelt `bukcet`, is an error, as an unknown key elsewhere in the file is, rather than being ignored while the profile uses the base section's value.
 
 ## Variable Substitutions for Data Client Properties
 
@@ -103,13 +148,9 @@ The `remote`, `bucket`, and `prefix` values from `[dataClient]` are available as
 | `{{dataClient.<name>.bucket}}` | Named profile's bucket |
 | `{{dataClient.<name>.prefix}}` | Named profile's prefix (`{{namespace}}/{{tag}}` when none is set) |
 
-For `yd data upload`/`yd data download`/`yd data delete`/`yd data list`/`yd data copy`, `{{dataClient.remote/bucket/prefix}}` reflects the fully resolved active source profile (after `--data-client-profile` selection, env vars, and CLI overrides), and under `--no-prefix` `{{dataClient.prefix}}` is empty. For all other commands, it reflects the configuration file's `[dataClient]` section (with any `--property dataClient.*` override); the `YD_DATA_CLIENT*` environment variables do not apply to it. Either way a prefix set nowhere is the default, `{{namespace}}/{{tag}}`, with or without a `[dataClient]` section, so a specification naming `{{dataClient.prefix}}` finds what `yd data upload` put under it; `prefix = ""` is no prefix.
-
-Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
-
 > **Note on User Data and Node Actions:** these take the `__{{variable}}__` form ([which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)): `__{{dataClient.remote}}__`, `__{{dataClient.prod.bucket}}__`, etc.
 
-Example use in a Work Requirement spec (no underscores needed in WR JSON). The Platform requires an input's `source` to start with `rclone:` and its `destination` with `local:` (an output's the other way round; see [Specifying Data Client Inputs](work-requirements.md#specifying-data-client-inputs)); leave out the `rclone:` below if the configured `remote` already starts with it:
+Example use in a Work Requirement spec (no underscores needed in WR JSON), downloading a file `yd data upload` put under the prefix:
 
 ```json
 {
@@ -122,12 +163,24 @@ Example use in a Work Requirement spec (no underscores needed in WR JSON). The P
 }
 ```
 
+The Platform requires an input's `source` to start with `rclone:` and its `destination` with `local:`, and an output's the other way round (see [Specifying Data Client Inputs](work-requirements.md#specifying-data-client-inputs)). Leave out the `rclone:` above if the configured `remote` already starts with it.
+
 Example use in a `userdata` script (double underscores required):
 
 ```bash
 #!/bin/bash
 rclone copy __{{dataClient.prod.remote}}__:__{{dataClient.prod.bucket}}__/configs /tmp/configs
 ```
+
+### Details
+
+**For the `yd data` commands.** `{{dataClient.remote}}`, `{{dataClient.bucket}}` and `{{dataClient.prefix}}` reflect the fully resolved active source profile, after `--data-client-profile` selection, environment variables and command-line overrides. Under `--no-prefix`, `{{dataClient.prefix}}` is empty.
+
+**For all other commands.** They reflect the configuration file's `[dataClient]` section, with any `--property dataClient.*` override. The `YD_DATA_CLIENT*` environment variables do not apply to them.
+
+**A prefix set nowhere.** Either way, a prefix set nowhere is the default, `{{namespace}}/{{tag}}`, with or without a `[dataClient]` section. So a specification naming `{{dataClient.prefix}}` finds what `yd data upload` put under it. `prefix = ""` is no prefix.
+
+**Named profile variables.** These are always resolved with the profile's fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix, or the base prefix if `[dataClient.prod]` sets none.
 
 ## Worked Examples
 
@@ -190,7 +243,7 @@ Each command first names the full remote path it works on (`Uploading 'inputs' �
 ```toml
 [dataClient]
 remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"
-bucket = "my-bucket"
+bucket = "my-photos"
 ```
 
 `env_auth=true` has rclone find the AWS credentials as the AWS tools do (the `AWS_*` environment variables, `~/.aws/credentials`, or an instance's role), so the configuration file holds none.
@@ -215,7 +268,7 @@ remote = "files"
 bucket = "/data/yellowdog"
 ```
 
-`bucket` is the server directory under which the prefix is added, absolute because it begins with `/`. `connections` caps how many connections rclone opens at once, which an SFTP server may limit (see the note on servers that limit connections, above).
+`bucket` is the server directory under which the prefix is added, absolute because it begins with `/`. `connections` caps how many connections rclone opens at once, which an SFTP server may limit (see [Servers That Limit Connections](#servers-that-limit-connections)).
 
 ### Several Stores, One Configuration
 
@@ -227,7 +280,7 @@ prefix = "{{namespace}}/{{tag}}"
 
 [dataClient.s3]
 remote = "S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2"
-bucket = "my-bucket"
+bucket = "my-photos"
 
 [dataClient.files]
 remote = "files"
@@ -243,11 +296,17 @@ A Work Requirement can name the same stores through the `{{dataClient.<profile>.
 
 ## Troubleshooting
 
-Before anything else, run `yd doctor`: its `Data client profile` rows show, for `[dataClient]` and for each profile, the remote (an inline string's credentials withheld) and the full path relative paths are taken from, without contacting anything, and its `Remote reachable` row checks that the remote can be reached at that path. Adding `--dry-run` to a command shows what it would do, and the paths it would use, without doing it.
+Before anything else, run `yd doctor`, which contacts nothing for its `Data client profile` rows. They show, for `[dataClient]` and for each profile, the remote (an inline string's credentials withheld) and the full path relative paths are taken from. Its `Remote reachable` row checks that the remote can be reached at that path. Adding `--dry-run` to a command shows what it would do, and the paths it would use, without doing it.
 
 - **`RCLONE_CONFIG names an rclone configuration file that does not exist`**, or **`No rclone configuration file found`**: a remote given by name is looked up in `rclone.conf`, which was not found. Set `RCLONE_CONFIG` to the file, create it where the message says it looked, or give the remote as an inline connection string instead.
-- **`didn't find section in config file ("myremote")`**: `rclone.conf` was found but defines no remote of that name. The binary `--which-rclone` reports lists the names it does define: `<that binary> listremotes`.
-- **`... does not exist`**: the path is relative to the bucket and prefix, which may not be where the file is. The full path is in the message; `yd data list` (with `--recursive`) shows what is there, `--no-prefix` leaves the prefix out, and a path beginning with the remote's name and a colon is used as given.
+- **`didn't find section in config file ("photos-s3")`**: `rclone.conf` was found but defines no remote of that name. The binary `--which-rclone` reports lists the names it does define: `<that binary> listremotes`.
+- **`... does not exist`**: the path is relative to the bucket and prefix, which may not be where the file is. The full path is in the message. `yd data list` (with `--recursive`) shows what is there, `--no-prefix` leaves the prefix out, and a path beginning with the remote's name and a colon is used as given.
 - **Which rclone is running**: `yd data list --which-rclone` (or any `yd data` verb) prints the binary's path and version, and `--upgrade-rclone` downloads the latest into `rclone_api`'s cache. One on your `PATH` is used in preference and never touched, so while it is there the downloaded copy, upgraded or not, is not the one that runs.
-- **Transfers failing or slowing on an SFTP or FTP server**: the server may be refusing connections; cap them in the remote (see the note on servers that limit connections, above).
+- **Transfers failing or slowing on an SFTP or FTP server**: the server may be refusing connections; cap them in the remote (see [Servers That Limit Connections](#servers-that-limit-connections)).
 - **A download refused on Windows** because the remote item's name holds a character Windows does not allow in a file name: give `--destination` to name the local file.
+
+### Servers That Limit Connections
+
+Cap the connections in the remote itself: `connections` for SFTP (`":sftp,host=files.example.com,user=me,connections=8"`, or `connections = 8` in a named remote in `rclone.conf`) and `concurrency` for FTP.
+
+The `yd data` commands copy up to 128 files at a time. On an SFTP or FTP server, each of those can be a connection of its own. A server that limits how many connections it accepts at once (OpenSSH's `MaxStartups`, an FTP server's per-user or per-IP limit) refuses the rest. rclone retries a refused connection, so the transfer usually completes, more slowly, but it can fail. A server that bans an address for repeated dropped connections may ban yours.

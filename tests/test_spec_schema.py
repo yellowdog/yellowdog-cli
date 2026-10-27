@@ -873,7 +873,7 @@ class TestCorpusAndExamples:
         # sent to the Platform, not a specification
         for block in self._json_blocks(
             "docs/work-requirements.md",
-            "## Work Requirement JSON File Structure",
+            "## Examples",
             "## Dry-Running Work Requirement Submissions",
         ):
             if isinstance(block, dict) and "taskGroups" in block:
@@ -888,7 +888,7 @@ class TestCorpusAndExamples:
         validate = compile_schema(Family.WORKER_POOL)
         for block in self._json_blocks(
             "docs/worker-pools.md",
-            "## Worker Pool Specification Using JSON Documents",
+            "## Examples",
             "## Variable Substitutions in Worker Pool Properties",
         ):
             validate(block)
