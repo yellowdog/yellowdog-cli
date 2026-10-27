@@ -234,15 +234,17 @@ namespace = "file-ns"
 tag = "same-tag"
 
 [common.variables]
-site = "lon"
+SITE = "lon"
 """
 
 
 def _doctor(tmp_path, *args: str) -> dict:
     """
     'yd doctor --offline --json' in tmp_path, with the environment offering
-    a different namespace, secret and 'site', and the same tag, and the
-    shell's own YD_* variables dropped.
+    a different namespace, secret and 'SITE', and the same tag, and the
+    shell's own YD_* variables dropped. The variable is upper-case because
+    Windows upper-cases environment variable names, so 'YD_VAR_site' would
+    define 'SITE' there and outrank nothing.
     """
     (tmp_path / "config.toml").write_text(CONFIG, encoding="utf-8")
     environment = {k: v for k, v in os.environ.items() if not k.startswith("YD_")}
@@ -250,7 +252,7 @@ def _doctor(tmp_path, *args: str) -> dict:
         YD_NAMESPACE="env-ns",
         YD_SECRET="env-secret",
         YD_TAG="same-tag",
-        YD_VAR_site="par",
+        YD_VAR_SITE="par",
     )
     completed = subprocess.run(
         [
@@ -282,7 +284,7 @@ class TestDoctor:
         assert row["detail"] == (
             "'config.toml', chosen with --config, is used rather than"
             " YD_NAMESPACE (common.namespace), YD_SECRET (common.secret),"
-            " YD_VAR_site (variable 'site')"
+            " YD_VAR_SITE (variable 'SITE')"
         )
 
     def test_without_config(self, tmp_path):
