@@ -1124,11 +1124,11 @@ Note that if the Agent on a node advertises multiple Workers, then Tasks are exe
 
 By default, in the standard YellowDog Agent VM images and in images/instances created using the [YellowDog Agent Installer Script](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), the Agent runs as user and group `yd-agent`, and hence Tasks also execute under this user.
 
-`yd-agent` does not have `sudo` privileges as standard, but this can be added if required (e.g.) at instance boot time via the `userData` property of a provisioning request. E.g. (for Ubuntu):
+`yd-agent` does not have `sudo` privileges as standard, but this can be added if required (e.g.) at instance boot time via the `userData` property of a provisioning request, e.g.:
 
 ```shell
-usermod -aG wheel yd-agent
-echo -e "yd-agent\tALL=(ALL)\tNOPASSWD: ALL" > /etc/sudoers.d/020-yd-agent
+echo "yd-agent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/020-yd-agent
+chmod 440 /etc/sudoers.d/020-yd-agent
 ```
 
 ### Home Directory for `yd-agent`
