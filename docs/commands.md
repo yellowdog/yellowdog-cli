@@ -129,7 +129,7 @@ The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of
 
 | Option | Effect |
 |---|---|
-| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory, else your own, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set; see [Configuration](configuration.md)) |
+| `--config <config_file.toml>`, `-c` | Configuration file in TOML format, whose values take precedence over environment variables, where a file found by default gives way to them (see [Which Value Wins](configuration.md#which-value-wins)); the default is `config.toml` in the current directory, else your own, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set; see [Configuration](configuration.md)) |
 | `--no-config`, `--nc` | Ignore the contents of any TOML configuration file, even one named using `--config` |
 | `--key <app-key-id>`, `-k` | The Application key ID |
 | `--secret <app-key-secret>`, `-s` | The Application key secret |

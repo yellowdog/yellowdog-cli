@@ -68,19 +68,19 @@ Run `yd doctor` to see which configuration file was found and where each value c
 
 ## Checking the Configuration File
 
-Every command checks the configuration file against its schema as it starts, and warns of each problem it finds without stopping. For example, with `minNodes` set under `[workRequirement]`, which does not read it:
+Every command checks the configuration file as it starts. A property name the CLI does not know stops the command with an error (exit code 3), as does a retired one, whose error names the property that replaces it.
+
+Every other problem is a warning, found by checking the file against its schema, and the command carries on. For example, with `minNodes` set under `[workRequirement]`, which does not read it:
 
 ```
 WARNING : 'config.toml': workRequirement: 'minNodes' is not read in this section (see yd schema config)
 ```
 
-The check reports a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it, and an unknown property given with `--property`. Each warning names the file and the property. `yd schema config` prints the schema itself, and `yd doctor` reports the same problems in its `Config schema` row.
+The warnings report a value of the wrong type (e.g., `maxNodes = "ten"`), a property in a section that does not read it, and an unknown property given with `--property`. Each names the file and the property. `yd schema config` prints the schema itself, and `yd doctor` reports the same problems in its `Config schema` row.
 
 ### Details
 
-**Errors, not warnings.** An unknown property name in the file is an error, as is a retired one; the error names the property that replaces it.
-
-**`--quiet`.** Under `--quiet`, which suppresses warnings, the check is not made at all.
+**`--quiet`.** `--quiet` suppresses warnings, so the schema check, which only warns, is not made. The errors are still reported: an unknown or retired property name in the file, or a property a `[dataClient.<profile>]` section does not take, stops the command under `--quiet` too. An unknown property given with `--property` is only a warning, so under `--quiet` nothing reports it. `yd doctor` still reports the schema's warnings in its `Config schema` row, as `WARN` lines that `yd doctor --quiet` keeps.
 
 **The data client commands.** `yd data upload`, `yd data download`, `yd data delete`, `yd data list` and `yd data copy` check only the `[common]` and `[dataClient]` sections, the only ones they read.
 

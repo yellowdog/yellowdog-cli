@@ -12,6 +12,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Variables and configuration
 
 - **An environment value a `--config` file outranks is reported**: with the configuration file chosen by `--config`, which wins over the environment, `yd doctor` warns of each environment variable it passed over, `YD_NAMESPACE`, a `YD_VAR_*` variable or a `YD_DATA_CLIENT_*` field set to something else, naming it and what it would have set but never its value, and `--debug` says so as each is found. Nothing changes in which value is used.
+- **`--config`'s help says that the file it names outranks the environment**, as a file found by default does not, and `yd doctor`'s `Config schema` hint no longer says the warnings are given under `--quiet`, which skips that check.
 - **Documentation:** the Work Requirement Property Dictionary is now [docs/work-requirement-property-dictionary.md](docs/work-requirement-property-dictionary.md), where it was `docs/property-dictionary.md`.
 
 ## 15.4.0 — 2026-10-27

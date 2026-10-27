@@ -49,7 +49,7 @@ Since it contacts nothing, `--validate` needs no Application key or secret, so i
 
 ## Every Run Checks Too
 
-Every run of those five commands checks its specification the same way, and warns of each violation without stopping: the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. Every command also checks the configuration file against the `config` schema as it starts (see [Configuration](configuration.md)), unless `--quiet` is given.
+Every run of those five commands checks its specification the same way, and warns of each violation without stopping: the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. Every command also checks the configuration file against the `config` schema as it starts, unless `--quiet` is given; an unknown or retired property name in the file is an error with or without it (see [Checking the Configuration File](configuration.md#checking-the-configuration-file)).
 
 If a schema cannot be built from the installed SDK (a newer SDK with a property the CLI cannot yet describe), the run warns once that the file went unchecked and carries on as it would without a schema; `yd schema <family>` shows why.
 

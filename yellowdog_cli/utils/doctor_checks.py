@@ -655,7 +655,8 @@ def check_config_schema(ctx: Context) -> Result:
     return Result(
         Status.WARN,
         f"{count}: {shown}" + (f"; and {more} more" if more > 0 else ""),
-        "Every one is reported as a warning when a command runs;"
+        "Every one is reported as a warning when a command runs without"
+        " --quiet;"
         " 'yd schema config' prints the schema",
     )
 

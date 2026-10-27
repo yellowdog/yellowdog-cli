@@ -664,7 +664,8 @@ CONFIG = option(
     required=False,
     type=str,
     help=(
-        "configuration file in TOML format; "
+        "configuration file in TOML format, whose values take precedence over"
+        " environment variables, unlike a file found by default; "
         "the default to use is 'config.toml' in the current directory, else"
         " ~/.config/yellowdog/config.toml"
     ),
