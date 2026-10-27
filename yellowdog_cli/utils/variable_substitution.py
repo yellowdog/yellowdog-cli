@@ -769,11 +769,15 @@ def resolve_variables_insitu(
             f" variable reference, in {_list_paths(changed)}"
         )
 
+    spaced: list[tuple[str, str, str, str]] = []
     _warn_of_undefined(
         _undefined_unless_circular(
-            _unsubstituted_references(data, prefix=prefix, postfix=postfix)
+            _unsubstituted_references(
+                data, prefix=prefix, postfix=postfix, spaced=spaced
+            )
         )
     )
+    _warn_of_spaced(spaced)
 
 
 def _undefined_unless_circular(
@@ -831,9 +835,13 @@ def resolve_variables_in_string(
 
     if isinstance(result, str):
         label = source if source is not None else str(value)
+        spaced: list[tuple[str, str, str, str]] = []
         _warn_of_undefined(
-            _undefined_unless_circular(_unsubstituted_references({label: result}))
+            _undefined_unless_circular(
+                _unsubstituted_references({label: result}, spaced=spaced)
+            )
         )
+        _warn_of_spaced(spaced)
     return result
 
 
@@ -870,8 +878,9 @@ def warn_of_undefined_variables(
     a '*Files' list is reported for each of them, not for the first alone.
     """
     undefined: dict[str, list[str]] = {}
+    spaced: list[tuple[str, str, str, str]] = []
     for expression, reference, path in _unsubstituted_references(
-        data, prefix=prefix, postfix=postfix
+        data, prefix=prefix, postfix=postfix, spaced=spaced
     ):
         if (
             reference not in VARIABLE_SUBSTITUTIONS
@@ -879,6 +888,7 @@ def warn_of_undefined_variables(
         ):
             undefined.setdefault(expression, []).append(path)
     _warn_of_undefined(undefined, per_source=per_source)
+    _warn_of_spaced(spaced, per_source=per_source)
 
 
 def _warn_of_undefined(
@@ -892,19 +902,9 @@ def _warn_of_undefined(
     if not _UNDEFINED_VARIABLE_WARNINGS:
         return
     for expression, paths in undefined.items():
-        if per_source:
-            paths = [
-                path
-                for path in dict.fromkeys(paths)
-                if (expression, path) not in _UNDEFINED_VARIABLES_REPORTED
-            ]
-            if not paths:
-                continue
-            _UNDEFINED_VARIABLES_REPORTED.update((expression, path) for path in paths)
-        else:
-            if expression in _UNDEFINED_VARIABLES_REPORTED:
-                continue
-            _UNDEFINED_VARIABLES_REPORTED.add(expression)
+        paths = _unreported(expression, paths, per_source)
+        if not paths:
+            continue
         reference = _reference_of(expression)
         if reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
             # Defined, but removed by the unset syntax, which is what anyone
@@ -919,6 +919,54 @@ def _warn_of_undefined(
                 f"Variable '{expression}' is not defined, and has been left"
                 f" unsubstituted in {_list_paths(paths)}"
             )
+
+
+def _warn_of_spaced(
+    spaced: list[tuple[str, str, str, str]], per_source: bool = False
+) -> None:
+    """
+    Warn of each expression with space inside its delimiters ('{{ tag }}')
+    that names a variable which would be substituted without the space: one
+    defined, an environment variable set, or one 'yd workrequirement submit'
+    defines per Task. Such an expression is text, left as it is, since another
+    tool's template ('{{ .Values.x }}', Jinja2's '{{ name }}') may be meant;
+    one naming nothing is taken to be such a template, and not reported.
+    Reported as the undefined variables are: once, and from the same point.
+    """
+    if not _UNDEFINED_VARIABLE_WARNINGS:
+        return
+    found: dict[str, tuple[str, list[str]]] = {}
+    for expression, reference, unspaced, path in spaced:
+        if _value_of(reference) is not None or reference in LAZY_VARIABLE_NAMES:
+            found.setdefault(expression, (unspaced, []))[1].append(path)
+    for expression, (unspaced, paths) in found.items():
+        paths = _unreported(expression, paths, per_source)
+        if paths:
+            print_warning(
+                f"'{expression}' has space inside its braces, so it is not a"
+                f" variable substitution, and has been left unchanged in"
+                f" {_list_paths(paths)}; write '{unspaced}' to substitute it"
+            )
+
+
+def _unreported(expression: str, paths: list[str], per_source: bool) -> list[str]:
+    """
+    The paths 'expression' is to be reported in, recording them as reported:
+    all of them unless it was reported before, or with 'per_source' those it
+    was not reported in before.
+    """
+    if per_source:
+        paths = [
+            path
+            for path in dict.fromkeys(paths)
+            if (expression, path) not in _UNDEFINED_VARIABLES_REPORTED
+        ]
+        _UNDEFINED_VARIABLES_REPORTED.update((expression, path) for path in paths)
+        return paths
+    if expression in _UNDEFINED_VARIABLES_REPORTED:
+        return []
+    _UNDEFINED_VARIABLES_REPORTED.add(expression)
+    return paths
 
 
 def _reference_of(expression: str) -> str | None:
@@ -942,7 +990,10 @@ def _list_paths(paths: list[str], limit: int = 5) -> str:
 
 
 def _unsubstituted_references(
-    data: dict | list, prefix: str = "", postfix: str = ""
+    data: dict | list,
+    prefix: str = "",
+    postfix: str = "",
+    spaced: list[tuple[str, str, str, str]] | None = None,
 ) -> list[tuple[str, str, str]]:
     """
     The (expression, variable reference, property path) of every variable
@@ -955,6 +1006,12 @@ def _unsubstituted_references(
     Once the passes have settled, a reference to a defined variable is still
     there only if its value leads back to its own name, and any other names
     a variable nothing defines.
+
+    Given 'spaced', each expression that would be a reference but for the
+    space around it inside the delimiters ('{{ tag }}') is added to it as
+    (expression, variable reference, the expression without the space,
+    property path): it is text, never substituted, so it is not one of those
+    returned.
     """
     found: list[tuple[str, str, str]] = []
 
@@ -966,6 +1023,11 @@ def _unsubstituted_references(
                 found.append((expression, match.group(1), path))
             elif opening in inner:
                 _check(inner, opening, closing, path)
+            elif spaced is not None:
+                match = _VARIABLE_REFERENCE.fullmatch(inner.strip())
+                if match is not None:
+                    unspaced = opening + inner.strip() + closing
+                    spaced.append((expression, match.group(1), unspaced, path))
 
     def _walk_data(data: dict | list, path: str):
         items = (

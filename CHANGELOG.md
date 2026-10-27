@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Variables and configuration
+
+- **`{{ name }}` with spaces is warned of**: a substitution written with space inside its braces is not a substitution and is left as it is, as before, but where the name inside is a variable that would be substituted (defined, an environment variable set, or one of the Task variables) a warning now says so and gives the form without the space; text naming nothing, such as another tool's template, is not reported.
+
 ## 15.3.0 — 2026-10-26
 
 ### Upgrading

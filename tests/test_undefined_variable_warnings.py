@@ -12,6 +12,9 @@ places substituted some other way, each of which checks its own result:
   - file contents substituted as text: User Data files, 'yd-nodeaction'
     'writeFile' content files, and Task Data files;
   - the paths the data client commands are given.
+
+It also holds the warning for '{{ site }}', which the space inside its
+delimiters makes text rather than a substitution.
 """
 
 from unittest.mock import MagicMock
@@ -255,3 +258,89 @@ class TestUnsetVariables:
         var_module.resolve_variables_insitu(spec)
 
         assert "is not defined" in _messages(warnings)[0]
+
+
+# ---------------------------------------------------------------------------
+# Space inside the delimiters: '{{ site }}'
+# ---------------------------------------------------------------------------
+
+
+class TestSpacedNames:
+    """
+    '{{ site }}' is text, not a substitution, and is left as it is; it is
+    warned of when the name inside would be substituted without the space,
+    and otherwise taken for another tool's template.
+    """
+
+    @pytest.fixture(autouse=True)
+    def table(self, monkeypatch):
+        monkeypatch.setattr(var_module, "VARIABLE_SUBSTITUTIONS", {"site": "lon"})
+
+    def test_a_defined_name_is_reported_and_left(self, warnings):
+        spec = {"name": "pool-{{ site }}"}
+
+        var_module.resolve_variables_insitu(spec)
+
+        assert spec == {"name": "pool-{{ site }}"}
+        assert _messages(warnings) == [
+            "'{{ site }}' has space inside its braces, so it is not a variable"
+            " substitution, and has been left unchanged in 'name'; write"
+            " '{{site}}' to substitute it"
+        ]
+
+    @pytest.mark.parametrize(
+        "text", ["{{ nope }}", "{{ .Values.site }}", "{{ end }}", "{{- site }}"]
+    )
+    def test_another_tools_template_is_not_reported(self, warnings, text):
+        spec = {"args": [text]}
+        var_module.resolve_variables_insitu(spec)
+        assert spec == {"args": [text]}
+        assert _messages(warnings) == []
+
+    @pytest.mark.parametrize(
+        "text, unspaced",
+        [
+            ("{{  site\t}}", "{{site}}"),
+            ("{{ num:site }}", "{{num:site}}"),
+            ("{{ env:YD_TEST_SPACED }}", "{{env:YD_TEST_SPACED}}"),
+            ("{{ task_name }}", "{{task_name}}"),
+        ],
+    )
+    def test_what_would_be_substituted_is_reported(
+        self, warnings, monkeypatch, text, unspaced
+    ):
+        monkeypatch.setenv("YD_TEST_SPACED", "x")
+        var_module.resolve_variables_insitu({"name": text})
+        [message] = _messages(warnings)
+        assert f"write '{unspaced}'" in message
+
+    def test_reported_once_with_every_property(self, warnings):
+        var_module.resolve_variables_insitu({"a": "{{ site }}", "b": ["{{ site }}"]})
+        var_module.resolve_variables_insitu({"c": "{{ site }}"})
+        [message] = _messages(warnings)
+        assert "'a', 'b[0]'" in message
+
+    def test_not_reported_until_warnings_are_enabled(self, warnings, monkeypatch):
+        monkeypatch.setattr(var_module, "_UNDEFINED_VARIABLE_WARNINGS", False)
+        var_module.resolve_variables_insitu({"name": "{{ site }}"})
+        assert _messages(warnings) == []
+
+    def test_user_data_takes_the_worker_pool_delimiters(self, warnings):
+        # Plain '{{ site }}' in User Data is Mustache for the Platform
+        var_module.resolve_variables_insitu(
+            {"userData": "echo __{{ site }}__ {{ site }}"}
+        )
+        [message] = _messages(warnings)
+        assert "'__{{ site }}__'" in message and "write '__{{site}}__'" in message
+
+    def test_a_single_value_is_checked(self, warnings):
+        var_module.resolve_variables_in_string("{{ site }}", source="common.tag")
+        [message] = _messages(warnings)
+        assert "'common.tag'" in message
+
+    def test_a_file_is_checked(self, warnings, tmp_path):
+        data = tmp_path / "input.json"
+        data.write_text('{"region": "{{ site }}"}\n', encoding="utf-8")
+        resolve_task_data({TASK_DATA_FILE: str(data)})
+        [message] = _messages(warnings)
+        assert "input.json" in message

@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:03:56 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 08:06:20 GMT 2026 -->
 
 <!--te-->
 
@@ -288,6 +288,12 @@ This applies wherever variables are substituted: specifications and the TOML con
 Each undefined variable is reported once, however many properties or Tasks it appears in, except in files substituted as text — User Data files, `writeFile` content files and Task Data files — where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named.
 
 The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
+
+A substitution must have no space inside its braces: `{{ region }}` is not a substitution, and is left as it is, so that templates for other tools (`{{ .Values.x }}`, Jinja2's `{{ name }}`) pass through. Where the name inside is one that would be substituted without the space — a variable that is defined, an environment variable that is set, or one of the Task variables — a warning says so, once, e.g.:
+
+```
+WARNING : '{{ region }}' has space inside its braces, so it is not a variable substitution, and has been left unchanged in 'taskGroups[0].tasks[0].arguments[1]'; write '{{region}}' to substitute it
+```
 
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
 
