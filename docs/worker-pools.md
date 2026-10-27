@@ -321,7 +321,7 @@ Node actions are defined in a JSON (or Jsonnet) spec file supplied via the `--ac
 
 Actions in an actions list are downloaded by a node in one operation and executed sequentially.
 
-Variable substitutions in spec files must use the `__{{variable}}__` form, as Worker Pool and Compute Requirement specifications do, since the content may include Mustache templates that the Platform processes server-side; see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
+Variable substitutions in spec files must use the `__{{variable}}__` form throughout, as a Worker Pool specification's own Node Actions do, since the content may include Mustache templates that the Platform processes server-side; see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 
 #### Actions
 
