@@ -155,9 +155,9 @@ def test_server_assigned_coverage_does_not_infer_an_unprobed_class():
     A plain field.init check would make exactly this mistake for all seven
     pairs below: each is a different resource family that merely happens to
     declare 'id' or 'createdTime' the same way a probed class does. All seven
-    are settled by a direct live probe (a create-then-show round trip) and belong in the gate as
-    excluded -- this test is the regression guard, not a statement that they
-    are still open questions.
+    are settled by a direct live probe (a create-then-show round trip) and
+    belong in the gate as excluded -- this test is the regression guard, not
+    a statement that they are still open questions.
     """
     for model_name, property_name in (
         ("ComputeSourceTemplate", "id"),

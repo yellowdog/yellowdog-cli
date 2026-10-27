@@ -141,8 +141,9 @@ class TestNameChangesAreWarnedOf:
     A name cut to 60 characters, or stripped of characters a YellowDog name
     cannot hold, is warned of, since otherwise long Task names could become
     one name and 'Café' become 'caf' without a word. Each kind of change is
-    warned of once per run, naming the first name so changed: Task names are formatted per
-    Task. The documented substitutions (case, ' ', '.', '/') are not.
+    warned of once per run, naming the first name so changed: Task names
+    are formatted per Task. The documented substitutions (case, ' ', '.',
+    '/') are not.
     """
 
     @pytest.fixture(autouse=True)

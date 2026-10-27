@@ -481,7 +481,8 @@ class AzureConfig(CommonCloudConfig):
         self, region: str, name: str, spot: bool
     ) -> dict:
         """
-        Create a minimal populated YellowDog Compute Source Template resource definition.
+        Create a minimal populated YellowDog Compute Source Template
+        resource definition.
         """
         spot_str = "Spot" if spot is True else "On-Demand"
         source = {

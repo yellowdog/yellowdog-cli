@@ -167,7 +167,8 @@ _FALSE = {"false", "no", "off", "0"}
 class Section:
     """
     One section's values: every key of its schema, its default or None where
-    neither the file nor the environment gave one. The values are left out of its repr, which pytest shows in a failure.
+    neither the file nor the environment gave one. The values are left out
+    of its repr, which pytest shows in a failure.
     """
 
     name: str

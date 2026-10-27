@@ -1,11 +1,11 @@
 """
 How the CLI prints, prompts and selects, as the command line asks: quiet,
 '--debug', '--json', '--no-format', the PID prefix, '--count', the output
-file, stripped IDs, hidden User Data, events as JSON, '--yes', interactive selection and the
-listing's sort and detail. The code that prints and asks -- printing.py,
-tables.py, interactive.py, results.py, event_printing.py, rclone's logging,
-specs/validation.py -- reads OUTPUT, rather than the parsed command line, so
-that it can be used and tested without one.
+file, stripped IDs, hidden User Data, events as JSON, '--yes', interactive
+selection and the listing's sort and detail. The code that prints and asks
+-- printing.py, tables.py, interactive.py, results.py, event_printing.py,
+rclone's logging, specs/validation.py -- reads OUTPUT, rather than the
+parsed command line, so that it can be used and tested without one.
 
 OUTPUT is one object, configured in place as a command starts
 (configure_output(), by the wrappers' prepare_run(), yd-doctor and

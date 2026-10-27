@@ -268,17 +268,18 @@ def command_line(command: str, *args: str) -> str:
     immediately -- e.g. the 'cleanup' fixture, which only accepts a command string
     and runs it later, in its own teardown, regardless of how the test exits.
 
-    Always prefixed with 'cd <CORPUS_DIR> &&': 'cleanup' (conftest.py) runs a registered command exactly as given, with no
-    chdir of its own, from whatever directory the test process happens to be in
-    by teardown time -- which is not reliably CORPUS_DIR, since a test that
-    chdir's for the duration of a call (load_corpus_file(), the atexit sweep in
-    conftest.py's own run_id fixture) always restores the original directory
-    afterwards. (The live corpus files' import of 'lib/base.libsonnet' resolves
-    beside the importing file whatever the cwd, so for those the prefix is a
-    convention rather than a need.)
-    CORPUS_DIR is absolute (built from Path(__file__).parent),
-    so this is safe to prepend unconditionally, including for a command (like
-    yd-list/yd-show) that never touches a corpus file at all.
+    Always prefixed with 'cd <CORPUS_DIR> &&': 'cleanup' (conftest.py) runs a
+    registered command exactly as given, with no chdir of its own, from
+    whatever directory the test process happens to be in by teardown time --
+    which is not reliably CORPUS_DIR, since a test that chdir's for the
+    duration of a call (load_corpus_file(), the atexit sweep in conftest.py's
+    own run_id fixture) always restores the original directory afterwards. (The
+    live corpus files' import of 'lib/base.libsonnet' resolves beside the
+    importing file whatever the cwd, so for those the prefix is a convention
+    rather than a need.) CORPUS_DIR is absolute (built from
+    Path(__file__).parent), so this is safe to prepend unconditionally,
+    including for a command (like yd-list/yd-show) that never touches a corpus
+    file at all.
     """
     parts = [
         "cd",

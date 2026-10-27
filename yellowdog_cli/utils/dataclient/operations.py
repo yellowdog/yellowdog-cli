@@ -339,8 +339,9 @@ def record_deletion(
     Record one item removed by yd-delete, as {"path", "action"} with its
     display "name" (a directory's with a trailing '/') and "isDir", which
     Commander offers its selection from; 'action' is 'deleted', 'failed',
-    'skipped' (not there, or declined) or 'would delete'. The path carries no trailing '/', because it is the
-    handle passed back to delete that one item.
+    'skipped' (not there, or declined) or 'would delete'. The path
+    carries no trailing '/', because it is the handle passed back to
+    delete that one item.
     """
     path = remote_path.rstrip("/")
     name = remote_basename(path) if path else path

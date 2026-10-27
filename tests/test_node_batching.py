@@ -1,7 +1,9 @@
 """
 Unit tests for _allocate_nodes_to_batches in provision.py and instantiate.py.
 
-provision._allocate_nodes_to_batches(max_batch_size, initial_nodes, min_nodes, max_nodes)
+provision._allocate_nodes_to_batches(
+    max_batch_size, initial_nodes, min_nodes, max_nodes
+)
   - Batch count is ceil(max_nodes / max_batch_size)
   - Distributes initial_nodes, min_nodes, and max_nodes evenly; remainders
     spread one-per-batch across the first N batches

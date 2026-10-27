@@ -21,11 +21,12 @@ name, so extending it by pattern-matching can't conflate them:
     resolves the actual class name(s) per-resource.
 
 StringAttributeDefinition/NumericAttributeDefinition are a special case:
-create_attribute_definition() builds a raw payload dict and POSTs it directly --
-there is no '_get_model_object("StringAttributeDefinition", ...)' call anywhere in
-utils/resource_creation.py. Building the SDK model anyway is still a valid check because the
-model's field names coincide with the payload's keys, but the mapping does not
-reflect a real code path, unlike every other non-None, non-DYNAMIC entry.
+create_attribute_definition() builds a raw payload dict and POSTs it directly
+-- there is no '_get_model_object("StringAttributeDefinition", ...)' call
+anywhere in utils/resource_creation.py. Building the SDK model anyway is still
+a valid check because the model's field names coincide with the payload's keys,
+but the mapping does not reflect a real code path, unlike every other non-None,
+non-DYNAMIC entry.
 
 This module must not import utils/resource_creation.py, which imports the SDK
 at module level: model_class() resolves through yellowdog_client.model
