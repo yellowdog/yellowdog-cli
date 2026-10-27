@@ -28,18 +28,13 @@
    * [Machine-readable Output and Exit Codes](#machine-readable-output-and-exit-codes)
 * [Typical Workflow](#typical-workflow)
 * [Documentation](#documentation)
-   * [Configuration](#configuration)
-   * [Variable Substitutions](#variable-substitutions)
-   * [Work Requirements](#work-requirements)
-   * [Worker Pools](#worker-pools)
-   * [Data Client](#data-client)
-   * [Creating, Updating and Removing YellowDog Resources](#creating-updating-and-removing-yellowdog-resources)
-   * [Checking Specifications](#checking-specifications)
-   * [Jsonnet Support](#jsonnet-support)
-   * [Command List](#command-list)
+   * [Guides](#guides)
+   * [Reference](#reference)
+   * [Optional Extensions](#optional-extensions)
+   * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:19:38 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:18:27 GMT 2026 -->
 
 <!--te-->
 
@@ -367,40 +362,41 @@ Note that there is no fixed 1:1 relationship between Work Requirements and Worke
 
 # Documentation
 
-Beyond this page, the documentation is in the `docs` directory, one page per topic, each introduced below, starting with **[Getting Started](docs/getting-started.md)**, a first Work Requirement from start to finish. Machine-readable output and exit codes, under [Usage](#usage) above, have a page of their own too.
+Beyond this page, the documentation is one page per topic, mapped below. To begin, follow **[Getting Started](docs/getting-started.md)**, which runs a first Work Requirement from start to finish; help is also available for every command with `--help` or `-h`.
 
-## Configuration
+## Guides
 
-The configuration file, naming rules and the properties common to every command are described in **[Configuration](docs/configuration.md)**.
+| Page | What it covers |
+|---|---|
+| **[Getting Started](docs/getting-started.md)** | From an installed CLI to a first Task: `yd init`, `yd doctor`, a Worker Pool and a Work Requirement, one command at a time |
+| **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
+| **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
+| **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
+| **[Worker Pools](docs/worker-pools.md)** | Provisioning Worker Pools and Compute Requirements: their properties and JSON specifications, large-scale provisioning, dry runs, and Node Actions |
+| **[Data Client](docs/data-client.md)** | Moving files to, from and between object stores with `yd data`, through rclone: remote paths, named profiles, worked examples and troubleshooting |
+| **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)** | `yd resource create` and `remove`: templates, Keyrings and Credentials, Image Families, Allowances, Applications, Groups, Configured Worker Pools and the rest |
+| **[Jsonnet Support](docs/jsonnet.md)** | Writing any specification in Jsonnet, and how variable substitutions work in it |
+| **[Checking Specifications](docs/schemas.md)** | The specifications' JSON Schemas: checking a file with `--validate`, in an editor or in CI, and `yd schema` |
 
-## Variable Substitutions
+## Reference
 
-Variables, their defaults and where they can be used are described in **[Variable Substitutions](docs/variables.md)**.
+| Page | What it covers |
+|---|---|
+| **[Command List](docs/commands.md)** | Every command, the options they share, and each command's own options and examples |
+| **[Work Requirement Property Dictionary](docs/property-dictionary.md)** | Every Work Requirement property, its type, and the levels it can be set at |
+| **[Machine-readable Output and Exit Codes](docs/json-output.md)** | What `--json` prints for each command, and the exit codes every command uses |
 
-## Work Requirements
+## Optional Extensions
 
-Defining and submitting Work Requirements, from their JSON structure and inheritance to CSV data and dry runs, is described in **[Work Requirements](docs/work-requirements.md)**, and every Work Requirement property, with the levels it can be set at, in the **[Work Requirement Property Dictionary](docs/property-dictionary.md)**.
+| Page | What it covers |
+|---|---|
+| **[YellowDog Commander](yellowdog_cli/commander/README.md)** | `yd commander`, the desktop GUI that runs `yd` commands for you (the `commander` extra) |
+| **[YellowDog MCP Server](yellowdog_cli/mcp/README.md)** | `yd mcp`, which gives an agent the `yd` commands as tools (the `mcp` extra) |
+| **[YellowDog Cloud Wizard](README_CLOUDWIZARD.md)** | `yd cloudwizard`, which sets up a cloud provider account and the YellowDog resources that use it (the `cloudwizard` extra) |
 
-## Worker Pools
+## The Project
 
-Provisioning Worker Pools and Compute Requirements, and Node Actions, are described in **[Worker Pools](docs/worker-pools.md)**.
-
-## Data Client
-
-Configuring the data client, which moves files to and from object storage, is described in **[Data Client](docs/data-client.md)**.
-
-## Creating, Updating and Removing YellowDog Resources
-
-Creating, updating and removing resources such as templates, Keyrings, Image Families and Applications is described in **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)**.
-
-## Checking Specifications
-
-The specifications' schemas, checking a file with `--validate`, in an editor or in CI, and keeping the schemas current are described in **[Checking Specifications](docs/schemas.md)**.
-
-## Jsonnet Support
-
-Writing specifications in Jsonnet is described in **[Jsonnet Support](docs/jsonnet.md)**.
-
-## Command List
-
-The commands, the options they share and each command's own options and examples are described in the **[Command List](docs/commands.md)**. Help is also available for every command with `--help` or `-h`.
+| Page | What it covers |
+|---|---|
+| **[Changelog](CHANGELOG.md)** | What changed in each release, and what to check when upgrading |
+| **[Development Guide](DEVELOPMENT.md)** | Building, testing and contributing to the CLI |
