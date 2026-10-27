@@ -175,8 +175,7 @@ When it is inspected using the `--dry-run` option (`yd workrequirement submit -D
     {
       "name": "task_group_1",
       "runSpecification": {
-        "taskTypes": ["bash"],
-        "maximumTaskRetries": 0
+        "taskTypes": ["bash"]
       },
       "priority": 0,
       "starved": false,

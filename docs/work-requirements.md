@@ -1052,7 +1052,6 @@ prints:
       "name": "task_group_1",
       "runSpecification": {
         "taskTypes": ["bash"],
-        "maximumTaskRetries": 0,
         "workerTags": ["render"]
       },
       "priority": 0,
