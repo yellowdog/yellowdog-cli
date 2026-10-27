@@ -47,6 +47,7 @@ from yellowdog_client.model import (
     RequirementsAllowance,
     RoleSearch,
     RoleSummary,
+    SliceReference,
     SourceAllowance,
     SourcesAllowance,
     Task,
@@ -838,6 +839,40 @@ def iterate_tasks_in_task_group(
             name=name_contains or None,
         )
     ).iterate()
+
+
+def count_tasks_in_task_group(client: PlatformClient, task_group_id: str) -> int:
+    """
+    The number of tasks in a task group, counted by searching for them a
+    slice of SliceReference.MAX_SIZE at a time, so a request per thousand.
+    A task group's taskSummary also counts them, but seconds behind the
+    tasks last added. Not cached, as a count of what is being added to.
+    """
+    search = client.work_client.get_tasks(TaskSearch(taskGroupId=task_group_id))
+    count = 0
+    slice_id = None
+    while True:
+        tasks = search.slice(
+            SliceReference(sliceId=slice_id, size=SliceReference.MAX_SIZE)
+        )
+        count += len(tasks.items or [])
+        slice_id = tasks.nextSliceId
+        if slice_id is None:
+            return count
+
+
+def task_name_taken(client: PlatformClient, task_group_id: str, name: str) -> bool:
+    """
+    Whether a task group holds a task of this name. The Platform's name
+    search matches a substring, so the tasks found are read until one has
+    the name itself. Not cached, as a check of what is being added to.
+    """
+    return any(
+        task.name == name
+        for task in iterate_tasks_in_task_group(
+            client, task_group_id, name_contains=name
+        )
+    )
 
 
 def split_namespace_and_name(

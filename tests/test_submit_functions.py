@@ -1227,3 +1227,53 @@ def test_json_raw_fetches_the_work_requirement_only_to_follow_it(
     submit_module._follow_by_id(run, "ydid:workreq:x")
     assert client.work_client.get_work_requirement_by_id.called is fetched
     assert len(followed) == (1 if fetched else 0)
+
+
+class TestFirstTaskName:
+    """
+    first_task_name(): the name the first Task generated is given, worked
+    out without generating it or defining its lazy substitutions, for
+    '--add-to' to check an existing Task Group for.
+    """
+
+    @staticmethod
+    def _source(wr_data: dict, existing_tasks: int, set_task_names: bool = True):
+        task_group = MagicMock()
+        task_group.name = "tg"
+        task_group.runSpecification.taskTypes = ["bash"]
+        return task_generation_module.TaskSource(
+            config_wr=ConfigWorkRequirement(set_task_names=set_task_names),
+            wr_name="test-wr",
+            namespace="test-ns",
+            wr_data=wr_data,
+            files_directory=".",
+            task_group=task_group,
+            position=TaskGroupPosition(0, 0, 1, existing_tasks),
+            tasks=wr_data[TASK_GROUPS][0][TASKS],
+            task_count=None,
+            num_tasks=len(wr_data[TASK_GROUPS][0][TASKS]),
+            uploaded_files=MagicMock(),
+        )
+
+    def test_it_is_the_name_the_first_task_is_generated_with(self):
+        wr_data = {TASK_GROUPS: [{TASKS: [{}, {}]}]}
+        source = self._source(wr_data, existing_tasks=8)
+        name = task_generation_module.first_task_name(source)
+        (task,) = task_generation_module.generate_batch_of_tasks(source, 0, 1)
+        assert name == task.name == "task_09"
+
+    def test_it_defines_no_substitution(self, monkeypatch):
+        import yellowdog_cli.utils.task_generation as generation
+
+        defined = MagicMock()
+        monkeypatch.setattr(generation, "add_or_update_substitution", defined)
+        task_generation_module.first_task_name(
+            self._source({TASK_GROUPS: [{TASKS: [{}]}]}, existing_tasks=0)
+        )
+        defined.assert_not_called()
+
+    def test_a_task_without_a_name_has_none(self):
+        source = self._source(
+            {TASK_GROUPS: [{TASKS: [{}]}]}, existing_tasks=0, set_task_names=False
+        )
+        assert task_generation_module.first_task_name(source) is None

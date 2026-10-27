@@ -111,6 +111,21 @@ class TaskSource:
         return self.wr_data[TASK_GROUPS][self.position.spec_index]
 
 
+def first_task_name(source: TaskSource) -> str | None:
+    """
+    The name the first Task 'source' generates is given, None if it is to
+    have none; nothing is generated, uploaded or substituted for it.
+    """
+    task = source.tasks[0]
+    return _task_name(
+        source,
+        task,
+        _TaskLevels(source.wr_data, source.task_group_data, task),
+        source.position.existing_tasks,
+        source.position.existing_tasks + source.num_tasks,
+    )
+
+
 def generate_batch_of_tasks(
     source: TaskSource, start_task_number: int, end_task_number: int
 ) -> list[Task]:
@@ -289,6 +304,28 @@ def _name_task(
     The Task's name, None if it is to have none, with its Task-level lazy
     substitutions defined from it and its number.
     """
+    task_name = _task_name(source, task, levels, display_task_number, display_num_tasks)
+    add_or_update_substitution(
+        L_TASK_NAME,
+        VAR_NAME_OF_UNNAMED_TASK if task_name is None else task_name,
+    )
+    add_or_update_substitution(
+        L_TASK_NUMBER,
+        formatted_number_str(display_task_number, display_num_tasks),
+    )
+    return task_name
+
+
+def _task_name(
+    source: TaskSource,
+    task: dict,
+    levels: Cascade,
+    display_task_number: int,
+    display_num_tasks: int,
+) -> str | None:
+    """
+    The Task's name, None if it is to have none, defining nothing.
+    """
     set_task_names = levels.checked(
         SET_TASK_NAMES, check_bool, source.config_wr.set_task_names
     )
@@ -311,17 +348,7 @@ def _name_task(
         source.task_group.name,
     )
 
-    task_name = None if task_name is None else format_yd_name(task_name)
-
-    add_or_update_substitution(
-        L_TASK_NAME,
-        VAR_NAME_OF_UNNAMED_TASK if task_name is None else task_name,
-    )
-    add_or_update_substitution(
-        L_TASK_NUMBER,
-        formatted_number_str(display_task_number, display_num_tasks),
-    )
-    return task_name
+    return None if task_name is None else format_yd_name(task_name)
 
 
 def _task_type_of(

@@ -60,6 +60,11 @@ EVENT_STREAM_CONNECT_TIMEOUT = 10.0  # Seconds
 EVENT_STREAM_READ_TIMEOUT = 300.0  # Seconds
 
 NODE_ACTION_QUEUE_POLL_INTERVAL = 5.0  # Seconds
+# '--add-to' an existing Task Group whose next Task name is taken: how long
+# its Task count, which the Platform updates seconds after Tasks are added,
+# is waited for to move on, and how often it is read meanwhile
+TASK_COUNT_UPDATE_WAIT = 10.0  # Seconds
+TASK_COUNT_UPDATE_POLL_INTERVAL = 1.0  # Seconds
 # '--wait' on yd-resize and yd-compute-reprovision
 CAPACITY_POLL_INTERVAL = 5.0  # Seconds
 DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call

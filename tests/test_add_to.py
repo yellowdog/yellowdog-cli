@@ -17,6 +17,7 @@ from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.lazy import value as lazy_value
+from yellowdog_cli.utils.limits import TASK_COUNT_UPDATE_WAIT
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
 from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.variable_syntax import (
@@ -61,6 +62,7 @@ def _make_tg(
 ) -> TaskGroup:
     tg = MagicMock(spec=TaskGroup)
     tg.name = name
+    tg.id = f"ydid:taskgrp:{name}"
     summary = MagicMock()
     summary.taskCount = task_count
     tg.taskSummary = summary
@@ -331,10 +333,12 @@ class TestAddToPartitioning:
             task_count,
             work_requirement,
             files_directory,
+            matched=False,
         ):
             add_tasks_calls.append(
                 {
                     "tg_name": task_group.name,
+                    "matched": matched,
                     "spec_index": position.spec_index,
                     "number": position.number,
                     "existing_tasks": position.existing_tasks,
@@ -484,6 +488,13 @@ class TestAddToPartitioning:
         for c in result["add_tasks_calls"]:
             assert c["count"] == 2
 
+    def test_matched_tgs_alone_are_added_to_as_matched(self):
+        # So their count of Tasks is checked first (_settled_source())
+        result = self._run(existing_tg_names=["a"], spec_tg_names=["a", "new"])
+        assert {
+            call["tg_name"]: call["matched"] for call in result["add_tasks_calls"]
+        } == {"a": True, "new": False}
+
     def test_mixed_new_and_matched(self):
         # existing: ["grp-1"]; spec: ["grp-1" (matched), "grp-2" (new)]
         result = self._run(
@@ -595,6 +606,16 @@ class TestPlanExtension:
         existing.taskSummary = None
         extension = submit_module._plan_extension([existing], [_make_tg("a")])
         assert extension.additions[0].position.existing_tasks == 0
+
+    def test_matched_task_groups_alone_are_marked_as_matched(self):
+        # Their count is checked before Tasks are added (_settled_source())
+        extension = submit_module._plan_extension(
+            [_make_tg("a", task_count=2)], [_make_tg("a"), _make_tg("x")]
+        )
+        assert {a.task_group.name: a.matched for a in extension.additions} == {
+            "x": False,
+            "a": True,
+        }
 
     def test_a_task_type_the_existing_task_group_does_not_allow_is_refused(self):
         existing = [_make_tg("a", task_types=["bash"])]
@@ -911,3 +932,213 @@ class TestAddToAnotherNamespace:
                 run, work_requirement, list(work_requirement.taskGroups), []
             )
         assert record.call_args.args[2] == "other-ns"
+
+
+# ---------------------------------------------------------------------------
+# CSV data: the Tasks it expands to are added, not submitted afresh
+# ---------------------------------------------------------------------------
+
+
+class TestAddToWithCsvData:
+    """
+    '--add-to' with a CSV file, with a specification or with the
+    [workRequirement] configuration as the prototype: main() expands the
+    CSV data first and hands the Tasks it makes to the existing Work
+    Requirement, never to a new one.
+    """
+
+    @pytest.fixture
+    def files(self, tmp_path):
+        (tmp_path / "tasks.csv").write_text("arg\na\nb\nc\n", encoding="utf-8")
+        (tmp_path / "wr.json").write_text(
+            '{"taskGroups": [{"name": "tg", "tasks":'
+            ' [{"taskType": "bash", "arguments": ["<<arg>>"]}]}]}',
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _added(self, monkeypatch, specification: str | None, csv_file: str) -> dict:
+        """
+        Run yd-submit's main() with '--add-to', returning the Work
+        Requirement data it hands to add_to_existing_work_requirement().
+        """
+        args = MagicMock(
+            upgrade_rclone=False,
+            which_rclone=False,
+            json_raw=None,
+            work_req_file=None,
+            work_requirement_file_positional=specification,
+            csv_files=[csv_file],
+            process_csv_only=False,
+            content_path=None,
+            add_to="my-wr",
+            empty=False,
+            hold=False,
+            dry_run=False,
+            validate=False,
+            jsonnet_dry_run=False,
+            json_output=None,
+            quiet=True,
+            debug=False,
+            no_format=True,
+            output_file=None,
+        )
+        monkeypatch.setattr(wrapper_module, "ARGS_PARSER", args)
+        monkeypatch.setattr(
+            wrapper_module,
+            "CONFIG_COMMON",
+            MagicMock(namespace="ns", name_tag="t", use_pac=False),
+        )
+        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        monkeypatch.setattr(
+            submit_module,
+            "CONFIG_WR",
+            ConfigWorkRequirement(task_type="bash", args=["<<arg>>"]),
+        )
+        added: list[dict] = []
+        monkeypatch.setattr(
+            submit_module,
+            "add_to_existing_work_requirement",
+            lambda _run, **kwargs: added.append(kwargs["wr_data"]),
+        )
+        monkeypatch.setattr(
+            submit_module,
+            "submit_work_requirement",
+            MagicMock(side_effect=AssertionError("a new Work Requirement")),
+        )
+        with pytest.raises(SystemExit) as exit_info:
+            submit_module.main()
+        assert exit_info.value.code == 0
+        assert len(added) == 1
+        return added[0]
+
+    @staticmethod
+    def _arguments(wr_data: dict) -> list:
+        (task_group,) = wr_data[TASK_GROUPS]
+        return [task["arguments"] for task in task_group[TASKS]]
+
+    def test_a_specification_expanded_from_csv_data_is_added(self, files, monkeypatch):
+        wr_data = self._added(
+            monkeypatch, str(files / "wr.json"), str(files / "tasks.csv")
+        )
+        assert wr_data[TASK_GROUPS][0][NAME] == "tg"
+        assert self._arguments(wr_data) == [["a"], ["b"], ["c"]]
+
+    def test_the_configuration_expanded_from_csv_data_is_added(
+        self, files, monkeypatch
+    ):
+        wr_data = self._added(monkeypatch, None, str(files / "tasks.csv"))
+        assert self._arguments(wr_data) == [["a"], ["b"], ["c"]]
+
+
+# ---------------------------------------------------------------------------
+# An existing Task Group's count of Tasks, checked before Tasks are added
+# ---------------------------------------------------------------------------
+
+
+class TestSettledSource:
+    """
+    The Platform updates a Task Group's count of Tasks seconds after Tasks
+    are added, so the name its first new Task would have is looked for: free,
+    the Tasks are added at once; taken, the count is waited for to move on
+    and the Tasks numbered from it; taken while the count stands still, the
+    name is in use, and refused. Tasks without names are counted instead.
+    """
+
+    @staticmethod
+    def _source(task_group: TaskGroup, existing_tasks: int):
+        from yellowdog_cli.utils.task_generation import TaskSource
+
+        return TaskSource(
+            config_wr=ConfigWorkRequirement(),
+            wr_name="wr",
+            namespace="ns",
+            wr_data={TASK_GROUPS: [{TASKS: [{}]}]},
+            files_directory="",
+            task_group=task_group,
+            position=TaskGroupPosition(0, 0, 1, existing_tasks),
+            tasks=[{}],
+            task_count=None,
+            num_tasks=3,
+            uploaded_files=None,
+        )
+
+    def _settle(
+        self,
+        monkeypatch,
+        taken: set[str],
+        counts: list[int],
+        unnamed: bool = False,
+    ):
+        """
+        Settle a source starting from a stale count of 0, the Platform
+        reporting 'counts' in turn as the summary is read, and holding the
+        Task names 'taken'. Returns (the source, the seconds slept).
+        """
+        task_group = _make_tg("tg", task_count=0)
+        summaries = iter(counts)
+
+        def read_work_requirement(_wr_id):
+            current = _make_tg("tg", task_count=next(summaries, counts[-1]))
+            return _make_wr("wr", WorkRequirementStatus.RUNNING, [current])
+
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.side_effect = (
+            read_work_requirement
+        )
+        clock = [0.0]
+        slept: list[float] = []
+
+        def sleep(seconds: float) -> None:
+            slept.append(seconds)
+            clock[0] += seconds
+
+        monkeypatch.setattr(submit_module, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(submit_module, "sleep", sleep)
+        monkeypatch.setattr(
+            submit_module,
+            "first_task_name",
+            lambda source: (
+                None if unnamed else f"task_{source.position.existing_tasks + 1}"
+            ),
+        )
+        monkeypatch.setattr(
+            submit_module, "task_name_taken", lambda _c, _id, name: name in taken
+        )
+        monkeypatch.setattr(
+            submit_module, "count_tasks_in_task_group", lambda _c, _id: 7
+        )
+        run = submit_module._Submission(
+            RunContext(args=SimpleNamespace(), config=MagicMock(), client=client),
+            config_wr=ConfigWorkRequirement(),
+        )
+        source = submit_module._settled_source(
+            run,
+            self._source(task_group, 0),
+            _make_wr("wr", WorkRequirementStatus.RUNNING, [task_group]),
+        )
+        return source, sum(slept)
+
+    def test_a_free_name_adds_the_tasks_at_once(self, monkeypatch):
+        source, slept = self._settle(monkeypatch, taken=set(), counts=[0])
+        assert source.position.existing_tasks == 0
+        assert slept == 0
+
+    def test_a_taken_name_waits_for_the_count_and_numbers_on_from_it(
+        self, monkeypatch, capsys
+    ):
+        source, slept = self._settle(
+            monkeypatch, taken={"task_1", "task_2", "task_3"}, counts=[0, 0, 0, 3]
+        )
+        assert source.position.existing_tasks == 3
+        assert 0 < slept < TASK_COUNT_UPDATE_WAIT
+        assert "waiting for its count of Tasks to catch up" in capsys.readouterr().out
+
+    def test_a_name_taken_while_the_count_stands_still_is_refused(self, monkeypatch):
+        with pytest.raises(ValueError, match="already has a Task named 'task_1'"):
+            self._settle(monkeypatch, taken={"task_1"}, counts=[0])
+
+    def test_tasks_without_names_are_counted(self, monkeypatch):
+        source, slept = self._settle(monkeypatch, taken=set(), counts=[0], unnamed=True)
+        assert source.position.existing_tasks == 7
+        assert slept == 0

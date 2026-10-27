@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Work Requirements
+
+- **`--add-to` straight after Tasks were added to a Task Group adds to it**: adding Tasks to an existing Task Group within seconds of a submission or another `--add-to` adding to it named them as the Tasks already there, since the Platform's count of them had not yet caught up, so the Platform refused the batch ("Task names must be unique within task group") and the command exited 1. `--add-to` now looks for the name its first new Task would have and, when it is already taken, says so and waits for the count to catch up before numbering the new Tasks; a name taken while the count stands still for 10 seconds is refused as one already in use, before anything is added.
+
 ### Variables and configuration
 
 - **An environment value a `--config` file outranks is reported**: with the configuration file chosen by `--config`, which wins over the environment, `yd doctor` warns of each environment variable it passed over, `YD_NAMESPACE`, a `YD_VAR_*` variable or a `YD_DATA_CLIENT_*` field set to something else, naming it and what it would have set but never its value, and `--debug` says so as each is found. Nothing changes in which value is used.
