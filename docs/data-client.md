@@ -12,7 +12,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:06:03 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 08:49:42 GMT 2026 -->
 
 <!--te-->
 
@@ -107,7 +107,7 @@ For `yd data upload`/`yd data download`/`yd data delete`/`yd data list`/`yd data
 
 Named profile variables are always resolved with profile fields taking precedence over the base section, so `{{dataClient.prod.prefix}}` gives the prod profile's prefix (or the base prefix if not set in `[dataClient.prod]`).
 
-> **Note on Worker Pool / Compute Requirement specs and User Data:** In JSON/Jsonnet Worker Pool and Compute Requirement specifications, and in all User Data (whether supplied via `userData`, `userDataFile`, or `userDataFiles`), variable substitutions **must be prefixed and postfixed by double underscores** to disambiguate them from server-side Mustache processing. Use `__{{dataClient.remote}}__`, `__{{dataClient.prod.bucket}}__`, etc.
+> **Note on Worker Pool / Compute Requirement specs and User Data:** these take the `__{{variable}}__` form ([which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)): `__{{dataClient.remote}}__`, `__{{dataClient.prod.bucket}}__`, etc.
 
 Example use in a Work Requirement spec (no underscores needed in WR JSON). The Platform requires an input's `source` to start with `rclone:` and its `destination` with `local:` (an output's the other way round; see [Specifying Data Client Inputs](work-requirements.md#specifying-data-client-inputs)); leave out the `rclone:` below if the configured `remote` already starts with it:
 

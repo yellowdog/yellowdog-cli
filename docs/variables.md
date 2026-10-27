@@ -14,7 +14,7 @@
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 08:06:20 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 08:49:44 GMT 2026 -->
 
 <!--te-->
 
@@ -299,8 +299,15 @@ A **circular** variable reference, where a variable's value refers back to the v
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
-In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variable substitutions **must be prefixed and postfixed by double underscores** `__`, e.g. `__{{username}}__`. This is to disambiguate client-side variable substitutions from server-side Mustache variable processing.
+Text that goes on to the Platform's own Mustache processing — User Data, and Worker Pool, Compute Requirement and Node Action specifications — may hold `{{...}}` for the Platform. There, a substitution is written with a double underscore before and after it, `__{{username}}__`, and a plain `{{...}}` is left for the Platform, unsubstituted and unreported. Everywhere else the plain form is used:
 
-Variable substitutions can also be used within **User Data** to be supplied to instances, for which the same prefix/postfix requirement applies, **including** for User Data supplied directly using the `userData` property in the `workerPool` section of the TOML file.
+| Where | Form |
+|---|---|
+| Worker Pool and Compute Requirement specification files (JSON or Jsonnet), every property | `__{{variable}}__` |
+| `yd node action` specification files, every property, and the files named by a `writeFile` action's `contentFile` and `contentFiles` | `__{{variable}}__` |
+| User Data, wherever it is given: a `userData` property (in the `[workerPool]` or `[computeRequirement]` section of the configuration file, or in any specification, a Compute Requirement Template resource's included), and the files named by `userDataFile` and `userDataFiles` | `__{{variable}}__` |
+| Every other property of the configuration file's `[workerPool]` and `[computeRequirement]` sections | `{{variable}}` |
+| Work Requirement specifications, resource specifications (bar their `userData`), Task Data files, and the rest of the configuration file | `{{variable}}` |
+| A CSV file's values in a prototype Task | `<<column>>` (see [CSV Variable Substitutions](work-requirements.md#csv-variable-substitutions)) |
 
-The same prefix/postfix requirement applies to a `yd node action` specification file itself, and to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).
+So a property may take a different form in the configuration file and in a specification file: a Worker Pool's `workerTag` is `"{{site}}"` in `[workerPool]` and `"__{{site}}__"` in a Worker Pool specification. Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`.

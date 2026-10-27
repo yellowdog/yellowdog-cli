@@ -25,7 +25,7 @@
       * [Following Progress](#following-progress)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 06:49:14 BST 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 08:49:46 GMT 2026 -->
 
 <!--te-->
 
@@ -282,9 +282,7 @@ The timeouts, the Worker count and `metricsEnabled` are inserted with their defa
 
 Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files. See [Variable Substitutions](variables.md) for more details. This is a powerful feature that allows Worker Pools to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
 
-An important distinction when using variable substitutions within Worker Pool (or Compute Requirement) JSON/Jsonnet documents is that each variable directive **must be prefixed and postfixed by a `__` (double underscore)** to disambiguate it from Mustache variable substitutions that must be passed directly to the API without client processing. For example, use: `__{{username}}__` to apply a substitution for the `username` default variable substitution.
-
-In general, double underscores are **not** required in variable substitutions within the `workerPool` and/or `computeRequirement` sections of a TOML file. The exception to this is if the `userData` property is supplied, in which case double underscores **are** required. They are also required within any files referenced by the `userDataFile` or `userDataFiles` properties.
+In a Worker Pool (or Compute Requirement) JSON/Jsonnet specification, and in User Data wherever it is given, a substitution is written with a double underscore before and after it, e.g. `__{{username}}__`, so that a plain `{{...}}` is left for the Platform's Mustache processing; the other properties of the configuration file's `workerPool` and `computeRequirement` sections take the plain `{{username}}`. The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 
 Use `--follow` (`-f`) to track the Worker Pool after submission: `yd workerpool provision` reports its node events and does not return until the Worker Pool has shut down (or Ctrl-C is pressed). Add `--auto-follow-compute-requirements` (`-a`) to follow its Compute Requirements too.
 
@@ -323,7 +321,7 @@ Node actions are defined in a JSON (or Jsonnet) spec file supplied via the `--ac
 
 Actions in an actions list are downloaded by a node in one operation and executed sequentially.
 
-Variable substitutions in spec files must use the `__{{variable}}__` prefix/postfix convention (the same as Worker Pool and Compute Requirement specs), since the content may include Mustache templates that the platform processes server-side.
+Variable substitutions in spec files must use the `__{{variable}}__` form, as Worker Pool and Compute Requirement specifications do, since the content may include Mustache templates that the Platform processes server-side; see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 
 #### Actions
 
