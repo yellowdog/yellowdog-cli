@@ -49,6 +49,7 @@
       * [The User and Group used for Tasks](#the-user-and-group-used-for-tasks)
       * [Home Directory for yd-agent](#home-directory-for-yd-agent)
       * [Task Execution Directory](#task-execution-directory)
+      * [Windows Nodes](#windows-nodes)
    * [Specifying Work Requirements using CSV Data](#specifying-work-requirements-using-csv-data)
       * [Work Requirement CSV Data Example](#work-requirement-csv-data-example)
       * [CSV Variable Substitutions](#csv-variable-substitutions)
@@ -58,7 +59,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:22:37 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 12:45:53 GMT 2026 -->
 
 <!--te-->
 
@@ -1101,7 +1102,7 @@ JSON:
 
 ## Task Execution Context
 
-This section discusses the context within which a Task operates when it's executed by a Worker on a node. It applies specifically to the YellowDog Agent running on a Linux node, and configured using the default username, directories, etc. Configurations can vary.
+This section discusses the context within which a Task operates when it's executed by a Worker on a node. It describes the YellowDog Agent running on a Linux node, configured using the default username, directories, etc.; [Windows Nodes](#windows-nodes) gives the differences on Windows. Configurations can vary.
 
 ### Task Execution Steps
 
@@ -1113,7 +1114,7 @@ When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the f
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
 5. The Agent uploads any Data Client outputs specified in `taskDataOutputs` to their destinations. The ephemeral Task directory is then deleted.
 
-Note that if a Task is aborted during execution, the Task's subprocess is sent a `SIGTERM`, allowing the Task an opportunity to terminate any child processes or other resources (e.g. containers) that may have been started as part of Task execution. In addition, there is the option to set an `abort` clause as part of the Task Type specification in the Agent's `application.yaml` file, in which case the script specified in the `abort` clause takes over complete responsibility for any abort handling.
+Note that if a Task is aborted during execution, the Task's subprocess is sent a `SIGTERM` (on Linux), allowing the Task an opportunity to terminate any child processes or other resources (e.g. containers) that may have been started as part of Task execution. In addition, there is the option to set an `abort` clause as part of the Task Type specification in the Agent's `application.yaml` file, in which case the script specified in the `abort` clause takes over complete responsibility for any abort handling.
 
 Once the steps above have been completed, the Worker is ready to process its next Task.
 
@@ -1149,9 +1150,7 @@ chown -R yd-agent:yd-agent $YDA_HOME/.ssh
 
 ### Task Execution Directory
 
-Ephemeral Task working directories are by default created under `/var/opt/yellowdog/agent/data/workers`, named using their YellowDog Task IDs with colons substituted by underscores.
-
-(On Windows hosts, the Task directories are found under `%AppData%\yellowdog\agent\data\workers`.)
+Ephemeral Task working directories are by default created under `/var/opt/yellowdog/agent/data/workers`, named using their YellowDog Task IDs with colons substituted by underscores (on Windows, see [Windows Nodes](#windows-nodes)).
 
 When a Task is started by a worker, an ephemeral directory is created, e.g.:
 
@@ -1160,6 +1159,29 @@ When a Task is started by a worker, an ephemeral directory is created, e.g.:
 This is the directory into which downloaded objects are placed, and in which output files are created by default. The console output file, `taskoutput.txt`, containing combined `stderr` and `stdout` output will also be created in this directory.
 
 Note that the Task directory — including `taskoutput.txt` — is **ephemeral**: it is deleted once the Task completes and its outputs have been uploaded. To preserve console output beyond Task execution, add `taskoutput.txt` as a `taskDataOutputs` entry.
+
+### Windows Nodes
+
+On a Windows node, with the Agent installed by its MSI installer or the [YellowDog Agent Installer Script for Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-INSTALLER.md), the Task Execution Steps above are the same, but the user, the directories and abort handling differ:
+
+| | Linux | Windows |
+|---|---|---|
+| The Agent | User and group `yd-agent` | The Windows service `yd-agent`, running as `LocalSystem` by default |
+| Installation directory (`YD_AGENT_HOME`) | `/opt/yellowdog/agent` | `C:\Program Files\YellowDog\Agent` |
+| Configuration file | `/opt/yellowdog/agent/application.yaml` | `C:\Program Files\YellowDog\Agent\config\application.yaml` |
+| Data directory (`YD_AGENT_DATA`) | `/var/opt/yellowdog/agent/data` | `C:\ProgramData\YellowDog\Agent` |
+| Task directories | `/var/opt/yellowdog/agent/data/workers` | `C:\ProgramData\YellowDog\Agent\workers` |
+| Task abort, with no `abort` clause | The Task's process is sent a `SIGTERM` | The Task's process is terminated |
+
+**The user.** Tasks run as the Agent's service account, `LocalSystem` unless the MSI was installed with its `SERVICE_ACCOUNT` property naming another, so by default they have full administrative rights on the node: nothing like the `sudo` set-up above is needed, and a Task can change anything on the node. A `LocalSystem` Task's user profile is the system profile, `C:\Windows\System32\config\systemprofile`, so `%USERPROFILE%`, `%AppData%` and `%LocalAppData%` all point inside it, and a tool that keeps its configuration or cache in the user's profile keeps it there. `YD_AGENT_HOME` and `YD_AGENT_DATA` are system environment variables, and `C:\ProgramData\YellowDog\Agent\scripts` is on the system `PATH`, so Tasks see them too.
+
+**Task Types.** The installer script defines two general-purpose Task Types, `cmd` (running `cmd.exe`) and `powershell` (running `powershell.exe`), and a Task's `arguments` are passed to that command, so a `cmd` Task's arguments start with `/c` (e.g. `["/c", "my_script.bat"]`) and a `powershell` Task's with `-File` or `-Command`. These Task Types can run arbitrary commands on the node; for production use, Task Types running specific scripts are recommended.
+
+**Aborting a Task.** Without an `abort` clause, an aborted Task's process is terminated, with no chance to clean up after itself, and any child processes it started are left running. The installer script's Task Types therefore name the abort handler supplied with the Agent, `yd_abort.bat` (in `C:\ProgramData\YellowDog\Agent\scripts`, which is on the `PATH`), which is passed the Task's process ID and ends the Task's whole process tree (`taskkill /F /T /PID <pid>`).
+
+**The Task directory.** Task directories are created under `C:\ProgramData\YellowDog\Agent\workers`, named as on Linux, and hold the same `taskdata.txt` and `taskoutput.txt`; they are just as ephemeral.
+
+**Logging in.** To inspect a node, e.g. for debugging, connect over RDP as an administrator rather than as the Agent's user, which is not an account that can log in. The Agent's own output is in `C:\Program Files\YellowDog\Agent\output.log` and `error.log`, holding the current run of the service only.
 
 ## Specifying Work Requirements using CSV Data
 
