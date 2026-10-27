@@ -56,6 +56,7 @@
    * [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)
    * [Using the YellowDog Data Client](#using-the-yellowdog-data-client)
       * [Specifying Data Client Inputs](#specifying-data-client-inputs)
+      * [Using Files Uploaded with yd data](#using-files-uploaded-with-yd-data)
       * [Automatic Upload of Local Files](#automatic-upload-of-local-files)
          * [Details](#details-10)
       * [Rclone Authentication](#rclone-authentication)
@@ -80,7 +81,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:24 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:19:02 GMT 2026 -->
 
 <!--te-->
 
@@ -1228,6 +1229,22 @@ Or in JSON:
 - The `source` property is an rclone path starting with `rclone:`.
 - The `destination` property is a local pathname, in the Task's directory, prefixed with `local:`.
 
+### Using Files Uploaded with `yd data`
+
+A Task can download a file that `yd data upload` put in the data store. The `{{dataClient.remote}}`, `{{dataClient.bucket}}` and `{{dataClient.prefix}}` variables give the `[dataClient]` section's values, so the input names the same place the upload did:
+
+```bash
+yd data upload originals.zip
+```
+
+```toml
+taskDataInputs = [
+  {source = "rclone:{{dataClient.remote}}:{{dataClient.bucket}}/{{dataClient.prefix}}/originals.zip", destination = "local:originals.zip"},
+]
+```
+
+Leave out the `rclone:` if the configured `remote` already starts with it. A named profile's values are `{{dataClient.<profile>.remote}}` and so on: see [Variable Substitutions for Data Client Properties](data-client.md#variable-substitutions-for-data-client-properties).
+
 ### Automatic Upload of Local Files
 
 `yd workrequirement submit` uploads a local file for an input that names it in `localPath`. By default it is uploaded to the input's `source`, from where the Task downloads it:
@@ -1294,9 +1311,7 @@ Or in JSON:
 
 ### The `rclone` Binary
 
-`yd workrequirement submit` uploads local files with an `rclone` binary on your own machine. If none is on your `$PATH`, one is downloaded the first time it is needed. To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`. To upgrade the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`.
-
-An `rclone` already on your `$PATH` is used in preference, and is never modified. The downloaded copy is kept in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI. `--which-rclone` and `--upgrade-rclone` are also accepted by the Data Client commands: `yd data upload`, `yd data download`, `yd data delete`, `yd data list` and `yd data copy`.
+`yd workrequirement submit` uploads local files with an `rclone` binary on your own machine: one on your `PATH`, or else one it downloads the first time it is needed. It is the binary the `yd data` commands use, described under [Configuration](data-client.md#configuration) in the Data Client page's Details. `yd workrequirement submit --which-rclone` reports the binary in use, and `--upgrade-rclone` upgrades the downloaded copy.
 
 ## Task Execution Context
 

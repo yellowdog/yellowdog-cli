@@ -17,7 +17,7 @@
       * [Servers That Limit Connections](#servers-that-limit-connections)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:22 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:18:59 GMT 2026 -->
 
 <!--te-->
 
@@ -86,7 +86,7 @@ yd data list '{{username}}/inputs/'
 
 **Absolute and relative root directories.** A root directory beginning with `/` (`bucket = "/data/results"`) is an absolute path, and is kept as one. Without the `/`, it is relative to the remote's default directory: for a local remote, the current directory. With no bucket, the same holds for a prefix beginning with `/`.
 
-**The rclone binary.** The commands run `rclone`. One already on your `PATH` is used in preference, and is never modified. Otherwise the binary is downloaded the first time it is needed, into `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows). Every `yd data` verb takes `--which-rclone`, which reports the binary in use and its version, and `--upgrade-rclone`, which downloads the latest into the cache; each then exits.
+**The rclone binary.** The commands run `rclone`. One already on your `PATH` is used in preference, and is never modified. Otherwise the binary is downloaded the first time it is needed, into `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstalling the CLI. Every `yd data` verb takes `--which-rclone`, which reports the binary in use and its version, and `--upgrade-rclone`, which downloads the latest into the cache; each then exits. `yd workrequirement submit`, which uploads a Work Requirement's local files with the same binary, takes both options too, and `yd version --debug` also reports the binary.
 
 **Many files at once.** The `yd data` commands copy up to 128 files at a time, which on cloud object storage (S3, Google Cloud Storage, Azure Blob Storage) is what makes many small files quick. An SFTP or FTP server may refuse that many connections: see [Servers That Limit Connections](#servers-that-limit-connections).
 

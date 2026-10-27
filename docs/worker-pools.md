@@ -36,7 +36,7 @@
          * [Details](#details-6)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:24 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:19:02 GMT 2026 -->
 
 <!--te-->
 
@@ -484,6 +484,8 @@ There are three action types:
 | `runCommand`    | Execute a command on the node        |
 | `writeFile`     | Write a file to the node             |
 | `createWorkers` | Create YellowDog Workers on the node |
+
+These are the `yd node action` file's own names, from which the CLI builds the Platform's actions. A Worker Pool specification's `nodeEvents` are sent to the Platform as written, so they use the Platform's form instead, `"action": "RUN_COMMAND"`, `"WRITE_FILE"` and `"CREATE_WORKERS"`, as in the [Advanced Worker Pool example](#worker-pool-json-examples).
 
 ### Spec File Structure
 

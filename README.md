@@ -3,22 +3,8 @@
 <!--ts-->
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
+* [What It Looks Like](#what-it-looks-like)
 * [Installation](#installation)
-   * [Installing uv](#installing-uv)
-   * [Option 1: uv tool](#option-1-uv-tool)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli)
-      * [Update](#update)
-      * [With Jsonnet support](#with-jsonnet-support)
-   * [Option 2: a virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)
-      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli-1)
-      * [Update](#update-1)
-      * [With Jsonnet support](#with-jsonnet-support-1)
-   * [Option 3: pip in a virtual environment](#option-3-pip-in-a-virtual-environment)
-      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment-1)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli-2)
-      * [Update](#update-2)
-      * [With Jsonnet support](#with-jsonnet-support-2)
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
@@ -34,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:20 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:18:58 GMT 2026 -->
 
 <!--te-->
 
@@ -93,123 +79,45 @@ To set up **Configured Worker Pools**, you'll need:
 
 6. Obtain the YellowDog Agent and install/configure it on your on-premises systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-CONFIGURED.md).
 
+# What It Looks Like
+
+A `config.toml` holds your Application key and secret, namespace and tag (`yd init` writes them), and here a Work Requirement of three Tasks:
+
+```toml
+[workRequirement]
+    taskType = "bash"
+    arguments = ["-c", "echo Rendering frame {{task_number}}"]
+    taskCount = 3
+    workerTag = "render"
+```
+
+`yd workrequirement submit` submits it. With `--dry-run`, it shows what it would submit instead:
+
+```text
+% yd workrequirement submit --dry-run
+2026-10-27 16:18:07 : Generated Work Requirement 'render_261027-1618071-ff'
+2026-10-27 16:18:07 : Generated Task Group 'task_group_1'
+2026-10-27 16:18:07 : Expanding number of Tasks in Task Group 'task_group_1' to 'taskCount=3' Tasks
+2026-10-27 16:18:07 : DRY-RUN : Printing JSON Work Requirement specification:
+{
+  "namespace": "image-processing",
+  "name": "render_261027-1618071-ff",
+  …
+```
+
+[Typical Workflow](#typical-workflow) runs it on a Worker Pool from start to finish.
+
 # Installation
 
-Python 3.10 or later is required. There are several ways to install the CLI, each keeping it and its dependencies in an environment of their own; choose the one that fits how you work:
-
-- **[uv tool](#option-1-uv-tool)** — the commands on your PATH everywhere, with no environment to activate. uv supplies Python itself if you have none.
-- **[A virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)** — an environment you activate, for using the CLI alongside other Python tools. uv supplies Python itself if you have none.
-- **[pip in a virtual environment](#option-3-pip-in-a-virtual-environment)** — the standard Python tooling, with a Python you have installed.
-
-Other installers, such as pipx, work too.
-
-## Installing uv
-
-**[uv](https://docs.astral.sh/uv/)** installs Python packages, and Python itself: the first two options need it, and no Python of your own. See the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/) for full instructions. Quick options:
-
-| Platform         | Command                                            |
-|------------------|----------------------------------------------------|
-| macOS / Linux    | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| macOS (Homebrew) | `brew install uv`                                  |
-| Windows          | `winget install --id=astral-sh.uv -e`              |
-
-## Option 1: uv tool
-
-uv installs the CLI into an environment of its own and puts the `yd` command on your PATH, downloading a suitable Python if none is installed.
-
-### Install the YellowDog CLI
+Python 3.10 or later is required. The simplest way to install the CLI is with **[uv](https://docs.astral.sh/uv/)**, which downloads a suitable Python if you have none, and puts the `yd` command on your PATH:
 
 ```shell
 uv tool install yellowdog-cli
 ```
 
-To choose the Python it runs on, which uv downloads if it is not installed:
+To update it, run `uv tool upgrade yellowdog-cli`. For [Jsonnet](docs/jsonnet.md) support, install `"yellowdog-cli[jsonnet]"` instead.
 
-```shell
-uv tool install --python 3.14 yellowdog-cli
-```
-
-### Update
-
-```shell
-uv tool upgrade yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-uv tool install "yellowdog-cli[jsonnet]"
-```
-
-## Option 2: a virtual environment created with uv
-
-uv creates the virtual environment, downloading the Python you ask for if it is not installed, and installs the CLI into it.
-
-### Create and activate a virtual environment
-
-```shell
-uv venv --python 3.14 yd-env
-source yd-env/bin/activate   # macOS / Linux
-yd-env\Scripts\activate      # Windows
-```
-
-### Install the YellowDog CLI
-
-```shell
-uv pip install yellowdog-cli
-```
-
-### Update
-
-```shell
-uv pip install -U yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-uv pip install -U "yellowdog-cli[jsonnet]"
-```
-
-> **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
-
-## Option 3: pip in a virtual environment
-
-This uses the standard Python tooling, with a Python you have installed. If you don't have Python 3.10 or later, download it from **[python.org](https://www.python.org/downloads/)**, or use your system package manager:
-
-| Platform        | Command                             |
-|-----------------|-------------------------------------|
-| macOS           | `brew install python`               |
-| Ubuntu / Debian | `sudo apt install python3`          |
-| Windows         | `winget install Python.Python.3.12` |
-
-### Create and activate a virtual environment
-
-```shell
-python3 -m venv yd-env
-source yd-env/bin/activate   # macOS / Linux
-yd-env\Scripts\activate      # Windows
-```
-
-### Install the YellowDog CLI
-
-```shell
-pip install -U yellowdog-cli
-```
-
-### Update
-
-```shell
-pip install -U yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-pip install -U "yellowdog-cli[jsonnet]"
-```
-
-> **Note:** As with uv's, you will need to activate the virtual environment each time you open a new terminal session, or add the activation to your shell profile.
+To install uv itself, run `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS or Linux, or `winget install --id=astral-sh.uv -e` on Windows. **[Installation](docs/installation.md)** has the other ways to install uv, choosing the Python the CLI runs on, and installing into a virtual environment with uv or pip instead.
 
 # YellowDog Commander (GUI)
 
@@ -241,7 +149,7 @@ It runs `yd` commands on an agent's behalf and returns their `--json` results. S
 
 # Usage
 
-All three installation methods add the **`yd`** command to your PATH (for a virtual environment, while it is active). Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
+However it is installed, the **`yd`** command is on your PATH (for a virtual environment, while it is active). Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
@@ -402,6 +310,7 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 
 | Page | What it covers |
 |---|---|
+| **[Installation](docs/installation.md)** | Installing the CLI with uv, or into a virtual environment with uv or pip; updating it, choosing its Python, and the Jsonnet extra |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
 | **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |

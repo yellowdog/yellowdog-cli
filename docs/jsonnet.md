@@ -9,7 +9,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:22 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 16:19:00 GMT 2026 -->
 
 <!--te-->
 
@@ -26,7 +26,7 @@ The file is evaluated in memory, after variable substitution.
 
 ## Jsonnet Installation
 
-Jsonnet is **not** installed by default. If you try to use a Jsonnet file without it installed, the commands print an error with installation instructions. Install it as an extra, the way the CLI was installed (see [Installation](../README.md#installation)):
+Jsonnet is **not** installed by default. If you try to use a Jsonnet file without it installed, the commands print an error with installation instructions. Install it as an extra, the way the CLI was installed (see [Installation](installation.md)):
 
 **With uv tool:**
 
