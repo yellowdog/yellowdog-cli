@@ -11,10 +11,11 @@
       * [Removing Properties Using the Unset Suffix](#removing-properties-using-the-unset-suffix)
          * [Unset Properties and Property Inheritance](#unset-properties-and-property-inheritance)
       * [Undefined Variables](#undefined-variables)
+      * [Writing a Substitution Literally](#writing-a-substitution-literally)
    * [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:03:56 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:12:00 GMT 2026 -->
 
 <!--te-->
 
@@ -289,12 +290,43 @@ Each undefined variable is reported once, however many properties or Tasks it ap
 
 The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)) are never reported. Nor is text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all; and in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either. The warnings are suppressed by `--quiet`.
 
+A substitution must have no space inside its braces: `{{ region }}` is not a substitution, and is left as it is, so that templates for other tools (`{{ .Values.x }}`, Jinja2's `{{ name }}`) pass through. Where the name inside is one that would be substituted without the space — a variable that is defined, an environment variable that is set, or one of the Task variables — a warning says so, once, e.g.:
+
+```
+WARNING : '{{ region }}' has space inside its braces, so it is not a variable substitution, and has been left unchanged in 'taskGroups[0].tasks[0].arguments[1]'; write '{{region}}' to substitute it
+```
+
+To pass `{{region}}` itself through, unsubstituted, write it as described under [Writing a Substitution Literally](#writing-a-substitution-literally).
+
 A **circular** variable reference, where a variable's value refers back to the variable itself either directly or through other variables, is an error.
+
+### Writing a Substitution Literally
+
+Text meant for another tool, such as a template for a program a Task runs, may contain `{{name}}` where `name` is also a variable here, one of the [default variables](#default-variables) such as `{{date}}` or `{{username}}`, or one of the Task variables such as `{{task_name}}`, and would be substituted. To have the text itself, write `raw:` after the opening braces: `{{raw:name}}` becomes `{{name}}`, which is substituted no further, whatever `name` is.
+
+| Written | Becomes |
+|---|---|
+| `{{raw:date}}` | `{{date}}` |
+| `"--template={{raw:task_number}}-{{task_number}}"` | `"--template={{task_number}}-1"` |
+| `{{raw:num:count}}` | `{{num:count}}` |
+| `{{raw:region:=eu}}` | `{{region:=eu}}` |
+| `{{raw:prefix_{{site}}}}` | `{{prefix_{{site}}}}` |
+
+Everything after `raw:` is text, as written: a type tag, a default, the unset suffix and a substitution nested inside it are not acted on. A type tag cannot come before `raw:`, since the text has no type: `{{num:raw:count}}` is an error, saying to write `{{raw:num:count}}`. A `raw:` substitution can be a default, `{{region:={{raw:region}}}}` giving `{{region}}` where `region` is undefined, and a variable can hold one: with `-v template={{raw:date}}`, `{{template}}` becomes `{{date}}`. It works wherever substitutions do, in the `__{{raw:name}}__` form in Worker Pool and Compute Requirement specifications and User Data (becoming `__{{name}}__`), in a CSV file's cells, and in the files substituted as text; in a Jsonnet file it is written inside a string.
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
-In JSON/Jsonnet specifications for Worker Pools and Compute Requirements, variable substitutions **must be prefixed and postfixed by double underscores** `__`, e.g. `__{{username}}__`. This is to disambiguate client-side variable substitutions from server-side Mustache variable processing.
+The Platform processes Mustache templates of its own in two places: **User Data**, whose templates can use the instance's details (`{{provider}}`, `{{region}}`, `{{#imageOs:linux}}`...), and **Node Actions**, whose `writeFile` and `runCommand` actions can use the Nodes' (`{{node.details.hostname}}`, `{{nodesByType.type1}}`...). There a substitution of ours is written with a double underscore before and after it, `__{{username}}__`, and a plain `{{...}}` is left for the Platform, unsubstituted and unreported. Everywhere else the plain form is used, and Worker Pool and Compute Requirement specifications take either:
 
-Variable substitutions can also be used within **User Data** to be supplied to instances, for which the same prefix/postfix requirement applies, **including** for User Data supplied directly using the `userData` property in the `workerPool` section of the TOML file.
+| Where | Form |
+|---|---|
+| User Data, wherever it is given: a `userData` property (in the `[workerPool]` or `[computeRequirement]` section of the configuration file, or in any specification, a Compute Requirement Template resource's included), and the files named by `userDataFile` and `userDataFiles` | `__{{variable}}__` |
+| `yd node action` specification files, every property, and the files named by a `writeFile` action's `contentFile` and `contentFiles` | `__{{variable}}__` |
+| Node Actions in a Worker Pool specification or a Configured Worker Pool resource (`nodeEvents`, everything in it) | `__{{variable}}__` |
+| Every other property of a Worker Pool or Compute Requirement specification file (JSON or Jsonnet) | `__{{variable}}__` or `{{variable}}` |
+| Work Requirement specifications, resource specifications (bar their User Data and Node Actions), Task Data files, and the rest of the configuration file, `[workerPool]` and `[computeRequirement]` included | `{{variable}}` |
+| A CSV file's values in a prototype Task | `<<column>>` (see [CSV Variable Substitutions](work-requirements.md#csv-variable-substitutions)) |
 
-The same prefix/postfix requirement applies to a `yd node action` specification file itself, and to the content of files referenced by the `contentFile` and `contentFiles` properties in `writeFile` Node Actions — see [Node Actions](worker-pools.md#node-actions).
+So a Worker Pool's `workerTag` can be `"{{site}}"` in `[workerPool]` and in a Worker Pool specification alike; in a Worker Pool or Compute Requirement specification the `__{{variable}}__` form is substituted first, then the plain one.
+
+A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name — and is made in the file's own form only, since the text says nothing of which property it is in: `__{{variable}}__` in a Worker Pool or Compute Requirement specification, the plain `{{variable}}` in any other file, where a `__{{variable}}__` is left for the second. The second makes the rest, as the table says. So in a Worker Pool or Compute Requirement specification a plain `{{variable}}` in a string comes out substituted, but the code cannot compute with it; and in a Jsonnet resource file a plain `{{variable}}` in its User Data or Node Actions is substituted before evaluation if it is defined, so a Platform template there with the name of a variable of ours, `{{region}}` say, is written `{{raw:region}}` (see [Writing a Substitution Literally](#writing-a-substitution-literally)). See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files). Everything else about a substitution — [type tags](#variable-substitutions), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting, [writing one literally](#writing-a-substitution-literally) — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`, and `__{{raw:name}}__` for the text `__{{name}}__`.

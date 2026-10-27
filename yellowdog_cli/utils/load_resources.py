@@ -50,7 +50,10 @@ from yellowdog_cli.utils.specs.validation import (
     validate_all_and_exit,
     warn_of_violations,
 )
-from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    resolve_variables_insitu,
+)
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 # A resource specification read from standard input, as given on the command
@@ -162,9 +165,11 @@ def load_resource_specifications(
             dirname(abspath(resource_spec)) if shown == resource_spec else getcwd()
         )
 
-        # Secondary variable processing pass
+        # Secondary variable processing pass, the last for every source
+        # (the command line's included), so where a '{{raw:...}}' is put back
         for resource in resources_loaded:
             resolve_variables_insitu(resource)
+            literal_text(resource)
 
         # Every branch above -- JSON, Jsonnet, TOML -- arrives here with the
         # loaded document. Checked for creation only: the schema is what

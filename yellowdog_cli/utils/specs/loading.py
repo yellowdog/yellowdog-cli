@@ -73,6 +73,7 @@ def load_specification(
     toml: bool = False,
     other_extensions_as_json: bool = False,
     csv: CsvExpansion | None = None,
+    also_plain: bool = False,
 ) -> Any:
     """
     Load the '<what>' specification at 'path', substituting variables
@@ -87,6 +88,11 @@ def load_specification(
     where 'other_extensions_as_json' allows it, else it is refused.
     '--jsonnet-dry-run' is refused for a file that is not Jsonnet, before
     anything is loaded.
+
+    With 'also_plain' (a Worker Pool or Compute Requirement specification,
+    'prefix' and 'postfix' being the Worker Pool delimiters), the plain
+    '{{x}}' is substituted too, outside the User Data and Node Actions the
+    Platform's Mustache processes (file_substitution.resolve_plain_variables_too()).
     """
     lower = path.lower()
     jsonnet = lower.endswith(JSONNET_EXTENSION)
@@ -113,7 +119,11 @@ def load_specification(
     if jsonnet:
         data = (
             load_jsonnet_file_with_variable_substitutions(
-                path, prefix=prefix, postfix=postfix, dry_run=jsonnet_dry_run
+                path,
+                prefix=prefix,
+                postfix=postfix,
+                dry_run=jsonnet_dry_run,
+                also_plain=also_plain,
             )
             if csv is None
             else load_jsonnet_file_with_csv_task_expansion(
@@ -140,7 +150,7 @@ def load_specification(
     else:
         data = (
             load_json_file_with_variable_substitutions(
-                path, prefix=prefix, postfix=postfix
+                path, prefix=prefix, postfix=postfix, also_plain=also_plain
             )
             if csv is None
             else load_json_file_with_csv_task_expansion(

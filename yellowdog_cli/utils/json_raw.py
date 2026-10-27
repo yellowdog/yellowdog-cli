@@ -38,6 +38,7 @@ from yellowdog_cli.utils.task_batches import (
 from yellowdog_cli.utils.type_check import check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
     add_substitutions_without_overwriting,
+    literal_text,
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import L_WR_NAME
@@ -77,6 +78,7 @@ def submit_json_raw(
     wr_name = wr_data["name"]
     add_substitutions_without_overwriting(subs={L_WR_NAME: wr_name})
     resolve_variables_insitu(wr_data)
+    literal_text(wr_data)
 
     if ctx.args.dry_run:
         # This will show the results of any variable substitutions

@@ -82,7 +82,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:25:47 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:11:58 GMT 2026 -->
 
 <!--te-->
 
@@ -689,7 +689,7 @@ Compute Requirements can be instantiated directly from JSON (or Jsonnet) specifi
 
 The specification file may also be supplied using the deprecated `--compute-requirement`/`-C` or `--worker-pool`/`-p` options; the positional argument is preferred.
 
-Variable substitutions must be prefixed and postfixed by a double underscore (`__`), e.g. `"__{{my_variable}}__"`.
+Variable substitutions may be prefixed and postfixed by a double underscore (`__`), e.g. `"__{{my_variable}}__"`, and must be in its User Data (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 Key options:
 - `--target`/`-T <n>` — override `targetInstanceCount` from the specification or configuration

@@ -91,7 +91,10 @@ from yellowdog_cli.utils.type_check import (
     check_list,
     check_str,
 )
-from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    resolve_variables_insitu,
+)
 
 
 def check_task_groups(wr_data: dict) -> None:
@@ -242,19 +245,25 @@ def create_task_group(
         check_bool,
         config_wr.finish_if_all_tasks_finished,
     )
-    task_group = TaskGroup(
-        name=task_group_name,
-        runSpecification=run_specification,
-        dependencies=generate_dependencies(task_group_data),
-        finishIfAllTasksFinished=_finish_all if _finish_all is not None else True,
-        finishIfAnyTaskFailed=levels.checked(
-            FINISH_IF_ANY_TASK_FAILED, check_bool, config_wr.finish_if_any_task_failed
+    task_group = literal_text(
+        TaskGroup(
+            name=task_group_name,
+            runSpecification=run_specification,
+            dependencies=generate_dependencies(task_group_data),
+            finishIfAllTasksFinished=_finish_all if _finish_all is not None else True,
+            finishIfAnyTaskFailed=levels.checked(
+                FINISH_IF_ANY_TASK_FAILED,
+                check_bool,
+                config_wr.finish_if_any_task_failed,
+            )
+            or False,
+            priority=levels.checked(
+                PRIORITY, check_float_or_int, config_wr.priority or 0
+            ),
+            completedTaskTtl=completed_task_ttl,
+            tag=check_str(task_group_data.get(TASK_GROUP_TAG), TASK_GROUP_TAG),
+            taskTemplate=task_template,
         )
-        or False,
-        priority=levels.checked(PRIORITY, check_float_or_int, config_wr.priority or 0),
-        completedTaskTtl=completed_task_ttl,
-        tag=check_str(task_group_data.get(TASK_GROUP_TAG), TASK_GROUP_TAG),
-        taskTemplate=task_template,
     )
 
     print_info(f"Generated Task Group '{task_group_name}'")

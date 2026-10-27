@@ -111,6 +111,7 @@ from yellowdog_cli.utils.type_check import (
 from yellowdog_cli.utils.validate_properties import validate_properties
 from yellowdog_cli.utils.variable_substitution import (
     add_substitutions_without_overwriting,
+    literal_text,
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.variable_syntax import (
@@ -593,12 +594,14 @@ def _create_work_requirement(
         ),
         WR_TAG,
     )
-    work_requirement = WorkRequirement(
-        namespace=run.ctx.config.namespace,
-        name=run.name,
-        taskGroups=task_groups,
-        tag=wr_tag,
-        priority=priority,
+    work_requirement = literal_text(
+        WorkRequirement(
+            namespace=run.ctx.config.namespace,
+            name=run.name,
+            taskGroups=task_groups,
+            tag=wr_tag,
+            priority=priority,
+        )
     )
     if run.ctx.args.dry_run:
         run.snapshot.set_work_requirement(work_requirement)

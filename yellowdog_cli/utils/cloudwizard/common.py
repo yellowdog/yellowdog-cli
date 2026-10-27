@@ -28,7 +28,10 @@ from yellowdog_cli.utils.resource_removal import (
     record_not_attempted,
     remove_resource_by_id,
 )
-from yellowdog_cli.utils.variable_substitution import resolve_variables_insitu
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    resolve_variables_insitu,
+)
 
 CLOUDWIZARD_NAMESPACE_PREFIX = "cloudwizard"
 
@@ -419,6 +422,7 @@ class CommonCloudConfig(ABC):
         print_info("Creating YellowDog Compute Requirement Templates")
         resources = deepcopy(self._requirement_template_resources)
         resolve_variables_insitu(resources)
+        literal_text(resources)
         create_resources(self._ctx, resources)
 
     def _create_keyring(self, keyring_name: str):

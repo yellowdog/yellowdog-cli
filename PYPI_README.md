@@ -103,4 +103,8 @@ It runs `yd` commands on an agent's behalf, with `--json`, and returns their res
 
 ## Documentation
 
-Please see the documentation in the [GitHub repository](https://github.com/yellowdog/yellowdog-cli) for full details. This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**.
+For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation.
+
+The CLI's own documentation is in the [GitHub repository](https://github.com/yellowdog/yellowdog-cli), one page per topic, mapped in its README's **[Documentation](https://github.com/yellowdog/yellowdog-cli/blob/main/README.md#documentation)** section: guides to configuration, variable substitutions, Work Requirements, Worker Pools, the data client, resources, Jsonnet and checking specifications, and reference pages for the commands (the **[Command List](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/commands.md)**), the Work Requirement properties and the `--json` output and exit codes. Help is also available for every command with `--help` or `-h`.
+
+This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**.

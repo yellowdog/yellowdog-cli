@@ -33,7 +33,10 @@ from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.property_names import USERDATA, USERDATAFILE, USERDATAFILES
 from yellowdog_cli.utils.tables import print_compute_template_test_result
 from yellowdog_cli.utils.type_check import check_list, check_str
-from yellowdog_cli.utils.variable_substitution import warn_of_undefined_variables
+from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
+    warn_of_undefined_variables,
+)
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -78,7 +81,10 @@ def _read_user_data(
     else:
         return None
 
-    return "".join(_substituted_user_data(source, text) for source, text in parts)
+    # Its last pass: the configuration's User Data was substituted as it loaded
+    return literal_text(
+        "".join(_substituted_user_data(source, text) for source, text in parts)
+    )
 
 
 def _read(path: str, source_dir: str) -> str:

@@ -55,6 +55,7 @@ from yellowdog_cli.utils.results import (
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
 from yellowdog_cli.utils.specs.schema import Family
+from yellowdog_cli.utils.variable_substitution import literal_text
 from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_POSTFIX,
     WP_VARIABLES_PREFIX,
@@ -324,7 +325,9 @@ def _create_compute_requirement_from_json(
         prefix=prefix,
         postfix=postfix,
         other_extensions_as_json=True,
+        also_plain=True,
     )
+    literal_text(cr_data)
 
     # Use only the 'requirementTemplateUsage' value (if present);
     # strips out Worker Pool stuff

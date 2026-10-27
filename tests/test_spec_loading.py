@@ -86,8 +86,19 @@ class TestByExtension:
     def test_the_delimiters_are_passed_on(self, loaders):
         _loaded("wp.json", prefix="<<", postfix=">>")
         loaders["load_json_file_with_variable_substitutions"].assert_called_once_with(
-            "wp.json", prefix="<<", postfix=">>"
+            "wp.json", prefix="<<", postfix=">>", also_plain=False
         )
+
+    @pytest.mark.parametrize(
+        "path, loader",
+        [
+            ("wp.json", "load_json_file_with_variable_substitutions"),
+            ("wp.jsonnet", "load_jsonnet_file_with_variable_substitutions"),
+        ],
+    )
+    def test_also_plain_is_passed_on(self, loaders, path, loader):
+        _loaded(path, also_plain=True)
+        assert loaders[loader].call_args.kwargs["also_plain"] is True
 
 
 class TestJsonnetDryRun:

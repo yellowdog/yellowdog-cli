@@ -68,6 +68,7 @@ from yellowdog_cli.utils.settings import RCLONE_PREFIX
 from yellowdog_cli.utils.specs.properties import WORK_REQUIREMENT_PROPERTIES, Level
 from yellowdog_cli.utils.type_check import check_dict, check_int, check_list, check_str
 from yellowdog_cli.utils.variable_substitution import (
+    literal_text,
     resolve_variables_insitu,
     warn_of_undefined_variables,
 )
@@ -1033,13 +1034,15 @@ def create_task(
         if task_tag is not None:
             env_copy[YD_TAG] = cast(str, task_tag)
 
-    return Task(
-        name=task_name,
-        taskType=task_type,
-        arguments=args or None,
-        environment=env_copy or None,
-        taskData=task_data_property,
-        timeout=task_timeout,
-        tag=task_tag,
-        data=task_data_inputs_and_outputs,
+    return literal_text(
+        Task(
+            name=task_name,
+            taskType=task_type,
+            arguments=args or None,
+            environment=env_copy or None,
+            taskData=task_data_property,
+            timeout=task_timeout,
+            tag=task_tag,
+            data=task_data_inputs_and_outputs,
+        )
     )

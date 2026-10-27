@@ -489,6 +489,10 @@
     # --------------------------------------------------------------------------
     # User data (node bootstrap scripts)
     # --------------------------------------------------------------------------
+    # In User Data, inline or in its files, a variable substitution is written
+    # "__{{variable}}__"; a plain "{{...}}" is left for the Platform's own
+    # Mustache templating ("{{provider}}", "{{region}}"). Every other property
+    # here takes the plain "{{variable}}".
 
     # Inline user-data script.
     # Optional

@@ -7,6 +7,8 @@ variable's name, the names the CLI reserves or defines lazily, and the names
 import re
 
 ENV_VAR_SUB_PREFIX = "env:"
+# '{{raw:name}}' is the literal text '{{name}}', substituted by no pass
+RAW_PREFIX = "raw:"
 
 # Widths, in base 36 digits, of the '{{random}}' and '{{random6}}' variables
 RAND_VAR_DIGITS = 3

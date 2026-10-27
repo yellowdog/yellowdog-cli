@@ -2,6 +2,22 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.4.0 — 2026-10-27
+
+### Upgrading
+
+These changes alter what an existing specification gives:
+
+- **A plain `{{name}}` in a Worker Pool or Compute Requirement specification is substituted**: outside their User Data and Node Actions (`nodeEvents`), where the Platform's own Mustache runs and `__{{name}}__` is still needed, a property can be written `{{name}}`, as it is in the configuration file's `[workerPool]` section, and `__{{name}}__` works as before; a plain `{{name}}` there was passed to the Platform unchanged, and an undefined one is now warned of. In a Jsonnet specification the plain form is substituted after evaluation, so Jsonnet code computing with a variable still takes `__{{name}}__`.
+- **A Configured Worker Pool resource's Node Actions take `__{{name}}__`**: its `nodeEvents`, which the Platform's Mustache processes, are substituted only in the `__{{name}}__` form, as a Worker Pool specification's are, so the Platform's `{{node.details.hostname}}` is neither substituted nor warned of; a plain `{{name}}` there, which was substituted, is now left for the Platform.
+
+### Variables and configuration
+
+- **`__{{name}}__` in a Jsonnet resource file's User Data and Node Actions is substituted**: it gave `__value__`, the underscores kept.
+- **`{{raw:name}}` writes `{{name}}` literally**: text meant for another tool that holds a `{{name}}` this CLI would substitute, such as `{{date}}` or `{{task_name}}`, can be passed through unchanged by writing `raw:` after its opening braces; everything after `raw:` is text, and nothing substitutes it later. It works in every specification, the configuration file, CSV cells, the files substituted as text, and the `__{{raw:name}}__` form of Worker Pool specifications and User Data.
+- **Documentation:** the README's Documentation section is now a map of every page, each with what it covers; Getting Started has moved to the [YellowDog Documentation](https://docs.yellowdog.ai/#/getting-started/getting-started), whose CLI track the README links to; and [one table](docs/variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data) says where `__{{name}}__` is written and where `{{name}}`.
+- **`{{ name }}` with spaces is warned of**: a substitution written with space inside its braces is not a substitution and is left as it is, as before, but where the name inside is a variable that would be substituted (defined, an environment variable set, or one of the Task variables) a warning now says so and gives the form without the space; text naming nothing, such as another tool's template, is not reported.
+
 ## 15.3.0 — 2026-10-26
 
 ### Upgrading

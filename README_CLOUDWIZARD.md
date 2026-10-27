@@ -592,7 +592,7 @@ targetInstanceCount = 1
 yd workerpool provision
 ```
 
-A template in another namespace is named with its namespace, `cloudwizard-aws/<template>`, as here. [Getting Started](docs/getting-started.md) goes from such a Worker Pool to a first Task run on it.
+A template in another namespace is named with its namespace, `cloudwizard-aws/<template>`, as here. The CLI track of [Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started) in the YellowDog Documentation goes on to a first Task run on such a Worker Pool.
 
 ## Try a Dynamic Template First
 

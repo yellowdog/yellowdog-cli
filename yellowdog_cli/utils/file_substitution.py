@@ -23,6 +23,7 @@ from tomli import loads as toml_loads
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.limits import VAR_SUBSTITUTION_MAX_PASSES
 from yellowdog_cli.utils.misc_utils import (
+    Substring,
     find_delimited_expression_spans,
     find_delimited_expressions,
 )
@@ -51,6 +52,8 @@ from yellowdog_cli.utils.variable_substitution import (
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
+    WP_VARIABLES_POSTFIX,
+    WP_VARIABLES_PREFIX,
 )
 
 
@@ -67,8 +70,19 @@ def _read_text(filename: str) -> str:
         raise ValueError(f"'{filename}' is not UTF-8 text: {e}") from e
 
 
+def resolve_plain_variables_too(data: dict | list) -> None:
+    """
+    After a pass in the Worker Pool delimiters ('__{{x}}__'), substitute the
+    plain '{{x}}' too, everywhere the Platform's Mustache does not run: a
+    Worker Pool or Compute Requirement specification's properties, bar its
+    User Data and Node Actions ('nodeEvents'), which every pass keeps to the
+    Worker Pool delimiters.
+    """
+    resolve_variables_insitu(data)
+
+
 def load_json_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = ""
+    filename: str, prefix: str = "", postfix: str = "", also_plain: bool = False
 ) -> dict:
     """
     Takes a JSON filename and returns a dictionary with its variable
@@ -80,9 +94,14 @@ def load_json_file_with_variable_substitutions(
     be a quote) and inserted without them (a Windows path's '\\t' would
     become a tab, a quote would end the string). So a substitution goes
     inside a JSON string, and in a value, not a property name.
+
+    With 'also_plain', the plain '{{x}}' is substituted too, after the
+    'prefix'/'postfix' form (see resolve_plain_variables_too()).
     """
     result = parse_json_file(filename, prefix, postfix)
     resolve_variables_insitu(result, prefix=prefix, postfix=postfix)
+    if also_plain:
+        resolve_plain_variables_too(result)
     return result
 
 
@@ -196,12 +215,18 @@ def load_jsonnet_file_with_variable_substitutions(
     postfix: str = "",
     exit_on_dry_run=True,
     dry_run: bool = False,
+    also_plain: bool = False,
 ) -> dict:
     """
     Takes a Jsonnet filename and returns a dictionary with its variable
     substitutions processed. With 'dry_run' ('--jsonnet-dry-run'), the
     result is printed (or recorded, under '--json', by a caller converting
     several files), and the command exits if 'exit_on_dry_run'.
+
+    With 'also_plain', the plain '{{x}}' is substituted too, after the
+    'prefix'/'postfix' form (see resolve_plain_variables_too()), and after
+    evaluation only: the text pass before it, which is not by property, keeps
+    to 'prefix'/'postfix', so only that form can feed the Jsonnet code.
     """
     check_jsonnet_import()
     from _jsonnet import evaluate_snippet
@@ -225,6 +250,8 @@ def load_jsonnet_file_with_variable_substitutions(
 
     # Secondary processing after Jsonnet expansion
     resolve_variables_insitu(dict_data, prefix=prefix, postfix=postfix)
+    if also_plain:
+        resolve_plain_variables_too(dict_data)
 
     if dry_run:
         print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
@@ -343,6 +370,8 @@ def process_variable_substitutions_in_file_contents(
     # for the in-situ pass to substitute as text, so one still here is not a
     # sign of a circular reference; nor is one in a comment, which it leaves
     checked = _without_jsonnet_comments(file_contents) if jsonnet else file_contents
+    if jsonnet and not prefix and not postfix:
+        checked = _without_worker_pool_expressions(checked)
     _undefined_unless_circular(
         [
             reference
@@ -494,6 +523,33 @@ def _without_jsonnet_comments(code: str) -> str:
     )
 
 
+def _in_worker_pool_delimiters(text: str, span: Substring) -> bool:
+    """
+    Whether the expression at 'span' is written '__{{x}}__'.
+    """
+    return (
+        text[span.start - len(WP_VARIABLES_PREFIX) : span.start] == WP_VARIABLES_PREFIX
+        and text[span.end : span.end + len(WP_VARIABLES_POSTFIX)]
+        == WP_VARIABLES_POSTFIX
+    )
+
+
+def _without_worker_pool_expressions(text: str) -> str:
+    """
+    Text with each '__{{x}}__' expression taken out, as the plain Jsonnet pass
+    leaves them for after evaluation: for its circular check, to which one
+    naming a defined variable would otherwise look circular.
+    """
+    spans = find_delimited_expression_spans(
+        text,
+        WP_VARIABLES_PREFIX + VAR_OPENING_DELIMITER,
+        VAR_CLOSING_DELIMITER + WP_VARIABLES_POSTFIX,
+    )
+    for span in reversed(spans):
+        text = text[: span.start] + text[span.end :]
+    return text
+
+
 def _substitute_jsonnet_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
@@ -509,7 +565,13 @@ def _substitute_jsonnet_pass(
     all of it, and otherwise left for the in-situ pass after evaluation to
     substitute as text, as the text pass leaves one. Outside a string, in the
     code, a value is written as it is, a typed one as its JSON: Jsonnet code.
+
+    In the plain delimiters, an expression in the Worker Pool ones,
+    '__{{x}}__', is left for the in-situ pass after evaluation, which knows
+    the property it is in: in User Data or Node Actions it is substituted
+    there, and elsewhere is '__value__', as a JSON file's is.
     """
+    plain = not prefix and not postfix
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
     literals = list(_JSONNET_LITERAL.finditer(file_contents))
@@ -539,6 +601,8 @@ def _substitute_jsonnet_pass(
             continue  # Inside a whole string already written as its value
         comment = bisect_right(comment_starts, span.start) - 1
         if comment >= 0 and span.start < comments[comment][1]:
+            continue
+        if plain and _in_worker_pool_delimiters(file_contents, span):
             continue
         index = bisect_right(starts, span.start) - 1
         kind, content_start, content_end, literal = (

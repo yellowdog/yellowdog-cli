@@ -12,10 +12,11 @@ import math
 import os
 import re
 from copy import deepcopy
+from dataclasses import fields, is_dataclass
 from getpass import getuser
 from json import dumps as json_dumps
 from json import loads as json_loads
-from typing import cast
+from typing import TypeVar, cast
 
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.limits import (
@@ -38,6 +39,7 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.property_names import (
+    PROP_NODE_EVENTS,
     USERDATA,
 )
 from yellowdog_cli.utils.settings import YD_ENV_VAR_PREFIX
@@ -51,6 +53,7 @@ from yellowdog_cli.utils.variable_syntax import (
     NUMBER_TYPE_TAG,
     RAND_VAR_6_DIGITS,
     RAND_VAR_DIGITS,
+    RAW_PREFIX,
     RESERVED_VARIABLE_NAMES,
     TABLE_TYPE_TAG,
     TYPE_TAG_DEFAULT_GUARD,
@@ -69,6 +72,8 @@ from yellowdog_cli.utils.variable_syntax import (
 # a dict/list (i.e. _walk_data) use this to delete the property entirely.
 _UNSET = object()
 
+T = TypeVar("T")
+
 # Stands in for an unset expression nested inside another one while the outer
 # expression is resolved. Whether the outer one is then unset too depends on
 # whether the value was needed -- to build a name, or as a default that is
@@ -76,6 +81,25 @@ _UNSET = object()
 # there, it was. A private-use character, which no delimiter, separator or
 # regular expression below can match, and no variable value will contain.
 _UNSET_MARKER = "\ue000"
+
+# Stand in for the delimiters of the literal text a '{{raw:...}}' expression
+# gives, from the pass that writes it until the value leaves the CLI, so that
+# no later pass substitutes it, and no check takes it for a reference: a
+# specification is resolved more than once ('yd workrequirement submit'
+# resolves it as it is loaded, once the Work Requirement is named, and for
+# each Task Group and Task), and the literal '{{name}}' would be substituted
+# by the pass after the one that wrote it. literal_text() puts them back, at
+# each place a value leaves: as an SDK object or a configuration section is
+# built, after the last pass over a specification no later pass sees.
+_RAW_OPENING = "\ue001"
+_RAW_CLOSING = "\ue002"
+
+# The properties holding text for the Platform's own Mustache processing, in
+# which only the Worker Pool delimiters ('__{{x}}__') are substituted and
+# checked, whatever the pass's own, so that the Platform's '{{provider}}' or
+# '{{node.details.hostname}}' is neither substituted nor reported: User Data,
+# and a Worker Pool's Node Actions ('nodeEvents', everything under it)
+_PLATFORM_MUSTACHE_PROPERTIES = frozenset({USERDATA, PROP_NODE_EVENTS})
 
 # Whether an expression left unsubstituted is reported as an undefined
 # variable. Off until a command's own processing begins (the command
@@ -553,11 +577,13 @@ def add_or_update_substitution(key: str, value, source: str = "a variable defini
     VARIABLE_SUBSTITUTIONS[key] = _DEFINITIONS[key] = _stringify(value)
 
 
-def get_user_variable(variable_name: str) -> str | None:
+def get_user_variable(variable_name: str, literal: bool = True) -> str | None:
     """
-    Get the value of a variable.
+    Get the value of a variable: with 'literal', the literal text of any
+    '{{raw:...}}' in it; without, as the table holds it.
     """
-    return VARIABLE_SUBSTITUTIONS.get(variable_name)
+    value = VARIABLE_SUBSTITUTIONS.get(variable_name)
+    return literal_text(value) if literal else value
 
 
 def get_unset_variable_names() -> list[str]:
@@ -663,9 +689,10 @@ def _unset_causes(definition: str) -> list[tuple[str, str | None]]:
 
 def get_all_user_variables() -> dict:
     """
-    Return all the user variables. Copy to avoid amendment.
+    Return all the user variables, with the literal text of any
+    '{{raw:...}}' in them. Copy to avoid amendment.
     """
-    return deepcopy(VARIABLE_SUBSTITUTIONS)
+    return literal_text(deepcopy(VARIABLE_SUBSTITUTIONS))
 
 
 def process_variable_substitutions_insitu(
@@ -688,13 +715,13 @@ def _substitute_insitu_pass(
 ) -> list[str]:
     """
     One substitution pass over 'data', in-situ, returning the paths of the
-    properties it changed or removed (e.g. 'taskGroups[0].name').
+    properties it changed or removed (e.g. 'taskGroups[0].name'). Within the
+    _PLATFORM_MUSTACHE_PROPERTIES, the Worker Pool delimiters are used.
     """
     changed: list[str] = []
 
-    def _substitute(key_, value_: str, path: str):
-        # Require the use of post/prefix only for userData in TOML
-        if key_ == USERDATA:
+    def _substitute(value_: str, path: str, mustache: bool):
+        if mustache:
             result = process_variable_substitutions(
                 value_, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
             )
@@ -706,23 +733,24 @@ def _substitute_insitu_pass(
             changed.append(path)
         return result
 
-    def _walk_data(data: dict | list, path: str):
+    def _walk_data(data: dict | list, path: str, mustache: bool):
         """
         Helper function to walk the data structure performing
-        variable substitutions.
+        variable substitutions; 'mustache' within a Platform Mustache property.
         """
         if isinstance(data, dict):
             keys_to_delete = []
             for key_, value_ in data.items():
                 key_path = f"{path}.{key_}" if path else str(key_)
+                key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
                 if isinstance(value_, str):
-                    result = _substitute(key_, value_, key_path)
+                    result = _substitute(value_, key_path, key_mustache)
                     if result is _UNSET:
                         keys_to_delete.append(key_)
                     else:
                         data[key_] = result
                 elif isinstance(value_, dict) or isinstance(value_, list):
-                    _walk_data(value_, key_path)
+                    _walk_data(value_, key_path, key_mustache)
             for key_ in keys_to_delete:
                 del data[key_]
         elif isinstance(data, list):
@@ -730,18 +758,17 @@ def _substitute_insitu_pass(
             for index, item in enumerate(data):
                 index_path = f"{path}[{index}]"
                 if isinstance(item, str):
-                    # A list element is never userData, so no key applies
-                    result = _substitute(None, item, index_path)
+                    result = _substitute(item, index_path, mustache)
                     if result is _UNSET:
                         indices_to_delete.append(index)
                     else:
                         data[index] = result
                 elif isinstance(item, dict) or isinstance(item, list):
-                    _walk_data(item, index_path)
+                    _walk_data(item, index_path, mustache)
             for index in reversed(indices_to_delete):
                 del data[index]
 
-    _walk_data(data, "")
+    _walk_data(data, "", False)
     return changed
 
 
@@ -769,11 +796,15 @@ def resolve_variables_insitu(
             f" variable reference, in {_list_paths(changed)}"
         )
 
+    spaced: list[tuple[str, str, str, str]] = []
     _warn_of_undefined(
         _undefined_unless_circular(
-            _unsubstituted_references(data, prefix=prefix, postfix=postfix)
+            _unsubstituted_references(
+                data, prefix=prefix, postfix=postfix, spaced=spaced
+            )
         )
     )
+    _warn_of_spaced(spaced)
 
 
 def _undefined_unless_circular(
@@ -831,9 +862,13 @@ def resolve_variables_in_string(
 
     if isinstance(result, str):
         label = source if source is not None else str(value)
+        spaced: list[tuple[str, str, str, str]] = []
         _warn_of_undefined(
-            _undefined_unless_circular(_unsubstituted_references({label: result}))
+            _undefined_unless_circular(
+                _unsubstituted_references({label: result}, spaced=spaced)
+            )
         )
+        _warn_of_spaced(spaced)
     return result
 
 
@@ -870,8 +905,9 @@ def warn_of_undefined_variables(
     a '*Files' list is reported for each of them, not for the first alone.
     """
     undefined: dict[str, list[str]] = {}
+    spaced: list[tuple[str, str, str, str]] = []
     for expression, reference, path in _unsubstituted_references(
-        data, prefix=prefix, postfix=postfix
+        data, prefix=prefix, postfix=postfix, spaced=spaced
     ):
         if (
             reference not in VARIABLE_SUBSTITUTIONS
@@ -879,6 +915,7 @@ def warn_of_undefined_variables(
         ):
             undefined.setdefault(expression, []).append(path)
     _warn_of_undefined(undefined, per_source=per_source)
+    _warn_of_spaced(spaced, per_source=per_source)
 
 
 def _warn_of_undefined(
@@ -892,19 +929,9 @@ def _warn_of_undefined(
     if not _UNDEFINED_VARIABLE_WARNINGS:
         return
     for expression, paths in undefined.items():
-        if per_source:
-            paths = [
-                path
-                for path in dict.fromkeys(paths)
-                if (expression, path) not in _UNDEFINED_VARIABLES_REPORTED
-            ]
-            if not paths:
-                continue
-            _UNDEFINED_VARIABLES_REPORTED.update((expression, path) for path in paths)
-        else:
-            if expression in _UNDEFINED_VARIABLES_REPORTED:
-                continue
-            _UNDEFINED_VARIABLES_REPORTED.add(expression)
+        paths = _unreported(expression, paths, per_source)
+        if not paths:
+            continue
         reference = _reference_of(expression)
         if reference in _DEFINITIONS and reference not in VARIABLE_SUBSTITUTIONS:
             # Defined, but removed by the unset syntax, which is what anyone
@@ -919,6 +946,54 @@ def _warn_of_undefined(
                 f"Variable '{expression}' is not defined, and has been left"
                 f" unsubstituted in {_list_paths(paths)}"
             )
+
+
+def _warn_of_spaced(
+    spaced: list[tuple[str, str, str, str]], per_source: bool = False
+) -> None:
+    """
+    Warn of each expression with space inside its delimiters ('{{ tag }}')
+    that names a variable which would be substituted without the space: one
+    defined, an environment variable set, or one 'yd workrequirement submit'
+    defines per Task. Such an expression is text, left as it is, since another
+    tool's template ('{{ .Values.x }}', Jinja2's '{{ name }}') may be meant;
+    one naming nothing is taken to be such a template, and not reported.
+    Reported as the undefined variables are: once, and from the same point.
+    """
+    if not _UNDEFINED_VARIABLE_WARNINGS:
+        return
+    found: dict[str, tuple[str, list[str]]] = {}
+    for expression, reference, unspaced, path in spaced:
+        if _value_of(reference) is not None or reference in LAZY_VARIABLE_NAMES:
+            found.setdefault(expression, (unspaced, []))[1].append(path)
+    for expression, (unspaced, paths) in found.items():
+        paths = _unreported(expression, paths, per_source)
+        if paths:
+            print_warning(
+                f"'{expression}' has space inside its braces, so it is not a"
+                f" variable substitution, and has been left unchanged in"
+                f" {_list_paths(paths)}; write '{unspaced}' to substitute it"
+            )
+
+
+def _unreported(expression: str, paths: list[str], per_source: bool) -> list[str]:
+    """
+    The paths 'expression' is to be reported in, recording them as reported:
+    all of them unless it was reported before, or with 'per_source' those it
+    was not reported in before.
+    """
+    if per_source:
+        paths = [
+            path
+            for path in dict.fromkeys(paths)
+            if (expression, path) not in _UNDEFINED_VARIABLES_REPORTED
+        ]
+        _UNDEFINED_VARIABLES_REPORTED.update((expression, path) for path in paths)
+        return paths
+    if expression in _UNDEFINED_VARIABLES_REPORTED:
+        return []
+    _UNDEFINED_VARIABLES_REPORTED.add(expression)
+    return paths
 
 
 def _reference_of(expression: str) -> str | None:
@@ -942,12 +1017,16 @@ def _list_paths(paths: list[str], limit: int = 5) -> str:
 
 
 def _unsubstituted_references(
-    data: dict | list, prefix: str = "", postfix: str = ""
+    data: dict | list,
+    prefix: str = "",
+    postfix: str = "",
+    spaced: list[tuple[str, str, str, str]] | None = None,
 ) -> list[tuple[str, str, str]]:
     """
     The (expression, variable reference, property path) of every variable
     reference left in 'data' in the delimiters being substituted -- the
-    Worker Pool ones for 'userData', as the passes use. The reference is the
+    Worker Pool ones within the _PLATFORM_MUSTACHE_PROPERTIES, as the passes
+    use. The reference is the
     expression's variable name, or 'env:' and the environment variable's,
     without delimiters or type tag. An expression that is not a reference
     itself but contains one ('{{template_{{x}}}}') yields the one inside.
@@ -955,6 +1034,12 @@ def _unsubstituted_references(
     Once the passes have settled, a reference to a defined variable is still
     there only if its value leads back to its own name, and any other names
     a variable nothing defines.
+
+    Given 'spaced', each expression that would be a reference but for the
+    space around it inside the delimiters ('{{ tag }}') is added to it as
+    (expression, variable reference, the expression without the space,
+    property path): it is text, never substituted, so it is not one of those
+    returned.
     """
     found: list[tuple[str, str, str]] = []
 
@@ -966,8 +1051,13 @@ def _unsubstituted_references(
                 found.append((expression, match.group(1), path))
             elif opening in inner:
                 _check(inner, opening, closing, path)
+            elif spaced is not None:
+                match = _VARIABLE_REFERENCE.fullmatch(inner.strip())
+                if match is not None:
+                    unspaced = opening + inner.strip() + closing
+                    spaced.append((expression, match.group(1), unspaced, path))
 
-    def _walk_data(data: dict | list, path: str):
+    def _walk_data(data: dict | list, path: str, mustache: bool):
         items = (
             (
                 (key_, f"{path}.{key_}" if path else str(key_), value_)
@@ -977,8 +1067,9 @@ def _unsubstituted_references(
             else ((None, f"{path}[{index}]", item) for index, item in enumerate(data))
         )
         for key_, item_path, value_ in items:
+            key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
             if isinstance(value_, str):
-                if key_ == USERDATA:
+                if key_mustache:
                     opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
                 else:
                     opening, closing = prefix, postfix
@@ -987,9 +1078,9 @@ def _unsubstituted_references(
                 if opening in value_:
                     _check(value_, opening, closing, item_path)
             elif isinstance(value_, (dict, list)):
-                _walk_data(value_, item_path)
+                _walk_data(value_, item_path, key_mustache)
 
-    _walk_data(data, "")
+    _walk_data(data, "", False)
     return found
 
 
@@ -1045,6 +1136,14 @@ def process_variable_substitutions(
             if type_tag != ""
             else element
         )
+        if type_tag and element_minus_type_tag.startswith(
+            opening_delimiter + RAW_PREFIX
+        ):
+            raise ValueError(
+                f"Cannot substitute '{element}': '{RAW_PREFIX}' gives text, which"
+                f" has no type; to write the text '{element_minus_type_tag.replace(RAW_PREFIX, type_tag, 1)}',"
+                f" write '{opening_delimiter}{RAW_PREFIX}{type_tag}{element_minus_type_tag[len(opening_delimiter) + len(RAW_PREFIX) :]}'"
+            )
 
         element_processed = process_untyped_variable_substitutions(
             element_minus_type_tag, opening_delimiter, closing_delimiter
@@ -1136,6 +1235,11 @@ def process_untyped_variable_substitutions(
         return input_string
 
     inner = input_string[len(opening_delimiter) : -len(closing_delimiter)]
+    if inner.startswith(RAW_PREFIX):
+        # Taken as written, its own nested expressions included
+        return _protected(
+            opening_delimiter + inner[len(RAW_PREFIX) :] + closing_delimiter
+        )
     unset = inner.endswith(VAR_UNSET_SUFFIX)
     if unset:
         inner = inner[: -len(VAR_UNSET_SUFFIX)]
@@ -1217,6 +1321,45 @@ def _pieces(text: str, opening_delimiter: str, closing_delimiter: str) -> list[s
     if opening_delimiter in text and closing_delimiter in text:
         return split_delimited_string(text, opening_delimiter, closing_delimiter)
     return [text]
+
+
+def _protected(text: str) -> str:
+    """
+    The text a '{{raw:...}}' expression gives, its delimiters replaced by the
+    raw markers, which literal_text() puts back.
+    """
+    return text.replace(VAR_OPENING_DELIMITER, _RAW_OPENING).replace(
+        VAR_CLOSING_DELIMITER, _RAW_CLOSING
+    )
+
+
+def literal_text(value: T) -> T:
+    """
+    'value' with the literal text of each '{{raw:...}}' expression in it put
+    back, at any depth: a string, a list or dict (in place), or a dataclass
+    (an SDK object or a configuration section, in place). Called where a
+    value leaves the CLI, never before its last substitution pass, which
+    would then substitute the literal text.
+    """
+    if type(value) is str:  # Not a str-valued enum, which is left as it is
+        if _RAW_OPENING not in value and _RAW_CLOSING not in value:
+            return value
+        return cast(
+            T,
+            value.replace(_RAW_OPENING, VAR_OPENING_DELIMITER).replace(
+                _RAW_CLOSING, VAR_CLOSING_DELIMITER
+            ),
+        )
+    if isinstance(value, list):
+        value[:] = [literal_text(item) for item in value]
+    elif isinstance(value, dict):
+        items = [(literal_text(k), literal_text(v)) for k, v in value.items()]
+        value.clear()
+        value.update(items)
+    elif is_dataclass(value) and not isinstance(value, type):
+        for field in fields(value):
+            setattr(value, field.name, literal_text(getattr(value, field.name)))
+    return value
 
 
 def _value_of(name: str) -> str | None:
