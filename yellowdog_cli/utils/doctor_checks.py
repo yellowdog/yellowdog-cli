@@ -770,6 +770,38 @@ def check_dotenv(ctx: Context) -> Result:
     return Result(Status.OK, path if path else "none")
 
 
+def check_environment_outranked(ctx: Context) -> Result:
+    """
+    The environment variables a configuration file chosen with '--config'
+    outranked, setting the same property or variable to something else:
+    legitimate, but a value the environment offered and lost is otherwise
+    invisible. Names only, since a value may be a secret.
+    """
+    from yellowdog_cli.utils import load_config
+    from yellowdog_cli.utils.settings import YD_ENV_VAR_PREFIX
+    from yellowdog_cli.utils.variable_substitution import (
+        environment_variables_outranked,
+    )
+
+    outranked = [
+        f"{env_var} ({setting})"
+        for setting, env_var in sorted(load_config.ENVIRONMENT_OUTRANKED.items())
+    ] + [
+        f"{YD_ENV_VAR_PREFIX}{name} (variable '{name}')"
+        for name in environment_variables_outranked()
+    ]
+    if not outranked:
+        return Result(Status.OK, "none")
+    return Result(
+        Status.WARN,
+        f"'{load_config.CONFIG_FILE}', chosen with --config, is used rather than "
+        + ", ".join(outranked),
+        "A configuration file chosen with --config wins over the environment"
+        " where both set a value; remove it from one of them, or give it on the"
+        " command line, which wins over both",
+    )
+
+
 def check_tag_is_a_legal_name(ctx: Context) -> Result:
     from yellowdog_cli.utils.misc_utils import format_yd_name
 
@@ -1112,6 +1144,12 @@ CHECKS: tuple[Check, ...] = (
         "Variable references", "Configuration", Need.CONFIG, check_variable_references
     ),
     Check(".env file", "Configuration", Need.CONFIG, check_dotenv),
+    Check(
+        "Environment outranked",
+        "Configuration",
+        Need.CONFIG,
+        check_environment_outranked,
+    ),
     # Under Configuration rather than Platform, since it needs no network
     Check(
         "Tag is a legal name", "Configuration", Need.CONFIG, check_tag_is_a_legal_name

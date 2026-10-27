@@ -308,6 +308,10 @@ _ENVIRONMENT_DEFINED_VARIABLES: set[str] = set()
 # The variables the selected configuration file defines itself, which a
 # file it imports ('importCommon'), or any other read later, never replaces
 _CONFIG_FILE_VARIABLES: set[str] = set()
+# The YD_VAR_* variables whose value a configuration file chosen with
+# '--config' replaced with a different one of its own, said once each under
+# --debug and reported by yd-doctor (environment_variables_outranked())
+_ENVIRONMENT_VARIABLES_OUTRANKED: set[str] = set()
 
 # Each variable's definition as written, before any substitution, which is
 # what explain_unset_variable() works from: once the '::' syntax has removed
@@ -565,7 +569,37 @@ def add_substitutions_from_config_file(
     }
     if selected_file:
         _CONFIG_FILE_VARIABLES.update(subs)
+    if _CONFIG_FILE_SELECTED:
+        _note_outranked_environment_variables(subs)
     _update_and_resolve_substitutions({**VARIABLE_SUBSTITUTIONS, **subs})
+
+
+def _note_outranked_environment_variables(subs: dict) -> None:
+    """
+    Record, and say under --debug, each YD_VAR_* variable that 'subs', from
+    the configuration file chosen with '--config', replaces with a different
+    value. Names only: a value may be a secret.
+    """
+    for name, value in subs.items():
+        if (
+            name in _ENVIRONMENT_DEFINED_VARIABLES
+            and name not in _ENVIRONMENT_VARIABLES_OUTRANKED
+            and os.environ.get(YD_ENV_VAR_PREFIX + name) != _stringify(value)
+        ):
+            _ENVIRONMENT_VARIABLES_OUTRANKED.add(name)
+            print_debug(
+                f"Using variable '{name}' from the configuration file chosen with"
+                f" --config, rather than {YD_ENV_VAR_PREFIX}{name} from the"
+                " environment"
+            )
+
+
+def environment_variables_outranked() -> list[str]:
+    """
+    The names of the YD_VAR_* variables a configuration file chosen with
+    '--config' replaced with a different value, sorted.
+    """
+    return sorted(_ENVIRONMENT_VARIABLES_OUTRANKED)
 
 
 def add_or_update_substitution(key: str, value, source: str = "a variable definition"):

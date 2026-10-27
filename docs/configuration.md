@@ -238,7 +238,7 @@ A setting can come from several places at once. The table gives each source's ra
 | The configuration file found without `--config` (`./config.toml`, or your own), and the file it imports | 6 | 5 | 6 | 4 |
 | The CLI's default | 7 | 6 | 7 | 5 |
 
-Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen.
+Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen. So with `--config`, an environment variable that sets the same thing to something else is passed over: `yd doctor` lists each one so passed over, as a `WARN`, and `--debug` says so as it happens, naming the variable and the setting, never the value.
 
 Some notes on the columns:
 

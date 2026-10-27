@@ -1853,6 +1853,7 @@ It checks, in order:
 - whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](configuration.md)), and where each of the key, secret, namespace, tag and URL came from
 - undefined variable references
 - the `.env` file in use
+- the environment variables a configuration file chosen with `--config` outranked, a `WARN` naming each and the setting it would have given (`YD_NAMESPACE (common.namespace)`, `YD_VAR_site (variable 'site')`), never its value; one setting the same value in both is not reported
 - whether the tag is a legal name
 - each data client profile
 

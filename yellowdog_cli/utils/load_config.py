@@ -95,6 +95,32 @@ _WORKER_POOL_SECTIONS_AS_LOADED: dict[str, dict] = {}
 # 'config file (<name>)', 'default' or 'not set'. Read by yd-doctor.
 CONFIG_SOURCES: dict[str, str] = {}
 
+# The environment variables that a configuration file chosen with '--config'
+# outranked, by the setting each would otherwise have given ('common.namespace',
+# 'dataClient.bucket'): those the file sets too, to a different value. Said
+# once each under --debug as found, and read by yd-doctor, so that a value
+# the environment offered and lost is never a mystery. YD_VAR_* variables are
+# variable_substitution.environment_variables_outranked()'s.
+ENVIRONMENT_OUTRANKED: dict[str, str] = {}
+
+
+def _outranked(setting: str, env_var: str, file_value: object) -> None:
+    """
+    Record, and say under --debug, that the configuration file chosen with
+    '--config' gave 'setting' where the environment's 'env_var' also set it;
+    nothing where the two agree. Names only: a value may be a secret.
+    """
+    env_value = os.environ.get(env_var)
+    if env_value is None or env_value == str(file_value):
+        return
+    if setting in ENVIRONMENT_OUTRANKED:
+        return
+    ENVIRONMENT_OUTRANKED[setting] = env_var
+    print_debug(
+        f"Using '{setting}' from '{CONFIG_FILE}', chosen with --config, rather"
+        f" than {env_var} from the environment"
+    )
+
 
 def warn_of_undefined_worker_pool_variables() -> None:
     """
@@ -775,6 +801,9 @@ def _apply_common_overrides(
         ):
             # Retain the value from the explicitly selected config file
             CONFIG_SOURCES[key_name] = file_source(key_name)
+            _outranked(
+                f"{COMMON_SECTION}.{key_name}", env_var_name, common_section[key_name]
+            )
         elif os.environ.get(env_var_name) is not None:
             common_section[key_name] = os.environ[env_var_name]
             CONFIG_SOURCES[key_name] = f"environment ({env_var_name})"
@@ -922,6 +951,7 @@ def _load_namespace_and_tag() -> None:
         namespace = str(common_section[NAMESPACE])
     elif explicit_config and common_section.get(NAMESPACE) is not None:
         namespace = str(common_section[NAMESPACE])
+        _outranked(f"{COMMON_SECTION}.{NAMESPACE}", YD_NAMESPACE, namespace)
     elif os.environ.get(YD_NAMESPACE) is not None:
         namespace = os.environ[YD_NAMESPACE]
     elif common_section.get(NAMESPACE) is not None:
@@ -936,6 +966,7 @@ def _load_namespace_and_tag() -> None:
         name_tag = str(common_section[NAME_TAG])
     elif explicit_config and common_section.get(NAME_TAG) is not None:
         name_tag = str(common_section[NAME_TAG])
+        _outranked(f"{COMMON_SECTION}.{NAME_TAG}", YD_TAG, name_tag)
     elif os.environ.get(YD_TAG) is not None:
         name_tag = os.environ[YD_TAG]
     elif common_section.get(NAME_TAG) is not None:
@@ -1066,6 +1097,13 @@ def _data_client_value(
     file_first = (
         config_file_explicitly_selected() or toml_key in profile_keys or overridden
     )
+    # First only because the file was chosen with '--config'
+    if (
+        config_file_explicitly_selected()
+        and toml_value is not None
+        and not (toml_key in profile_keys or overridden)
+    ):
+        _outranked(name, env_var, toml_value)
     for value in (
         toml_value if file_first else None,
         os.environ.get(env_var),

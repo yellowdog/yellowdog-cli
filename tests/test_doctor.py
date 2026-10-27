@@ -822,6 +822,7 @@ class TestConfiguration:
             "URL",
             "Variable references",
             ".env file",
+            "Environment outranked",
             "Tag is a legal name",
         ]
 

@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Variables and configuration
+
+- **An environment value a `--config` file outranks is reported**: with the configuration file chosen by `--config`, which wins over the environment, `yd doctor` warns of each environment variable it passed over, `YD_NAMESPACE`, a `YD_VAR_*` variable or a `YD_DATA_CLIENT_*` field set to something else, naming it and what it would have set but never its value, and `--debug` says so as each is found. Nothing changes in which value is used.
+
 ## 15.4.0 — 2026-10-27
 
 ### Upgrading
