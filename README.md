@@ -34,7 +34,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:18:27 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Oct 27 09:50:49 GMT 2026 -->
 
 <!--te-->
 
@@ -299,7 +299,7 @@ universal options:
                         supplied multiple times
 ```
 
-For a first run from start to finish, a configuration file to a Task run on a Worker Pool, follow **[Getting Started](docs/getting-started.md)**. To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation. To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
@@ -362,13 +362,12 @@ Note that there is no fixed 1:1 relationship between Work Requirements and Worke
 
 # Documentation
 
-Beyond this page, the documentation is one page per topic, mapped below. To begin, follow **[Getting Started](docs/getting-started.md)**, which runs a first Work Requirement from start to finish; help is also available for every command with `--help` or `-h`.
+Beyond this page, the documentation is one page per topic, mapped below. For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation; help is also available for every command with `--help` or `-h`.
 
 ## Guides
 
 | Page | What it covers |
 |---|---|
-| **[Getting Started](docs/getting-started.md)** | From an installed CLI to a first Task: `yd init`, `yd doctor`, a Worker Pool and a Work Requirement, one command at a time |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
 | **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
