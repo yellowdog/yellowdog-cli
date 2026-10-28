@@ -1,8 +1,11 @@
 """
 Live: a Work Requirement and its Task Group compared with the actions pool,
-which matches; the run's Work Requirements, Task Groups and Tasks listed
-and shown; and the comparisons and the shows again by name ('wr', 'wr/tg',
-'wr/tg/task', the pool's name), each finding what its ID found.
+which matches, its Instance Pricing row showing the pricing the Platform
+gives the pool's sources; a held one asking for the other pricing and
+another Worker Tag, which doesn't, on those two rows; the run's Work
+Requirements, Task Groups and Tasks listed and shown; and the comparisons
+and the shows again by name ('wr', 'wr/tg', 'wr/tg/task', the pool's name),
+each finding what its ID found.
 """
 
 import pytest
@@ -11,6 +14,25 @@ from harness import work
 pytestmark = [pytest.mark.live, pytest.mark.xdist_group("ydst-actions")]
 
 _SCOPE = ("--json", "--quiet")
+
+PRICINGS = frozenset({"ON_DEMAND_ONLY", "SPOT_ONLY", "SPOT_AND_ON_DEMAND"})
+
+# The Task Group preference a pool of each pricing never matches: a mixed
+# pool fails either restrictive preference, as the Scheduler never scales
+# it up for one
+_OTHER_PRICING = {
+    "ON_DEMAND_ONLY": "SPOT_ONLY",
+    "SPOT_ONLY": "ON_DEMAND_ONLY",
+    "SPOT_AND_ON_DEMAND": "SPOT_ONLY",
+}
+
+
+def _row(record: dict, name: str) -> dict:
+    """
+    A comparison record's row for one property.
+    """
+    (row,) = [r for r in record["properties"] if r["property"] == name]
+    return row
 
 
 def test_compare_and_read(live_run, actions_pool):
@@ -30,6 +52,37 @@ def test_compare_and_read(live_run, actions_pool):
 
         records = yd("wr", "compare", wr["id"], actions_pool.pool_id, *_SCOPE).records
         assert records and all(r["workerPoolMatch"] == "YES" for r in records), records
+        # The Platform fills in each source's pricing, so the pool's is known
+        pricing = _row(records[0], "Instance Pricing")["workerPool"]
+        assert pricing in PRICINGS, records[0]
+
+        # Asking for the other pricing, and another Worker Tag: neither row
+        # matches, nor the pool. Held, so it runs nothing
+        other = work.submit(
+            yd,
+            "work-wr.jsonnet",
+            "--hold",
+            "--property",
+            f"workRequirement.instancePricingPreference={_OTHER_PRICING[pricing]}",
+            wr="compare-other",
+            worker_tag=f"{actions_pool.worker_tag}-other",
+            seconds="10",
+        )
+        made.append(other["id"])
+        mismatched = yd(
+            "wr", "compare", other["id"], actions_pool.pool_id, *_SCOPE
+        ).records
+        assert mismatched, mismatched
+        for record in mismatched:
+            assert record["workerPoolMatch"] == "NO", record
+            assert _row(record, "Instance Pricing") == {
+                "property": "Instance Pricing",
+                "taskGroupRunSpecification": _OTHER_PRICING[pricing],
+                "workerPool": pricing,
+                "matchStatus": "NO",
+            }, record
+            assert _row(record, "Worker Tag(s)")["matchStatus"] == "NO", record
+            assert _row(record, "Task Type(s)")["matchStatus"] == "YES", record
         group_id = work.work_requirement(yd, wr["id"])["taskGroups"][0]["id"]
         (record,) = yd("tg", "compare", group_id, actions_pool.pool_id, *_SCOPE).records
         assert record["workerPoolMatch"] == "YES", record
