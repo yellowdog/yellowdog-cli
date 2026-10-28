@@ -45,7 +45,7 @@ Each Task Group's status is followed by what holds it up, if anything:
 
 - **`/WAITING`**: it is waiting for a Task Group named in its `dependencies` to complete. Check that one instead.
 - **`/STARVED`**: it can't claim any Workers. Go on to step 3.
-- **`PENDING`** with nothing after it: it is waiting for the Workers it needs to run its Tasks, for example while a matching Worker Pool starts up. If it stays `PENDING`, go on to step 3.
+- **`PENDING`** with nothing after it: it is waiting for the Workers it needs to run its Tasks, for example while a matching Worker Pool starts up. A Task Group submitted moments ago may show plain `PENDING` before it is flagged `/STARVED`, so check again after a minute. If it stays `PENDING`, go on to step 3.
 - **`RUNNING`** with nothing after it: it has claimed Workers. If its Tasks still aren't completing, go to [step 6](#6-are-the-tasks-failing).
 
 ## 3. Is There a Worker Pool?

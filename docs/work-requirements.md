@@ -1045,7 +1045,7 @@ Work Requirement 'nightly-render' is RUNNING
 - **`/STARVED`**: the Task Group can't claim any Workers. The Platform reports this as the Task Group's `starved` flag.
 - **`/WAITING`**: the Task Group is waiting for a Task Group named in its `dependencies` to complete. The Platform reports this as its `waitingOnDependency` flag.
 
-A Task Group that is `PENDING` with neither is waiting for the Workers it needs, for example while a matching Worker Pool starts up. A `RUNNING` one has them. [Why Isn't My Work Running?](troubleshooting.md) works through what to do about a Task Group that stays starved.
+A Task Group that is `PENDING` with neither is waiting for the Workers it needs, for example while a matching Worker Pool starts up. One submitted moments ago may show plain `PENDING` before it is flagged `/STARVED`. A `RUNNING` one has them. [Why Isn't My Work Running?](troubleshooting.md) works through what to do about a Task Group that stays starved.
 
 #### Details
 
