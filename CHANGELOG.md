@@ -16,6 +16,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`--config`'s help says that the file it names outranks the environment**, as a file found by default does not, and `yd doctor`'s `Config schema` hint no longer says the warnings are given under `--quiet`, which skips that check.
 - **Documentation:** the Work Requirement Property Dictionary is now [docs/work-requirement-property-dictionary.md](docs/work-requirement-property-dictionary.md), where it was `docs/property-dictionary.md`.
 
+### Dependencies
+
+- **`rclone-api` 1.5.6 or later is required**: upgrading the CLI now upgrades an older `rclone-api` with it, which it left as it was. With a release before 1.5.3, `--upgrade-rclone` failed (`type object 'Rclone' has no attribute 'upgrade_rclone'`), with one before 1.5.4 `yd data list` failed, and with one before 1.5.6 a run with an inline remote printed `Error deleting config file` on stdout as it exited, breaking `--json`.
+
 ## 15.4.0 — 2026-10-27
 
 ### Upgrading
