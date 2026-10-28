@@ -453,7 +453,7 @@ The match status of each property, and of the Worker Pool as a whole, is one of:
 |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **YES**          | The property matches; for the Worker Pool, every property does, so far as the Nodes that have reported their details show.                                |
 | **NO**           | The property doesn't match (for RAM and vCPUs, any one Node failing is enough); for the Worker Pool, at least one property doesn't.                         |
-| **MAYBE**        | The property depends on the Nodes (task types, RAM, vCPUs) and no Node has yet reported its details; for the Worker Pool, no property is NO but at least one is MAYBE. |
+| **MAYBE**        | The property depends on the Nodes (task types, RAM, vCPUs) and no Node has yet reported its details, or none is left to report them: a Node's record is removed an hour after it terminates, though the Scheduler keeps the properties a pool's Nodes established; for the Worker Pool, no property is NO but at least one is MAYBE. |
 
 A Worker Pool ID given more than once is compared once, with a warning. An ID of the wrong kind is a usage error (exit code 2), and a Work Requirement, Task Group or Worker Pool that does not exist exits with code 6.
 
