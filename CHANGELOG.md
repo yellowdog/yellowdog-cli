@@ -7,6 +7,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Work Requirements
 
 - **`--add-to` straight after Tasks were added to a Task Group adds to it**: adding Tasks to an existing Task Group within seconds of a submission or another `--add-to` adding to it named them as the Tasks already there, since the Platform's count of them had not yet caught up, so the Platform refused the batch ("Task names must be unique within task group") and the command exited 1. `--add-to` now looks for the name its first new Task would have and, when it is already taken, says so and waits for the count to catch up before numbering the new Tasks; a name taken while the count stands still for 10 seconds is refused as one already in use, before anything is added.
+- **`yd workrequirement compare` and `yd taskgroup compare` compare instance pricing**: a new Instance Pricing row checks a Task Group's `instancePricingPreference` of `SPOT_ONLY` or `ON_DEMAND_ONLY` against the pricing of the Worker Pool's Compute Sources, every one of which must provision that pricing alone, as the Scheduler requires to scale the pool up. Such a pool was reported as matching though it never got the work. `--json`'s `properties` gain the row.
 - **`maximumTaskRetries` is sent only when it is set**: a Task Group with no retry settings is submitted without it, rather than with `0`, so `--dry-run` no longer shows the deprecated property. The Platform's default is the same, no retries, so nothing changes in how Tasks are retried.
 
 ### Variables and configuration

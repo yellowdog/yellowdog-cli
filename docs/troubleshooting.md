@@ -76,6 +76,7 @@ Detailed comparison report for NON-MATCHING (RUNNING) Worker Pool 'render-pool'
     ┌──────────────────┬────────────────────────────────┬──────────────────┬────────────────┐
     │ Property         │ Task Group Run Specification   │ Worker Pool      │ Match Status   │
     ├──────────────────┼────────────────────────────────┼──────────────────┼────────────────┤
+    │ Instance Pricing │                                │ ON_DEMAND_ONLY   │ YES            │
     │ Instance Type(s) │                                │ t3a.medium       │ YES            │
     │ Namespace(s)     │                                │ image-processing │ YES            │
     │ Provider(s)      │                                │ AWS              │ YES            │
@@ -95,6 +96,7 @@ An empty cell in the Task Group's column means it sets no constraint there. Each
 | **Task Type(s)** | Add the Task Type to the Nodes' Agent, for example with `add-docker-task-type.sh` in the User Data (see [Where Task Types Come From](work-requirements.md#where-task-types-come-from)), or change the Tasks' `taskType` |
 | **Worker Tag(s)** | Give the Worker Pool's `workerTag` and the Work Requirement's `workerTag` the same value |
 | **Namespace(s)** | Provision the pool in one of the Task Group's `namespaces`, or add the pool's namespace to them |
+| **Instance Pricing** | Provision from a template whose sources all provide the pricing the Task Group's `instancePricingPreference` asks for, or relax it to `SPOT_THEN_ON_DEMAND` or `ON_DEMAND_THEN_SPOT`, which only order the pools (see [Instance pricing](concepts.md#details)) |
 | **Instance Type(s)**, **Provider(s)**, **Region(s)** | Widen the Task Group's `instanceTypes`, `providers` or `regions`, or provision from a template whose sources fit them |
 | **RAM (GB)**, **vCPUs Count** | Widen the Task Group's `ram` or `vcpus` range, or use a larger or smaller instance type |
 
@@ -107,8 +109,6 @@ When every row is `YES`, the pool matches. If the Task Group still starves, its 
 **`MAYBE`.** Task Types, RAM and vCPUs are compared with what the pool's Nodes report, so before any Node has registered they show `MAYBE (no Nodes available)`. A pool that has never had a Node scales up to one Node first, whose Task Types, RAM and vCPUs then decide whether the pool matches; if it doesn't, the Task Group stays starved. A pool that has had Nodes keeps what they reported, even after it has scaled down to none, and the Scheduler matches on that. `compare` has only the Node records the Platform lists, which are removed an hour after a Node terminates, so a pool that has scaled down to none shows `MAYBE` an hour later, whatever its earlier Nodes reported. Step 5 finds out why there are no Nodes.
 
 **Several pools, one Task Group.** Give `yd workrequirement compare` several Worker Pools to compare each, with a summary table first. `yd taskgroup compare nightly-render/render render-pool` compares a single Task Group. The full table of what is compared is in [yd workrequirement compare](commands.md#yd-workrequirement-compare).
-
-**Instance pricing isn't compared.** `yd workrequirement compare` doesn't check `instancePricingPreference`. A Task Group with `SPOT_ONLY` or `ON_DEMAND_ONLY` can show every row `YES` against a pool that never gets its work, because the pool provisions the other kind of instance, or both (see [Instance pricing](concepts.md#details)). Check the pricing of the pool's Compute Sources.
 
 **Nodes still starting.** Every Node registered to the pool is compared, whatever its state. `--running-nodes-only` compares only the `RUNNING` ones.
 

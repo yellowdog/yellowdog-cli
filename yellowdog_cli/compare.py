@@ -15,6 +15,8 @@ from yellowdog_client.model import (
     ComputeRequirement,
     ComputeSource,
     DoubleRange,
+    InstancePricing,
+    InstancePricingPreference,
     Node,
     NodeSearch,
     NodeStatus,
@@ -61,6 +63,18 @@ _PROVIDER_BY_TYPE_PREFIX = (
     ("gce", GOOGLE),
     ("oci", OCI),
 )
+
+# The instance pricing a Task Group's instancePricingPreference requires of a
+# Worker Pool's every source: the Scheduler scales up for a SPOT_ONLY or
+# ON_DEMAND_ONLY Task Group only a pool provisioning that pricing alone. The
+# 'THEN' preferences order pools without excluding any, so constrain nothing
+_REQUIRED_PRICING = {
+    InstancePricingPreference.SPOT_ONLY: InstancePricing.SPOT_ONLY,
+    InstancePricingPreference.ON_DEMAND_ONLY: InstancePricing.ON_DEMAND_ONLY,
+}
+# A source whose pricing the Platform has not filled in (a simulated one),
+# which no required pricing matches
+UNKNOWN_PRICING = "UNKNOWN"
 
 # The compute source properties naming an instance type, one per provider
 # (the Simulator's is 'instanceType', as AWS's is)
@@ -118,6 +132,7 @@ class MatchReport:
         worker_pool_status: str,
         worker_tags: PropertyMatch,
         task_types: PropertyMatch,
+        instance_pricing: PropertyMatch,
         instance_types: PropertyMatch,
         providers: PropertyMatch,
         regions: PropertyMatch,
@@ -129,6 +144,7 @@ class MatchReport:
         self.worker_pool_id = worker_pool_id
         self.worker_pool_status = worker_pool_status
         self._property_match_list = [
+            instance_pricing,
             instance_types,
             namespaces,
             providers,
@@ -271,6 +287,7 @@ class WorkerPools:
             worker_tags=self._match_worker_tags(task_group, worker_pool),
             instance_types=self._match_instance_types(task_group, worker_pool),
             task_types=self._match_task_types(task_group, worker_pool),
+            instance_pricing=self._match_instance_pricing(task_group, worker_pool),
             providers=self._match_providers(task_group, worker_pool),
             regions=self._match_regions(task_group, worker_pool),
             ram=self._match_ram(task_group, worker_pool),
@@ -302,6 +319,15 @@ class WorkerPools:
             source.region
             for source in self._get_sources(worker_pool)
             if source.region is not None
+        }
+
+    def _get_instance_pricings(self, worker_pool: ProvisionedWorkerPool) -> set[str]:
+        return {
+            UNKNOWN_PRICING if pricing is None else str(pricing)
+            for pricing in (
+                getattr(source, "instancePricing", None)
+                for source in self._get_sources(worker_pool)
+            )
         }
 
     def _get_instance_types(self, worker_pool: ProvisionedWorkerPool) -> set[str]:
@@ -413,6 +439,27 @@ class WorkerPools:
             worker_pool_values=(
                 UNKNOWN_STRING if node is None else _joined_or_none(node_task_types)
             ),
+            match=match_type,
+        )
+
+    def _match_instance_pricing(
+        self, task_group: TaskGroup, worker_pool: ProvisionedWorkerPool
+    ) -> PropertyMatch:
+        preference = task_group.runSpecification.instancePricingPreference
+        required = None if preference is None else _REQUIRED_PRICING.get(preference)
+        worker_pool_pricings = self._get_instance_pricings(worker_pool)
+
+        # Calculate match: every source in the worker pool must provision
+        # the required pricing alone, as a mixed pool is not scaled up for it
+        if required is None or worker_pool_pricings <= {str(required)}:
+            match_type = MatchType.YES
+        else:
+            match_type = MatchType.NO
+
+        return PropertyMatch(
+            property_name="Instance Pricing",
+            task_group_values=EMPTY_STRING if preference is None else str(preference),
+            worker_pool_values=_joined_or_none(worker_pool_pricings),
             match=match_type,
         )
 
