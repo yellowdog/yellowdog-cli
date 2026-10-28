@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 08:18:15 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:25:42 GMT 2026 -->
 
 <!--te-->
 
@@ -302,7 +302,7 @@ yd workrequirement submit --follow
 
 When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout` (30 minutes by default).
 
-Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools.
+Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools. [How a Task Finds a Worker](docs/concepts.md) describes the matching, and if the Tasks don't start, [Why Isn't My Work Running?](docs/troubleshooting.md) finds out why.
 
 # Documentation
 
@@ -312,6 +312,8 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 
 | Page | What it covers |
 |---|---|
+| **[How a Task Finds a Worker](docs/concepts.md)** | The pieces (Work Requirements, Task Groups, Worker Pools, Nodes and Workers) and how the Scheduler matches a Task Group's run specification to Workers: Task Types, Worker Tags, namespaces, instance types, RAM and vCPUs |
+| **[Why Isn't My Work Running?](docs/troubleshooting.md)** | A step-by-step path from a Work Requirement whose Tasks don't start to the cause, built around `yd workrequirement compare` |
 | **[Installation](docs/installation.md)** | Installing the CLI with uv, or into a virtual environment with uv or pip; updating it, choosing its Python, and the Jsonnet extra |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
 | **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
