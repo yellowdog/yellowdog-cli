@@ -1505,6 +1505,8 @@ expands the prototype into three Tasks before the rest of the processing:
 
 **Spaces.** Spaces after each comma are optional and ignored. Spaces at the end of a value are not ignored, and form part of it.
 
+**Where the file is found.** A CSV file named with `-V` is looked for in the specification's directory, not the current one, as the specification's other files are. So `yd workrequirement submit work/wr.json -V photos.csv` reads `work/photos.csv`. `--content-path` names another directory to look in, and an absolute path is used as it is. `--debug` shows the path each CSV file was read from.
+
 ### CSV Variable Substitutions
 
 A `<<...>>` substitution takes its value from the CSV file alone. Variables supplied on the command line, in the TOML configuration file or from environment variables do not override the file's values. Every substitution that is not a `<<...>>` one is left unchanged, for `yd workrequirement submit` to make afterwards.
