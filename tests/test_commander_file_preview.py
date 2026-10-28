@@ -32,7 +32,14 @@ from pathlib import Path
 from time import monotonic
 
 import gui_harness
-from PyQt6.QtCore import QEventLoop, QLocale, QPoint, QRect, QSortFilterProxyModel
+from PyQt6.QtCore import (
+    QEventLoop,
+    QLocale,
+    QPoint,
+    QRect,
+    QSettings,
+    QSortFilterProxyModel,
+)
 from PyQt6.QtGui import QColor, QFont, QImage
 from PyQt6.QtWidgets import (
     QAbstractButton,
@@ -946,20 +953,56 @@ def sidebar_width(dialog) -> int:
     return splitter.sizes()[0]
 
 
-def plain_dialog_widths(directory) -> tuple[int, int]:
+def remembered_qt_width():
+    """
+    The sidebar width Qt has remembered, which a dialog reads as it is built:
+    for the sidebar cases' failure messages.
+    """
+    return QSettings(QSettings.Scope.UserScope, "QtProject").value(
+        "FileDialog/sidebarWidth"
+    )
+
+
+def dialog_widths(dialog) -> dict:
+    """
+    A shown dialog's widths, for the sidebar cases' failure messages.
+    """
+    splitter = dialog.findChild(QSplitter, "splitter")
+    return {
+        "dialog": dialog.width(),
+        "sizes": splitter.sizes(),
+        "sidebar_hint": splitter.widget(0).sizeHint().width(),
+        "handle": splitter.handleWidth(),
+    }
+
+
+def plain_dialog_widths(directory, record: dict | None = None) -> tuple[int, int]:
     """
     The sidebar and listing widths of a stock Qt file dialog over 'directory',
-    built and shown the way Commander's are but with none of its additions.
+    built and shown the way Commander's are but with none of its additions, its
+    sidebar at the width Qt asks for: the sidebar's size hint.
 
     The baseline the sidebar cases measure against, rather than a Commander
     dialog with a method stubbed out: what matters is how this compares with
-    the dialog Qt would have given the user unaided.
+    the dialog Qt would have given the user unaided. The sidebar is set to its
+    hint rather than left at what the dialog opened with, which is the width Qt
+    has remembered, a setting every file dialog on the machine writes as it is
+    destroyed, and which on Windows can open wider than the hint with none
+    remembered. 'record', when given, is filled in for a failure message.
     """
+    if record is not None:
+        record["remembered_before_plain"] = remembered_qt_width()
     dialog = QFileDialog(None, "Plain", str(directory))
     dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
     try:
         gui_harness.shown(dialog)
-        return sidebar_width(dialog), dialog.findChild(QSplitter, "splitter").sizes()[1]
+        splitter = dialog.findChild(QSplitter, "splitter")
+        assert splitter is not None, "the file dialog has no splitter"
+        hint = splitter.widget(0).sizeHint().width()
+        splitter.setSizes([hint, sum(splitter.sizes()) - hint])
+        if record is not None:
+            record["plain"] = dialog_widths(dialog)
+        return sidebar_width(dialog), splitter.sizes()[1]
     finally:
         dialog.close()
         dialog.deleteLater()
@@ -1205,25 +1248,27 @@ def test_the_view_mode_the_user_switches_to_is_used_by_the_next_dialog(
 
 
 def test_the_places_sidebar_opens_wide_enough_to_read_its_entries(
-    window, tmp_path, monkeypatch, qt_sidebar_width
+    window, tmp_path, monkeypatch
 ):
-    # Left to itself Qt opens it at the sidebar's size hint, which elides even
+    # Left to itself Qt asks for the sidebar's size hint, which elides even
     # 'Computer' to 'Co...' — the one part of the dialog that says nothing.
-    qt_sidebar_width(None)
-    plain_sidebar, _ = plain_dialog_widths(tmp_path)
+    seen: dict = {}
+    plain_sidebar, _ = plain_dialog_widths(tmp_path, seen)
     measured = {}
 
     def interact(dialog):
         measured["sidebar"] = sidebar_width(dialog)
+        seen["commander"] = dialog_widths(dialog)
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
+    seen["remembered_before_commander"] = remembered_qt_width()
     window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     assert plain_sidebar < SIDEBAR_PANE_WIDTH, (
-        "Qt already opens the sidebar wide enough, so this proves nothing"
+        f"Qt already opens the sidebar wide enough, so this proves nothing: {seen}"
     )
-    assert measured["sidebar"] >= SIDEBAR_PANE_WIDTH
+    assert measured["sidebar"] >= SIDEBAR_PANE_WIDTH, seen
 
 
 def test_the_save_dialog_widens_its_sidebar_too(
@@ -1328,12 +1373,12 @@ def test_qts_own_remembered_sidebar_width_is_ignored(
 
 
 def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
-    window, tmp_path, monkeypatch, qt_sidebar_width
+    window, tmp_path, monkeypatch
 ):
     # Same bargain as the preview pane: the dialog grows by what the sidebar
     # gains, rather than the listing shrinking by it.
-    qt_sidebar_width(None)
-    _, plain_listing = plain_dialog_widths(tmp_path)
+    seen: dict = {}
+    _, plain_listing = plain_dialog_widths(tmp_path, seen)
     measured = {}
 
     def interact(dialog):
@@ -1341,25 +1386,27 @@ def test_the_wider_sidebar_is_not_taken_out_of_the_listing(
         assert splitter is not None, "the file dialog has no splitter"
         measured["listing"] = splitter.sizes()[1]
         measured["handle"] = splitter.handleWidth()
+        seen["commander"] = dialog_widths(dialog)
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
+    seen["remembered_before_commander"] = remembered_qt_width()
     window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
     # All the listing gives up is the preview pane's own splitter handle, which
     # has to come from somewhere; both panes' widths come from the wider dialog.
     lost = plain_listing - measured["listing"]
-    assert 0 <= lost <= measured["handle"]
+    assert 0 <= lost <= measured["handle"], seen
 
 
 def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
-    window, tmp_path, monkeypatch, commander_dialog_settings, qt_sidebar_width
+    window, tmp_path, monkeypatch, commander_dialog_settings
 ):
     # The dialog must make room for the sidebar whether Commander is setting the
     # width for the first time or applying a remembered one. Uncompensated, the
     # listing would be narrower from the second dialog of the session onwards.
-    qt_sidebar_width(None)
-    _, plain_listing = plain_dialog_widths(tmp_path)
+    seen: dict = {}
+    _, plain_listing = plain_dialog_widths(tmp_path, seen)
     commander_dialog_settings.setValue(SETTING_DIALOG_SIDEBAR_WIDTH, SIDEBAR_PANE_WIDTH)
     measured = {}
 
@@ -1368,12 +1415,14 @@ def test_the_listing_keeps_its_width_when_the_sidebar_is_already_wide(
         assert splitter is not None, "the file dialog has no splitter"
         measured["listing"] = splitter.sizes()[1]
         measured["handle"] = splitter.handleWidth()
+        seen["commander"] = dialog_widths(dialog)
         press(dialog, "Cancel")
 
     drive_file_dialog(window, monkeypatch, interact)
+    seen["remembered_before_commander"] = remembered_qt_width()
     window._file_dialogs.select_file(caption="Pick", directory=str(tmp_path))
 
-    assert plain_listing - measured["listing"] <= measured["handle"]
+    assert plain_listing - measured["listing"] <= measured["handle"], seen
 
 
 def test_the_width_the_user_drags_the_pane_to_is_used_by_the_next_dialog(

@@ -1,5 +1,6 @@
 import atexit
 import contextlib
+import gc
 import io
 import os
 import sys
@@ -347,12 +348,20 @@ def qt_sidebar_width(_preserve_qt_sidebar_width):
     that measure a stock dialog need it cleared, or they measure whatever this
     machine last happened to keep. Putting the user's own value back is
     _preserve_qt_sidebar_width's business.
+
+    Qt writes the width as a dialog is destroyed, not as it closes, and every
+    dialog is deleteLater()'d, so a dialog an earlier test left (Commander's, at
+    SIDEBAR_PANE_WIDTH) is destroyed first: otherwise it can be destroyed after
+    the width is set, by the garbage collector or the next event loop, and the
+    stock dialog measured against opens at Commander's width.
     """
-    from PyQt6.QtCore import QSettings
+    from PyQt6.QtCore import QCoreApplication, QEvent, QSettings
 
     settings = QSettings(QSettings.Scope.UserScope, QT_SETTINGS_ORGANISATION)
 
     def remember(width: int | None):
+        gc.collect()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
         if width is None:
             settings.remove(QT_SIDEBAR_WIDTH_SETTING)
         else:
