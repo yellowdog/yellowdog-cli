@@ -6,13 +6,14 @@ raised instead, so its traceback shows. Each test drives one loader with the
 module's state patched, and restored after it.
 """
 
+import logging
 import os
 import sys
 from unittest.mock import MagicMock
 
 import pytest
 
-from yellowdog_cli.utils import load_config, output_settings
+from yellowdog_cli.utils import load_config
 from yellowdog_cli.utils import variable_substitution as variable_substitution_module
 from yellowdog_cli.utils.exit_codes import ExitCode
 
@@ -98,15 +99,16 @@ class TestTheConfigurationFile:
         _exits_3(lambda: _load(monkeypatch, config_file="typo.toml"))
         assert "namespce" in loading[0]
 
-    def test_an_unknown_property_is_raised_under_debug(
-        self, loading, monkeypatch, tmp_path
+    def test_an_unknown_property_is_traced(
+        self, loading, monkeypatch, tmp_path, caplog
     ):
         (tmp_path / "typo.toml").write_text(
             '[common]\nnamespce = "ns"\n', encoding="utf-8"
         )
-        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
-        with pytest.raises(Exception, match="namespce"):
-            _load(monkeypatch, config_file="typo.toml")
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _exits_3(lambda: _load(monkeypatch, config_file="typo.toml"))
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert record.name == "yellowdog_cli.utils.load_config"
 
     def test_any_other_failure_reading_it_exits_3(self, loading, monkeypatch, tmp_path):
         (tmp_path / "config.toml").write_text("[common]\n", encoding="utf-8")
@@ -120,9 +122,7 @@ class TestTheConfigurationFile:
         _exits_3(lambda: _load(monkeypatch))
         assert loading == ["the loader's own fault"]
 
-    def test_any_other_failure_is_raised_under_debug(
-        self, loading, monkeypatch, tmp_path
-    ):
+    def test_any_other_failure_is_traced(self, loading, monkeypatch, tmp_path, caplog):
         (tmp_path / "config.toml").write_text("[common]\n", encoding="utf-8")
 
         def fails(_filename, **_kwargs):
@@ -131,9 +131,10 @@ class TestTheConfigurationFile:
         monkeypatch.setattr(
             load_config, "load_toml_file_with_variable_substitutions", fails
         )
-        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
-        with pytest.raises(RuntimeError, match="own fault"):
-            _load(monkeypatch)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _exits_3(lambda: _load(monkeypatch))
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert record.name == "yellowdog_cli.utils.load_config"
 
 
 class TestOverridesAndImports:
@@ -215,12 +216,13 @@ class TestSectionsOfTheWrongShape:
         _exits_3(load_config.load_config_worker_pool)
         assert "name" in loading[0]
 
-    def test_either_is_raised_under_debug(self, loading, monkeypatch):
+    def test_either_is_traced(self, loading, monkeypatch, caplog):
         monkeypatch.setattr(load_config, "CONFIG_TOML", {"workerPool": {"name": 123}})
         monkeypatch.setattr(load_config, "_ARGS", _args())
-        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
-        with pytest.raises(TypeError):
-            load_config.load_config_worker_pool()
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _exits_3(load_config.load_config_worker_pool)
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert record.name == "yellowdog_cli.utils.load_config"
 
 
 class TestTheCommandLineWithoutTheFileOrSection:

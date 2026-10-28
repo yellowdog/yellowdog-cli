@@ -700,7 +700,10 @@ DEBUG = option(
     "--debug",
     action="store_true",
     required=False,
-    help=("display the Python stack trace on error, and the configuration preamble"),
+    help=(
+        "trace on stderr what the command does: the configuration it loaded,"
+        " each request to the Platform, and the stack trace of a failure"
+    ),
 )
 PAC = option(
     "--pac",

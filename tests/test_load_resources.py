@@ -5,6 +5,7 @@ naming the file and the item, before anything indexes into it; and the
 per-resource failure for a missing 'resource' naming no internal key.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -74,6 +75,20 @@ def test_a_missing_resource_type_names_no_internal_key(monkeypatch):
     assert failures
     assert load_resources.RESOURCE_SOURCE_DIR not in failures[0]
     assert "'name': 'x'" in failures[0]
+
+
+def test_the_order_resources_are_processed_in_is_traced(load, caplog):
+    resources = load(
+        '[{"resource": "ComputeRequirementTemplate", "name": "t"},'
+        ' {"resource": "Keyring", "name": "k"}]'
+    )
+    with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+        resource_processing.process_resources(
+            resources, lambda resource_type, specification: None, "create"
+        )
+    assert caplog.messages[0] == (
+        "To create, in this order: 1. Keyring 'k'; 2. ComputeRequirementTemplate 't'"
+    )
 
 
 # ---------------------------------------------------------------------------

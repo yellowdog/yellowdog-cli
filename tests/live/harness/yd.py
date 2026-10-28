@@ -10,7 +10,10 @@ A call that exits as expected is recorded for the coverage gate
 (harness/coverage.py), unless it was made to fail.
 
 Every caller passes the long '--json' and '--quiet', so stdout is the
-document alone: '-J' is '--jsonnet-dry-run' on 'yd resource create'.
+document alone: '-J' is '--jsonnet-dry-run' on 'yd resource create'. Every
+call is given '--debug', so the secret check covers the trace too and a
+failure shows what the command did; the trace is split from stderr
+(Result.trace), which keeps the CLI's own messages for the tests to read.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import copy
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
@@ -36,6 +40,17 @@ _MIN_LINE = 16  # A line of a multi-line secret, masked on its own
 _SERVICE_ACCOUNT_SECRETS = ("private_key", "private_key_id")
 _PEM_ARMOUR = "-----"  # A PEM's BEGIN and END lines, the same in every key
 _TAIL_LINES = 40
+_TRACE_TAIL_LINES = 60
+# A line of the '--debug' trace (utils/debug_log.py), and what may follow
+# one: its traceback, and the lines chaining one traceback to the next
+_TRACE_LINE = re.compile(
+    r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?: \(\d+\))? : DEBUG : \[\+\d+\.\d{3}s\] \S+: "
+)
+_TRACEBACK = "Traceback (most recent call last):"
+_CHAINED = (
+    "The above exception was the direct cause of the following exception:",
+    "During handling of the above exception, another exception occurred:",
+)
 
 LOG = logging.getLogger("ydst")
 
@@ -89,7 +104,8 @@ class Result:
     args: tuple[str, ...]
     exit_code: int
     stdout: str = field(repr=False)
-    stderr: str = field(repr=False)
+    stderr: str = field(repr=False)  # The CLI's messages, the trace taken out
+    trace: str = field(repr=False, default="")  # The '--debug' trace
 
     @property
     def document(self) -> Any:
@@ -203,7 +219,13 @@ class Yd:
         code other than 0. 'input' is given on standard input, which is
         otherwise empty.
         """
-        argv = [*self._program, *args, "--config", str(self.run.cli_config)]
+        argv = [
+            *self._program,
+            *args,
+            "--config",
+            str(self.run.cli_config),
+            "--debug",
+        ]
         shown = self.mask("yd " + " ".join(args))
         environment = self.run.environment(os.environ)
         environment.update(self._credentials)
@@ -223,8 +245,9 @@ class Yd:
             raise YdError(
                 f"{shown}: still running after {error.timeout:.0f}s"
             ) from None
+        messages, trace = split_trace(completed.stderr)
         result = Result(
-            tuple(args), completed.returncode, completed.stdout, completed.stderr
+            tuple(args), completed.returncode, completed.stdout, messages, trace
         )
         if not expect_secret:
             self._check_no_secret(shown, result)
@@ -243,7 +266,9 @@ class Yd:
         configured secret.
         """
         for variant, label in self._secret_labels:
-            if variant in result.stdout or variant in result.stderr:
+            if any(
+                variant in text for text in (result.stdout, result.stderr, result.trace)
+            ):
                 raise SecretInOutput(
                     f"{shown}: its output holds the secret configured as {label}\n"
                     + self.describe(result)
@@ -258,8 +283,47 @@ class Yd:
             f"yd {' '.join(result.args)} exited {result.exit_code}"
             f"\n--- stdout ---\n{_tail(result.stdout)}"
             f"\n--- stderr ---\n{_tail(result.stderr)}"
+            f"\n--- trace ---\n{_tail(result.trace, _TRACE_TAIL_LINES)}"
         )
 
 
-def _tail(text: str) -> str:
-    return "\n".join(text.rstrip().splitlines()[-_TAIL_LINES:])
+def _tail(text: str, lines: int = _TAIL_LINES) -> str:
+    return "\n".join(text.rstrip().splitlines()[-lines:])
+
+
+def split_trace(stderr: str) -> tuple[str, str]:
+    """
+    A command's stderr as (its messages, its '--debug' trace): each trace
+    line goes to the trace with the traceback logged with it, chained ones
+    included; every other line is a message, a traceback that follows no
+    trace line (a crash) among them.
+    """
+    messages: list[str] = []
+    trace: list[str] = []
+    lines = stderr.splitlines()
+    i = 0
+    while i < len(lines):
+        if not _TRACE_LINE.match(lines[i]):
+            messages.append(lines[i])
+            i += 1
+            continue
+        trace.append(lines[i])
+        i += 1
+        while i < len(lines) and lines[i] == _TRACEBACK:
+            start = i
+            i += 1
+            while i < len(lines) and lines[i].startswith(" "):
+                i += 1
+            i = min(i + 1, len(lines))  # The exception's own line
+            # A chained traceback: a blank line, the link, a blank line
+            if (
+                i + 2 < len(lines)
+                and lines[i] == ""
+                and lines[i + 1] in _CHAINED
+                and lines[i + 2] == ""
+            ):
+                i += 3
+            trace.extend(lines[start:i])
+    return "".join(f"{line}\n" for line in messages), "".join(
+        f"{line}\n" for line in trace
+    )

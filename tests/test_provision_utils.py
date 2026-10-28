@@ -12,6 +12,7 @@ Covers:
   - get_template_id: YDID passthrough, name lookup, name not found
 """
 
+import logging
 import os
 from unittest.mock import MagicMock, patch
 
@@ -101,6 +102,28 @@ class TestReadUserData:
     def test_user_data_files_concatenated_with_newlines(self, dirs):
         config = _make_config(user_data_files=["a.sh", "b.sh"])
         assert get_user_data_property(config) == "a in config\nb in config\n"
+
+    @pytest.mark.parametrize(
+        "content_path, expected",
+        [
+            (None, "the configuration file's directory, '{config}'"),
+            ("{content}", "--content-path, '{content}'"),
+        ],
+    )
+    def test_where_each_file_is_found_is_traced(
+        self, dirs, caplog, content_path, expected
+    ):
+        config_dir, content_dir = dirs
+        places = {"config": config_dir, "content": content_dir}
+        if content_path is not None:
+            content_path = content_path.format(**places)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            get_user_data_property(_make_config(user_data_files=["a.sh"]), content_path)
+        directory = content_dir if content_path else config_dir
+        assert caplog.messages == [
+            f"User Data files are found from {expected.format(**places)}",
+            f"Reading User Data file 'a.sh' from '{directory / 'a.sh'}'",
+        ]
 
     def test_an_absolute_path_is_itself(self, dirs):
         _, content_dir = dirs

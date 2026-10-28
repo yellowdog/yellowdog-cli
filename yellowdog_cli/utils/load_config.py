@@ -4,6 +4,7 @@ Common utility functions, mostly related to loading configuration data.
 
 import copy
 import json
+import logging
 import math
 import os
 from collections.abc import Callable
@@ -84,6 +85,8 @@ from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_insitu,
     warn_of_undefined_variables,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # The Worker Pool sections as load_config_worker_pool() resolved them, before
 # 'computeRequirement' was merged into 'workerPool', for the undefined-variable
@@ -171,9 +174,9 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
         return
     except Exception as e:
         # A fault in the check itself: the check is advisory, so it never
-        # stops a command that would otherwise run; '--debug' shows it
-        if OUTPUT.debug:
-            raise
+        # stops a command that would otherwise run; the '--debug' trace
+        # shows its traceback
+        _LOG.debug("Configuration schema check failed", exc_info=True)
         print_warning(
             f"cannot check '{CONFIG_FILE}' against the config schema:"
             f" {type(e).__name__}: {e}"
@@ -592,10 +595,9 @@ def _load_config_file() -> None:
                 validate_properties(toml_for_validation, f"'{CONFIG_FILE}'")
                 _validate_data_client_profiles(CONFIG_TOML.get(DATA_CLIENT_SECTION, {}))
             except Exception as e:
-                # A configuration error, as a rule; under '--debug', its
-                # traceback, in case it is a fault in the loader instead
-                if OUTPUT.debug:
-                    raise
+                # A configuration error, as a rule; its traceback in the
+                # '--debug' trace, in case it is a fault in the loader instead
+                _LOG.debug("Configuration check failed", exc_info=True)
                 print_error(e)
                 exit(ExitCode.CONFIGURATION)
             if _ARGS.property_overrides:
@@ -629,8 +631,7 @@ def _load_config_file() -> None:
             exit(ExitCode.CONFIGURATION)
 
         except Exception as e:
-            if OUTPUT.debug:
-                raise  # As above
+            _LOG.debug("Configuration load failed", exc_info=True)  # As above
             print_error(e)
             exit(ExitCode.CONFIGURATION)
 
@@ -1346,10 +1347,9 @@ def load_config_work_requirement() -> ConfigWorkRequirement:
         )
 
     except Exception as e:
-        # A configuration error, as a rule; under '--debug', its traceback,
-        # in case it is a fault in this loader instead
-        if OUTPUT.debug:
-            raise
+        # A configuration error, as a rule; its traceback in the '--debug'
+        # trace, in case it is a fault in this loader instead
+        _LOG.debug("[workRequirement] load failed", exc_info=True)
         print_error(f"{e}")
         exit(ExitCode.CONFIGURATION)
 
@@ -1620,8 +1620,8 @@ def load_config_worker_pool() -> ConfigWorkerPool:
 
     except Exception as e:
         # A configuration error (a property of the wrong type), as a rule;
-        # under '--debug', its traceback, in case it is a fault in this loader
-        if OUTPUT.debug:
-            raise
+        # its traceback in the '--debug' trace, in case it is a fault in this
+        # loader
+        _LOG.debug("[workerPool] load failed", exc_info=True)
         print_error(f"{e}")
         exit(ExitCode.CONFIGURATION)

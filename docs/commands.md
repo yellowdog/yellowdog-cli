@@ -82,7 +82,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 08:18:16 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 12:01:50 GMT 2026 -->
 
 <!--te-->
 
@@ -139,7 +139,7 @@ The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of
 | `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
 | `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
 | `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
-| `--debug` | Display the Python stack trace on error, which can be useful for support purposes. Also shows the startup preamble, each line marked `DEBUG`: where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL when it is not the default, the HTTPS proxy in use, and the certificates bundle when one is set. The whole preamble is suppressed by default |
+| `--debug` | Trace what the command does on stderr, for support or to see why a command did what it did: the configuration it loaded, each request to the Platform with its response status, each name resolved and file read, the decisions it made along the way, and the stack trace of a failure (see [What the Trace Shows](troubleshooting.md#what-the-trace-shows)). The trace never includes the application key or secret. `--quiet` and `--json` don't suppress it, and the exit code is the one the command gives without `--debug` |
 | `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](configuration.md#https-proxy-support) |
 | `--docs` | Provide a link to the documentation for this version of the CLI |
 
@@ -1909,7 +1909,7 @@ yd version [options]
 
 Key options:
 - `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
-- `--debug` — print the Python path and executable details, as a second table (note that this differs from `--debug` on other commands, which prints a stack trace on error); with the full report or `--json` only, not with a single-version option
+- `--debug` — print the Python path and executable details, as a second table (note that this differs from `--debug` on other commands, which traces what the command does); with the full report or `--json` only, not with a single-version option
 - `--no-format`, `--nf` — print the report, or the `--json` object, without colouring, as it is when piped or redirected
 - `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed or whose version could not be read; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](json-output.md))
 

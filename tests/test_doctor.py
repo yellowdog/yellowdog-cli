@@ -6,6 +6,7 @@ since the doctor is where a stray environment variable would be reported.
 
 import contextlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -36,7 +37,6 @@ def _ctx(**overrides) -> dc.Context:
         config_common=None,
         client=None,
         data_client=None,
-        debug=False,
         args=ARGS_PARSER,
     )
     base.update(overrides)
@@ -154,15 +154,18 @@ class TestRunner:
         )
         assert (result.status, result.detail) == (dc.Status.FAIL, "kaboom")
 
-    def test_raising_check_reraises_under_debug(self):
+    def test_raising_check_is_a_row_with_its_traceback_traced(self, caplog):
         def boom(ctx):
             raise RuntimeError("kaboom")
 
-        with pytest.raises(RuntimeError):
-            dc.run_checks(
-                _ctx(debug=True),
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            [(_, result)] = dc.run_checks(
+                _ctx(),
                 checks=(dc.Check("x", "Installation", dc.Need.NOTHING, boom),),
             )
+        assert result.status is dc.Status.FAIL
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert "Check 'x' failed" in record.getMessage()
 
     def test_exiting_check_is_fail_with_status(self):
         def leave(ctx):
@@ -175,16 +178,6 @@ class TestRunner:
             dc.Status.FAIL,
             "exited with status 3",
         )
-
-    def test_exiting_check_reraises_under_debug(self):
-        def leave(ctx):
-            raise SystemExit(3)
-
-        with pytest.raises(SystemExit):
-            dc.run_checks(
-                _ctx(debug=True),
-                checks=(dc.Check("x", "Installation", dc.Need.NOTHING, leave),),
-            )
 
     def test_with_timeout_reports_expiry(self):
         import time
@@ -285,7 +278,6 @@ def _args(monkeypatch, **values) -> None:
         quiet=False,
         offline=False,
         timeout=DOCTOR_DEFAULT_TIMEOUT,
-        debug=False,
         no_format=False,
     )
     defaults.update(values)

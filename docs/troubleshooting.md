@@ -11,9 +11,10 @@
    * [5. Does the Worker Pool Have Nodes?](#5-does-the-worker-pool-have-nodes)
    * [6. Are the Tasks Failing?](#6-are-the-tasks-failing)
    * [If a Command Fails](#if-a-command-fails)
+         * [What the Trace Shows](#what-the-trace-shows)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 09:22:00 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 12:01:53 GMT 2026 -->
 
 <!--te-->
 
@@ -147,3 +148,37 @@ yd task list --within nightly-render --with-errors
 ## If a Command Fails
 
 If a `yd` command itself fails, with an error about credentials, permissions or the connection, run `yd doctor`. It checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
+
+To see what a command did before it failed, run it again with `--debug`. It writes a trace to stderr: the configuration it loaded, each request it made to the Platform with the response's status, and the stack trace of the failure. It leaves out the application key and secret.
+
+```bash
+yd workrequirement submit --debug 2> trace.txt
+```
+
+The trace also helps when a command succeeds but doesn't do what you expected, such as matching the wrong Work Requirement or reading the wrong file.
+
+#### What the Trace Shows
+
+Each line starts with the date and time, as the command's other messages do, then `DEBUG`, the seconds since the command started, in brackets, and the part of the CLI that wrote it:
+
+```text
+2026-10-28 14:48:21 : DEBUG : [+0.026s] load_config: Loading configuration data from: 'config.toml'
+2026-10-28 14:48:21 : DEBUG : [+0.412s] named_targets: 'nightly-render' is ydid:workreq:000000:5f3c2d1e-8a7b-4c6d-9e0f-1a2b3c4d5e6f
+2026-10-28 14:48:21 : DEBUG : [+0.415s] urllib3: https://api.yellowdog.ai:443 "GET /work/requirements/ydid:workreq:000000:5f3c2d1e-8a7b-4c6d-9e0f-1a2b3c4d5e6f HTTP/1.1" 200 2048
+```
+
+It shows:
+
+- Where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL and the HTTPS proxy in use.
+- Each request to the Platform, with its response status.
+- Each name resolved to its YellowDog ID, what each name pattern matched, and the namespaces searched when none was given.
+- Each file read, by its full path, and the directory a specification's files were looked for in.
+- For `yd workrequirement submit`, how the Tasks were batched and each failed attempt to add a batch; with `--add-to`, which Task Groups were already there and how the new Tasks were numbered.
+- Each event stream opened, closed or reconnected, and the wait before reconnecting; after an action on a Compute Requirement, what `--follow` checked.
+- What each target of an action, such as `cancel` or `terminate`, resolved to.
+- The order `yd resource create` and `yd resource remove` work through their resources in.
+- Each rclone command the `yd data` verbs run, and its exit status.
+- What `yd workrequirement compare` read of each Worker Pool: its Compute Sources, its Nodes, and the Node whose Task Types stand for the pool's.
+- The stack trace of a failure.
+
+The trace never includes the application key or secret, a variable's value, or the parameters of an inline data client remote. `--quiet` and `--json` don't suppress it, and the command's exit code is the one it gives without `--debug`.

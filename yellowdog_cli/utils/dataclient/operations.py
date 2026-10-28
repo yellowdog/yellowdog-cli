@@ -5,6 +5,7 @@ yd-upload, yd-download, yd-delete, yd-ls.
 
 import fnmatch
 import json
+import logging
 import os
 import subprocess
 import tempfile
@@ -21,9 +22,11 @@ from rclone_api.dir_listing import DirListing
 
 from yellowdog_cli.utils.config_types import ConfigDataClient
 from yellowdog_cli.utils.dataclient.rclone import (
+    is_inline_remote,
     make_rclone,
     make_rclone_for_copy,
     parse_rclone_config,
+    shown_remote,
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS
 from yellowdog_cli.utils.limits import (
@@ -43,6 +46,8 @@ from yellowdog_cli.utils.variable_substitution import (
     literal_text,
     resolve_variables_in_string,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # The keys of an rclone 'lsjson' entry that yd-ls records under '--json',
 # spelled as rclone spells them; others vary by backend ('MimeType', 'IsBucket')
@@ -117,12 +122,34 @@ def _without_rclone_api_warnings(call: Callable[[], _T]) -> _T:
         return call()
 
 
+def _traced(args: list[str], call: Callable[[], _T]) -> _T:
+    """
+    call(), an rclone run whose command line is 'args', traced before it
+    runs and with its exit status after. An inline remote's parameters are
+    withheld (shown_remote()), since its credentials are among them.
+    """
+    _LOG.debug(
+        "rclone %s",
+        " ".join(shown_remote(arg) if is_inline_remote(arg) else arg for arg in args),
+    )
+    result = call()
+    status = getattr(result, "returncode", None)
+    if status is not None:
+        _LOG.debug("rclone %s: exit status %s", args[0], status)
+    return result
+
+
 def _run_quietly(rclone: Rclone, args: list[str]) -> subprocess.CompletedProcess:
     """
     rclone.impl._run(args, capture=True), without rclone_api's warning on a
     non-zero exit: every caller checks the return code and reports it itself.
     """
-    return _without_rclone_api_warnings(lambda: rclone.impl._run(args, capture=True))
+    return _traced(
+        args,
+        lambda: _without_rclone_api_warnings(
+            lambda: rclone.impl._run(args, capture=True)
+        ),
+    )
 
 
 def _copy_to(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
@@ -132,8 +159,11 @@ def _copy_to(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
     a CalledProcessError on a failed transfer before the caller can record it
     as 'failed', and its UserWarning is silenced as for a listing.
     """
-    return _without_rclone_api_warnings(
-        lambda: rclone.copy_to(src=src, dst=dst, check=False)
+    return _traced(
+        ["copyto", src, dst],
+        lambda: _without_rclone_api_warnings(
+            lambda: rclone.copy_to(src=src, dst=dst, check=False)
+        ),
     )
 
 
@@ -142,10 +172,13 @@ def _copy(rclone: Rclone, src: str, dst: str) -> RcloneCompletedProcess:
     'rclone copy src dst' (dst is a directory to copy into), its files
     DATA_CLIENT_RCLONE_TRANSFERS at a time; see _copy_to().
     """
-    return _without_rclone_api_warnings(
-        lambda: rclone.copy(
-            src=src, dst=dst, check=False, transfers=DATA_CLIENT_RCLONE_TRANSFERS
-        )
+    return _traced(
+        ["copy", src, dst],
+        lambda: _without_rclone_api_warnings(
+            lambda: rclone.copy(
+                src=src, dst=dst, check=False, transfers=DATA_CLIENT_RCLONE_TRANSFERS
+            )
+        ),
     )
 
 
@@ -185,14 +218,17 @@ def _copy_files(
     """
     return _with_names_file(
         names,
-        lambda path: _without_rclone_api_warnings(
-            lambda: rclone.copy(
-                src=src_dir,
-                dst=dst_dir,
-                check=False,
-                transfers=DATA_CLIENT_RCLONE_TRANSFERS,
-                other_args=["--files-from-raw", path],
-            )
+        lambda path: _traced(
+            ["copy", src_dir, dst_dir, "--files-from-raw", f"<{len(names)} names>"],
+            lambda: _without_rclone_api_warnings(
+                lambda: rclone.copy(
+                    src=src_dir,
+                    dst=dst_dir,
+                    check=False,
+                    transfers=DATA_CLIENT_RCLONE_TRANSFERS,
+                    other_args=["--files-from-raw", path],
+                )
+            ),
         ),
     )
 
@@ -557,21 +593,24 @@ def _rclone_sync(rclone: Rclone, src: str, dst: str):
     result is returned for the caller to check, rclone_api's warning silenced
     as in _copy_to().
     """
-    return _without_rclone_api_warnings(
-        lambda: rclone.impl._run(
-            [
-                "sync",
-                src,
-                dst,
-                "--checkers",
-                "1000",
-                "--transfers",
-                str(DATA_CLIENT_RCLONE_TRANSFERS),
-                "--low-level-retries",
-                "10",
-            ],
-            capture=False,
-        )
+    return _traced(
+        ["sync", src, dst],
+        lambda: _without_rclone_api_warnings(
+            lambda: rclone.impl._run(
+                [
+                    "sync",
+                    src,
+                    dst,
+                    "--checkers",
+                    "1000",
+                    "--transfers",
+                    str(DATA_CLIENT_RCLONE_TRANSFERS),
+                    "--low-level-retries",
+                    "10",
+                ],
+                capture=False,
+            )
+        ),
     )
 
 
@@ -1783,8 +1822,11 @@ def list_remote(
     """
     _, rclone = _rclone_for_config(config)
     max_depth = -1 if recursive else 1
-    return _without_rclone_api_warnings(
-        lambda: rclone.ls(src=remote_path, max_depth=max_depth)
+    return _traced(
+        ["lsjson", remote_path, f"--max-depth={max_depth}"],
+        lambda: _without_rclone_api_warnings(
+            lambda: rclone.ls(src=remote_path, max_depth=max_depth)
+        ),
     )
 
 

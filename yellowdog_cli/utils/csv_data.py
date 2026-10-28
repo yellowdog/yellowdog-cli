@@ -3,10 +3,11 @@ Module for handling Task data supplied in CSV files.
 """
 
 import csv
+import logging
 import re
 import sys
 from collections import OrderedDict
-from os.path import join
+from os.path import abspath, join
 from typing import cast
 
 from tomli import load as toml_load
@@ -29,6 +30,8 @@ from yellowdog_cli.utils.variable_syntax import (
     CSV_VAR_CLOSING_DELIMITER,
     CSV_VAR_OPENING_DELIMITER,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # A CSV substitution: '<<name>>', or with a type tag, '<<num:name>>'. The
 # name is a CSV heading, which may be anything but a delimiter or a line
@@ -97,6 +100,12 @@ class CSVTaskData:
             )
         self._index = 0
         self._total_tasks = len(self._csv_data) - 1
+        _LOG.debug(
+            "Read CSV file '%s': %d data row(s), headings %s",
+            abspath(csv_filename),
+            self._total_tasks,
+            ", ".join(repr(h) for h in headings),
+        )
 
     def __iter__(self):
         return self

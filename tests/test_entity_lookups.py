@@ -6,6 +6,7 @@ resolution, the Compute Requirement Template name lookup, the
 messages.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -219,6 +220,19 @@ class TestSearchNamespaces:
     ):
         # Unscoped, the Platform's 403 names the permission that is missing
         assert entity_utils.search_namespaces(_application(False, []), None) is None
+
+    def test_the_scope_is_traced_once_per_run(
+        self, _fresh_application_details, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(entity_utils, "_SCOPES_TRACED", set())
+        client = _application(False, ["a", "b"])
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            entity_utils.search_namespaces(client, None)
+            entity_utils.search_namespaces(client, None)
+            entity_utils.search_namespaces(client, "ns")
+        assert caplog.messages == [
+            "No namespace given: searching those the Application can read, 'a', 'b'"
+        ]
 
     def test_a_template_lookup_without_a_namespace_is_scoped(
         self, _fresh_application_details

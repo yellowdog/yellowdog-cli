@@ -13,9 +13,10 @@ yd-schema) and changed only through this module: a command that adjusts its
 options for output (yd-list's '--count', its interactive selection;
 yd-abort's) configures it again from them. configured() does so for the
 length of a 'with' block, which is how a test sets it. Before anything
-configures it, its defaults print everything, formatted.
+configures it, its defaults print everything, formatted. Configuring it, or
+restoring it, turns the '--debug' trace on or off to match (debug_log.py).
 
-Imports nothing from the CLI.
+Imports nothing from the CLI but debug_log.py.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import Any
+
+from yellowdog_cli.utils.debug_log import set_debug_logging
 
 
 @dataclass
@@ -62,6 +65,7 @@ def configure_output(args: Any) -> None:
             field.name,
             getattr(args, field.name, getattr(_DEFAULTS, field.name)),
         )
+    set_debug_logging(bool(OUTPUT.debug), print_pid=bool(OUTPUT.print_pid))
 
 
 def snapshot() -> OutputSettings:
@@ -79,6 +83,7 @@ def restore(settings: OutputSettings) -> None:
     """
     for field in fields(OutputSettings):
         setattr(OUTPUT, field.name, getattr(settings, field.name))
+    set_debug_logging(bool(OUTPUT.debug), print_pid=bool(OUTPUT.print_pid))
 
 
 @contextmanager

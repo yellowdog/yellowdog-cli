@@ -4,6 +4,7 @@ and each property's matching rule, with the Compute Requirement and Node
 fetches stubbed. The '--json' document is tested in test_json_output.py.
 """
 
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -293,6 +294,7 @@ def _node(
     status=NodeStatus.RUNNING, ram=8.0, vcpus=2.0, task_types=("bash",), details=True
 ) -> Any:
     return SimpleNamespace(
+        id=f"ydid:node:000000:x:{status.name.lower()}",
         status=status,
         details=(
             SimpleNamespace(ram=ram, vcpus=vcpus, supportedTaskTypes=list(task_types))
@@ -404,6 +406,32 @@ class TestMatching:
             "bash, docker",
             "YES",
         ]
+
+    def test_the_sources_nodes_and_task_types_node_are_traced(self, platform, caplog):
+        platform.nodes = [
+            _node(status=NodeStatus.TERMINATED, task_types=()),
+            _node(task_types=("bash", "docker")),
+            _node(details=False),
+        ]
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _rows(platform, _run_spec())
+        assert caplog.messages == [
+            "Compute Requirement ydid:cr:000000:x has 1 source(s); AWS eu-west-2"
+            " ON_DEMAND_ONLY",
+            "Worker Pool ydid:wrkrpool:000000:x has 3 Node(s) listed, 2 RUNNING, 2"
+            " reporting details",
+            "Worker Pool ydid:wrkrpool:000000:x: Task Types taken from Node"
+            " ydid:node:000000:x:running (RUNNING)",
+        ]
+
+    def test_task_types_unknown_are_traced(self, platform, caplog):
+        platform.nodes = []
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _rows(platform, _run_spec())
+        assert (
+            "Worker Pool ydid:wrkrpool:000000:x: Task Types unknown, no Node having"
+            " reported details" in caplog.messages
+        )
 
     def test_a_node_without_details_is_not_a_non_match(self, platform):
         platform.nodes = [_node(details=False)]

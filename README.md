@@ -195,7 +195,8 @@ universal options:
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error, and the configuration preamble
+  --debug               trace on stderr what the command does: the configuration it loaded, each request to the Platform, and the stack trace of a
+                        failure
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages

@@ -5,6 +5,7 @@ A script to compare work requirements and task groups with provisioned worker po
 and to check for matches.
 """
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -44,6 +45,8 @@ from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
     get_ydid_type,
 )
+
+_LOG = logging.getLogger(__name__)
 
 NONE_STRING = "NONE"
 EMPTY_STRING = ""
@@ -344,8 +347,20 @@ class WorkerPools:
 
     def _get_compute_requirement(self, cr_id: str) -> ComputeRequirement:
         if cr_id not in self._compute_requirements:
-            self._compute_requirements[cr_id] = (
+            compute_requirement = (
                 self._ctx.client.compute_client.get_compute_requirement_by_id(cr_id)
+            )
+            self._compute_requirements[cr_id] = compute_requirement
+            sources = compute_requirement.provisionStrategy.sources or []
+            _LOG.debug(
+                "Compute Requirement %s has %d source(s)%s",
+                cr_id,
+                len(sources),
+                "".join(
+                    f"; {self._get_provider_from_source(source)}"
+                    f" {source.region} {getattr(source, 'instancePricing', None)}"
+                    for source in sources
+                ),
             )
         return self._compute_requirements[cr_id]
 
@@ -645,7 +660,15 @@ class WorkerPools:
         """
         nodes = self._nodes_reporting_details(worker_pool)
         running = [node for node in nodes if node.status == NodeStatus.RUNNING]
-        return (running or nodes or [None])[0]
+        node = (running or nodes or [None])[0]
+        _LOG.debug(
+            "Worker Pool %s: Task Types %s",
+            worker_pool.id,
+            "unknown, no Node having reported details"
+            if node is None
+            else f"taken from Node {node.id} ({node.status})",
+        )
+        return node
 
     def _get_all_nodes_in_worker_pool(self, worker_pool: WorkerPool) -> list[Node]:
         """
@@ -671,6 +694,15 @@ class WorkerPools:
                 )
             except Exception as e:
                 raise RuntimeError(f"Unable to get details of nodes: {e}") from e
+            nodes = self._nodes[worker_pool_id]
+            _LOG.debug(
+                "Worker Pool %s has %d Node(s) listed, %d RUNNING, %d reporting"
+                " details",
+                worker_pool_id,
+                len(nodes),
+                sum(node.status == NodeStatus.RUNNING for node in nodes),
+                sum(node.details is not None for node in nodes),
+            )
         return self._nodes[worker_pool_id]
 
 

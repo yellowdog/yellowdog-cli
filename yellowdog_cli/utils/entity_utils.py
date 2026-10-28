@@ -3,6 +3,7 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
+import logging
 import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
@@ -87,6 +88,8 @@ from yellowdog_cli.utils.ydid_utils import (
     work_requirement_id_of_task_group,
 )
 
+_LOG = logging.getLogger(__name__)
+
 
 def search_namespaces(
     client: PlatformClient, namespace: str | None
@@ -106,8 +109,26 @@ def search_namespaces(
         return [namespace]
     details = get_application_details(client)
     if details.allNamespacesReadable or not details.readableNamespaces:
+        _trace_scope_once("every namespace")
         return None
+    _trace_scope_once(
+        "those the Application can read, "
+        + ", ".join(repr(n) for n in details.readableNamespaces)
+    )
     return list(details.readableNamespaces)
+
+
+_SCOPES_TRACED: set[str] = set()
+
+
+def _trace_scope_once(scope: str) -> None:
+    """
+    Trace the namespaces a search with none given is scoped to, once per
+    run rather than per search.
+    """
+    if scope not in _SCOPES_TRACED:
+        _SCOPES_TRACED.add(scope)
+        _LOG.debug("No namespace given: searching %s", scope)
 
 
 @lru_cache
@@ -997,7 +1018,16 @@ def expand_name_globs(
     for pattern in patterns:
         namespace, name = resolve_name_glob(pattern, default_namespace)
         candidates = fetch(namespace, glob_search_prefix(name))
-        for summary in filter_summaries_by_name_glob(candidates, name):
+        matched = filter_summaries_by_name_glob(candidates, name)
+        _LOG.debug(
+            "'%s' matched %d of the %d found%s: %s",
+            pattern,
+            len(matched),
+            len(candidates),
+            f" in namespace '{namespace}'" if namespace else "",
+            ", ".join(repr(summary.name) for summary in matched) or "none",
+        )
+        for summary in matched:
             if summary.id not in seen:
                 seen.add(summary.id)
                 result.append(summary)

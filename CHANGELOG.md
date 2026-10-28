@@ -4,6 +4,13 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what `--debug` does:
+
+- **`--debug` writes a trace to stderr**: as well as the start-up preamble, which it printed to stdout, it traces each request the command makes to the Platform, each name resolved and file read, the decisions a command makes (how Tasks are batched, how `--add-to` numbers them, event streams reconnected, the order resources are created in, the rclone commands the `yd data` verbs run, what `compare` read of a Worker Pool), and a failure's stack trace, each line starting with the date and time as the command's other messages do; [What the Trace Shows](docs/troubleshooting.md#what-the-trace-shows) lists it all. `--quiet` and `--json` no longer suppress it, and stdout holds what it would hold without `--debug`, so a script's `--json` run can be traced. The trace never includes the application key or secret.
+- **A command run with `--debug` exits with the code it would give without it**: a failure's stack trace is written to the trace and the command exits with the failure's own code (4 for a refused credential, 6 for something not found), where it exited 1 for every failure. A fault in a configuration or specification schema check is warned of, its stack trace traced, rather than ending the command, and `yd doctor --debug` reports a failing check as a row, tracing its stack trace, rather than stopping.
+
 ### Work Requirements
 
 - **`--add-to` straight after Tasks were added to a Task Group adds to it**: adding Tasks to an existing Task Group within seconds of a submission or another `--add-to` adding to it named them as the Tasks already there, since the Platform's count of them had not yet caught up, so the Platform refused the batch ("Task names must be unique within task group") and the command exited 1. `--add-to` now looks for the name its first new Task would have and, when it is already taken, says so and waits for the count to catch up before numbering the new Tasks; a name taken while the count stands still for 10 seconds is refused as one already in use, before anything is added.

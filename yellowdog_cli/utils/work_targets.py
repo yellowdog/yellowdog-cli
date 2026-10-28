@@ -7,6 +7,7 @@ first; an ambiguous Work Requirement name rules out only that reading.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,9 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import TaskGroup, WorkRequirementSummary
+
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -95,9 +99,26 @@ def resolve_named_target(
         if work_requirement is not None:
             task_group = _task_group_named(client, work_requirement, second)
             if task_group is not None:
+                _LOG.debug(
+                    "'%s' read as Task Group '%s' in Work Requirement '%s'",
+                    target,
+                    second,
+                    first,
+                )
                 return NamedTarget(work_requirement, task_group)
         namespaced = _work_requirement_named(client, second, first)
         if namespaced is not None:
+            _LOG.debug(
+                "'%s' read as Work Requirement '%s' in namespace '%s'%s",
+                target,
+                second,
+                first,
+                (
+                    f", Work Requirement '{first}' having no Task Group '{second}'"
+                    if work_requirement is not None
+                    else ""
+                ),
+            )
             return NamedTarget(namespaced)
         if ambiguous is not None:
             raise ambiguous

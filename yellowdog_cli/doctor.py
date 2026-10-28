@@ -165,7 +165,6 @@ def main() -> None:
     ctx = Context(
         offline=bool(ARGS_PARSER.offline),
         timeout=timeout,
-        debug=bool(ARGS_PARSER.debug),
         args=ARGS_PARSER,
     )
     rows = run_checks(ctx)

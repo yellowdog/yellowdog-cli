@@ -3,6 +3,7 @@ Unit tests for follow_utils.py.
 """
 
 import json
+import logging
 import signal
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -539,6 +540,25 @@ class TestReconnection:
         assert clock.sleeps == [5.0, 10.0, 20.0, 30.0]
         assert fu.follow_exit_code() == fu.ExitCode.SUCCESS
 
+    def test_the_connections_and_waits_are_traced(self, clock, monkeypatch, caplog):
+        dropped = requests.exceptions.ConnectionError("dropped")
+        responses = [
+            _stream(["data: 1"], raises=dropped),
+            dropped,
+            _stream(["data: 2"]),
+        ]
+        monkeypatch.setattr(fu.requests, "get", MagicMock(side_effect=responses))
+        _finished(monkeypatch, True)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
+        assert caplog.messages == [
+            f"'{WR}': event stream open",
+            f"'{WR}': reconnecting in 5s (attempt 1)",
+            f"'{WR}': reconnecting in 10s (attempt 2)",
+            f"'{WR}': event stream reconnected",
+            f"'{WR}': the stream closed, the entity having finished",
+        ]
+
     def test_an_outage_over_five_minutes_gives_up_with_exit_8(self, clock, monkeypatch):
         dropped = requests.exceptions.ConnectionError("dropped")
         monkeypatch.setattr(
@@ -604,6 +624,17 @@ class TestCleanClose:
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
         assert get.call_count == 2
         assert finished.call_count == 2
+
+    def test_a_close_while_live_is_traced(self, clock, monkeypatch, caplog):
+        get = MagicMock(side_effect=[_stream(["data: 1"]), _stream(["data: 2"])])
+        monkeypatch.setattr(fu.requests, "get", get)
+        _finished(monkeypatch, False, True)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
+        assert (
+            f"'{WR}': the stream closed, the entity still live: reconnecting in"
+            f" {fu.EVENT_STREAM_RECONNECT_DELAY:g}s" in caplog.messages
+        )
 
     @pytest.mark.parametrize(
         "ydid_type, client_call, status, finished",

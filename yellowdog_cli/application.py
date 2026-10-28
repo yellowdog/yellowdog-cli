@@ -4,6 +4,7 @@
 A script for reporting on the details of the Application being used.
 """
 
+import logging
 import sys
 from typing import Any, cast
 from urllib.parse import quote
@@ -21,6 +22,8 @@ from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.misc_utils import portal_base_url
 from yellowdog_cli.utils.printing import print_json, print_simple, print_warning
 from yellowdog_cli.utils.wrapper import main_wrapper
+
+_LOG = logging.getLogger(__name__)
 
 # What 'groupsAndRoles' says, under --json, when they are null for want of
 # the permission to look them up
@@ -55,8 +58,7 @@ def report_application(ctx: RunContext):
 
     if error is not None and not permission_denied:
         print_warning(f"Unable to determine groups and roles: {error}")
-        if ctx.args.debug:
-            raise error
+        _LOG.debug("Groups and roles failed", exc_info=error)
         sys.exit(exit_code)
 
 

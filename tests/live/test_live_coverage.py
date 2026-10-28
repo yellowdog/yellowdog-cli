@@ -74,9 +74,9 @@ def test_only_an_expected_exit_code_is_recorded(directory, tmp_path, monkeypatch
     monkeypatch.setattr(config_module, "DEFAULT_PATH", tmp_path / "absent.toml")
     config = load_live_config(write_config(tmp_path, PLATFORM + AWS))
     run = Run.start(config, tmp_path / "runs")
-    # Exits with the last argument before '--config <file>'
+    # Exits with the last argument before '--config <file> --debug'
     exits_as = Yd(
-        run, program=(sys.executable, "-c", "import sys; sys.exit(int(sys.argv[-3]))")
+        run, program=(sys.executable, "-c", "import sys; sys.exit(int(sys.argv[-4]))")
     )
     exits_as("wr", "show", "0")
     exits_as("cr", "show", "6", ok=(0, 6))

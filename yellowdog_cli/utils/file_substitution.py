@@ -8,6 +8,7 @@ variable table and the undefined-variable warnings are
 variable_substitution.py's.
 """
 
+import logging
 import os
 import re
 import sys
@@ -56,6 +57,8 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_PREFIX,
 )
 
+_LOG = logging.getLogger(__name__)
+
 
 def _read_text(filename: str) -> str:
     """
@@ -63,6 +66,7 @@ def _read_text(filename: str) -> str:
     byte-order mark (as Windows Notepad writes) dropped, and one that is not
     UTF-8 at all refused naming the file, which the codec's error does not.
     """
+    _LOG.debug("Reading '%s'", os.path.abspath(filename))
     try:
         with open(filename, encoding="utf-8-sig") as f:
             return f.read()

@@ -2,6 +2,7 @@
 Unit tests for the shared glob helpers in glob_utils.
 """
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -124,6 +125,18 @@ def test_expand_name_globs_dedupes_and_filters():
     assert [s.id for s in result] == ["a", "b"]
     # server hint is the non-glob prefix
     assert calls == [("default", "proj-"), ("default", "proj-1")]
+
+
+def test_expand_name_globs_traces_each_pattern_s_matches(caplog):
+    def fetch(namespace, name_prefix):
+        return [_summary("proj-1", "a"), _summary("proj-2", "b"), _summary("nope", "c")]
+
+    with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+        expand_name_globs(["proj-*", "zz*"], "default", fetch)
+    assert caplog.messages == [
+        "'proj-*' matched 2 of the 3 found in namespace 'default': 'proj-1', 'proj-2'",
+        "'zz*' matched 0 of the 3 found in namespace 'default': none",
+    ]
 
 
 @pytest.mark.parametrize(

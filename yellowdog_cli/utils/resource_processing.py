@@ -7,6 +7,7 @@ failure), the items not attempted then recorded as skipped. The run exits
 with the code its failures share, or FAILURE for different causes.
 """
 
+import logging
 from collections.abc import Callable, Sequence
 from typing import TypeVar
 
@@ -20,6 +21,8 @@ from yellowdog_cli.utils.load_resources import (
 from yellowdog_cli.utils.printing import print_error
 from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.results import record_resource
+
+_LOG = logging.getLogger(__name__)
 
 Item = TypeVar("Item")
 
@@ -48,6 +51,11 @@ def process_each(
     wrapper to report once), since every later prompt would find the same.
     Raises ReportedFailure at the end if anything failed.
     """
+    _LOG.debug(
+        "To %s, in this order: %s",
+        verb,
+        "; ".join(f"{n}. {describe(item)}" for n, item in enumerate(items, 1)),
+    )
     failures: list[Exception] = []
     for index, item in enumerate(items):
         try:
@@ -58,6 +66,7 @@ def process_each(
                 record(rest, "skipped", f"not attempted: {e}")
             raise
         except Exception as e:
+            _LOG.debug("Failed to %s %s", verb, describe(item), exc_info=True)
             print_error(f"Failed to {verb} {describe(item)}: {e}")
             advise(e)
             record(item, "failed", str(e))

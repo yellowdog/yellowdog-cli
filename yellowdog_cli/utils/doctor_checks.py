@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import logging
 import os
 import re
 import shutil
@@ -62,6 +63,8 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.version_info import sdk_version
 
+_LOG = logging.getLogger(__name__)
+
 
 class Status(Enum):
     OK = "OK"
@@ -99,7 +102,6 @@ class Check:
 class Context:
     offline: bool
     timeout: int
-    debug: bool = False
     sdk_error: str | None = None  # why the SDK did not import, once checked
     config_loaded: bool = False
     config_error: str | None = None  # the captured text when loading failed
@@ -204,12 +206,10 @@ def _run_one(check: Check, ctx: Context) -> Result:
     try:
         return check.run(ctx)
     except SystemExit as e:  # a check that trips an exit() is a row too
-        if ctx.debug:
-            raise
+        _LOG.debug("Check '%s' exited", check.name, exc_info=True)
         return Result(Status.FAIL, f"exited with status {e.code}")
     except Exception as e:  # a check's failure is a row, not a crash
-        if ctx.debug:
-            raise
+        _LOG.debug("Check '%s' failed", check.name, exc_info=True)
         return Result(Status.FAIL, str(e) or type(e).__name__)
 
 

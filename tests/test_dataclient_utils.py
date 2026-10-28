@@ -3,6 +3,7 @@ Unit tests for yellowdog_cli.utils.dataclient.operations
 """
 
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -1027,3 +1028,32 @@ def test_items_are_grouped_by_directory_a_group_of_one_done_alone():
     assert groups == {"a": ["a/1", "a/2"]}
     # In the order given: one with no directory, and those alone in theirs
     assert singles == ["b/1", "solo", "c/1"]
+
+
+class TestTheTrace:
+    """
+    Each rclone run is traced with its command line, an inline remote's
+    parameters withheld, and its exit status.
+    """
+
+    def test_a_run_and_its_exit_status_are_traced(self, caplog):
+        rclone = MagicMock()
+        rclone.impl._run.return_value = subprocess.CompletedProcess([], 3)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            dcu_module._run_quietly(
+                rclone,
+                ["lsjson", ":s3,provider=AWS,secret_access_key=SECRET-KEY:bucket/p"],
+            )
+        assert caplog.messages == [
+            "rclone lsjson :s3,provider=AWS,<1 parameter redacted>",
+            "rclone lsjson: exit status 3",
+        ]
+
+    def test_a_copy_of_named_files_counts_them(self, caplog):
+        rclone = MagicMock()
+        rclone.copy.return_value = subprocess.CompletedProcess([], 0)
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            dcu_module._copy_files(rclone, "/data", "remote:b/p", ["a", "b"])
+        assert caplog.messages[0] == (
+            "rclone copy /data remote:b/p --files-from-raw <2 names>"
+        )

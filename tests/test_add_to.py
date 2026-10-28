@@ -3,6 +3,7 @@ Tests for the --add-to feature: offset-aware task/task-group naming and the
 dispatch logic in add_to_existing_work_requirement.
 """
 
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -595,6 +596,16 @@ class TestPlanExtension:
             "b": (0, 1, 4, 1),
         }
 
+    def test_the_plan_is_traced(self, caplog):
+        existing = [_make_tg("b", task_count=3)]
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            submit_module._plan_extension(existing, [_make_tg("b"), _make_tg("x")])
+        assert caplog.messages == [
+            "Task Group 'b' is already in the Work Requirement: its Tasks are"
+            " numbered on from the 3 it holds",
+            "Task Group 'x' is new: it is appended",
+        ]
+
     def test_a_matched_task_group_is_added_to_as_it_exists(self):
         existing_b = _make_tg("b", task_count=2)
         extension = submit_module._plan_extension([existing_b], [_make_tg("b")])
@@ -1133,6 +1144,21 @@ class TestSettledSource:
         assert source.position.existing_tasks == 3
         assert 0 < slept < TASK_COUNT_UPDATE_WAIT
         assert "waiting for its count of Tasks to catch up" in capsys.readouterr().out
+
+    def test_the_check_and_the_wait_are_traced(self, monkeypatch, caplog):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            self._settle(monkeypatch, taken={"task_1"}, counts=[0, 1])
+        assert caplog.messages == [
+            "Task Group 'tg': checking that the first new Task's name, 'task_1', is free",
+            "Task Group 'tg': its count of Tasks went from 0 to 1",
+        ]
+
+    def test_unnamed_tasks_counted_are_traced(self, monkeypatch, caplog):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            self._settle(monkeypatch, taken=set(), counts=[0], unnamed=True)
+        assert caplog.messages == [
+            "Task Group 'tg': its Tasks have no names, so its 7 Tasks were counted"
+        ]
 
     def test_a_name_taken_while_the_count_stands_still_is_refused(self, monkeypatch):
         with pytest.raises(ValueError, match="already has a Task named 'task_1'"):

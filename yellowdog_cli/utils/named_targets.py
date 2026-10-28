@@ -16,6 +16,7 @@ nothing are reported together; a failure every later lookup would repeat
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
@@ -31,6 +32,8 @@ from yellowdog_cli.utils.printing import print_error
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.work_targets import resolve_named_target
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.context import RunContext
@@ -126,7 +129,9 @@ def _id_or_lookup(ctx: RunContext, target: str, ydid_type: YDIDType) -> str:
     """
     if get_ydid_type(target) is not None:
         return target
-    return target_id(ctx, target, ydid_type)
+    ydid = target_id(ctx, target, ydid_type)
+    _LOG.debug("'%s' is %s", target, ydid)
+    return ydid
 
 
 def target_id(ctx: RunContext, target: str, ydid_type: YDIDType) -> str:
@@ -215,9 +220,13 @@ def work_target_id(ctx: RunContext, target: str) -> str:
     if get_ydid_type(target) is not None:
         return target
     named = resolve_named_target(ctx.client, target, ctx.config.namespace or None)
-    if named.task_group is not None:
-        return str(named.task_group.id)
-    return str(named.work_requirement.id)
+    ydid = str(
+        (
+            named.task_group if named.task_group is not None else named.work_requirement
+        ).id
+    )
+    _LOG.debug("'%s' is %s", target, ydid)
+    return ydid
 
 
 def _task_group_id(ctx: RunContext, target: str, namespace: str | None) -> str:

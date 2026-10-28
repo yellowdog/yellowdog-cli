@@ -5,6 +5,7 @@ prints as it starts, and the yd-doctor row.
 """
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -577,15 +578,17 @@ class TestDeferredMinors:
         assert "cannot check 'config.toml'" in warnings[0]
         assert "a bug in the check" in warnings[0]
 
-    def test_an_unexpected_failure_is_raised_under_debug(self, monkeypatch, warnings):
+    def test_an_unexpected_failure_is_traced(self, monkeypatch, warnings, caplog):
         def fail(document, sections):
             raise RuntimeError("a bug in the check")
 
         monkeypatch.setattr(load_config, "validate_config", fail)
         monkeypatch.setattr(load_config, "_CONFIG_AS_WRITTEN", {"common": {}})
-        monkeypatch.setattr(output_settings.OUTPUT, "debug", True)
-        with pytest.raises(RuntimeError):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
             load_config.warn_of_config_violations(ALL_CONFIG_SECTIONS)
+        assert "a bug in the check" in warnings[0]
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert record.name == "yellowdog_cli.utils.load_config"
 
     def test_a_deprecated_key_in_the_file_still_exits_3(self, tmp_path):
         result = _run(

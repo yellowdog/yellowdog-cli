@@ -152,8 +152,10 @@
     # modules every command imports keep their SDK names there, with a local
     # import where one is used, so that the SDK-free commands never load it.
     # Its fix, a module-level import, is the wrong one here, and is unsafe,
-    # so 'ruff check --fix' reports it and leaves it alone
-    select = ["E", "F401", "I", "RUF", "TC004", "UP", "W"]
+    # so 'ruff check --fix' reports it and leaves it alone. G: a logging
+    # call's message formatted lazily, by the logger, never as an f-string,
+    # so a run without '--debug' pays nothing for it
+    select = ["E", "F401", "G", "I", "RUF", "TC004", "UP", "W"]
     ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]

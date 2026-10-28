@@ -4,6 +4,7 @@
 A script to submit a Work Requirement.
 """
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from math import ceil
@@ -129,6 +130,8 @@ from yellowdog_cli.utils.variable_syntax import (
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
+_LOG = logging.getLogger(__name__)
+
 # The Work Requirement configuration from the TOML file, read on first use
 CONFIG_WR: ConfigWorkRequirement = lazy(load_config_work_requirement)
 
@@ -230,6 +233,15 @@ def main(ctx: RunContext):
         (config_file_dir() if wr_data_file is None else dirname(wr_data_file))
         if ctx.args.content_path is None
         else ctx.args.content_path
+    )
+    _LOG.debug(
+        "Files the Work Requirement names are found from %s, '%s'",
+        "--content-path"
+        if ctx.args.content_path is not None
+        else "the configuration file's directory"
+        if wr_data_file is None
+        else "the specification's directory",
+        files_directory,
     )
 
     if wr_data_file is None and csv_files is not None:
@@ -723,6 +735,16 @@ def _plan_extension(
                 matched=True,
             )
         )
+    for _, _, _, existing_tg in matched:
+        task_summary = existing_tg.taskSummary
+        _LOG.debug(
+            "Task Group '%s' is already in the Work Requirement: its Tasks are"
+            " numbered on from the %d it holds",
+            existing_tg.name,
+            task_summary.taskCount if task_summary is not None else 0,
+        )
+    for _, spec_tg in new_tgs:
+        _LOG.debug("Task Group '%s' is new: it is appended", spec_tg.name)
     new = [tg for _, tg in new_tgs]
     return _Extension(existing_tgs + new, new, additions)
 
@@ -885,7 +907,18 @@ def _settled_source(
     task_group_id = cast(str, task_group.id)
     name = first_task_name(source)
     if name is None:
-        return _renumbered(source, count_tasks_in_task_group(client, task_group_id))
+        count = count_tasks_in_task_group(client, task_group_id)
+        _LOG.debug(
+            "Task Group '%s': its Tasks have no names, so its %d Tasks were counted",
+            task_group.name,
+            count,
+        )
+        return _renumbered(source, count)
+    _LOG.debug(
+        "Task Group '%s': checking that the first new Task's name, '%s', is free",
+        task_group.name,
+        name,
+    )
 
     count = source.position.existing_tasks
     while task_name_taken(client, task_group_id, name):
@@ -932,7 +965,19 @@ def _changed_task_count(
             None,
         )
         if summary is not None and summary.taskCount != count:
+            _LOG.debug(
+                "Task Group '%s': its count of Tasks went from %d to %d",
+                task_group.name,
+                count,
+                summary.taskCount,
+            )
             return summary.taskCount
+    _LOG.debug(
+        "Task Group '%s': its count of Tasks stayed at %d for %gs",
+        task_group.name,
+        count,
+        TASK_COUNT_UPDATE_WAIT,
+    )
     return None
 
 

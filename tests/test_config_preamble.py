@@ -1,5 +1,6 @@
 """
-The configuration/startup preamble is printed only when '--debug' is set.
+The configuration/startup preamble is the start of the '--debug' trace: on
+stderr, and only when '--debug' is set.
 
 Most of these messages are emitted while the configuration is loaded, before
 any command runs: as the wrapper prepares the run, or on the first use of what
@@ -11,12 +12,14 @@ Nothing here contacts the platform, and the PAC lookup itself is never
 performed.
 
 Each scenario provokes a different part of the preamble, and is checked in
-both directions: silence by default, and — under '--debug' — output in which
-every line carries the DEBUG marker. The second half is what catches a message
-left as print_info(), whether or not this file names it.
+both directions: silence by default, and — under '--debug' — nothing on
+stdout and a trace in which every line is a trace line. The second half is
+what catches a message left as print_info(), whether or not this file names
+it.
 """
 
 import os
+import re
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -29,6 +32,25 @@ import pytest
 import yellowdog_cli.utils.wrapper as wrapper
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.output_style import DEBUG_MARKER
+
+# A trace line: the timestamp, the marker, the time since the start, the
+# module, the message
+TRACE_LINE = re.compile(
+    r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?: \(\d+\))? : "
+    rf"{re.escape(DEBUG_MARKER)}\[\+\d+\.\d{{3}}s\] \w+: "
+)
+
+
+def _traced(message: str, trace: str) -> bool:
+    """
+    Whether 'message' begins a line of the trace.
+    """
+    return any(
+        (match := TRACE_LINE.match(line)) is not None
+        and line[match.end() :].startswith(message)
+        for line in trace.splitlines()
+    )
+
 
 CONFIG_TOML = """
 [common]
@@ -89,12 +111,12 @@ def config_dir(tmp_path_factory) -> Path:
 
 def _import_wrapper(
     config_dir: Path, args: list, env: dict, no_format: bool = True
-) -> str:
+) -> tuple[str, str]:
     """
     Import wrapper.py in a subprocess, configure the output settings and call
     set_proxy(), which loads the configuration, as a command with the given
     arguments and environment would, and return everything it printed to
-    stdout. The data client configuration is loaded explicitly afterwards,
+    stdout and to stderr. The data client configuration is loaded explicitly afterwards,
     since it is loaded by the data client commands rather than by the
     wrapper.
     """
@@ -129,30 +151,42 @@ def _import_wrapper(
         timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    return result.stdout
+    return result.stdout, result.stderr
 
 
 @pytest.mark.parametrize("_name,args,env", SCENARIOS, ids=SCENARIO_IDS)
 def test_preamble_is_silent_by_default(config_dir, _name, args, env):
-    assert _import_wrapper(config_dir, args, env) == ""
+    assert _import_wrapper(config_dir, args, env) == ("", "")
 
 
 @pytest.mark.parametrize("_name,args,env", SCENARIOS, ids=SCENARIO_IDS)
-def test_whole_preamble_is_marked_and_shown_under_debug(config_dir, _name, args, env):
-    output = _import_wrapper(config_dir, ["--debug", *args], env)
-    lines = [line for line in output.splitlines() if line.strip()]
-    assert lines, "expected the preamble to be printed under '--debug'"
-    # A message left as print_info() would appear here without the marker
-    assert all(DEBUG_MARKER in line for line in lines), output
+def test_whole_preamble_is_traced_under_debug(config_dir, _name, args, env):
+    stdout, stderr = _import_wrapper(config_dir, ["--debug", *args], env)
+    assert stdout == ""
+    lines = [line for line in stderr.splitlines() if line.strip()]
+    assert lines, "expected the preamble to be traced under '--debug'"
+    # A message left as print_info() or print_warning() would appear here
+    # without the trace's form
+    assert all(TRACE_LINE.match(line) for line in lines), stderr
+
+
+@pytest.mark.parametrize("extra", [["--json"], ["--quiet"]], ids=["json", "quiet"])
+def test_the_preamble_is_traced_under_json_and_quiet(config_dir, extra):
+    """
+    The trace is on stderr, so neither '--json' nor '--quiet' silences it.
+    """
+    stdout, stderr = _import_wrapper(config_dir, ["--debug", *extra], {})
+    assert stdout == ""
+    assert _traced("Loading configuration data from:", stderr)
 
 
 def test_the_messages_themselves_are_unchanged(config_dir):
     """
     The messages' wording is their own: '--debug' decides only whether they
-    are printed.
+    are traced.
     """
     # '--tag' given, for its message: yd-list does not default it to ''
-    output = _import_wrapper(
+    _, trace = _import_wrapper(
         config_dir, ["--debug", "--tag", "t"], {"YD_DATA_CLIENT": "myprofile"}
     )
     for message in [
@@ -164,24 +198,28 @@ def test_the_messages_themselves_are_unchanged(config_dir):
         "Using 'tag' provided on command line",
         "Using data client profile:",
     ]:
-        assert f"{DEBUG_MARKER}{message}" in output
+        assert _traced(message, trace), trace
+
+
+def test_each_line_names_the_module_it_came_from(config_dir):
+    _, trace = _import_wrapper(config_dir, ["--debug"], {})
+    assert "s] load_config: Loading configuration data from:" in trace
 
 
 # ---------------------------------------------------------------------------
-# The formatted (Rich console) branch, i.e. without '--no-format'
+# Without '--no-format': the trace is plain text either way
 # ---------------------------------------------------------------------------
 
 
 def test_formatted_preamble_is_silent_by_default(config_dir):
-    assert _import_wrapper(config_dir, [], {}, no_format=False) == ""
+    assert _import_wrapper(config_dir, [], {}, no_format=False) == ("", "")
 
 
-def test_formatted_preamble_is_shown_under_debug(config_dir):
-    # Wrapping breaks a message over several lines, so the marker is asserted
-    # for the output rather than for every line of it
-    output = _import_wrapper(config_dir, ["--debug"], {}, no_format=False)
-    assert DEBUG_MARKER in output
-    assert "Loading configuration data from:" in output
+def test_the_trace_is_unformatted_without_no_format(config_dir):
+    stdout, stderr = _import_wrapper(config_dir, ["--debug"], {}, no_format=False)
+    assert stdout == ""
+    assert "\x1b[" not in stderr
+    assert _traced("Loading configuration data from:", stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +262,9 @@ class TestProxyMessages:
             patch.dict(os.environ, environment, clear=True),
         ):
             wrapper.set_proxy()
-        return capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        return captured.err
 
     @pytest.mark.parametrize(
         "use_pac,proxy",
@@ -239,21 +279,19 @@ class TestProxyMessages:
 
     def test_pac_enabled_with_nothing_found_is_reported_under_debug(self, capsys):
         output = self._output(capsys, debug=True, use_pac=True, proxy=None)
-        assert f"{DEBUG_MARKER}Using Proxy Auto-Configuration (PAC)" in output
-        assert f"{DEBUG_MARKER}No PAC proxy settings found" in output
+        assert _traced("Using Proxy Auto-Configuration (PAC)", output)
+        assert _traced("No PAC proxy settings found", output)
 
     def test_the_proxy_in_use_is_reported_under_debug(self, capsys):
         output = self._output(
             capsys, debug=True, use_pac=False, proxy="http://proxy.example.com:8080"
         )
-        assert (
-            f"{DEBUG_MARKER}Using HTTPS_PROXY=http://proxy.example.com:8080" in output
-        )
+        assert _traced("Using HTTPS_PROXY=http://proxy.example.com:8080", output)
 
-    def test_every_proxy_message_carries_the_marker(self, capsys):
+    def test_every_proxy_message_is_a_trace_line(self, capsys):
         output = self._output(
             capsys, debug=True, use_pac=True, proxy="http://proxy.example.com:8080"
         )
         lines = [line for line in output.splitlines() if line.strip()]
         assert lines
-        assert all(DEBUG_MARKER in line for line in lines), output
+        assert all(TRACE_LINE.match(line) for line in lines), output

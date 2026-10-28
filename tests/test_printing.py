@@ -23,7 +23,6 @@ from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.event_printing import StatusCount, status_counts_msg
 from yellowdog_cli.utils.output_style import (
     _STATES_BY_STYLE,
-    DEBUG_STYLE,
     DRY_RUN_MARKER,
     MAX_LINES_COLOURED_JSON,
     MAX_TABLE_DESCRIPTION,
@@ -278,13 +277,10 @@ class TestPrintString:
 
 class TestPrintDebug:
     """
-    The startup/configuration messages: printed only when '--debug' is set,
-    and still suppressed by '--quiet' and by the JSON output modes.
+    A line of the '--debug' trace: written to stderr only when '--debug' is
+    set, whatever '--quiet', '--json' and '--no-format' say, named by the
+    module that called it.
     """
-
-    def setup_method(self):
-        printing_module.PREFIX_LEN = 0
-        printing_module.SUBSEQUENT_INDENT = ""
 
     @staticmethod
     def _args(**kwargs):
@@ -299,40 +295,42 @@ class TestPrintDebug:
         defaults.update(kwargs)
         return SimpleNamespace(**defaults)
 
-    def _output(self, capsys, **kwargs) -> str:
+    def _output(self, capsys, **kwargs) -> tuple[str, str]:
         with output_settings.configured(self._args(**kwargs)):
             print_debug("Loading configuration data")
-        return capsys.readouterr().out
+        captured = capsys.readouterr()
+        return captured.out, captured.err
 
-    def test_nothing_is_printed_without_debug(self, capsys):
-        assert self._output(capsys, debug=False) == ""
+    def test_nothing_is_written_without_debug(self, capsys):
+        assert self._output(capsys, debug=False) == ("", "")
 
-    def test_message_is_printed_with_debug(self, capsys):
-        assert "Loading configuration data" in self._output(capsys, debug=True)
+    def test_the_line_goes_to_stderr_with_debug(self, capsys):
+        out, err = self._output(capsys, debug=True)
+        assert out == ""
+        assert re.fullmatch(
+            r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?: \(\d+\))? : DEBUG : \[\+\d+\.\d{3}s\] test_printing: Loading configuration data\n",
+            err,
+        )
 
-    def test_debug_marker_precedes_the_message(self, capsys):
-        output = self._output(capsys, debug=True)
-        assert "DEBUG : Loading configuration data" in output
+    @pytest.mark.parametrize(
+        "option",
+        ["quiet", "json_output", "count_only"],
+    )
+    def test_neither_quiet_nor_json_silences_it(self, capsys, option):
+        out, err = self._output(capsys, debug=True, **{option: True})
+        assert out == ""
+        assert "Loading configuration data" in err
 
-    def test_timestamp_prefix_is_the_standard_one(self, capsys):
-        # The same prefix as print_info carries
-        output = self._output(capsys, debug=True)
-        assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} : DEBUG : ", output)
+    def test_it_is_plain_text_with_formatting_enabled(self, capsys):
+        out, err = self._output(capsys, debug=True, no_format=False)
+        assert out == ""
+        assert "\x1b[" not in err
+        assert "Loading configuration data" in err
 
-    def test_message_is_printed_with_formatting_enabled(self, capsys):
-        # '--no-format' picks plain print() over the Rich console; the gate
-        # and the marker are the same either way
-        output = self._output(capsys, debug=True, no_format=False)
-        assert "DEBUG : Loading configuration data" in output
-
-    def test_nothing_is_printed_without_debug_with_formatting_enabled(self, capsys):
-        assert self._output(capsys, debug=False, no_format=False) == ""
-
-    def test_quiet_suppresses_it_even_with_debug(self, capsys):
-        assert self._output(capsys, debug=True, quiet=True) == ""
-
-    def test_json_output_suppresses_it_even_with_debug(self, capsys):
-        assert self._output(capsys, debug=True, json_output=True) == ""
+    def test_turned_off_again_once_the_settings_are_restored(self, capsys):
+        self._output(capsys, debug=True)
+        print_debug("after")
+        assert capsys.readouterr().err == ""
 
 
 # ---------------------------------------------------------------------------
@@ -397,13 +395,14 @@ class TestPrintDryRun:
 
 
 # Rich's 'dark_orange', as the 256-colour console below renders it
-DEBUG_COLOUR = "\x1b[38;5;208m"
+STYLE = "dark_orange"
+STYLE_COLOUR = "\x1b[38;5;208m"
 
 
 class TestStyledOutput:
     """
-    print_info() carries an optional Rich style, which is what lets
-    print_debug() colour the preamble without reimplementing print_info().
+    print_info() carries an optional Rich style, a base the highlighter's own
+    colours still apply on top of.
     """
 
     def setup_method(self):
@@ -439,26 +438,19 @@ class TestStyledOutput:
             call()
         return buffer.getvalue()
 
-    def test_debug_messages_are_coloured(self):
-        output = self._render(lambda: print_debug("Loading configuration data"))
-        assert DEBUG_COLOUR in output
-        assert "Loading configuration data" in output
-
     def test_ordinary_messages_are_not_coloured(self):
-        assert DEBUG_COLOUR not in self._render(lambda: print_info("Submitting"))
+        assert STYLE_COLOUR not in self._render(lambda: print_info("Submitting"))
 
     def test_dry_run_messages_are_not_coloured(self):
-        assert DEBUG_COLOUR not in self._render(lambda: print_dry_run("Complete"))
+        assert STYLE_COLOUR not in self._render(lambda: print_dry_run("Complete"))
 
     def test_the_style_reaches_the_console_from_print_info(self):
-        output = self._render(lambda: print_info("Plain", style=DEBUG_STYLE))
-        assert DEBUG_COLOUR in output
+        output = self._render(lambda: print_info("Plain", style=STYLE))
+        assert STYLE_COLOUR in output
 
     def test_no_format_emits_no_colour_at_all(self):
         # The '--no-format' branch is plain print(), so nothing is styled
-        output = self._render(
-            lambda: print_debug("Loading configuration data"), no_format=True
-        )
+        output = self._render(lambda: print_info("Plain", style=STYLE), no_format=True)
         assert "\x1b[" not in output
 
 
