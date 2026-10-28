@@ -255,14 +255,19 @@ class TestWrappers:
         assert _exit_code(wrapper, func) == ExitCode.INTERRUPTED
 
     @pytest.mark.parametrize("wrapper", WRAPPERS)
-    def test_debug_re_raises(self, wrapped, wrapper):
-        wrapped(debug=True)
+    def test_debug_keeps_the_exit_code_and_traces_the_traceback(
+        self, wrapped, wrapper, capsys
+    ):
+        wrapped(json_output=True, debug=True)
 
         def func():
             raise _http_error(404)
 
-        with pytest.raises(HTTPError):
-            wrapper(func)()
+        assert _exit_code(wrapper, func) == ExitCode.NOT_FOUND
+        captured = capsys.readouterr()
+        assert json_loads(captured.out) == []
+        assert "HTTPError raised" in captured.err
+        assert "Traceback (most recent call last):" in captured.err
 
     @pytest.mark.parametrize("wrapper", WRAPPERS)
     def test_debug_still_prints_results(self, wrapped, wrapper, capsys):

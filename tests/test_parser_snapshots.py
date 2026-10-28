@@ -1,9 +1,10 @@
 """
-Every command's option shapes (the noun verbs' included), held to a snapshot: the keyword arguments
-of each argparse action (nargs, const, default, type, choices, ...), which
-help text cannot show. Wording is deliberately excluded, so a help edit
-never fails here; a shape change always does, naming the command and the
-action. Regenerate with --update-parser-snapshots when the change is meant.
+Every command's option shapes (the noun verbs' included), held to a
+snapshot: the keyword arguments of each argparse action (nargs, const,
+default, type, choices, ...), which help text cannot show. Wording is
+deliberately excluded, so a help edit never fails here; a shape change
+always does, naming the command and the action. Regenerate with
+--update-parser-snapshots when the change is meant.
 """
 
 import json

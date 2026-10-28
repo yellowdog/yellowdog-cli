@@ -60,7 +60,7 @@ toc_mcp: yellowdog_cli/mcp/README.md
 toc_development: DEVELOPMENT.md
 	./gh-md-toc --insert --no-backup --skip-header DEVELOPMENT.md
 
-schema_descriptions: docs/property-dictionary.md
+schema_descriptions: docs/work-requirement-property-dictionary.md
 	python3 scripts/extract_schema_descriptions.py > yellowdog_cli/spec_data/descriptions.json
 
 test:

@@ -28,6 +28,7 @@ from yellowdog_cli.utils.submit_utils import (
     generate_failure_policy,
     generate_retry_policy,
 )
+from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 
 
 def _config(**kw) -> ConfigWorkRequirement:
@@ -413,6 +414,36 @@ class TestRetryConflictDetection:
                 {"retryPolicy": {"maxRetries": 1}},
                 config_wr=_config(max_retries=2),
             )
+
+
+class TestLegacyMaxRetriesSent:
+    """
+    'maximumTaskRetries' is sent only where it is set: the Platform's default
+    for it, as for an absent value, is no retries.
+    """
+
+    def _run_spec(self, config_wr: ConfigWorkRequirement, task_group: dict):
+        wr_data = {"taskGroups": [{"tasks": [{}], **task_group}]}
+        built = task_groups_module.create_task_group(
+            config_wr,
+            TaskGroupPosition(spec_index=0, number=0, count=1),
+            wr_data,
+            wr_data["taskGroups"][0],
+        )
+        return built.runSpecification
+
+    def test_left_out_when_set_nowhere(self):
+        run_spec = self._run_spec(_config(task_type="bash"), {})
+        assert run_spec.maximumTaskRetries is None
+        assert run_spec.retryPolicy is None
+
+    def test_sent_when_the_specification_sets_it(self):
+        run_spec = self._run_spec(_config(task_type="bash"), {"maximumTaskRetries": 3})
+        assert run_spec.maximumTaskRetries == 3
+
+    def test_sent_when_the_configuration_sets_it(self):
+        run_spec = self._run_spec(_config(task_type="bash", max_retries=2), {})
+        assert run_spec.maximumTaskRetries == 2
 
 
 # ---------------------------------------------------------------------------

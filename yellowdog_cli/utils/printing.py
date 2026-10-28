@@ -7,6 +7,7 @@ print_warning(), print_error(), print_debug(), print_dry_run()), JSON output
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 from bisect import bisect_left
@@ -24,10 +25,9 @@ from rich.markup import escape
 from rich.theme import Theme
 
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.debug_log import CLI_LOGGER
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
-    DEBUG_MARKER,
-    DEBUG_STYLE,
     DEFAULT_LOG_WIDTH,
     DEFAULT_THEME,
     DRY_RUN_MARKER,
@@ -131,6 +131,8 @@ pyexamples_theme = Theme(DEFAULT_THEME)
 # each line again, breaking tables and paths written to a pipe or a file.
 # CONSOLE_ERR is themed like CONSOLE, so that a message highlights the same
 # whichever stream it goes to
+_DEBUG_LOG = logging.getLogger(CLI_LOGGER)
+
 CONSOLE = ConsoleWithInputBackspaceFixed(
     highlighter=PrintLogHighlighter(), theme=pyexamples_theme, emoji=False
 )
@@ -249,22 +251,13 @@ def print_quiet_result(result: object) -> None:
         print(result, flush=True)
 
 
-def print_debug(
-    log_message: str = "",
-    no_fill: bool = False,
-):
+def print_debug(log_message: str = "") -> None:
     """
-    An informational message that's printed only when '--debug' is set:
-    used for the configuration/startup preamble, which is noise unless
-    it's what one is looking at. Marked 'DEBUG' and coloured to set it
-    apart from the command's own output; otherwise formatted, and
-    suppressed by '--quiet' and the JSON output modes, exactly as
-    print_info() is.
+    A line of the '--debug' trace (debug_log.py), on stderr, named by the
+    calling module: the configuration/startup preamble's, and any caller's
+    without a logger of its own.
     """
-    if not OUTPUT.debug:
-        return
-
-    print_info(f"{DEBUG_MARKER}{log_message}", no_fill=no_fill, style=DEBUG_STYLE)
+    _DEBUG_LOG.debug("%s", log_message, stacklevel=2)
 
 
 def print_dry_run(

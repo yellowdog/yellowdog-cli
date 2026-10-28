@@ -1,10 +1,11 @@
 """
 yd-list: the filtering options refused where they do not apply
-(check_list_options), and the listings' behaviour: PROVISIONING is active, '--details' fetches full Compute
-Requirements, '--ids-only' lists every parent's children without asking (an
-Instance as 'cr_id.instance_id'), the raw calls carry a timeout and keep
-their exit codes, Groups and Roles are not fetched just for their IDs, and
-Worker Pools are matched to the namespace exactly.
+(check_list_options), and the listings' behaviour: PROVISIONING is active,
+'--details' fetches full Compute Requirements, '--ids-only' lists every
+parent's children without asking (an Instance as 'cr_id.instance_id'), the
+raw calls carry a timeout and keep their exit codes, Groups and Roles are
+not fetched just for their IDs, and Worker Pools are matched to the
+namespace exactly.
 """
 
 from types import SimpleNamespace

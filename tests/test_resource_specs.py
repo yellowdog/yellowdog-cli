@@ -57,13 +57,13 @@ def test_install_variables_forces_the_corpus_value_and_restores_what_it_found():
     can fail.
 
     Forcing: the corpus values overwrite what is there. Merged without
-    overwriting, a key that already had a value would keep it -- and 'namespace'
-    and 'tag' always do, because conftest.py's pytest_configure() loads the
-    ambient configuration, which registers its values, before any test runs. The corpus would then
-    resolve '{{namespace}}' to whatever config.toml said while the live layer
-    resolved it to the test config's namespace, and nothing would notice, because
-    the offline comparison checks a specification against a model built from that
-    same specification.
+    overwriting, a key that already had a value would keep it -- and
+    'namespace' and 'tag' always do, because conftest.py's pytest_configure()
+    loads the ambient configuration, which registers its values, before any
+    test runs. The corpus would then resolve '{{namespace}}' to whatever
+    config.toml said while the live layer resolved it to the test config's
+    namespace, and nothing would notice, because the offline comparison checks
+    a specification against a model built from that same specification.
 
     Restoring: remove_variables() must put back exactly what was there, since
     VARIABLE_SUBSTITUTIONS is process-global. Deleting a key that held some other

@@ -2,6 +2,7 @@
 Utility function to follow event streams.
 """
 
+import logging
 import signal
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext
@@ -54,6 +55,8 @@ from yellowdog_cli.utils.limits import (
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import CONSOLE, print_error, print_info, print_warning
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 # Work Requirement terminal states that indicate failure. Shared by yd-wait
 # and yd-submit so both agree on what constitutes an unsuccessful WR.
@@ -636,7 +639,8 @@ class _Outage:
     long as the outage has lasted less than EVENT_STREAM_MAX_OUTAGE.
     """
 
-    def __init__(self):
+    def __init__(self, ydid: str):
+        self._ydid = ydid
         self._started: float | None = None
         self._attempts = 0
 
@@ -652,13 +656,23 @@ class _Outage:
         if self._started is None:
             self._started = monotonic()
         elif monotonic() - self._started >= EVENT_STREAM_MAX_OUTAGE:
-            return False
-        sleep(
-            min(
-                EVENT_STREAM_RETRY_INTERVAL * 2**self._attempts,
-                EVENT_STREAM_MAX_RETRY_INTERVAL,
+            _LOG.debug(
+                "'%s': the stream has been down %gs or more: giving up",
+                self._ydid,
+                EVENT_STREAM_MAX_OUTAGE,
             )
+            return False
+        delay = min(
+            EVENT_STREAM_RETRY_INTERVAL * 2**self._attempts,
+            EVENT_STREAM_MAX_RETRY_INTERVAL,
         )
+        _LOG.debug(
+            "'%s': reconnecting in %gs (attempt %d)",
+            self._ydid,
+            delay,
+            self._attempts + 1,
+        )
+        sleep(delay)
         self._attempts += 1
         return True
 
@@ -688,7 +702,7 @@ def follow_events(
     given up on too. Each failure is recorded for the exit code
     (follow_exit_code()).
     """
-    outage = _Outage()
+    outage = _Outage(ydid)
     connected = False
     concluded = False
     while not _STOP_FOLLOWING.is_set():
@@ -724,6 +738,9 @@ def follow_events(
                 )
                 break
 
+            _LOG.debug(
+                "'%s': event stream %s", ydid, "reconnected" if connected else "open"
+            )
             connected = True
             if response.encoding is None:
                 response.encoding = "utf-8"
@@ -751,6 +768,11 @@ def follow_events(
             except requests.exceptions.Timeout:
                 # A read timeout just means a quiet (or silently dropped)
                 # connection; reconnect without alarming the user
+                _LOG.debug(
+                    "'%s': no event for %gs: reconnecting",
+                    ydid,
+                    EVENT_STREAM_READ_TIMEOUT,
+                )
                 continue
 
             except (
@@ -759,6 +781,11 @@ def follow_events(
                 ConnectionResetError,
             ) as e:
                 if _is_read_timeout(e):
+                    _LOG.debug(
+                        "'%s': no event for %gs: reconnecting",
+                        ydid,
+                        EVENT_STREAM_READ_TIMEOUT,
+                    )
                     continue  # Quiet, as above, however long
                 print_warning(f"Event stream interruption for '{ydid}' (reconnecting)")
                 if outage.wait():
@@ -779,6 +806,13 @@ def follow_events(
         finished = _entity_finished(ctx, ydid, ydid_type)
         if finished is None:  # Reported and recorded
             break
+        _LOG.debug(
+            "'%s': the stream closed, %s",
+            ydid,
+            "the entity having finished"
+            if finished
+            else f"the entity still live: reconnecting in {EVENT_STREAM_RECONNECT_DELAY:g}s",
+        )
         if finished:
             concluded = True
             break

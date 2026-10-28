@@ -9,6 +9,7 @@ It imports neither wrapper, nor anything that builds a Platform client: the
 data client commands, which import no SDK, run through it too.
 """
 
+import logging
 import sys
 from collections.abc import Callable
 from typing import Any, NoReturn
@@ -37,6 +38,8 @@ from yellowdog_cli.utils.results import (
 from yellowdog_cli.utils.specs.schema_cache import report_problems_to
 from yellowdog_cli.utils.top_level import deprecation_message
 from yellowdog_cli.utils.variable_substitution import enable_undefined_variable_warnings
+
+_LOG = logging.getLogger(__name__)
 
 
 def prepare_run(func: Callable[[], Any], args: Any, *values: object) -> None:
@@ -125,7 +128,8 @@ def run_command(
 
     The results recorded for '--json' are flushed however the command ends;
     a failed record fails the run although main() raised nothing; and under
-    '--debug' an exception is re-raised, unclassified, for its traceback.
+    '--debug' an exception's traceback is logged to the trace before it is
+    reported, its exit code the same as without it.
     """
     # The configuration is loaded, so every variable it defines exists: one
     # still unsubstituted from here on is one nothing defines
@@ -134,23 +138,6 @@ def run_command(
     report_problems_to(print_debug)
     warn_of_undefined_config_variables()
     warn_of_config_violations(config_sections)
-
-    if args.debug:
-        # Exceptions are re-raised unclassified, for their tracebacks; what
-        # was recorded is still printed, however the command ends
-        try:
-            before()
-            try:
-                func()
-            finally:
-                flush_results()
-            if any_failed():
-                sys.exit(failure_exit_code())
-            if not args.print_pid:
-                print_info("Done")
-            sys.exit(ExitCode.SUCCESS)
-        finally:
-            after()
 
     exit_code: int = ExitCode.SUCCESS
     try:
@@ -167,6 +154,7 @@ def run_command(
         exit_code = exit_code_of(e)
         flush_results_after_failure()
     except Exception as e:
+        _LOG.debug("%s raised", type(e).__name__, exc_info=True)
         if not isinstance(e, ReportedFailure):  # else reported already
             print_error(describe(e))
         # Set before the flush, so a flush that fails cannot turn the
@@ -174,6 +162,7 @@ def run_command(
         exit_code = classify(e)
         flush_results_after_failure()
     except KeyboardInterrupt:
+        _LOG.debug("Interrupted", exc_info=True)
         _interrupted()
         exit_code = ExitCode.INTERRUPTED
         flush_results_after_failure()

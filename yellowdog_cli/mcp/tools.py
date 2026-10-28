@@ -473,8 +473,9 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
     """
     The arguments the server adds ahead of a tool's own, each only where
     the command has the option: the config source, no formatting, the JSON
-    result (or, for SELF_PRINTING_COMMANDS, quiet), no prompts, and the launch-time namespace, tag and variables
-    (first, so a tool's own come later and win).
+    result (or, for SELF_PRINTING_COMMANDS, quiet), no prompts, and the
+    launch-time namespace, tag and variables (first, so a tool's own come
+    later and win).
     """
 
     args: list[str] = []
@@ -630,12 +631,13 @@ def to_argv(
     '--long-flag=value' entry (_joined(), which says why), a list as that
     entry repeated for 'append', or '--sort''s keys joined by commas), then
     '--' and the positionals in registry order, so that a positional
-    starting with '-' (a glob, a remote path) is not read as an option. An inline specification is written to
-    a uniquely named JSON file in the working directory, so that relative
-    file references inside it resolve as from a file the user wrote there;
-    the files written are returned for the caller to remove. Nothing is
-    written unless every argument is acceptable, and if a write fails the
-    files already written are removed before the error is raised.
+    starting with '-' (a glob, a remote path) is not read as an option. An
+    inline specification is written to a uniquely named JSON file in the
+    working directory, so that relative file references inside it resolve
+    as from a file the user wrote there; the files written are returned for
+    the caller to remove. Nothing is written unless every argument is
+    acceptable, and if a write fails the files already written are removed
+    before the error is raised.
     """
     _validate(tool, arguments)
     written: list[Path] = []

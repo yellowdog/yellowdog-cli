@@ -708,9 +708,10 @@ class TestResolveSectionVariables:
 class TestWorkerPoolUndefinedVariables:
     """
     The Worker Pool sections are resolved as the configuration loads, before
-    the undefined-variable warnings are enabled, so yd-provision and yd-instantiate re-check
-    them as they start: each section as written, the Compute Requirement
-    synonym not listed twice for having been merged into 'workerPool'.
+    the undefined-variable warnings are enabled, so yd-provision and
+    yd-instantiate re-check them as they start: each section as written, the
+    Compute Requirement synonym not listed twice for having been merged into
+    'workerPool'.
     """
 
     @pytest.fixture()
@@ -778,7 +779,8 @@ class TestResolveValue:
 
 class TestReviewedLoaderErrors:
     """
-    load_config.py's error reporting: a profile's misspelt key is an error, a number that will not convert names its property, the
+    load_config.py's error reporting: a profile's misspelt key is an
+    error, a number that will not convert names its property, the
     duplicate-keys error names the keys plainly, and '--debug' shows a
     loader's own fault rather than a configuration error.
     """

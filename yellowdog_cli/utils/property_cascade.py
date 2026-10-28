@@ -8,8 +8,8 @@ the configuration file:
 
 Which of those levels a property may be set at is the dictionary's
 (specs.properties.WORK_REQUIREMENT_PROPERTIES, held to the table in
-docs/property-dictionary.md), so a level is consulted only for a property
-the dictionary allows there.
+docs/work-requirement-property-dictionary.md), so a level is consulted
+only for a property the dictionary allows there.
 The configuration's value is the caller's to give, as the default, since
 it comes from the run's ConfigWorkRequirement, re-substituted as the run
 proceeds.

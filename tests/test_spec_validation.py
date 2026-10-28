@@ -13,6 +13,7 @@ an ordinary run too, so a local equivalent is used.
 
 import dataclasses
 import json
+import logging
 from json import loads as json_loads
 from unittest.mock import MagicMock
 
@@ -260,16 +261,18 @@ class TestWarnings:
         assert out.count("WARNING") == 1
         assert "cannot check 'wr.json'" in out and "KeyError" in out
 
-    def test_under_debug_a_fault_in_the_check_is_raised(self, args, monkeypatch):
+    def test_a_fault_in_the_check_is_traced(self, args, monkeypatch, capsys, caplog):
         import yellowdog_cli.utils.specs.validation as spec_validation_module
 
         def fault(family, document, source):
             raise KeyError("a repair bug")
 
-        args.debug = True
         monkeypatch.setattr(spec_validation_module, "validate_specification", fault)
-        with pytest.raises(KeyError):
-            warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json")
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            assert warn_of_violations(Family.WORK_REQUIREMENT, BAD, "wr.json") == []
+        assert "cannot check 'wr.json'" in capsys.readouterr().out
+        [record] = [r for r in caplog.records if r.exc_info]
+        assert record.name == "yellowdog_cli.utils.specs.validation"
 
 
 class TestWording:

@@ -292,8 +292,9 @@ def command_module(command_name: str) -> str | None:
     The module a 'yd-*' command runs, for 'python -m': its console script's
     entry point ('yd-commander' runs yellowdog_cli.commander.launcher, which
     no rule on the name gives), else, where the package is not installed,
-    the module named for the command if there is one; None for anything else. Commander and
-    the MCP server both run commands this way, under their own interpreter.
+    the module named for the command if there is one; None for anything
+    else. Commander and the MCP server both run commands this way, under
+    their own interpreter.
     """
     module = _console_script_modules().get(command_name)
     if module is not None:
@@ -663,7 +664,8 @@ CONFIG = option(
     required=False,
     type=str,
     help=(
-        "configuration file in TOML format; "
+        "configuration file in TOML format, whose values take precedence over"
+        " environment variables, unlike a file found by default; "
         "the default to use is 'config.toml' in the current directory, else"
         " ~/.config/yellowdog/config.toml"
     ),
@@ -698,7 +700,10 @@ DEBUG = option(
     "--debug",
     action="store_true",
     required=False,
-    help=("display the Python stack trace on error, and the configuration preamble"),
+    help=(
+        "trace on stderr what the command does: the configuration it loaded,"
+        " each request to the Platform, and the stack trace of a failure"
+    ),
 )
 PAC = option(
     "--pac",
@@ -2745,9 +2750,10 @@ def check_show_ids(args: Namespace, parser: ArgumentParser) -> None:
     whose details it substitutes names into (Compute Source and Requirement
     Templates, Allowances), rather than ignored; '--show-source-report' and
     '--show-exhaustion' likewise without a Compute Requirement or Worker
-    Pool ID, and '--show-members' without a Group or Role ID. '--show-token' is left alone: whether a Worker Pool is a
-    Configured one is known only once it has been fetched, as whether it is
-    a Provisioned one is for the other two.
+    Pool ID, and '--show-members' without a Group or Role ID.
+    '--show-token' is left alone: whether a Worker Pool is a Configured one
+    is known only once it has been fetched, as whether it is a Provisioned
+    one is for the other two.
     """
     from yellowdog_cli.utils.resource_targets import (
         ID_TYPES,

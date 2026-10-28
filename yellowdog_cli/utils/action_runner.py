@@ -31,6 +31,7 @@ not found, 5 when each was refused.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
 from typing import Any, NoReturn
@@ -45,6 +46,8 @@ from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.printing import print_error, print_warning
 from yellowdog_cli.utils.results import record_failure_cause
+
+_LOG = logging.getLogger(__name__)
 
 # record(entity, entity_type, outcome, error): the command's '--json' record
 Record = Callable[[object, str, str, "str | None"], None]
@@ -131,6 +134,17 @@ class _Resolution:
         if item.key not in self.keys:
             self.keys.add(item.key)
             self.items.append(item)
+        else:
+            _LOG.debug("%s named twice: acted on once", _shown(item))
+
+
+def _shown(item: Item) -> str:
+    """
+    An Item as the trace names it: its type and its entity's ID.
+    """
+    entity = item.entity
+    ydid = entity.get("id") if isinstance(entity, dict) else getattr(entity, "id", None)
+    return f"{item.entity_type} {ydid if ydid is not None else item.key}"
 
 
 # How a command orders the Items it has resolved: in the order it will act on
@@ -180,6 +194,7 @@ def resolve_targets(
         entity, entity_type = describe(target)
         try:
             item = resolve(target)
+            _LOG.debug("'%s' is %s", target, _shown(item))
         except Unresolved as e:
             (print_warning if e.outcome == SKIPPED else print_error)(str(e))
             record(e.entity or entity, entity_type, e.outcome, str(e))
@@ -187,6 +202,7 @@ def resolve_targets(
                 record_failure_cause(e.code)
             continue
         except Exception as e:
+            _LOG.debug("'%s' not resolved", target, exc_info=True)
             print_error(f"Unable to {verb} '{target}': {e}")
             advise(e)
             record(entity, entity_type, FAILED, str(e))
@@ -234,6 +250,7 @@ def carry_out(units: list[Unit], record: Record) -> list[Unit]:
         except SessionStop as stop:
             _stop(units[index + 1 :], stop.cause, record)
         except Exception as e:
+            _LOG.debug("%s", unit.failure(e), exc_info=True)
             print_error(unit.failure(e))
             advise(e)
             for item in unit.items:

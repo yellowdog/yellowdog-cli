@@ -16,6 +16,7 @@ tell (the Platform refuses a Task Group's duplicate names).
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from math import ceil
@@ -36,6 +37,8 @@ from yellowdog_cli.utils.results import json_requested
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.context import RunContext
+
+_LOG = logging.getLogger(__name__)
 
 
 class Batches:
@@ -112,6 +115,15 @@ def run_batches(
     already under way have finished.
     """
     num_batches = ceil(num_tasks / batch_size)
+    _LOG.debug(
+        "%d Task(s) in %d batch(es) of up to %d, sent %s",
+        num_tasks,
+        num_batches,
+        batch_size,
+        "in turn"
+        if parallel_threads == 1 or num_batches <= 1
+        else f"by {min(num_batches, parallel_threads)} threads",
+    )
 
     def batch(batch_number: int) -> list[Any]:
         return make_batch(
@@ -226,8 +238,20 @@ def submit_with_retries(
             # reported an error, did in fact add the batch. On the first
             # attempt it is a genuine name collision: a failure, and one not
             # to retry, since the retry would take it for success.
+            _LOG.debug(
+                "%s: attempt %d of %d failed: %s: %s",
+                batch,
+                attempt_number + 1,
+                MAX_BATCH_SUBMIT_ATTEMPTS,
+                type(e).__name__,
+                e,
+            )
             duplicate_names = "Task names must be unique within task group" in str(e)
             if duplicate_names and attempt_number > 0:
+                _LOG.debug(
+                    "%s: its names are taken, so the attempt before added it",
+                    batch,
+                )
                 report_success()
                 return
 

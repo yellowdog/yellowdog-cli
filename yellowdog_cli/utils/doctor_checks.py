@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import logging
 import os
 import re
 import shutil
@@ -62,6 +63,8 @@ from yellowdog_cli.utils.settings import (
 )
 from yellowdog_cli.utils.version_info import sdk_version
 
+_LOG = logging.getLogger(__name__)
+
 
 class Status(Enum):
     OK = "OK"
@@ -99,7 +102,6 @@ class Check:
 class Context:
     offline: bool
     timeout: int
-    debug: bool = False
     sdk_error: str | None = None  # why the SDK did not import, once checked
     config_loaded: bool = False
     config_error: str | None = None  # the captured text when loading failed
@@ -204,12 +206,10 @@ def _run_one(check: Check, ctx: Context) -> Result:
     try:
         return check.run(ctx)
     except SystemExit as e:  # a check that trips an exit() is a row too
-        if ctx.debug:
-            raise
+        _LOG.debug("Check '%s' exited", check.name, exc_info=True)
         return Result(Status.FAIL, f"exited with status {e.code}")
     except Exception as e:  # a check's failure is a row, not a crash
-        if ctx.debug:
-            raise
+        _LOG.debug("Check '%s' failed", check.name, exc_info=True)
         return Result(Status.FAIL, str(e) or type(e).__name__)
 
 
@@ -655,7 +655,8 @@ def check_config_schema(ctx: Context) -> Result:
     return Result(
         Status.WARN,
         f"{count}: {shown}" + (f"; and {more} more" if more > 0 else ""),
-        "Every one is reported as a warning when a command runs;"
+        "Every one is reported as a warning when a command runs without"
+        " --quiet;"
         " 'yd schema config' prints the schema",
     )
 
@@ -768,6 +769,38 @@ def check_dotenv(ctx: Context) -> Result:
 
     path = dotenv_file_path(ctx.args.config_file)
     return Result(Status.OK, path if path else "none")
+
+
+def check_environment_outranked(ctx: Context) -> Result:
+    """
+    The environment variables a configuration file chosen with '--config'
+    outranked, setting the same property or variable to something else:
+    legitimate, but a value the environment offered and lost is otherwise
+    invisible. Names only, since a value may be a secret.
+    """
+    from yellowdog_cli.utils import load_config
+    from yellowdog_cli.utils.settings import YD_ENV_VAR_PREFIX
+    from yellowdog_cli.utils.variable_substitution import (
+        environment_variables_outranked,
+    )
+
+    outranked = [
+        f"{env_var} ({setting})"
+        for setting, env_var in sorted(load_config.ENVIRONMENT_OUTRANKED.items())
+    ] + [
+        f"{YD_ENV_VAR_PREFIX}{name} (variable '{name}')"
+        for name in environment_variables_outranked()
+    ]
+    if not outranked:
+        return Result(Status.OK, "none")
+    return Result(
+        Status.WARN,
+        f"'{load_config.CONFIG_FILE}', chosen with --config, is used rather than "
+        + ", ".join(outranked),
+        "A configuration file chosen with --config wins over the environment"
+        " where both set a value; remove it from one of them, or give it on the"
+        " command line, which wins over both",
+    )
 
 
 def check_tag_is_a_legal_name(ctx: Context) -> Result:
@@ -1112,6 +1145,12 @@ CHECKS: tuple[Check, ...] = (
         "Variable references", "Configuration", Need.CONFIG, check_variable_references
     ),
     Check(".env file", "Configuration", Need.CONFIG, check_dotenv),
+    Check(
+        "Environment outranked",
+        "Configuration",
+        Need.CONFIG,
+        check_environment_outranked,
+    ),
     # Under Configuration rather than Platform, since it needs no network
     Check(
         "Tag is a legal name", "Configuration", Need.CONFIG, check_tag_is_a_legal_name

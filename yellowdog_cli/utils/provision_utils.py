@@ -2,10 +2,11 @@
 Utility functions for provisioning and instantiating.
 """
 
+import logging
 from datetime import timedelta
 from json import dumps as json_dumps
 from json import loads as json_loads
-from os.path import join
+from os.path import abspath, join
 from typing import Any, cast
 
 import requests
@@ -42,6 +43,8 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_PREFIX,
 )
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 _MUTEX_ERROR = (
     f"Only one of '{USERDATA}', '{USERDATAFILE}' or '{USERDATAFILES}' should be set"
@@ -93,6 +96,7 @@ def _read(path: str, source_dir: str) -> str:
     reported by the path it was looked for at.
     """
     full_path = join(source_dir, path) if source_dir else path
+    _LOG.debug("Reading User Data file '%s' from '%s'", path, abspath(full_path))
     try:
         with open(full_path, encoding="utf-8") as f:
             return f.read()
@@ -147,6 +151,13 @@ def get_user_data_property(
         if content_path is None or content_path == ""
         else content_path
     )
+    if config.user_data_file is not None or config.user_data_files is not None:
+        _LOG.debug(
+            "User Data files are found from %s",
+            f"--content-path, '{content_path}'"
+            if content_path
+            else f"the configuration file's directory, '{source_dir}'",
+        )
     return _read_user_data(
         config.user_data, config.user_data_file, config.user_data_files, source_dir
     )

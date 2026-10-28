@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import Callable, Iterable
 from sys import exit
 from typing import Any, NamedTuple, NoReturn
@@ -41,7 +42,6 @@ from typing import Any, NamedTuple, NoReturn
 import fastjsonschema
 
 from yellowdog_cli.utils.exit_codes import ExitCode
-from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import ALL_KEYS, DATA_CLIENT_SECTION, SCHEMA_KEY
 from yellowdog_cli.utils.results import json_requested, record
@@ -57,6 +57,8 @@ from yellowdog_cli.utils.specs.schema import (
     compile_config_schema,
     compile_schema,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # What stands in for a failing value while the rest is checked: a
 # {{variable}}, which the schema admits for every value
@@ -479,10 +481,10 @@ def warn_of_violations(family: Family, document: Any, source: str) -> list[Viola
         return []
     except Exception as e:
         # A fault in the check itself: the check is advisory, so it never
-        # stops a command that would otherwise run; '--debug' shows it, as
-        # warn_of_config_violations() does for the configuration file
-        if OUTPUT.debug:
-            raise
+        # stops a command that would otherwise run; the '--debug' trace
+        # shows its traceback, as warn_of_config_violations() does for the
+        # configuration file
+        _LOG.debug("Schema check failed", exc_info=True)
         print_warning(
             f"cannot check '{source}' against the {family.value} schema:"
             f" {type(e).__name__}: {e}"

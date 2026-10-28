@@ -1,16 +1,26 @@
 # Worker Pools
 
 <!--ts-->
+   * [Examples](#examples)
+      * [A Worker Pool from the Configuration File](#a-worker-pool-from-the-configuration-file)
+      * [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own)
+      * [Installing Software as Each Node Boots](#installing-software-as-each-node-boots)
+         * [Details](#details)
    * [Worker Pools vs. Compute Requirements](#worker-pools-vs-compute-requirements)
    * [Worker Pool Properties](#worker-pool-properties)
    * [Using Textual Names instead of IDs for Compute Requirement Templates and Image Families](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)
+      * [Details](#details-1)
    * [Large-Scale Provisioning](#large-scale-provisioning)
+      * [Details](#details-2)
    * [Automatic Properties](#automatic-properties)
-   * [TOML Properties in the workerPool Section](#toml-properties-in-the-workerpool-section)
+   * [All Properties in the workerPool Section](#all-properties-in-the-workerpool-section)
    * [Worker Pool Specification Using JSON Documents](#worker-pool-specification-using-json-documents)
       * [Worker Pool JSON Examples](#worker-pool-json-examples)
       * [TOML Properties Inherited by Worker Pool JSON Specifications](#toml-properties-inherited-by-worker-pool-json-specifications)
+         * [Details](#details-3)
    * [Variable Substitutions in Worker Pool Properties](#variable-substitutions-in-worker-pool-properties)
+      * [Details](#details-4)
+   * [Following a Worker Pool](#following-a-worker-pool)
    * [Dry-Running Worker Pool Provisioning](#dry-running-worker-pool-provisioning)
    * [Node Actions](#node-actions)
       * [Action Types](#action-types)
@@ -20,24 +30,99 @@
       * [Action Fields Reference](#action-fields-reference)
          * [Common Fields (all action types)](#common-fields-all-action-types)
       * [Node Selection](#node-selection)
+         * [Details](#details-5)
       * [Worker Pool Selection](#worker-pool-selection)
       * [Checking Node Action Queue Status](#checking-node-action-queue-status)
+         * [Details](#details-6)
       * [Following Progress](#following-progress)
+         * [Details](#details-7)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:12:01 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
 
 <!--te-->
 
 
 A Provisioned **Worker Pool** is a set of cloud-provisioned compute instances running the YellowDog agent, which claim and execute Tasks from Work Requirements. Worker Pools are created using the **`yd workerpool provision`** command and are automatically scaled and shut down based on demand and configured timeout settings.
 
-**Jump to:** [Property Dictionary](#worker-pool-properties) · [TOML Example](#toml-properties-in-the-workerpool-section) · [JSON Spec](#worker-pool-specification-using-json-documents) · [Variable Substitutions](#variable-substitutions-in-worker-pool-properties) · [Dry-Running](#dry-running-worker-pool-provisioning) · [Node Actions](#node-actions)
+**Jump to:** [Property Dictionary](#worker-pool-properties) · [Examples](#examples) · [All TOML Properties](#all-properties-in-the-workerpool-section) · [JSON Spec](#worker-pool-specification-using-json-documents) · [Variable Substitutions](#variable-substitutions-in-worker-pool-properties) · [Dry-Running](#dry-running-worker-pool-provisioning) · [Node Actions](#node-actions)
 
-The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd workerpool provision` command. A subset of the properties is also used by the `yd computerequirement instantiate` command, for creating standalone Compute Requirements that are not associated with Worker Pools. Note that `computeRequirement` may be used as a synonym for `workerPool`, and the two may be used simultaneously in the same TOML file provided that their contained properties are not duplicated.
+The `workerPool` section of the TOML file defines the properties of the Worker Pool to be created, and is used by the `yd workerpool provision` command. The `yd computerequirement instantiate` command uses a subset of the same properties to create standalone Compute Requirements, which have no Worker Pool.
 
-The only mandatory property is `templateId`. All other properties have defaults (or are not required).
-The `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name, optionally prefixed with its namespace (`namespace/name`). A name without a namespace is looked for in every namespace the Application can read, and is an error if templates of that name are found in more than one.
+`computeRequirement` is a synonym for `workerPool`. Both sections may be present in the same TOML file, as long as no property is set in both.
+
+The only mandatory property is `templateId`, the Compute Requirement Template to provision from. It takes the template's YellowDog ID (YDID) or its name, optionally prefixed with its namespace (`namespace/name`); see [Using Textual Names](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families). All other properties have defaults, or are optional.
+
+## Examples
+
+Each example runs in a directory whose `config.toml` holds your Application key and secret, namespace and tag in its `[common]` section, as `yd init` writes them. `templateId` names a Compute Requirement Template you have already created, with the Keyring and Compute Source Templates it uses: see [Keyrings](resources.md#keyrings), [Compute Source Templates](resources.md#compute-source-templates) and [Compute Requirement Templates](resources.md#compute-requirement-templates).
+
+Every instance must run the YellowDog Agent. **YellowDog provides no stock images**: use an image of your own with the Agent installed, built with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), or a stock operating system image with the installer as User Data, as in [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own). The first two examples assume that the template names an image with the Agent installed; where it doesn't, `imagesId` names one.
+
+### A Worker Pool from the Configuration File
+
+This `[workerPool]` section provisions a pool for Tasks with the Worker Tag `render`, such as those in the [Work Requirement examples](work-requirements.md#examples):
+
+```toml
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    maxNodes = 4
+    workerTag = "render"
+    workersPerVCPU = 1
+    idleNodeTimeout = 10
+```
+
+```bash
+yd workerpool provision
+```
+
+The pool starts with one node and can grow to four. Each node runs one Worker per vCPU, so it runs that many Tasks at once. A node with no work for 10 minutes is shut down, and the pool shuts itself down after 30 idle minutes (`idlePoolTimeout`). Add `--dry-run` to print the Worker Pool without provisioning it, or `--follow` to follow it until it shuts down.
+
+### A First Run, with No Image of Your Own
+
+A stock operating system image can run Tasks if each instance installs the Agent as it boots. Download [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`, and give it as the User Data:
+
+```toml
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    imagesId = "ami-…"                     # a stock Ubuntu image in your region
+    userDataFile = "yd-agent-installer.sh"
+    workerTag = "render"
+```
+
+```bash
+yd workerpool provision
+```
+
+The installer defines one Task Type, `bash` (see [Where Task Types Come From](work-requirements.md#where-task-types-come-from)), so the nodes run Tasks such as those in the [Work Requirement examples](work-requirements.md#examples). Every instance downloads the Agent, about 60 MB, as it boots. For use at scale, build an image with the Agent already installed instead (see [Modes of Use](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#modes-of-use)).
+
+### Installing Software as Each Node Boots
+
+User Data is a script each instance runs as it boots. To install `ffmpeg` on every node, put the script in a file:
+
+```bash
+#!/bin/bash
+apt-get update && apt-get install -y ffmpeg
+```
+
+and name the file with `userDataFile`:
+
+```toml
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    maxNodes = 4
+    workerTag = "render"
+    userDataFile = "install-ffmpeg.sh"
+```
+
+The file is found next to `config.toml`, or in the `--content-path` directory if one is given. Use `--dry-run --hide-user-data` to check the rest of the specification without the script in the output.
+
+#### Details
+
+**With the Agent in User Data.** This example works as written when the image has the Agent installed. When the Agent installer is in the User Data too, the order of the scripts matters, and `userDataFiles` gives them in order:
+
+- Software the Tasks need goes **before** the installer, because the installer starts the Agent, which may then give a Task to the node: `userDataFiles = ["install-ffmpeg.sh", "yd-agent-installer.sh"]`.
+- Scripts that change the Agent's configuration, such as [`add-task-type.sh`, `add-docker-task-type.sh` and `add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#additional-user-data-scripts), go **after** it, because the installer writes that configuration afresh.
 
 ## Worker Pools vs. Compute Requirements
 
@@ -60,7 +145,7 @@ The following properties are available:
 | `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd computerequirement instantiate` (see [yd computerequirement instantiate](commands.md#yd-computerequirement-instantiate)).  |                         |
 | `idleNodeTimeout`       | The timeout in minutes after which an idle node will be shut down. Set this to `0` to disable the timeout.                                        | `5.0`                   |
 | `idlePoolTimeout`       | The timeout in minutes after which an idle Worker Pool will be shut down. Set this to `0` to disable the timeout.                                 | `30.0`                  |
-| `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances.                                              |                         |
+| `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances. YellowDog provides no stock images (see [Examples](#examples)).                                              |                         |
 | `instanceTags`          | The dictionary of instance tags to apply to the instances. Tag names must be lower case.                                                          |                         |
 | `maintainInstanceCount` | Only used when instantiating Compute Requirements; attempt to maintain the requested number of instances.                                         | `false`                 |
 | `maxNodes`              | The maximum number of nodes to which the Worker Pool can be scaled up.                                                                            | `targetInstanceCount`, or `1` if that is `0` |
@@ -82,23 +167,62 @@ The following properties are available:
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families
 
-The `templateId` property can be directly populated with the YellowDog ID (YDID), or it can be populated with the textual name of the template, optionally prefixed with its namespace (`namespace/template_name`). A name without a namespace is looked for in every namespace the Application can read.
+`templateId` and `imagesId` take names as well as YellowDog IDs (YDIDs), so a configuration can name what it uses:
 
-Similarly, the `imagesId` property can be populated with the YDID of an Image Family, Image Group, Image, or a string representing the native name of a cloud provider image (e.g. an AWS AMI). It can also be populated with an Image Family name, on its own or in the form `namespace/image_family_name`, or an Image Group name in the form `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`. Optionally, a `yd/` prefix can be supplied. The CLI will aim to map the provided name into an Image Family or Group YDID.
+```toml
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    imagesId = "image-processing/render-images"
+```
+
+`templateId` takes a Compute Requirement Template's YDID, or its name, optionally prefixed with its namespace (`namespace/template_name`).
+
+`imagesId` takes any of these:
+
+- The YDID of an Image Family, Image Group or Image
+- The native name of a cloud provider image, such as an AWS AMI ID
+- An Image Family name, on its own or as `namespace/image_family_name`
+- An Image Group name, as `namespace/image_family_name/image_group_name` or `image_family_name/image_group_name`
+
+The CLI maps a name to the Image Family or Image Group's YDID.
+
+### Details
+
+**Template names without a namespace.** A template name without a namespace is looked for in every namespace the Application can read. If templates of that name are found in more than one namespace, it is an error.
+
+**The `yd/` prefix.** An `imagesId` name may optionally be given a `yd/` prefix.
 
 ## Large-Scale Provisioning
 
-The platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. When `targetInstanceCount` (for `yd computerequirement instantiate`) or `maxNodes` (for `yd workerpool provision`) exceeds this limit, the CLI automatically splits the request across multiple Compute Requirements, distributing instances as evenly as possible. This applies to a Worker Pool or Compute Requirement defined in the configuration file: a JSON specification is provisioned as one, with a warning when its `maxNodes` exceeds the batch size. Each batch's name is the name with its batch number added, and `minNodes` is divided between the batches as the instances are.
+The Platform limits each Compute Requirement and Worker Pool to **10,000 instances/nodes**. A larger Worker Pool or Compute Requirement in the configuration file is split across several, with the instances distributed as evenly as possible. For example, with this configuration:
 
-The `computeRequirementBatchSize` property controls the maximum number of instances per batch and defaults to 10,000 (the platform maximum). Set it to a smaller value to submit in smaller batches. Values above 10,000 are clamped to 10,000 with a warning, and a value below 1 is an error.
+```toml
+[workerPool]
+    name = "render-pool"
+    templateId = "image-processing/ubuntu-small"
+    maxNodes = 25000
+    workerTag = "render"
+```
+
+`yd workerpool provision` provisions three Worker Pools, `render-pool_1` with a `maxNodes` of 8,334 and `render-pool_2` and `render-pool_3` with 8,333 each.
+
+The split is made when `maxNodes` (for `yd workerpool provision`) or `targetInstanceCount` (for `yd computerequirement instantiate`) exceeds the batch size. Set `computeRequirementBatchSize` to submit in smaller batches; it defaults to 10,000, the Platform maximum.
+
+### Details
+
+**Names and `minNodes`.** Each batch's name is the name with its batch number added. `minNodes` is divided between the batches as the instances are.
+
+**JSON specifications.** Only a Worker Pool or Compute Requirement defined in the configuration file is split. A JSON specification is provisioned as one, with a warning when its `maxNodes` exceeds the batch size.
+
+**Batch size limits.** A `computeRequirementBatchSize` above 10,000 is clamped to 10,000 with a warning, and a value below 1 is an error.
 
 ## Automatic Properties
 
 The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)), e.g. `mytag_221024-1555241-4f`.
 
-## TOML Properties in the `workerPool` Section
+## All Properties in the `workerPool` Section
 
-Here's an example of the `workerPool` section of a TOML configuration file, showing all the possible properties that can be set:
+Every property the `workerPool` section of a TOML configuration file can set, for reference: it is not meant to be used as it stands. The [Worker Pool Properties](#worker-pool-properties) table describes each property, and the [Examples](#examples) show typical use.
 
 ```toml
 [workerPool]
@@ -128,23 +252,28 @@ Here's an example of the `workerPool` section of a TOML configuration file, show
 
 ## Worker Pool Specification Using JSON Documents
 
-It's also possible to capture a Worker Pool definition as a JSON document. The JSON filename can be supplied either by supplying the command-line positional argument for `yd workerpool provision`, or by populating the `workerPoolData` property in the TOML configuration file with the JSON filename. Command-line specification takes priority over TOML specification.
+A Worker Pool can also be defined as a JSON document. Name the file on the command line:
 
-The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types.
+```bash
+yd workerpool provision render-pool.json
+```
 
-When using a JSON document to specify the Worker Pool, the schema of the document is identical to that expected by the YellowDog REST API for Worker Pool Provisioning. The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is, so a property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd computerequirement instantiate`.
+or with the `workerPoolData` property in the TOML configuration file. A file named on the command line takes priority over `workerPoolData`.
+
+The JSON specification allows the creation of **Advanced Worker Pools**, with the ability to specify Node Actions and to differentiate Node Types. Its schema is the one the YellowDog REST API expects for Worker Pool Provisioning.
+
+The document is sent through the YellowDog SDK, as a TOML-defined Worker Pool is. A property the installed SDK does not know is ignored with a warning (`Ignoring unexpected property`); upgrading the CLI's SDK makes a newly added property available. The same applies to a JSON Compute Requirement specification for `yd computerequirement instantiate`.
 
 ### Worker Pool JSON Examples
 
-The example below is of a simple JSON specification of a Worker Pool with one initial node, Worker Pool shutdown, etc.
+This JSON specification provisions a Worker Pool that starts with one node and can grow to five, running one Worker per vCPU, with nodes shut down after 10 idle minutes and the pool after an idle hour. Its name is generated, as it sets no `requirementName`.
 
 ```json
 {
   "requirementTemplateUsage": {
     "maintainInstanceCount": false,
-    "requirementName": "pyex-primes_230113-1615283-4f",
-    "requirementNamespace": "pyexamples",
-    "requirementTag": "pyex-primes",
+    "requirementNamespace": "image-processing",
+    "requirementTag": "render",
     "targetInstanceCount": 1,
     "templateId": "ydid:crt:D9C548:465a107c-7cea-46e3-9fdd-15116cb92c40"
   },
@@ -156,12 +285,12 @@ The example below is of a simple JSON specification of a Worker Pool with one in
     "metricsEnabled": true,
     "minNodes": 0,
     "nodeBootTimeout": "PT5M",
-    "workerTag": "pyex-bash-docker"
+    "workerTag": "render"
   }
 }
 ```
 
-The next example is of a more complex JSON specification of an Advanced Worker Pool, from one of the YellowDog demos. It includes node specialisation, and action groups that respond to the `STARTUP_NODES_ADDED` and `NODES_ADDED` events to drive **Node Actions**.
+The next example is of a more complex JSON specification of an Advanced Worker Pool, which runs a small Slurm cluster. It includes node specialisation, and action groups that respond to the `STARTUP_NODES_ADDED` and `NODES_ADDED` events to drive **Node Actions**.
 
 ```json
 {
@@ -250,20 +379,20 @@ The next example is of a more complex JSON specification of an Advanced Worker P
 
 ### TOML Properties Inherited by Worker Pool JSON Specifications
 
-When a JSON Worker Pool specification is used, the following properties from the `config.toml` file will be inherited if the value is absent in the JSON file, and replace the JSON file's own value where `--property workerPool.<key>=<value>` gave them (see [Which Value Wins](configuration.md#which-value-wins)):
+A JSON Worker Pool specification takes the properties it leaves out from the `[workerPool]` section of `config.toml`. So a specification can hold only what is particular to the pool, and the configuration file supplies the template, the namespace and the rest.
 
 **Properties Inherited within the `requirementTemplateUsage` property**
 
 - `imagesId`
 - `instanceTags`
-- `requirementName`: obtained from the `name` property in the TOML configuration. (The name will be generated automatically if not supplied in either the TOML file or the JSON specification.)
-- `requirementNamespace`: obtained from the `namespace` property in the `TOML` configuration
-- `requirementTag`: obtained from the `requirementTag` property at the `workerPool` level, or the `tag` in the `common` configuration
+- `requirementName`: from the configuration's `name`
+- `requirementNamespace`: from the `namespace` in the `[common]` section
+- `requirementTag`: from the `requirementTag` in the `[workerPool]` section, else the `tag` in the `[common]` section
 - `targetInstanceCount`, if the configuration sets it (or `--target` gives it)
 - `templateId`
-- `userData`: from the configuration's `userData`, or read from its `userDataFile` or `userDataFiles` (which are configuration properties only, not specification ones), if the specification has no `userData` of its own
+- `userData`: from the configuration's `userData`, or read from its `userDataFile` or `userDataFiles`
 
-Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. Similarly, the `imagesId` property can use either a YDID or the Image Family or Image Group name (e.g. `"yd-agent-docker"`).
+Like the configuration's own, `templateId` and `imagesId` may be names (e.g. `"image-processing/render-images"`) as well as YDIDs (see [Using Textual Names](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)).
 
 **Properties Inherited within the `provisionedProperties` Property**
 
@@ -274,36 +403,106 @@ Note that the `templateId` property can use either the YellowDog ID ('YDID') for
 - `minNodes`, if the configuration sets it
 - `nodeBootTimeout`
 - `workerTag`
-- `workersPerNode`, `workersPerVCPU`, or `workersCustomCommand` (Note that the default value for `workersPerNode` is `1`; override this with `workersPerNode = 0` if required)
+- `workersPerNode`, `workersPerVCPU`, or `workersCustomCommand`
 
-The timeouts, the Worker count and `metricsEnabled` are inserted with their defaults when the configuration does not set them, where `minNodes`, `maxNodes` and `targetInstanceCount` are inserted only when it does.
+#### Details
+
+**Defaults.** The timeouts, the Worker count and `metricsEnabled` are inserted with their defaults when the configuration does not set them. `minNodes`, `maxNodes` and `targetInstanceCount` are inserted only when it does. The default Worker count is `workersPerNode = 1`; set `workersPerNode = 0` in the configuration to insert a Worker count of `0` instead.
+
+**`--property` overrides.** A property given with `--property workerPool.<key>=<value>` replaces the specification's own value, rather than only filling it in when absent (see [Which Value Wins](configuration.md#which-value-wins)).
+
+**The name.** The name is generated automatically if neither the configuration nor the specification supplies one.
+
+**User Data.** `userDataFile` and `userDataFiles` are configuration properties only, not specification ones. The configuration's User Data is used only if the specification has no `userData` of its own.
 
 ## Variable Substitutions in Worker Pool Properties
 
-Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files. See [Variable Substitutions](variables.md) for more details. This is a powerful feature that allows Worker Pools to be parameterised by supplying values on the command line, via environment variables, or via the TOML file.
+Variable substitutions can be used within any property value in TOML configuration files or Worker Pool JSON files, so a Worker Pool can be parameterised by values supplied on the command line, in environment variables or in the TOML file. See [Variable Substitutions](variables.md) for more details.
 
-In User Data, wherever it is given, and in Node Actions (`nodeEvents`), in a Worker Pool specification or a Configured Worker Pool resource, a substitution is written with a double underscore before and after it, e.g. `__{{username}}__`, so that a plain `{{...}}` is left for the Platform's Mustache processing. Every other property of a Worker Pool (or Compute Requirement) JSON/Jsonnet specification takes either `__{{username}}__` or the plain `{{username}}`, as the configuration file's `workerPool` and `computeRequirement` sections take the plain form. The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
+```toml
+[workerPool]
+    name = "render-{{region}}"
+    templateId = "image-processing/ubuntu-small"
+    maxNodes = "{{num:max_nodes:=4}}"
+    userDataFile = "install-ffmpeg.sh"
+```
 
-Use `--follow` (`-f`) to track the Worker Pool after submission: `yd workerpool provision` reports its node events and does not return until the Worker Pool has shut down (or Ctrl-C is pressed). Add `--auto-follow-compute-requirements` (`-a`) to follow its Compute Requirements too.
+```bash
+yd workerpool provision -v region=eu-west
+```
+
+This provisions the Worker Pool `render-eu-west`, with a `maxNodes` of 4 unless `-v max_nodes=...` gives another.
+
+In User Data and in Node Actions, write a substitution with a double underscore before and after it, e.g. `__{{region}}__`. A plain `{{...}}` there is left for the Platform's Mustache processing. For example, the script in `install-ffmpeg.sh` could record the region with `echo __{{region}}__ > /etc/render-region`.
+
+### Details
+
+**Where the `__` form is needed.** User Data takes the `__{{...}}__` form wherever it is given. So do Node Actions (`nodeEvents`), in a Worker Pool specification or a Configured Worker Pool resource.
+
+**Everywhere else.** Every other property of a Worker Pool (or Compute Requirement) JSON or Jsonnet specification takes either `__{{username}}__` or the plain `{{username}}`. The configuration file's `workerPool` and `computeRequirement` sections take the plain form.
+
+The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
+
+## Following a Worker Pool
+
+Use `--follow` (`-f`) to track the Worker Pool after submission:
+
+```bash
+yd workerpool provision --follow
+```
+
+`yd workerpool provision` then reports the Worker Pool's node events and does not return until the Worker Pool has shut down, or Ctrl-C is pressed. Add `--auto-follow-compute-requirements` (`-a`) to follow its Compute Requirements too.
 
 ## Dry-Running Worker Pool Provisioning
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` command-line option when running `yd workerpool provision`. This will print the JSON specification for the Worker Pool. Nothing will be submitted to the platform. Add `--hide-user-data` to show the User Data as a summary of its size, where a long script would otherwise swamp the rest of the specification.
+To see the JSON that would be sent to the YellowDog API, without provisioning anything, add `--dry-run` (`-D`) to `yd workerpool provision`:
 
-The generated JSON is produced after all processing (incorporating `config.toml` properties, variable substitutions, etc.) has been concluded, so the dry-run is useful for inspecting the results of all the processing that's been performed.
+```bash
+yd workerpool provision --dry-run
+```
 
-To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
+The JSON is produced after all processing has been concluded: the `config.toml` properties incorporated, the variables substituted, and so on. So a dry run shows the results of all of it.
 
-The JSON dry-run output could itself be used by `yd workerpool provision`, if captured in a file, e.g.:
+Add `--quiet` (`-q`) to print the JSON alone, and `--hide-user-data` to show the User Data as a summary of its size, where a long script would otherwise swamp the rest of the specification.
+
+The output can itself be provisioned by `yd workerpool provision`, if captured in a file:
 
 ```shell
-yd workerpool provision --dry-run -q > my_worker_pool.json
-yd workerpool provision my_worker_pool.json
+yd workerpool provision --dry-run -q > render-pool.json
+yd workerpool provision render-pool.json
 ```
 
 ## Node Actions
 
-Node Actions allow scripts and commands to be dispatched directly to running Worker Pool nodes. They can be used to start services (e.g. Slurm controllers), write configuration files, or create YellowDog Workers dynamically — without modifying the original Worker Pool specification. Node Actions are submitted using the **`yd node action`** command.
+Node Actions dispatch scripts and commands directly to running Worker Pool nodes. Use them to start services (e.g. Slurm controllers), write configuration files, or create YellowDog Workers, without changing the Worker Pool's specification. Node Actions are submitted using the **`yd node action`** command.
+
+For example, this `start-render.json` writes a settings file on each node, starts a service, and then creates one Worker per vCPU:
+
+```json
+{
+  "actions": [
+    {
+      "type": "writeFile",
+      "path": "/etc/render/settings.json",
+      "content": "{\"licenseServer\": \"__{{license_server}}__\"}"
+    },
+    {
+      "type": "runCommand",
+      "path": "/opt/render/bin/start-render-service.sh"
+    },
+    {
+      "type": "createWorkers",
+      "nodeWorkers": {"targetType": "PER_VCPU", "targetCount": 1}
+    }
+  ]
+}
+```
+
+To send it to every node in the Worker Pool `render-pool` and follow the actions until they finish:
+
+```bash
+yd node action --actions start-render.json --worker-pool render-pool --all-nodes -v license_server=licence.example.com --follow
+```
 
 ### Action Types
 
@@ -315,13 +514,15 @@ There are three action types:
 | `writeFile`     | Write a file to the node             |
 | `createWorkers` | Create YellowDog Workers on the node |
 
+These are the `yd node action` file's own names, from which the CLI builds the Platform's actions. A Worker Pool specification's `nodeEvents` are sent to the Platform as written, so they use the Platform's form instead, `"action": "RUN_COMMAND"`, `"WRITE_FILE"` and `"CREATE_WORKERS"`, as in the [Advanced Worker Pool example](#worker-pool-json-examples).
+
 ### Spec File Structure
 
-Node actions are defined in a JSON (or Jsonnet) spec file supplied via the `--actions` option. The spec is a JSON object containing either an `actions` key (a flat list of actions) or an `actionGroups` key (a list of action groups, where an action group is a flat list of actions).
+Node actions are defined in a JSON (or Jsonnet) spec file supplied via the `--actions` option. The spec is a JSON object containing either an `actions` key, a flat list of actions, or an `actionGroups` key, a list of action groups, each of which is a flat list of actions.
 
 Actions in an actions list are downloaded by a node in one operation and executed sequentially.
 
-Variable substitutions in spec files must use the `__{{variable}}__` form throughout, as a Worker Pool specification's own Node Actions do, since the content may include Mustache templates that the Platform processes server-side; see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
+Variable substitutions in spec files use the `__{{variable}}__` form throughout, as a Worker Pool specification's own Node Actions do. The content may include Mustache templates, which the Platform processes, and a plain `{{...}}` is left for it; see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 
 #### Actions
 
@@ -339,8 +540,8 @@ Actions are submitted to one or more specific nodes, or broadcast to all nodes i
     },
     {
       "type": "writeFile",
-      "path": "/etc/myapp/config.json",
-      "content": "{\"endpoint\": \"__{{endpoint}}__\"}"
+      "path": "/etc/render/settings.json",
+      "content": "{\"licenseServer\": \"__{{license_server}}__\"}"
     },
     {
       "type": "createWorkers",
@@ -355,7 +556,7 @@ Actions are submitted to one or more specific nodes, or broadcast to all nodes i
 
 #### Action Groups
 
-Grouped actions are submitted as a unit to the pool, but actions are executed by nodes one group at a time:
+Grouped actions are submitted as a unit to the pool, but nodes execute them one group at a time:
 
 ```json
 {
@@ -413,7 +614,9 @@ Grouped actions are submitted as a unit to the pool, but actions are executed by
 | `contentFile`  | Path to a local file whose content is read and written to the node                       | No       |
 | `contentFiles` | List of local file paths whose contents are concatenated and written to the node         | No       |
 
-The `content`, `contentFile`, and `contentFiles` properties are mutually exclusive. All support variable substitutions using the `__{{variable}}__` convention. A relative `contentFile` path is found from `--content-path`, else the specification file's directory, else the configuration file's.
+Only one of `content`, `contentFile` and `contentFiles` may be given. All three take variable substitutions in the `__{{variable}}__` form.
+
+A relative `contentFile` path is found from `--content-path`, else the specification file's directory, else the configuration file's.
 
 #### `createWorkers` Fields
 
@@ -432,46 +635,65 @@ The `content`, `contentFile`, and `contentFiles` properties are mutually exclusi
 
 ### Node Selection
 
-When submitting actions, target nodes are specified in one of three ways:
+Target nodes are chosen in one of three ways:
 
-- **`--node <id>`**: Submit to a specific node, given by its YDID; can be repeated for multiple nodes, which must all be in one Worker Pool. The Worker Pool is resolved from them automatically, without prompting, and a node that has finished is skipped with a warning.
-- **`--all-nodes`**: Broadcast to all current nodes in the pool.
-- **Interactive**: If neither flag is given, the Worker Pool's current nodes are displayed for interactive selection.
+- **`--node <id>`**: submit to a specific node, given by its YDID. Repeat it for several nodes.
+- **`--all-nodes`**: broadcast to all current nodes in the pool.
+- **Interactive**: with neither option, the Worker Pool's current nodes are listed for you to choose from.
 
-For grouped actions, `--all-nodes` applies the groups to all nodes; `--node` restricts them to the specified node IDs; omitting both offers interactive node selection.
+The same applies to grouped actions: `--all-nodes` applies the groups to all nodes, `--node` to the nodes given, and with neither you choose the nodes.
+
+#### Details
+
+**Several nodes.** The nodes given with `--node` must all be in one Worker Pool. That Worker Pool is found from them, without prompting (see [Worker Pool Selection](#worker-pool-selection)).
+
+**Finished nodes.** A node given with `--node` that has finished is skipped with a warning.
 
 ### Worker Pool Selection
 
-The `--worker-pool` option accepts either a Worker Pool name or a Worker Pool YDID. If omitted, an interactive selection prompt is shown of the unfinished Worker Pools in the configured `namespace` whose names include the `tag`.
+The `--worker-pool` option accepts either a Worker Pool name or a Worker Pool YDID. If it is omitted, you choose from the unfinished Worker Pools in the configured `namespace` whose names include the `tag`.
 
-When `--node` is given with explicit node YDIDs and `--worker-pool` is omitted, the Worker Pool is resolved automatically from the node, skipping the selection prompt.
+When `--node` is given and `--worker-pool` is omitted, the Worker Pool is found from the nodes, and you are not asked to choose one.
 
 ### Checking Node Action Queue Status
 
-The `--status` flag displays the action queue for selected node(s) as a single consolidated table. Use `--details` for the full JSON representation of each queue:
+The `--status` option shows the action queue of the selected nodes as one table. For each node, the table shows its Node ID, the queue's status, the number of waiting actions, the action executing now, and any failed action:
 
 ```shell
-yd node action --status --worker-pool my-pool
-yd node action --status --node ydid:node:D9C548:abc123...
-yd node action --status --node ydid:node:D9C548:abc123... --details
+yd node action --status --worker-pool render-pool
+yd node action --status --node ydid:node:D9C548:7c2b1e94-3f5a-4d8e-b6a1-0e9f2c4d5a73
 ```
 
-When `--node` is given with a node YDID, `--status` goes directly to the node without prompting for a Worker Pool.
+Add `--details` for the full JSON of each queue:
 
-The summary table shows, for each node: Node ID, queue status, count of waiting actions, the currently executing action, and any failed action.
+```shell
+yd node action --status --node ydid:node:D9C548:7c2b1e94-3f5a-4d8e-b6a1-0e9f2c4d5a73 --details
+```
+
+#### Details
+
+**Without a Worker Pool.** When `--node` is given, `--status` goes directly to the node without asking for a Worker Pool.
+
+**Options it excludes.** `--status` submits nothing, so it cannot be combined with `--actions`, `--validate` or `--jsonnet-dry-run`. `--details` needs `--status`.
 
 ### Following Progress
 
-Use `--follow` to poll the node action queues after submission, printing a status table every few seconds until all queues reach `EMPTY` or `FAILED`:
+Use `--follow` to watch the node action queues after submission. A status table is printed every few seconds until every queue is `EMPTY` or `FAILED`:
 
 ```shell
-yd node action --actions actions.json --node ydid:node:D9C548:abc123... --follow
+yd node action --actions start-render.json --node ydid:node:D9C548:7c2b1e94-3f5a-4d8e-b6a1-0e9f2c4d5a73 --follow
 ```
 
-`--follow` also works with `--all-nodes`; the current node list is fetched from the Worker Pool at follow time.
-
-`--follow` can also be combined with `--status` to poll an already-running queue without submitting new actions:
+`--follow` can also be combined with `--status`, to watch a queue already running without submitting new actions:
 
 ```shell
-yd node action --status --node ydid:node:D9C548:abc123... --follow
+yd node action --status --node ydid:node:D9C548:7c2b1e94-3f5a-4d8e-b6a1-0e9f2c4d5a73 --follow
 ```
+
+#### Details
+
+**With `--all-nodes`.** `--follow` works with `--all-nodes` too. The current node list is fetched from the Worker Pool at follow time.
+
+**Polling.** The queues are polled every 5 seconds, not streamed.
+
+**Time limit.** `--timeout <seconds>` stops following after that many seconds. If any queue has not finished by then, the command fails, exiting 1.

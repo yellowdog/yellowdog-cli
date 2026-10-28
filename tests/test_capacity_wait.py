@@ -15,6 +15,7 @@ Covers:
     '-C', nor a Compute Requirement ID), and '--timeout' without '--wait'
 """
 
+import logging
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -339,6 +340,23 @@ class TestWhenAFollowedActionIsDone:
             None,
             target,
             tuple((s, n) for s, n in counts.items() if n),
+        )
+
+    def test_each_test_is_traced(self, monkeypatch, caplog):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            self._follow(
+                monkeypatch,
+                capacity_wait.until_settled,
+                self._capacity("STARTING", running=0, PENDING=1),
+                self._capacity(),
+            )
+        assert len(caplog.messages) == 2
+        assert caplog.messages[0].startswith("'ns/cr': ")
+        assert caplog.messages[0].endswith(
+            "not settled, having changed: waiting: until_settled()"
+        )
+        assert caplog.messages[1].endswith(
+            "settled, having changed: until_settled() is met"
         )
 
     def test_a_start_is_done_once_running_at_its_target(self, monkeypatch):

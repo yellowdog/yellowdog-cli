@@ -7,11 +7,13 @@ namespace or the name's own, every one before anything else, those that find
 nothing reported together and exiting with their shared cause.
 """
 
+import logging
 from types import SimpleNamespace
 
 import pytest
 
 import yellowdog_cli.utils.named_targets as named_targets
+import yellowdog_cli.utils.work_targets as work_targets
 from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import (
@@ -226,3 +228,43 @@ def test_compare_reports_a_missing_work_requirement(monkeypatch):
     with pytest.raises(ReportedFailure) as raised:
         named_targets.resolve_compare_targets(_ctx(), "nope", [WP_ID])
     assert classify(raised.value) == ExitCode.NOT_FOUND
+
+
+# ---------------------------------------------------------------------------
+# The '--debug' trace
+# ---------------------------------------------------------------------------
+
+
+def test_each_name_resolved_is_traced_with_its_id(monkeypatch, caplog):
+    monkeypatch.setattr(named_targets, "get_worker_pool_id_by_name", lambda *a: WP_ID)
+    with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+        named_targets.resolve_targets(_ctx(), ["pool", WP_ID], YDIDType.WORKER_POOL)
+    assert caplog.messages == [f"'pool' is {WP_ID}"]
+
+
+@pytest.mark.parametrize(
+    "task_group, expected",
+    [
+        (
+            SimpleNamespace(id=TG_ID, name="b"),
+            "'a/b' read as Task Group 'b' in Work Requirement 'a'",
+        ),
+        (
+            None,
+            "'a/b' read as Work Requirement 'b' in namespace 'a', Work Requirement"
+            " 'a' having no Task Group 'b'",
+        ),
+    ],
+)
+def test_how_wr_slash_tg_was_read_is_traced(monkeypatch, caplog, task_group, expected):
+    monkeypatch.setattr(
+        work_targets,
+        "_work_requirement_named",
+        lambda client, name, namespace: SimpleNamespace(id=WR_ID, name=name),
+    )
+    monkeypatch.setattr(
+        work_targets, "_task_group_named", lambda client, wr, name: task_group
+    )
+    with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+        work_targets.resolve_named_target(object(), "a/b", "ns")  # type: ignore[arg-type]
+    assert caplog.messages == [expected]

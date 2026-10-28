@@ -2,13 +2,14 @@
 yd-remove (utils/resource_removal.py, and the run it shares with yd-create in
 utils/resource_processing.py): the behaviour its review changed. A run exits
 with its failures' shared code and stops at a session failure, each failure
-printed once naming the resource; an ID is recognised without '--ids',
-files and IDs removed in one run in removal order; IDs are checked as they
-are parsed, each ID removed once, fetched before anything is asked, and one that does not
-exist is not found (exit 6); a Configured Worker Pool's name shuts down only
-its unfinished pools; Allowances removed by description are recorded each
-with its ID; Attribute Definitions carry a timeout, a 404 skipped; a Keyring
-is looked up by name before it is confirmed; a Namespace looked up once.
+printed once naming the resource; an ID is recognised without '--ids', files
+and IDs removed in one run in removal order; IDs are checked as they are
+parsed, each ID removed once, fetched before anything is asked, and one that
+does not exist is not found (exit 6); a Configured Worker Pool's name shuts
+down only its unfinished pools; Allowances removed by description are
+recorded each with its ID; Attribute Definitions carry a timeout, a 404
+skipped; a Keyring is looked up by name before it is confirmed; a Namespace
+looked up once.
 """
 
 from types import SimpleNamespace

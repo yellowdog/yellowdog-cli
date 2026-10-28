@@ -241,14 +241,18 @@ class TestHumanReadableReport:
             _run(capsys, json_output=False, groups_error=Exception("odd"))
         assert raised.value.code == ExitCode.FAILURE
 
-    def test_debug_raises_the_failure_for_its_traceback(self, capsys):
-        with pytest.raises(RequestsConnectionError):
+    def test_debug_traces_the_failure_and_keeps_its_exit_code(self, capsys):
+        with pytest.raises(SystemExit) as raised:
             _run(
                 capsys,
                 json_output=False,
                 groups_error=CONNECTION_RESET,
                 debug=True,
             )
+        assert raised.value.code == ExitCode.CONNECTION
+        trace = capsys.readouterr().err
+        assert "application: Groups and roles failed" in trace
+        assert "ConnectionError: connection reset" in trace
 
     def test_report_with_no_groups_or_roles_says_none(self, capsys):
         output = _run(capsys, json_output=False, groups=[], roles={})

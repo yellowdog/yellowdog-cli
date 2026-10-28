@@ -3565,6 +3565,7 @@ class TestCompare:
             worker_pool_status="RUNNING",
             worker_tags=pm("Worker Tags", MatchType.YES),
             task_types=pm("Task Types", MatchType.YES),
+            instance_pricing=pm("Instance Pricing", MatchType.YES),
             instance_types=pm("Instance Types", MatchType.YES),
             providers=pm("Providers", MatchType.YES),
             regions=pm("Regions", MatchType.YES),
@@ -3611,7 +3612,7 @@ class TestCompare:
             "workerPool": "wp",
             "matchStatus": "NO",
         } in row["properties"]
-        assert len(row["properties"]) == 8
+        assert len(row["properties"]) == 9
 
     def test_a_pool_that_cannot_be_compared_is_recorded_and_exits_by_its_cause(
         self, run, monkeypatch

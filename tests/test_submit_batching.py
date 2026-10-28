@@ -4,6 +4,7 @@ add_tasks_to_task_group (submit.py), and for the retrying of a batch that
 fails in submit_batch_of_tasks_to_task_group.
 """
 
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -251,6 +252,11 @@ class TestSequentialBatching:
     """
     Sequential path: parallel_batches == 1, or num_task_batches == 1.
     """
+
+    def test_the_batching_is_traced(self, caplog):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _run_add_tasks(num_tasks=9, batch_size=3, parallel_batches=1)
+        assert "9 Task(s) in 3 batch(es) of up to 3, sent in turn" in caplog.messages
 
     def test_single_batch_calls_generate_and_submit_once(self):
         result = _run_add_tasks(num_tasks=5, batch_size=10, parallel_batches=1)
@@ -548,6 +554,22 @@ class TestBatchSubmitRetries:
         )
         assert "raised" not in outcome
         assert outcome["result"] == 2
+
+    def test_each_failed_attempt_and_its_reading_are_traced(self, caplog):
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            self._submit([Exception("502 Bad Gateway"), Exception(_DUPLICATE_NAMES)])
+        retries = [m for m in caplog.messages if "attempt" in m]
+        assert len(retries) == 3, caplog.messages
+        assert retries[0].endswith(
+            f"attempt 1 of {MAX_BATCH_SUBMIT_ATTEMPTS} failed: Exception: 502 Bad Gateway"
+        )
+        assert retries[1].endswith(
+            f"attempt 2 of {MAX_BATCH_SUBMIT_ATTEMPTS} failed:"
+            f" Exception: {_DUPLICATE_NAMES}"
+        )
+        assert retries[2].endswith(
+            "its names are taken, so the attempt before added it"
+        )
 
     def test_duplicate_names_as_an_invalid_request_on_a_retry_is_success_too(self):
         outcome = self._submit(

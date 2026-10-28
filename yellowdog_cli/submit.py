@@ -4,11 +4,13 @@
 A script to submit a Work Requirement.
 """
 
+import logging
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import ceil
 from os.path import dirname
 from sys import exit as sys_exit
+from time import monotonic, sleep
 from typing import cast
 
 from yellowdog_client.model import (
@@ -27,7 +29,9 @@ from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
+    count_tasks_in_task_group,
     find_work_requirement_by_name,
+    task_name_taken,
 )
 from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
@@ -41,6 +45,8 @@ from yellowdog_cli.utils.json_raw import submit_json_raw
 from yellowdog_cli.utils.lazy import lazy, value
 from yellowdog_cli.utils.limits import (
     DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
+    TASK_COUNT_UPDATE_POLL_INTERVAL,
+    TASK_COUNT_UPDATE_WAIT,
 )
 from yellowdog_cli.utils.load_config import (
     config_file_dir,
@@ -93,7 +99,11 @@ from yellowdog_cli.utils.task_batches import (
     run_batches,
     submit_with_retries,
 )
-from yellowdog_cli.utils.task_generation import TaskSource, generate_batch_of_tasks
+from yellowdog_cli.utils.task_generation import (
+    TaskSource,
+    first_task_name,
+    generate_batch_of_tasks,
+)
 from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.task_groups import (
     check_task_groups,
@@ -119,6 +129,8 @@ from yellowdog_cli.utils.variable_syntax import (
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 # The Work Requirement configuration from the TOML file, read on first use
 CONFIG_WR: ConfigWorkRequirement = lazy(load_config_work_requirement)
@@ -221,6 +233,15 @@ def main(ctx: RunContext):
         (config_file_dir() if wr_data_file is None else dirname(wr_data_file))
         if ctx.args.content_path is None
         else ctx.args.content_path
+    )
+    _LOG.debug(
+        "Files the Work Requirement names are found from %s, '%s'",
+        "--content-path"
+        if ctx.args.content_path is not None
+        else "the configuration file's directory"
+        if wr_data_file is None
+        else "the specification's directory",
+        files_directory,
     )
 
     if wr_data_file is None and csv_files is not None:
@@ -568,11 +589,13 @@ def _refuse_duplicate_names(task_groups: list[TaskGroup]) -> None:
 class _Addition:
     """
     Tasks to add to one Task Group: those of the specification's Task Group
-    at 'position', into 'task_group'.
+    at 'position', into 'task_group', which is 'matched' if it is one the
+    Work Requirement already has ('--add-to').
     """
 
     position: TaskGroupPosition
     task_group: TaskGroup
+    matched: bool = False
 
 
 def _create_work_requirement(
@@ -643,9 +666,11 @@ def _plan_extension(
 ) -> _Extension:
     """
     The specification's Task Groups matched by name to those the Work
-    Requirement already has, which take their Tasks, the rest appended as
-    new; a ValueError if a matched one's Tasks need a task type it does not
-    allow. Decides everything and does nothing, so it needs no client.
+    Requirement already has, which take their Tasks, numbered on from the
+    count in each one's summary (which _settled_source() checks), the rest
+    appended as new; a ValueError if a matched one's Tasks need a task type
+    it does not allow. Decides everything and does nothing, so it needs no
+    client.
     """
     n_existing = len(existing_tgs)
 
@@ -707,8 +732,19 @@ def _plan_extension(
                     task_summary.taskCount if task_summary is not None else 0,
                 ),
                 existing_tg,
+                matched=True,
             )
         )
+    for _, _, _, existing_tg in matched:
+        task_summary = existing_tg.taskSummary
+        _LOG.debug(
+            "Task Group '%s' is already in the Work Requirement: its Tasks are"
+            " numbered on from the %d it holds",
+            existing_tg.name,
+            task_summary.taskCount if task_summary is not None else 0,
+        )
+    for _, spec_tg in new_tgs:
+        _LOG.debug("Task Group '%s' is new: it is appended", spec_tg.name)
     new = [tg for _, tg in new_tgs]
     return _Extension(existing_tgs + new, new, additions)
 
@@ -802,6 +838,7 @@ def _add_tasks(
                 task_count=task_count,
                 work_requirement=work_requirement,
                 files_directory=files_directory,
+                matched=addition.matched,
             )
 
     # An interrupt too: Ctrl-C part-way through would otherwise leave a new
@@ -852,6 +889,108 @@ def _warn_legacy_retry_mechanism_once(run: _Submission) -> None:
     )
 
 
+def _settled_source(
+    run: _Submission, source: TaskSource, work_requirement: WorkRequirement
+) -> TaskSource:
+    """
+    'source' for an existing Task Group, numbered on from the Tasks it holds.
+    Its summary's count, which 'source' starts from, is updated seconds
+    after Tasks are added, and until then would name the first Task as one
+    already there, which the Platform refuses: so the group is searched for
+    that name, and while it is taken the count is waited for to change and
+    the Tasks numbered again. A name still taken once the count has stood
+    still for TASK_COUNT_UPDATE_WAIT is one in use, refused here. Tasks
+    without names have nothing to search for, so theirs are counted.
+    """
+    client = run.ctx.client
+    task_group = source.task_group
+    task_group_id = cast(str, task_group.id)
+    name = first_task_name(source)
+    if name is None:
+        count = count_tasks_in_task_group(client, task_group_id)
+        _LOG.debug(
+            "Task Group '%s': its Tasks have no names, so its %d Tasks were counted",
+            task_group.name,
+            count,
+        )
+        return _renumbered(source, count)
+    _LOG.debug(
+        "Task Group '%s': checking that the first new Task's name, '%s', is free",
+        task_group.name,
+        name,
+    )
+
+    count = source.position.existing_tasks
+    while task_name_taken(client, task_group_id, name):
+        print_info(
+            f"Task Group '{task_group.name}' already has a Task named '{name}':"
+            " waiting for its count of Tasks to catch up"
+        )
+        updated = _changed_task_count(run, work_requirement, task_group, count)
+        if updated is None:
+            raise ValueError(
+                f"Task Group '{task_group.name}' already has a Task named"
+                f" '{name}', the name the first Task added would be given"
+            )
+        count = updated
+        source = _renumbered(source, count)
+        name = cast(str, first_task_name(source))
+    return source
+
+
+def _changed_task_count(
+    run: _Submission,
+    work_requirement: WorkRequirement,
+    task_group: TaskGroup,
+    count: int,
+) -> int | None:
+    """
+    The Task Group's count of Tasks once its summary gives one other than
+    'count', read every TASK_COUNT_UPDATE_POLL_INTERVAL; None if it has not
+    within TASK_COUNT_UPDATE_WAIT. Only the count is compared: the status
+    counts beside it change whenever a Task does.
+    """
+    deadline = monotonic() + TASK_COUNT_UPDATE_WAIT
+    while monotonic() < deadline:
+        sleep(TASK_COUNT_UPDATE_POLL_INTERVAL)
+        summary = next(
+            (
+                tg.taskSummary
+                for tg in run.ctx.client.work_client.get_work_requirement_by_id(
+                    cast(str, work_requirement.id)
+                ).taskGroups
+                or []
+                if tg.id == task_group.id
+            ),
+            None,
+        )
+        if summary is not None and summary.taskCount != count:
+            _LOG.debug(
+                "Task Group '%s': its count of Tasks went from %d to %d",
+                task_group.name,
+                count,
+                summary.taskCount,
+            )
+            return summary.taskCount
+    _LOG.debug(
+        "Task Group '%s': its count of Tasks stayed at %d for %gs",
+        task_group.name,
+        count,
+        TASK_COUNT_UPDATE_WAIT,
+    )
+    return None
+
+
+def _renumbered(source: TaskSource, existing_tasks: int) -> TaskSource:
+    """
+    'source' with its Tasks numbered on from 'existing_tasks', and the Task
+    Group's lazy substitutions defined again to match.
+    """
+    position = replace(source.position, existing_tasks=existing_tasks)
+    position.substitute(cast(str, source.task_group.name), source.num_tasks)
+    return replace(source, position=position)
+
+
 def add_tasks_to_task_group(
     run: _Submission,
     position: TaskGroupPosition,
@@ -860,10 +999,12 @@ def add_tasks_to_task_group(
     task_count: int | None,
     work_requirement: WorkRequirement,
     files_directory: str = "",
+    matched: bool = False,
 ) -> None:
     """
     Add the Tasks of the specification's Task Group at 'position' to
-    'task_group', numbered on from any it already holds.
+    'task_group', numbered on from any it already holds: for a 'matched'
+    Task Group, those _settled_source() finds.
     """
     batch_size = run.batch_size
     task_group_data = wr_data[TASK_GROUPS][position.spec_index]
@@ -918,6 +1059,8 @@ def add_tasks_to_task_group(
         num_tasks=num_tasks,
         uploaded_files=run.uploaded_files,
     )
+    if matched:
+        source = _settled_source(run, source, work_requirement)
     num_submitted_tasks = run_batches(
         run.ctx,
         num_tasks,

@@ -82,7 +82,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:11:58 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 12:01:50 GMT 2026 -->
 
 <!--te-->
 
@@ -129,7 +129,7 @@ The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of
 
 | Option | Effect |
 |---|---|
-| `--config <config_file.toml>`, `-c` | Configuration file in TOML format; the default is `config.toml` in the current directory, else your own, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set; see [Configuration](configuration.md)) |
+| `--config <config_file.toml>`, `-c` | Configuration file in TOML format, whose values take precedence over environment variables, where a file found by default gives way to them (see [Which Value Wins](configuration.md#which-value-wins)); the default is `config.toml` in the current directory, else your own, `~/.config/yellowdog/config.toml` (`$XDG_CONFIG_HOME/yellowdog/config.toml` where that is set; see [Configuration](configuration.md)) |
 | `--no-config`, `--nc` | Ignore the contents of any TOML configuration file, even one named using `--config` |
 | `--key <app-key-id>`, `-k` | The Application key ID |
 | `--secret <app-key-secret>`, `-s` | The Application key secret |
@@ -139,7 +139,7 @@ The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of
 | `--quiet`, `-q` | Suppress (non-error, non-interactive) status and progress messages |
 | `--no-format`, `--nf` | Disable colouring and text wrapping in command output |
 | `--print-pid`, `--pp` | Include the process ID of the CLI invocation alongside the timestamp in log messages; useful for disambiguating interleaved output when running multiple commands in parallel |
-| `--debug` | Display the Python stack trace on error, which can be useful for support purposes. Also shows the startup preamble, each line marked `DEBUG`: where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL when it is not the default, the HTTPS proxy in use, and the certificates bundle when one is set. The whole preamble is suppressed by default |
+| `--debug` | Trace what the command does on stderr, for support or to see why a command did what it did: the configuration it loaded, each request to the Platform with its response status, each name resolved and file read, the decisions it made along the way, and the stack trace of a failure (see [What the Trace Shows](troubleshooting.md#what-the-trace-shows)). The trace never includes the application key or secret. `--quiet` and `--json` don't suppress it, and the exit code is the one the command gives without `--debug` |
 | `--pac` | Enable PAC (proxy auto-configuration) support — see [HTTPS Proxy Support](configuration.md#https-proxy-support) |
 | `--docs` | Provide a link to the documentation for this version of the CLI |
 
@@ -384,7 +384,7 @@ yd workrequirement finish my-analysis-run
 
 ### yd workrequirement priority
 
-The `yd workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
+The `yd workrequirement priority` command changes the priority of Work Requirements and Task Groups after they have been submitted. Higher priority acquires Workers ahead of lower priority (see [`priority`](work-requirement-property-dictionary.md)), so raising a Task Group's priority favours that stage of a run, and lowering a Work Requirement's lets others go first.
 
 ```shell
 yd workrequirement priority [options] <priority> <target> [<target> ...]
@@ -437,6 +437,7 @@ The properties are compared as follows. A property the Task Group leaves unset, 
 
 | **Property**         | **Compared with**                                                                       | **Matches when**                                                                                                 |
 |----------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| **Instance Pricing** | The instance pricing of the Worker Pool's Compute Sources: Spot, On-Demand, or both | For an `instancePricingPreference` of `SPOT_ONLY` or `ON_DEMAND_ONLY`, every source provisions that pricing alone, since only such a pool is scaled up for the Task Group; a source whose pricing the Platform doesn't report is shown as `UNKNOWN`, and doesn't match. The other preferences only order pools, and always match. A `NO` here still leaves a mixed pool's existing Workers of the right pricing to be claimed one by one |
 | **Instance Type(s)** | The instance types of the Worker Pool's Compute Sources (an AWS Fleet's overrides included) | Every one of them is in the Task Group's list                                                                    |
 | **Provider(s)**      | The providers of the Worker Pool's Compute Sources                                      | Every one of them is in the Task Group's list; a source whose provider can't be determined is shown as `UNKNOWN`, and doesn't match |
 | **Region(s)**        | The regions of the Worker Pool's Compute Sources                                        | Every one of them is in the Task Group's list                                                                    |
@@ -453,7 +454,7 @@ The match status of each property, and of the Worker Pool as a whole, is one of:
 |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **YES**          | The property matches; for the Worker Pool, every property does, so far as the Nodes that have reported their details show.                                |
 | **NO**           | The property doesn't match (for RAM and vCPUs, any one Node failing is enough); for the Worker Pool, at least one property doesn't.                         |
-| **MAYBE**        | The property depends on the Nodes (task types, RAM, vCPUs) and no Node has yet reported its details; for the Worker Pool, no property is NO but at least one is MAYBE. |
+| **MAYBE**        | The property depends on the Nodes (task types, RAM, vCPUs) and no Node has yet reported its details, or none is left to report them: a Node's record is removed an hour after it terminates, though the Scheduler keeps the properties a pool's Nodes established; for the Worker Pool, no property is NO but at least one is MAYBE. |
 
 A Worker Pool ID given more than once is compared once, with a warning. An ID of the wrong kind is a usage error (exit code 2), and a Work Requirement, Task Group or Worker Pool that does not exist exits with code 6.
 
@@ -606,7 +607,7 @@ Key options:
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array, each with its `targetInstanceCount` (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd workerpool resize pyex-slurm-pwt_230711-1243561-0d 10
+yd workerpool resize render-pool 10
 yd workerpool resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 ```
 
@@ -703,7 +704,7 @@ Key options:
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd computerequirement instantiate my_compute_requirement.json --target 4
+yd computerequirement instantiate render-cr.json --target 4
 ```
 
 An example JSON specification is shown below:
@@ -711,18 +712,18 @@ An example JSON specification is shown below:
 ```json
 {
   "imagesId": "ydid:imgfam:000000:41962592-577c-4fde-ab03-d852465e7f8b",
-  "instanceTags": {"a1": "one", "a2": "two"},
-  "requirementName": "cr_test___{{datetime}}__",
-  "requirementNamespace": "pyexamples",
-  "requirementTag": "pyexamples-test",
+  "instanceTags": {"project": "render"},
+  "requirementName": "render-cr",
+  "requirementNamespace": "image-processing",
+  "requirementTag": "render",
   "templateId": "ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4",
-  "userData": "#!/bin/bash\n#Other stuff...",
+  "userData": "#!/bin/bash\napt-get update && apt-get install -y ffmpeg",
   "targetInstanceCount": 1,
   "maintainInstanceCount": true
 }
 ```
 
-Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property.
+Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property, which names an image of your own: YellowDog provides no stock images (see [A First Run, with No Image of Your Own](worker-pools.md#a-first-run-with-no-image-of-your-own)).
 
 Values missing from a JSON specification are taken from the configuration file; `targetInstanceCount` only if the configuration actually sets it, so that a specification with no count is never sent with a count of zero. User Data merged in from the configuration is reported by its source and size, never printed. A JSON specification is provisioned as one Compute Requirement, whatever its count.
 
@@ -778,9 +779,9 @@ Key options:
 With `--wait`, the command returns only once the resized Compute Requirement has settled: it is `RUNNING`, as many of its Instances are `RUNNING` as its new target asks for, and none is still starting, stopping or terminating. Scaling up therefore waits for the new Instances to start, and scaling down for the surplus Instances to finish terminating, which can take a minute or more. Progress is printed whenever it changes. A Compute Requirement that cannot reach its target, because the cloud provider has no more capacity of the kind it asks for (on-demand as well as spot) or an Allowance or quota stands in the way, never settles, so give a `--timeout` when that is possible: if it passes first, the command reports what is still missing and exits 1, though the resize itself has been made and is recorded as `resized`. `--wait` cannot be combined with `--follow`.
 
 ```shell
-yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5
+yd computerequirement resize render-cr 5
 yd computerequirement resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
-yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
+yd computerequirement resize render-cr 5 --wait --timeout 600
 ```
 
 ### yd computerequirement stop
@@ -1556,6 +1557,8 @@ Valid entity types are:
 | `worker-pools` | `P` | Worker Pools |
 | `workers` | `F` | Workers (interactive: select a Worker Pool first) |
 
+A Task Group's status in the listing is followed by `/STARVED` when it can't claim any Workers, and `/WAITING` when it is waiting for a dependency, as in `PENDING/STARVED`. These show the Task Group's `starved` and `waitingOnDependency` flags: `--status` matches the status alone, and `--json` gives the two flags as fields (see [Task Group Statuses](work-requirements.md#task-group-statuses)).
+
 The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the items of one parent directly — the Task Groups or Tasks of a Work Requirement, the Instances of a Compute Requirement, the Nodes or Workers of a Worker Pool — name it with `--within` (below).
 
 Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
@@ -1672,6 +1675,8 @@ At least one ID is required, and each must be a Work Requirement's, Worker Pool'
 The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage, which ends only once a stream delivers an event, so a connection that is accepted and then drops before any, over and over, is given up on as well; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
 
 It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — for example 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made (see [Machine-readable Output and Exit Codes](json-output.md) for the others) — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd follow` takes its exit code from them.
+
+A Work Requirement's events list each of its Task Groups with its status, followed by `/STARVED` or `/WAITING` when either holds it up (see [Task Group Statuses](work-requirements.md#task-group-statuses)).
 
 Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd wait` (or `yd workrequirement submit --exit-on-failure`) to act on Work Requirement outcomes.
 
@@ -1853,6 +1858,7 @@ It checks, in order:
 - whether the configuration file loads and follows the configuration schema (a `WARN` naming the first few problems, as every command warns of them; see [Configuration](configuration.md)), and where each of the key, secret, namespace, tag and URL came from
 - undefined variable references
 - the `.env` file in use
+- the environment variables a configuration file chosen with `--config` outranked, a `WARN` naming each and the setting it would have given (`YD_NAMESPACE (common.namespace)`, `YD_VAR_site (variable 'site')`), never its value; one setting the same value in both is not reported
 - whether the tag is a legal name
 - each data client profile
 
@@ -1903,7 +1909,7 @@ yd version [options]
 
 Key options:
 - `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp` — mutually exclusive; each prints just that bare version number, for use in scripts
-- `--debug` — print the Python path and executable details, as a second table (note that this differs from `--debug` on other commands, which prints a stack trace on error); with the full report or `--json` only, not with a single-version option
+- `--debug` — print the Python path and executable details, as a second table (note that this differs from `--debug` on other commands, which traces what the command does); with the full report or `--json` only, not with a single-version option
 - `--no-format`, `--nf` — print the report, or the `--json` object, without colouring, as it is when piped or redirected
 - `--json` — print the versions, author and licence as a JSON object, `null` for a component not installed or whose version could not be read; with `--debug`, the Python executable and path too (see [Machine-readable Output and Exit Codes](json-output.md))
 

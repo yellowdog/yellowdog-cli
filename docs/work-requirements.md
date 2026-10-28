@@ -1,64 +1,92 @@
 # Work Requirements
 
 <!--ts-->
+   * [Examples](#examples)
+      * [A Work Requirement from the Configuration File](#a-work-requirement-from-the-configuration-file)
+      * [Several Task Groups in a JSON Specification](#several-task-groups-in-a-json-specification)
+      * [Sending Files to Tasks and Collecting Their Results](#sending-files-to-tasks-and-collecting-their-results)
    * [Work Requirement JSON File Structure](#work-requirement-json-file-structure)
    * [Property Inheritance](#property-inheritance)
       * [Stopping Inheritance with null](#stopping-inheritance-with-null)
+         * [Details](#details)
+      * [Overriding Inherited Properties on the Command Line](#overriding-inherited-properties-on-the-command-line)
    * [Work Requirement Property Dictionary](#work-requirement-property-dictionary)
    * [Automatic taskTypes Population](#automatic-tasktypes-population)
+         * [Details](#details-1)
    * [Task Retries and Failure Policies](#task-retries-and-failure-policies)
       * [Selecting errors (Selection&lt;TaskErrorSelector&gt;)](#selecting-errors-selectiontaskerrorselector)
       * [Task Error Types](#task-error-types)
       * [Finding the Errors Your Tasks Hit](#finding-the-errors-your-tasks-hit)
       * [retryPolicy](#retrypolicy)
       * [failurePolicy](#failurepolicy)
+         * [Details](#details-2)
       * [Deprecated: maximumTaskRetries / retryableErrors](#deprecated-maximumtaskretries--retryableerrors)
          * [Migration](#migration)
    * [Merging Additional Environment Variables into Tasks](#merging-additional-environment-variables-into-tasks)
       * [Example — TOML](#example--toml)
       * [Example — JSON](#example--json)
+         * [Details](#details-3)
    * [Argument Prefix and Postfix](#argument-prefix-and-postfix)
       * [Example — TOML](#example--toml-1)
       * [Example — JSON](#example--json-1)
+         * [Details](#details-4)
    * [Task Templates](#task-templates)
       * [Example — TOML](#example--toml-2)
       * [Example — JSON](#example--json-2)
+         * [Details](#details-5)
    * [Automatic Properties](#automatic-properties)
       * [Work Requirement, Task Group and Task Naming](#work-requirement-task-group-and-task-naming)
          * [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)
       * [Task and Task Group Counts](#task-and-task-group-counts)
-   * [Examples](#examples)
-      * [TOML Properties in the workRequirement Section](#toml-properties-in-the-workrequirement-section)
-      * [JSON Properties at the Work Requirement Level](#json-properties-at-the-work-requirement-level)
-      * [JSON Properties at the Task Group Level](#json-properties-at-the-task-group-level)
-      * [JSON Properties at the Task Level](#json-properties-at-the-task-level)
+         * [Details](#details-6)
+   * [All Properties](#all-properties)
+      * [Properties in the workRequirement Section](#properties-in-the-workrequirement-section)
+      * [Properties at the Work Requirement Level](#properties-at-the-work-requirement-level)
+      * [Properties at the Task Group Level](#properties-at-the-task-group-level)
+      * [Properties at the Task Level](#properties-at-the-task-level)
    * [Variable Substitutions in Work Requirement Properties](#variable-substitutions-in-work-requirement-properties)
       * [Work Requirement Name Substitution](#work-requirement-name-substitution)
       * [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)
+         * [Details](#details-7)
+   * [Task Group Statuses](#task-group-statuses)
+         * [Details](#details-8)
    * [Dry-Running Work Requirement Submissions](#dry-running-work-requirement-submissions)
       * [Adding Task Groups and Tasks to an Existing Work Requirement](#adding-task-groups-and-tasks-to-an-existing-work-requirement)
+         * [Details](#details-9)
       * [Submitting 'Raw' JSON Work Requirement Specifications](#submitting-raw-json-work-requirement-specifications)
+         * [Details](#details-10)
    * [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)
    * [Using the YellowDog Data Client](#using-the-yellowdog-data-client)
       * [Specifying Data Client Inputs](#specifying-data-client-inputs)
+      * [Using Files Uploaded with yd data](#using-files-uploaded-with-yd-data)
       * [Automatic Upload of Local Files](#automatic-upload-of-local-files)
+         * [Details](#details-11)
       * [Rclone Authentication](#rclone-authentication)
       * [Specifying Data Client Outputs](#specifying-data-client-outputs)
+      * [The rclone Binary](#the-rclone-binary)
    * [Task Execution Context](#task-execution-context)
       * [Task Execution Steps](#task-execution-steps)
+      * [Where Task Types Come From](#where-task-types-come-from)
+      * [The docker Task Type](#the-docker-task-type)
+         * [Details](#details-12)
       * [The User and Group used for Tasks](#the-user-and-group-used-for-tasks)
       * [Home Directory for yd-agent](#home-directory-for-yd-agent)
       * [Task Execution Directory](#task-execution-directory)
+      * [Windows Nodes](#windows-nodes)
    * [Specifying Work Requirements using CSV Data](#specifying-work-requirements-using-csv-data)
       * [Work Requirement CSV Data Example](#work-requirement-csv-data-example)
+         * [Details](#details-13)
       * [CSV Variable Substitutions](#csv-variable-substitutions)
+         * [Details](#details-14)
       * [Property Inheritance](#property-inheritance-1)
       * [Multiple Task Groups using Multiple CSV Files](#multiple-task-groups-using-multiple-csv-files)
+         * [Details](#details-15)
       * [Using CSV Data with Simple, TOML-Only Work Requirement Specifications](#using-csv-data-with-simple-toml-only-work-requirement-specifications)
+         * [Details](#details-16)
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:22:37 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 09:22:01 GMT 2026 -->
 
 <!--te-->
 
@@ -67,63 +95,143 @@ A **Work Requirement** is the top-level unit of work submitted to the YellowDog 
 
 The `workRequirement` section of the configuration file is optional. It's used only by the `yd workrequirement submit` command, and controls the Work Requirement that is submitted to the Platform.
 
-**Jump to:** [Property Dictionary](property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
+**Jump to:** [Property Dictionary](work-requirement-property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [All Properties](#all-properties) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
 
 The details of a Work Requirement to be submitted can be captured entirely within the TOML configuration file for simple (single Task Group) examples. More complex examples capture the Work Requirement in a combination of the TOML file plus a JSON document, or in a JSON document only.
 
-## Work Requirement JSON File Structure
+## Examples
 
-Work Requirements are represented in JSON documents using a containment hierarchy of a **Work Requirement** containing a **list of Task Groups**, containing a **list of Tasks**.
+Each example runs in a directory whose `config.toml` holds your Application key and secret, namespace and tag in its `[common]` section, as `yd init` writes them. Its Tasks need a Worker Pool whose Workers carry the same Worker Tag, such as the one in the [Worker Pool examples](worker-pools.md#examples). The `bash` Task Type, in the YellowDog Agent's default configuration, runs `/bin/bash` with the Task's arguments.
 
-A very simple example document is shown below with a top-level Work Requirement containing two Task Groups each containing two Tasks, each with a different set of arguments to be passed to the Task.
+### A Work Requirement from the Configuration File
+
+For a single Task Group, the `[workRequirement]` section of `config.toml` is enough. This one submits 20 Tasks, each processing one frame:
+
+```toml
+[workRequirement]
+    taskType = "bash"
+    arguments = ["-c", "echo Processing frame {{task_number}}"]
+    taskCount = 20
+    workerTag = "render"
+```
+
+```bash
+yd workrequirement submit --follow
+```
+
+`{{task_number}}` gives each Task its own number, `01` to `20`, padded to the same width (see [Task and Task Group Name Substitutions](#task-and-task-group-name-substitutions)). Add `--dry-run` to print the Work Requirement without submitting it.
+
+### Several Task Groups in a JSON Specification
+
+For more than one Task Group, write the Work Requirement as a JSON specification. In this `trailer.json`, the `encode` Task Group starts only when every Task in `render` has succeeded:
 
 ```json
 {
   "taskGroups": [
     {
+      "name": "render",
+      "taskCount": 20,
+      "tasks": [{"arguments": ["-c", "echo Rendering frame {{task_number}}"]}]
+    },
+    {
+      "name": "encode",
+      "dependencies": ["render"],
+      "taskCount": 1,
+      "tasks": [{"arguments": ["-c", "echo Encoding the trailer"]}]
+    }
+  ]
+}
+```
+
+```bash
+yd workrequirement submit --follow trailer.json
+```
+
+Both Task Groups take their `taskType` and `workerTag` from the `[workRequirement]` section above (see [Property Inheritance](#property-inheritance)).
+
+### Sending Files to Tasks and Collecting Their Results
+
+Tasks can download their input files from a remote data store, such as an S3 bucket, and upload their results to it. Here each of four Tasks fetches the script `make-thumbnails.sh` and its own batch of photos, runs the script, and uploads the `thumbnails.zip` it makes:
+
+```toml
+[common.variables]
+    bucket = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos"
+
+[workRequirement]
+    taskType = "bash"
+    arguments = ["make-thumbnails.sh", "{{task_number}}"]
+    taskCount = 4
+    workerTag = "render"
+    taskDataInputs = [
+        {localPath = "make-thumbnails.sh", source = "{{bucket}}/scripts/make-thumbnails.sh", destination = "local:make-thumbnails.sh"},
+        {source = "{{bucket}}/originals/batch_{{task_number}}.zip", destination = "local:originals.zip"},
+    ]
+    taskDataOutputs = [
+        {source = "local:thumbnails.zip", destination = "{{bucket}}/thumbnails/batch_{{task_number}}.zip"},
+    ]
+```
+
+`localPath` uploads `make-thumbnails.sh` from the current directory to the bucket as the Work Requirement is submitted, so each Task can download it. `env_auth=true` takes the AWS credentials from the environment: yours when the script is uploaded, and the node's, such as an instance role, when Tasks download and upload. See [Using the YellowDog Data Client](#using-the-yellowdog-data-client).
+
+## Work Requirement JSON File Structure
+
+A JSON specification holds a Work Requirement, which contains a list of Task Groups, each of which contains a list of Tasks. This `photos.json` has two Task Groups of two Tasks, each Task with its own arguments:
+
+```json
+{
+  "taskGroups": [
+    {
+      "name": "resize",
       "tasks": [
-        {
-          "arguments": [1, 2, 3]
-        },
-        {
-          "arguments": [4, 5, 6]
-        }
+        {"arguments": ["resize.sh", "holiday.jpg"]},
+        {"arguments": ["resize.sh", "wedding.jpg"]}
       ]
     },
     {
+      "name": "watermark",
       "tasks": [
-        {
-          "arguments": [7, 8, 9]
-        },
-        {
-          "arguments": [10, 11, 12]
-        }
+        {"arguments": ["watermark.sh", "holiday.jpg"]},
+        {"arguments": ["watermark.sh", "wedding.jpg"]}
       ]
     }
   ]
 }
-
 ```
 
-To specify the file containing the JSON document, either populate the `workRequirementData` property in the `workRequirement` section of the TOML configuration file with the JSON filename, or specify it on the command line as a positional argument (which will override the property in the TOML file), e.g.:
+Name the file on the command line:
 
-`yd workrequirement submit --config myconfig.toml my_workreq.json`
+```bash
+yd workrequirement submit photos.json
+```
+
+Or name it in the `workRequirementData` property of the `[workRequirement]` section, and leave it off the command line. A file named on the command line overrides the property.
 
 The document may also be written in [Jsonnet](jsonnet.md), or in TOML.
 
 ## Property Inheritance
 
-Work Requirement specifications can be simplified substantially by the property inheritance features in `yd workrequirement submit`. In general, properties that are set at a higher level in the hierarchy are inherited at lower levels, unless explicitly overridden.
+A property set at a higher level is inherited by the levels below it, unless a lower level sets it too. So a property needed by every Task can be set once rather than on every Task.
 
-This means that a property set in the `workRequirement` section of the TOML file can be inherited successively by the Work Requirement, Task Groups, and Tasks in the JSON document (assuming the property is available at each level). Hence, Tasks inherit from Task Groups, which inherit from the Work Requirement in the JSON document, which inherits from the `workRequirement` properties in the TOML file.
+The levels, from the top, are the `[workRequirement]` section of the TOML file, then the Work Requirement, its Task Groups and their Tasks in the JSON document. A property is inherited only by the levels that take it. A value set part-way down is inherited from there: a property set on a Task Group is inherited by that Task Group's Tasks unless a Task sets its own.
 
-Overridden properties are also inherited at lower levels in the hierarchy. E.g. if a property is set at the Task Group level, it will be inherited by the Tasks in that Task Group unless explicitly overridden.
+For example, with `taskType = "bash"` in the `[workRequirement]` section, every Task in this specification is a `bash` Task, and the Tasks of `resize` all take its `arguments`:
 
-A `--property workRequirement.<key>=<value>` override is the exception to lower levels winning: it replaces the property wherever the JSON document sets it, at every level, as a command-line value beats a file's (see [Which Value Wins](configuration.md#which-value-wins)).
+```json
+{
+  "taskGroups": [
+    {
+      "name": "resize",
+      "arguments": ["resize.sh"],
+      "taskCount": 3,
+      "tasks": [{}]
+    }
+  ]
+}
+```
 
 ### Stopping Inheritance with `null`
 
-To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, exactly as if it had been set nowhere: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on, as the [Property Dictionary](property-dictionary.md) gives them. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:
+To stop a property being inherited, set it to `null` at the level that should not receive it. The property then has its default at that level and every level below it, as if it had been set nowhere. For example, with `arguments = ["--verbose"]` and `priority = 5.0` in the `[workRequirement]` section of the TOML file:
 
 ```json
 {
@@ -136,57 +244,76 @@ To stop a property being inherited, set it to `null` at the level that should no
 
 `task-1` runs with no arguments, in a Task Group with no priority. `task-2` inherits `["--verbose"]` and its Task Group a priority of `5.0`, while `task-3` stops the inheritance for itself alone.
 
-`null` can be used for any property that is inherited, at any level with a level above it to inherit from (the TOML file counts, so `null` at the Work Requirement level stops a TOML value). The TOML file is the top of the hierarchy, with nothing above it to stop, so it has no need of `null`, which TOML cannot express. Two properties are exceptions:
+For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance, with the same result.
 
-- `name` and `tag` are not inherited, so there is nothing for `null` to stop.
-- A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none (though the schema check warns of it, and `--validate` reports it, so leaving the property out is the better way): it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
+#### Details
 
-For a list or a table, an empty value (`[]` or `{}`) also stops the inheritance, with the same result. An inherited `taskData`, `taskDataFile` or `taskDataFiles` is stopped by setting any one of the three, to `null` or to an empty value: the three are one setting, and the first level to set any of them supplies the Task Data.
+**The defaults.** A property stopped with `null` takes the default the [Property Dictionary](work-requirement-property-dictionary.md) gives it: no `priority`, no `arguments`, no Task Data, `setTaskNames` true, and so on.
 
-`null` is not the same as removing the property with the [unset syntax](variables.md#removing-properties-using-the-unset-suffix): a property removed by `{{::}}` (or by `{{variable::}}` with the variable undefined) is treated as never written at that level, so it is still inherited from the level above. See [Unset Properties and Property Inheritance](variables.md#unset-properties-and-property-inheritance).
+**Where `null` can be used.** `null` can be used for any inherited property, at any level with a level above it to inherit from. The TOML file counts as a level, so `null` at the Work Requirement level stops a TOML value. The TOML file is the top of the hierarchy, so it has nothing to stop; TOML cannot express `null` in any case.
+
+**`name` and `tag`.** These are not inherited, so there is nothing for `null` to stop.
+
+**`taskType` and `taskTypes`.** A Task must have a Task Type, so a `null` `taskType` is treated as though the Task set none: it takes its Task Group's, as described in [Automatic `taskTypes` Population](#automatic-tasktypes-population). The schema check warns of a `null` `taskType`, and `--validate` reports it, so leaving the property out is the better way. `"taskTypes": null` on a Task Group means it declares no Task Types of its own, and takes them from its Tasks.
+
+**Task Data.** `taskData`, `taskDataFile` and `taskDataFiles` are one setting: the first level to set any of them supplies the Task Data. So an inherited one is stopped by setting any one of the three, to `null` or to an empty value.
+
+**`null` is not unset.** Removing a property with the [unset syntax](variables.md#removing-properties-using-the-unset-suffix) is different. A property removed by `{{::}}` (or by `{{variable::}}` with the variable undefined) is treated as never written at that level, so it is still inherited from the level above. See [Unset Properties and Property Inheritance](variables.md#unset-properties-and-property-inheritance).
+
+### Overriding Inherited Properties on the Command Line
+
+A `--property workRequirement.<key>=<value>` override is the exception to lower levels winning. It replaces the property wherever the JSON document sets it, at every level, as a command-line value beats a file's (see [Which Value Wins](configuration.md#which-value-wins)):
+
+```bash
+yd workrequirement submit --property workRequirement.priority=10 photos.json
+```
 
 ## Work Requirement Property Dictionary
 
-Every property available for defining Work Requirements, and the levels at which each can be set, is listed in the **[Work Requirement Property Dictionary](property-dictionary.md)**.
+Every property available for defining Work Requirements, and the levels at which each can be set, is listed in the **[Work Requirement Property Dictionary](work-requirement-property-dictionary.md)**.
 
 ## Automatic `taskTypes` Population
 
-A Task Group's `taskTypes` list (which determines which Workers can pick up Tasks in the group) can be omitted: it will be populated from the `taskType` of the constituent Tasks. When both are supplied, the resulting list is the **union** of the explicit `taskTypes` and every `taskType` set on the Tasks in the group.
+A Task Group's `taskTypes` list says which Workers can pick up its Tasks. It can be left out: it is filled in from the `taskType` of the Task Group's Tasks.
 
-For example, this Task Group has no explicit `taskTypes` — the group's allowlist becomes `["bash"]` automatically:
+This Task Group has no `taskTypes`, so its list becomes `["bash"]`:
 
 ```json
 {
-  "name": "my-tasks",
+  "name": "greetings",
   "tasks": [
-    {"name": "task-1", "taskType": "bash", "arguments": ["echo", "hello"]},
-    {"name": "task-2", "taskType": "bash", "arguments": ["echo", "world"]}
+    {"name": "hello", "taskType": "bash", "arguments": ["-c", "echo hello"]},
+    {"name": "world", "taskType": "bash", "arguments": ["-c", "echo world"]}
   ]
 }
 ```
 
-And in this example, the group's allowlist becomes `["bash", "docker"]` (the union):
+When a Task Group sets `taskTypes` and its Tasks set `taskType` too, the list is the **union** of the two. (The `docker` Task Type here is one a node has only once it is added: see [The `docker` Task Type](#the-docker-task-type).) Here it becomes `["bash", "docker"]`:
 
 ```json
 {
   "name": "mixed-tasks",
   "taskTypes": ["bash"],
   "tasks": [
-    {"name": "shell-task", "taskType": "bash", "arguments": ["echo", "hi"]},
-    {"name": "container-task", "taskType": "docker", "taskData": "..."}
+    {"name": "shell-task", "taskType": "bash", "arguments": ["-c", "echo hi"]},
+    {"name": "container-task", "taskType": "docker", "arguments": ["alpine:3.20", "echo", "hi"]}
   ]
 }
 ```
 
-If `taskTypes` is still empty after this union, the CLI falls back (in order) to the `[workRequirement] taskType` config property and to `taskTemplate.taskType`. If none of these provide a value and the Task Group contains Tasks, submission fails with a clear error. The resulting `taskTypes` keeps the declared types in their order, followed by the Tasks' own types in the order they first appear.
+#### Details
 
-A Task with no `taskType` of its own takes its Task Group's, if the group has only one. If the group allows several, the Task takes the `[workRequirement] taskType` config property where the group allows that type, or otherwise the type of the group's `taskTemplate`; if neither applies, submission fails with an error naming the Task, rather than sending a Task the platform would refuse.
+**Order.** The resulting `taskTypes` keeps the declared types in their order, followed by the Tasks' own types in the order they first appear.
 
-When using `yd workrequirement submit --add-to <wr>` to add Tasks to an **existing** Task Group, the existing group's `taskTypes` allowlist cannot be modified (the platform does not support mutating `taskTypes` after the Task Group is created). The CLI detects this case before submitting anything and fails with a clear error if the incoming Tasks introduce a `taskType` that the existing group does not already allow. The remedy is to use a different Task Group name (so a new Task Group is created with the union of `taskTypes`) or change the offending Tasks to use a supported `taskType`.
+**When nothing gives a type.** If `taskTypes` is still empty after the union, the CLI falls back, in order, to the `[workRequirement]` `taskType` configuration property and to `taskTemplate.taskType`. If none of these gives a value and the Task Group contains Tasks, the submission fails with an error.
+
+**A Task with no `taskType`.** It takes its Task Group's type, if the group has only one. If the group allows several, the Task takes the `[workRequirement]` `taskType` configuration property where the group allows that type, or otherwise the type of the group's `taskTemplate`. If neither applies, the submission fails with an error naming the Task, rather than sending a Task the Platform would refuse.
+
+**Adding Tasks with `--add-to`.** When `yd workrequirement submit --add-to` adds Tasks to an **existing** Task Group, that group's `taskTypes` cannot be changed, because the Platform does not allow `taskTypes` to change after a Task Group is created. If the new Tasks bring a `taskType` the existing group does not allow, the CLI fails with an error before submitting anything. Either give the Tasks a different Task Group name, so that a new Task Group is created with the union of `taskTypes`, or change them to a `taskType` the group allows.
 
 ## Task Retries and Failure Policies
 
-A Task Group's `runSpecification` can carry one **`retryPolicy`** and one **`failurePolicy`**. The retry policy is evaluated after each errored attempt; if retries are exhausted (or excluded by the policy), the failure policy can re-issue the Task in a different Task Group rather than letting it terminate as `FAILED`.
+A Task Group's `runSpecification` can carry one **`retryPolicy`** and one **`failurePolicy`**. The retry policy runs a failed Task again, on the errors it selects. When the retries are used up, or the error is not one the retry policy selects, the failure policy can resubmit the Task to a different Task Group rather than letting it end as `FAILED`.
 
 ### Selecting errors (`Selection<TaskErrorSelector>`)
 
@@ -226,15 +353,19 @@ The values an `errorTypes` Selection matches:
 | `UNABLE_WRITE_TASK_DATA`  | The Agent could not write the Task's `taskData` to its file.                                            |
 | `UNKNOWN_ERROR`           | Any other error.                                                                                        |
 
-`PROCESS_NON_ZERO_EXIT`, `TIMED_OUT` and the `UNKNOWN_ERROR` of a missing Task data input or output are as observed on the Platform; the SDK describes `DATA_CLIENT_DISABLED`, and the others are described by what their names record. Because a Task can record more than one error for one failure, as a timeout does, select on the one that caused it: the errors your own Tasks have recorded (below) show which that is.
+A Task can record more than one error for one failure, as a timeout does, so select on the one that caused it. The errors your own Tasks have recorded (below) show which that is.
+
+`PROCESS_NON_ZERO_EXIT`, `TIMED_OUT` and the `UNKNOWN_ERROR` of a missing Task data input or output are described as observed on the Platform. The SDK describes `DATA_CLIENT_DISABLED`, and the others are described by what their names record.
 
 ### Finding the Errors Your Tasks Hit
 
-A Task keeps every error it has recorded, retried or not, in its `errors` list, so a policy is best written from the errors your Tasks actually hit. `--with-errors` lists the Tasks that recorded one, whatever their status (a Task that completed on a retry included), and `--auto-select-all` shows each in full (as `--details` does for the Tasks you choose from the list), or `--json` gives them all as one array:
+A policy is best written from the errors your Tasks actually hit. A Task keeps every error it has recorded, retried or not, in its `errors` list. This command lists the Tasks that recorded one and shows each in full:
 
 ```shell
 yd task list --within my-work-requirement --with-errors --auto-select-all
 ```
+
+`--with-errors` lists the Tasks with errors whatever their status, a Task that completed on a retry included. `--auto-select-all` shows each in full, as `--details` does for the Tasks you choose from the list. `--json` instead gives them all as one array.
 
 Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` selects on, beside a description, when it happened, and the node and Worker it happened on:
 
@@ -255,6 +386,8 @@ Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` s
 
 ### `retryPolicy`
 
+A retry policy says how many times a failed Task is retried, and on which errors. This one retries a Task up to three times when it lost its Worker or was stopped with exit code 143:
+
 ```json
 {
   "retryPolicy": {
@@ -269,13 +402,13 @@ Each entry in a Task's `errors` carries the three things a `TaskErrorSelector` s
 }
 ```
 
-`maxRetries` must be `>= 0`, and defaults to `0` when omitted, which defines the policy but retries nothing. `retryErrors` is optional — when omitted, all Task errors are eligible for retry.
+`retryErrors` is optional: without it, every Task error is retried. `maxRetries` must be `0` or more. It defaults to `0`, which defines the policy but retries nothing.
 
-A Task can tell which attempt it is from the `YD_RETRY_NUMBER` environment variable, which the YellowDog Agent sets: `0` for its first run, `1` for its first retry, and so on — for example, to resume from a checkpoint rather than start again.
+A Task can tell which attempt it is from the `YD_RETRY_NUMBER` environment variable, which the YellowDog Agent sets: `0` for its first run, `1` for its first retry, and so on. A Task can use it, for example, to resume from a checkpoint rather than start again.
 
 ### `failurePolicy`
 
-When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`), a `failurePolicy` can resubmit the Task in another Task Group within the same Work Requirement:
+When a Task's retries are used up, or its error is not one `retryPolicy.retryErrors` selects, a `failurePolicy` can resubmit the Task to another Task Group in the same Work Requirement. This one sends Tasks that lost their Worker to `on-demand-tg`, and Tasks that ran out of memory (exit code 137) to `high-memory-tg`:
 
 ```json
 {
@@ -298,11 +431,9 @@ When retries are exhausted (or the error didn't match `retryPolicy.retryErrors`)
 }
 ```
 
-A destination Task Group must not finish once all its Tasks have finished: the Platform refuses the Work Requirement unless each one sets `"finishIfAllTasksFinished": false` (`task group failure policy destinations ... will finish if all tasks finished`). It therefore stays `RUNNING` after its last Task has finished, and so does the Work Requirement, which ends only when it is finished or cancelled: `yd workrequirement finish` once the work is done (a `--follow` of it does not return until then).
+Destinations are evaluated **in order**, and the first matching entry wins. An entry without `resubmitErrors` matches every error.
 
-Destinations are evaluated **in order**; the first matching entry wins. An entry without `resubmitErrors` matches every error, so only the last should leave it out, or those after it can never be reached; an empty `resubmissionDestinations` list is refused. A resubmitted Task becomes `RESUBMITTED` (a terminal status), and a copy is added to the destination Task Group with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
-
-A Task resubmitted counts as finished in its own Task Group, which completes as usual; the copy follows its destination Task Group's policies, not the original's, so it is retried only if that Task Group has a `retryPolicy` of its own.
+Each destination Task Group must set `"finishIfAllTasksFinished": false`, or the Platform refuses the Work Requirement. Such a Work Requirement does not end by itself: run `yd workrequirement finish` once the work is done.
 
 A complete example, retrying a Task once on exit code 3 and then resubmitting it to a fallback Task Group (on other Workers, say):
 
@@ -342,6 +473,16 @@ Common use cases:
 
 - **Spot → on-demand fallback**: retry preemptions a few times in a spot-priced Task Group, then resubmit to an on-demand Task Group.
 - **Out-of-memory → larger instance**: exit code 137 in a default-sized group resubmits to a Task Group with more `ram` or `vcpus`.
+
+#### Details
+
+**Why the Work Requirement stays running.** The Platform refuses a destination Task Group that would finish once all its Tasks have finished, with the error `task group failure policy destinations ... will finish if all tasks finished`. A destination therefore stays `RUNNING` after its last Task has finished, and so does the Work Requirement. It ends only when it is finished or cancelled, and a `--follow` of it does not return until then.
+
+**Ordering the destinations.** Since an entry without `resubmitErrors` matches every error, only the last entry should leave it out; any entries after it can never be reached. An empty `resubmissionDestinations` list is refused.
+
+**The resubmitted Task.** A resubmitted Task becomes `RESUBMITTED`, a terminal status. A copy is added to the destination Task Group, with its `resubmittedFromTaskId` linking back to the original. The original Task carries `resubmittedToTaskId` pointing forward.
+
+**Policies after resubmission.** A resubmitted Task counts as finished in its own Task Group, which completes as usual. The copy follows its destination Task Group's policies, not the original's, so it is retried only if that Task Group has a `retryPolicy` of its own.
 
 ### Deprecated: `maximumTaskRetries` / `retryableErrors`
 
@@ -393,17 +534,15 @@ A legacy `retryableErrors` entry's three fields (`errorTypes`, `statusesAtFailur
 
 ## Merging Additional Environment Variables into Tasks
 
-The `addEnvironment` property allows a fixed set of environment variable key-value pairs to be merged into the `environment` of every Task, without replacing the entire `environment` property. The Task's `environment` is inherited as usual; then a key in both keeps the value from the `environment`, so `addEnvironment` only adds the keys the `environment` lacks.
-
-`addEnvironment` can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level), and it **accumulates** down those levels rather than being replaced: each level's table is added to those above it, and a key set at more than one level takes its value from the lowest. Setting it to `null` at a level clears what came from above, as `null` stops inheritance elsewhere.
+`addEnvironment` adds environment variables to every Task's `environment`, without replacing it. A variable the `environment` already has keeps its value: `addEnvironment` only adds the variables the `environment` lacks.
 
 ### Example — TOML
 
 ```toml
 [workRequirement]
-    environment = {MY_VAR = "original", KEEP = "kept"}
-    addEnvironment = {MY_VAR = "ignored", EXTRA = "new"}
-    # Effective environment for each task: {MY_VAR = "original", KEEP = "kept", EXTRA = "new"}
+    environment = {IMAGE_SIZE = "800", OUTPUT_FORMAT = "png"}
+    addEnvironment = {IMAGE_SIZE = "1024", LOG_LEVEL = "info"}
+    # Each Task's environment: {IMAGE_SIZE = "800", OUTPUT_FORMAT = "png", LOG_LEVEL = "info"}
 ```
 
 ### Example — JSON
@@ -412,72 +551,78 @@ The `addEnvironment` property allows a fixed set of environment variable key-val
 {
   "taskGroups": [
     {
-      "environment": {"MY_VAR": "original", "KEEP": "kept"},
-      "addEnvironment": {"MY_VAR": "ignored", "EXTRA": "new"},
+      "environment": {"IMAGE_SIZE": "800", "OUTPUT_FORMAT": "png"},
+      "addEnvironment": {"IMAGE_SIZE": "1024", "LOG_LEVEL": "info"},
       "tasks": [{}]
     }
   ]
 }
 ```
 
+#### Details
+
+**Where it can be set.** `addEnvironment` can be set in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level, but not on a Task.
+
+**How the levels combine.** Unlike other properties, `addEnvironment` **accumulates** down the levels rather than being replaced: each level's table is added to those above it. A variable set at more than one level takes its value from the lowest. Setting `addEnvironment` to `null` at a level clears what came from above, as `null` stops inheritance elsewhere.
+
+**With the Task's `environment`.** The Task's `environment` is inherited as usual, then `addEnvironment` is merged into it.
+
 ## Argument Prefix and Postfix
 
-The `argumentsPrefix` and `argumentsPostfix` properties allow a fixed list of arguments to be prepended and/or appended to every Task's `arguments`. The final argument list passed to each Task is:
+`argumentsPrefix` and `argumentsPostfix` put a fixed list of arguments before and after every Task's `arguments`. The shared part of a command is then set once, on the Work Requirement or a Task Group, and each Task gives only the part that varies. Each Task runs with:
 
 ```
 argumentsPrefix + arguments + argumentsPostfix
 ```
 
-This is useful when many Tasks share a common command structure but differ only in their per-task arguments — the shared parts can be set once at the Work Requirement or Task Group level rather than repeated in every Task definition. Variable substitutions are supported in all three lists.
-
-`argumentsPrefix` and `argumentsPostfix` can be set at the same levels as `addEnvironment`: in the TOML `[workRequirement]` section, at the Work Requirement JSON level, or at the Task Group JSON level (not at the per-Task level). Unlike `addEnvironment`, which is merged down the levels, each is taken whole from the lowest level that sets it, as `arguments` is.
-
 ### Example — TOML
 
 ```toml
 [workRequirement]
-    argumentsPrefix = ["--input", "data/"]
-    argumentsPostfix = ["--output", "results/"]
-    arguments = ["file1.txt"]
-    # Effective arguments for each task: ["--input", "data/", "file1.txt", "--output", "results/"]
+    argumentsPrefix = ["resize.sh", "--width", "800"]
+    arguments = ["holiday.jpg"]
+    argumentsPostfix = ["--format", "png"]
+    # Each Task's arguments: ["resize.sh", "--width", "800", "holiday.jpg", "--format", "png"]
 ```
 
 ### Example — JSON
 
-In this example, the repeated `python process.py` is set once at the Task Group level; each Task only specifies the part that varies:
+Here `resize.sh --width 800` is set once on the Task Group, and each Task names only its photo:
 
 ```json
 {
   "taskGroups": [
     {
-      "argumentsPrefix": ["python", "process.py"],
+      "argumentsPrefix": ["resize.sh", "--width", "800"],
       "tasks": [
-        {"arguments": ["--input", "file1.txt"]},
-        {"arguments": ["--input", "file2.txt"]},
-        {"arguments": ["--input", "file3.txt"]}
+        {"arguments": ["holiday.jpg"]},
+        {"arguments": ["wedding.jpg"]},
+        {"arguments": ["birthday.jpg"]}
       ]
     }
   ]
 }
 ```
 
-Each Task is invoked as `python process.py --input <file>`.
+Each Task runs as `resize.sh --width 800 <photo>`.
+
+#### Details
+
+**Where they can be set.** `argumentsPrefix` and `argumentsPostfix` can be set at the same levels as `addEnvironment`: the TOML `[workRequirement]` section, the Work Requirement JSON level, or the Task Group JSON level, but not on a Task.
+
+**How the levels combine.** Each is taken whole from the lowest level that sets it, as `arguments` is. They are not merged down the levels as `addEnvironment` is.
+
+**Substitutions.** Variable substitutions are supported in all three lists.
 
 ## Task Templates
 
-The `taskTemplate` property on a Task Group optionally sets default values for `taskType`, `taskData`, and `environment` for all Tasks in that group. These defaults are applied by the YellowDog platform, allowing individual Task specifications to be more compact — Tasks that share the same type and data don't need to repeat them.
-
-Any combination of the three fields can be specified; omitted fields are simply not defaulted. Values specified directly on an individual Task take precedence over the template.
-
-`taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` as an alternative to `taskData`, exactly as they can at the Task level — the file contents are read client-side and used as the `taskData` value. `taskDataFiles` concatenates multiple files in order, a newline after each. Every Task Data file is substituted as it is read, `{{variable}}` by `{{variable}}`, as a User Data file is.
-
-`taskTemplate` can be set in the TOML config (applying globally as a default), at the Work Requirement level, or at the Task Group level. More specific levels take precedence.
+A Task Group's `taskTemplate` gives its Tasks default values for `taskType`, `taskData` and `environment`. The Platform applies the defaults, so Tasks that share them need not each repeat them.
 
 ### Example — TOML
 
 ```toml
 [workRequirement]
-    taskTemplate = {taskType = "docker", taskData = "default-data", environment = {BATCH_SIZE = "100"}}
+    taskTemplate = {taskType = "bash", taskData = "quality=90", environment = {IMAGE_SIZE = "800"}}
 ```
 
 ### Example — JSON
@@ -487,36 +632,52 @@ Any combination of the three fields can be specified; omitted fields are simply 
   "taskGroups": [
     {
       "taskTemplate": {
-        "taskType": "docker",
-        "taskData": "default-data",
-        "environment": {"BATCH_SIZE": "100"}
+        "taskType": "bash",
+        "taskData": "quality=90",
+        "environment": {"IMAGE_SIZE": "800"}
       },
-      "taskTypes": ["docker"],
+      "taskTypes": ["bash"],
       "tasks": [
-        {},
-        {"environment": {"BATCH_SIZE": "200"}},
-        {}
+        {"arguments": ["resize.sh", "holiday.jpg"]},
+        {"arguments": ["resize.sh", "poster.jpg"], "environment": {"IMAGE_SIZE": "2400"}},
+        {"arguments": ["resize.sh", "wedding.jpg"]}
       ]
     }
   ]
 }
 ```
 
-All three Tasks use the `docker` task type from the template. The second Task overrides `BATCH_SIZE` to `"200"`; the others inherit `"100"` from the template.
+All three Tasks use the `bash` Task Type and the Task Data from the template. The second Task sets `IMAGE_SIZE` to `"2400"`; the others take `"800"` from the template.
+
+#### Details
+
+**Which fields.** Any combination of the three fields can be given. A field left out is not defaulted.
+
+**Precedence.** A value set on a Task takes precedence over the template.
+
+**Task Data files.** `taskDataFile` or `taskDataFiles` can be used inside `taskTemplate` in place of `taskData`, exactly as on a Task. The file contents are read by the CLI and used as the `taskData` value. `taskDataFiles` joins several files in order, with a newline after each. Every Task Data file is substituted as it is read, `{{variable}}` by `{{variable}}`, as a User Data file is.
+
+**Where it can be set.** `taskTemplate` can be set in the TOML configuration (a default for every Task Group), at the Work Requirement level, or at the Task Group level. The more specific level takes precedence.
 
 ## Automatic Properties
 
-In addition to the property inheritance mechanism, some properties are set automatically by the `yd workrequirement submit` command, as a usage convenience if they're not explicitly specified.
+`yd workrequirement submit` sets some properties itself when the specification leaves them out.
 
 ### Work Requirement, Task Group and Task Naming
 
-- The **Work Requirement** name is automatically set using a concatenation of the `[common]` `tag` (not `[workRequirement]`'s), a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)): e.g. `mytag_221024-1555241-4f`.
-- **Task Group** names are automatically created for any Task Group that is not explicitly named, using names of the form `task_group_1` (or `task_group_01`, etc., for larger numbers of Task Groups). Task Group numbers can also be included in user-defined Task Group names using the `{{task_group_number}}` variable substitution discussed below.
-- **Task** names are automatically created for any Task that is not explicitly named, using names of the form `task_1` (or `task_01`, etc., for larger numbers of Tasks). The Task counter resets for each different Task Group. Task numbers can also be included in user-defined Task names using the `{{task_number}}` variable substitution discussed below. Automatic Task name generation can be suppressed by setting the `setTaskNames` property to `false`, in which case the `task_name` variable will be set to `none`.
+- An unnamed **Work Requirement** is named from the `[common]` `tag`, a UTC timestamp and a process discriminator, e.g. `thumbnails_261027-1605404-tz` (see [Naming Rules](configuration.md#naming-rules)).
+- An unnamed **Task Group** is named `task_group_1`, `task_group_2` and so on.
+- An unnamed **Task** is named `task_1`, `task_2` and so on, counting from 1 again in each Task Group.
+
+Your own names can include the numbers with the `{{task_group_number}}` and `{{task_number}}` [substitutions](#task-and-task-group-name-substitutions).
+
+The Work Requirement's name uses the `[common]` `tag`, not the `[workRequirement]` section's. The numbers in the generated names are zero-padded to the width of the count, e.g. `task_01` in a Task Group of 10 to 99 Tasks, and `task_group_01` likewise.
+
+Setting `setTaskNames` to `false` stops Tasks being named. The `task_name` variable is then `none`.
 
 #### Obtaining Names/Context from Environment Variables at Task Run Time
 
-When a Task executes, its Task name and number, Task Group name and number, Work Requirement name, Namespace, and Tag can be made automatically available to the Task in the following environment variables, if the `addYDEnvironment` property is set to `true` (which adds about 250 to 300 bytes to every Task; see [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)):
+Set `addYDEnvironment` to `true` to give each Task its names, numbers, namespace and tag in these environment variables:
 
 - `YD_TASK_NAME`
 - `YD_TASK_NUMBER`
@@ -528,9 +689,9 @@ When a Task executes, its Task name and number, Task Group name and number, Work
 - `YD_NAMESPACE`
 - `YD_TAG` (if set at the Task level)
 
-This applies whether the names were set automatically by `yd workrequirement submit` or explicitly by the user.
+This applies whether the names were set automatically by `yd workrequirement submit` or by you. The variables add about 250 to 300 bytes to every Task (see [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)).
 
-In addition to the environment variables above, when a Task is executed by a Worker, the YellowDog Agent will set the following for use by the Task, based on the instance details and Task identification:
+The YellowDog Agent also sets these, from the instance and the Task, for every Task it runs:
 
 - `YD_PROVIDER`
 - `YD_REGION`
@@ -545,15 +706,27 @@ In addition to the environment variables above, when a Task is executed by a Wor
 
 ### Task and Task Group Counts
 
-The `taskCount` property can be used to expand the number of Tasks within a Task Group, by creating duplicates of a single Task; this can be handy for testing and demos. In JSON specifications, there must be exactly one Task listed within the Task Group, or `taskCount` is ignored with a warning. The `--task-count`/`-C` option of `yd workrequirement submit` sets it on the command line, overriding a `taskCount` set anywhere in the specification or the configuration file.
+`taskCount` makes a Task Group of copies of a single Task, and `taskGroupCount` makes a Work Requirement of copies of a single Task Group. They are handy for testing and demos. On the command line, `--task-count` (`-C`) and `--task-group-count` (`-G`) set them, overriding the specification and the configuration file:
 
-Also useful for testing, the `taskGroupCount` property or the command-line option `--task-group-count`/`-G` (which overrides the property) can be set to expand the number of Task Groups in the Work Requirement, by creating duplicates of a single Task Group; with more than one Task Group listed, it is ignored with a warning. The duplicates must be named apart, so a named Task Group expanded this way includes `{{task_group_number}}` in its name, or the submission is refused. If used, the `taskCount` property will apply to every Task Group, i.e. the total number of Tasks is the product of `taskGroupCount` and `taskCount`.
+```bash
+yd workrequirement submit --task-group-count 3 --task-count 10 --dry-run
+```
 
-## Examples
+`taskCount` applies to every Task Group, so this makes 3 Task Groups of 10 Tasks each, 30 Tasks in all.
 
-### TOML Properties in the `workRequirement` Section
+#### Details
 
-Here's an example of the `workRequirement` section of a TOML configuration file, showing all the possible properties that can be set. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set at a given level, so the example uses `taskData`; likewise `csvFile` and `csvFiles`, and `workerTag` and `workerTags`. The deprecated `maximumTaskRetries` and `retryableErrors` (see [above](#deprecated-maximumtaskretries--retryableerrors)) cannot be combined with `retryPolicy` and are left out.
+**One Task, one Task Group.** In a JSON specification, `taskCount` needs exactly one Task in its Task Group, and `taskGroupCount` exactly one Task Group in the Work Requirement. With more than one listed, the count is ignored with a warning.
+
+**Naming the copies.** The copies of a Task Group must have different names. So a named Task Group expanded with `taskGroupCount` must include `{{task_group_number}}` in its name, or the submission is refused.
+
+## All Properties
+
+Each listing below sets every property that can be set at its level, for reference: none is meant to be submitted as it stands. The [Property Dictionary](work-requirement-property-dictionary.md) describes each property, and the [Examples](#examples) show typical use.
+
+### Properties in the `workRequirement` Section
+
+Every property the `workRequirement` section of a TOML configuration file can set. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set at a given level, so the listing uses `taskData`; likewise `csvFile` and `csvFiles`, and `workerTag` and `workerTags`. The deprecated `maximumTaskRetries` and `retryableErrors` (see [above](#deprecated-maximumtaskretries--retryableerrors)) cannot be combined with `retryPolicy` and are left out.
 
 ```toml
 [workRequirement]
@@ -611,9 +784,9 @@ Here's an example of the `workRequirement` section of a TOML configuration file,
     workRequirementData = "work_requirement.json"
 ```
 
-### JSON Properties at the Work Requirement Level
+### Properties at the Work Requirement Level
 
-Showing all possible properties at the Work Requirement level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
+Every property a JSON specification can set at the Work Requirement level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the listing uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
 
 ```json
 {
@@ -679,9 +852,9 @@ Showing all possible properties at the Work Requirement level. `taskData`, `task
 
 ```
 
-### JSON Properties at the Task Group Level
+### Properties at the Task Group Level
 
-Showing all possible properties at the Task Group level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
+Every property a JSON specification can set at the Task Group level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the listing uses `taskData`; the deprecated `maximumTaskRetries` and `retryableErrors` are replaced by `retryPolicy`.
 
 ```json
 {
@@ -761,9 +934,9 @@ Showing all possible properties at the Task Group level. `taskData`, `taskDataFi
 }
 ```
 
-### JSON Properties at the Task Level
+### Properties at the Task Level
 
-Showing all possible properties at the Task level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the example uses `taskData`.
+Every property a JSON specification can set at the Task level. `taskData`, `taskDataFile` and `taskDataFiles` are alternatives, of which only one may be set, so the listing uses `taskData`.
 
 ```json
 {
@@ -805,7 +978,7 @@ The name of the Work Requirement itself can be used via the variable substitutio
 
 ### Task and Task Group Name Substitutions
 
-The following naming and numbering substitutions are available for use in TOML and JSON Work Requirement specifications, along with the context(s) in which each variable can be used. The variables can be used within the value of any property.
+These substitutions give each Task Group and Task its own name, number and counts. They can be used in the value of any property, in TOML and JSON specifications, in the contexts the table shows:
 
 | Directive               | Description                                       | Task | Task Group |
 |:------------------------|:--------------------------------------------------|:-----|:-----------|
@@ -816,34 +989,28 @@ The following naming and numbering substitutions are available for use in TOML a
 | `{{task_group_number}}` | The current Task Group number, zero-padded        | Yes  | Yes        |
 | `{{task_group_count}}`  | The number of Task Groups in the Work Requirement | Yes  | Yes        |
 
-`{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to: Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100, and likewise Task Groups by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way.
-
-Padding makes anything named from the numbers sort in Task order — Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list` — where unpadded `task_10` would sort before `task_2`.
-
-A padded number is still text with leading zeros, so take care where those mean something: in bash arithmetic, for example, `$((008))` fails because a leading zero means octal, and `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
-
-The Task variables are available in any property a Task takes, wherever it is set: a property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group or the Work Requirement, or in the `[workRequirement]` section of the configuration file, is inherited by each of its Tasks and substituted for each one, so `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
-
-As an example, the following JSON Work Requirement:
+For example, this JSON Work Requirement:
 
 ```json
 {
   "taskGroups": [
     {
-      "name": "my_task_group_{{task_group_number}}_a1",
+      "name": "render_{{task_group_number}}_preview",
       "taskCount": 2,
       "tasks": [
         {
-          "name": "my_task_{{task_number}}-of-{{task_count}}"
+          "name": "frame_{{task_number}}-of-{{task_count}}",
+          "arguments": ["render.sh", "--preview", "{{task_number}}"]
         }
       ]
     },
     {
-      "name": "my_task_group_{{task_group_number}}_b1",
+      "name": "render_{{task_group_number}}_final",
       "taskCount": 2,
       "tasks": [
         {
-          "name": "my_task_{{task_number}}-of-{{task_count}}"
+          "name": "frame_{{task_number}}-of-{{task_count}}",
+          "arguments": ["render.sh", "{{task_number}}"]
         }
       ]
     }
@@ -851,33 +1018,71 @@ As an example, the following JSON Work Requirement:
 }
 ```
 
-... would create Task Groups named `my_task_group_1_a1` and `my_task_group_2_b1`, each containing Tasks named `my_task_1-of-2`, `my_task_2-of-2`.
+... creates Task Groups named `render_1_preview` and `render_2_final`, each containing Tasks named `frame_1-of-2` and `frame_2-of-2`.
+
+The Task variables work wherever a property a Task takes is set. A property such as `arguments`, `environment`, `taskData`, `taskDataFile` or `taskDataInputs` set on a Task Group, on the Work Requirement or in the `[workRequirement]` section is inherited by each Task and substituted for each one. So `"arguments": ["--frame", "{{task_number}}"]` on a Task Group gives each Task its own number, and `"taskDataFile": "data-{{task_name}}.txt"` its own file.
+
+#### Details
+
+**Padding.** `{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to. Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100; Task Groups are padded likewise by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way.
+
+**Why the numbers are padded.** Padding makes anything named from the numbers sort in Task order: Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list`. Unpadded, `task_10` would sort before `task_2`.
+
+**Arithmetic on padded numbers.** A padded number is still text with leading zeros, so take care where those mean something. In bash arithmetic, for example, `$((008))` fails because a leading zero means octal; `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
+
+## Task Group Statuses
+
+`yd taskgroup list` and `yd workrequirement follow` show each Task Group's status, followed by `/STARVED` or `/WAITING` when either holds it up. For example, `yd workrequirement follow` prints:
+
+```text
+Work Requirement 'nightly-render' is RUNNING
+--> [RUNNING] Task Group 'render': 20 Task(s)
+    16 READY, 4 EXECUTING
+--> [PENDING/STARVED] Task Group 'encode': 1 Task(s)
+    1 READY
+--> [PENDING/WAITING] Task Group 'publish': 1 Task(s)
+    1 PENDING
+```
+
+- **`/STARVED`**: the Task Group can't claim any Workers. The Platform reports this as the Task Group's `starved` flag.
+- **`/WAITING`**: the Task Group is waiting for a Task Group named in its `dependencies` to complete. The Platform reports this as its `waitingOnDependency` flag.
+
+A Task Group that is `PENDING` with neither is waiting for the Workers it needs, for example while a matching Worker Pool starts up. One submitted moments ago may show plain `PENDING` before it is flagged `/STARVED`. A `RUNNING` one has them. [Why Isn't My Work Running?](troubleshooting.md) works through what to do about a Task Group that stays starved.
+
+#### Details
+
+**Not statuses of their own.** `/STARVED` and `/WAITING` are the CLI's display of the two flags beside the status, not statuses: `--status` matches the status alone, so `yd list task-groups --status pending` lists starved and waiting Task Groups too, and `--status starved` matches nothing. `--json` gives the flags as `starved` and `waitingOnDependency`, and the status without them.
+
+**The statuses.** A Task Group is `PENDING` until it has Workers, then `RUNNING`. It is `HELD` while its Work Requirement is held, and `FINISHING` once no more Tasks can be added and the rest are running to the end. It ends `COMPLETED`, or `FAILED` if a Task failed (passing through `FAILING` while its outstanding Tasks are discarded), or `CANCELLED` (through `CANCELLING`).
 
 ## Dry-Running Work Requirement Submissions
 
-To examine the JSON that will actually be sent to the YellowDog API after all processing, use the `--dry-run` (`-D`) command-line option when running `yd workrequirement submit`. This will print the fully processed JSON for the Work Requirement. Nothing will be submitted to the Platform.
+To see the Work Requirement that would be submitted, after all processing, add `--dry-run` (`-D`) to `yd workrequirement submit`. It prints the Work Requirement as JSON and submits nothing. `--quiet` (`-q`) prints the JSON alone. With this configuration:
 
-A dry-run is useful for inspecting the results of all the processing that's been performed. To suppress all output except for the JSON itself, add the `--quiet` (`-q`) command-line option.
+```toml
+[workRequirement]
+    taskType = "bash"
+    arguments = ["make-thumbnails.sh", "{{task_number}}"]
+    taskCount = 2
+    workerTag = "render"
+```
 
-Note that the generated JSON is a **consolidated form** of what would be submitted to the YellowDog API, and Tasks are incorporated directly within their Task Group data structures for ease of comprehension. In actual API submissions, the Work Requirement with zero or more Task Groups is submitted first, and Tasks are then added to their Task Groups separately, in subsequent API calls. Task Groups and Tasks can also later be added to the Work Requirement.
+```bash
+yd workrequirement submit --dry-run --quiet
+```
 
-A simple example of the JSON output is shown below, showing a Work Requirement with a single Task Group, containing a single Task.
-
-`% yd workrequirement submit --dry-run --quiet`
-
-> **Note:** When used outside of `--dry-run`, `--quiet` on `yd workrequirement submit` prints only the Work Requirement YDID to stdout — see [yd workrequirement submit](commands.md#yd-workrequirement-submit) for scripting examples.
+prints:
 
 ```json
 {
-  "namespace": "pyexamples-pwt",
-  "name": "pyex-docker-pwt_240424-1205116-4f",
+  "namespace": "image-processing",
+  "name": "thumbnails_261027-1608530-fd",
   "taskGroups": [
     {
       "name": "task_group_1",
       "runSpecification": {
-        "taskTypes": ["docker"],
-        "maximumTaskRetries": 0,
-        "workerTags": ["pyex-docker-pwt-worker"]
+        "taskTypes": ["bash"],
+        "workerTags": ["render"]
       },
       "priority": 0,
       "starved": false,
@@ -887,69 +1092,72 @@ A simple example of the JSON output is shown below, showing a Work Requirement w
       "tasks": [
         {
           "name": "task_1",
-          "taskType": "docker",
-          "arguments": ["my_dockerhub_repo/my_container_image", "1", "2", "3"],
-          "environment": {
-            "YD_TASK_NAME": "task_1",
-            "YD_TASK_NUMBER": "1",
-            "YD_NUM_TASKS": "1",
-            "YD_TASK_GROUP_NAME": "task_group_1",
-            "YD_TASK_GROUP_NUMBER": "1",
-            "YD_NUM_TASK_GROUPS": "1",
-            "YD_WORK_REQUIREMENT_NAME": "pyex-docker-pwt_240424-1205116-4f",
-            "YD_NAMESPACE": "pyexamples-pwt"
-          }
+          "taskType": "bash",
+          "arguments": ["make-thumbnails.sh", "1"]
+        },
+        {
+          "name": "task_2",
+          "taskType": "bash",
+          "arguments": ["make-thumbnails.sh", "2"]
         }
       ]
     }
   ],
-  "tag": "pyex-docker-pwt"
+  "tag": "thumbnails"
 }
 ```
 
+> **Note:** Without `--dry-run`, `--quiet` on `yd workrequirement submit` prints only the Work Requirement's YellowDog ID — see [yd workrequirement submit](commands.md#yd-workrequirement-submit) for scripting examples.
+
+The JSON printed is a **consolidated form** of what would be sent to the YellowDog API: the Tasks are shown inside their Task Groups, for ease of reading. In the actual submission, the Work Requirement and its zero or more Task Groups are submitted first, and the Tasks are then added to their Task Groups in separate API calls. Task Groups and Tasks can also be added to the Work Requirement later (below).
+
 ### Adding Task Groups and Tasks to an Existing Work Requirement
 
-The `--empty` (`-e`) option submits a new Work Requirement with no Task Groups or Tasks (using TOML configuration only: a specification or CSV file, given or configured, is refused with it), providing a named shell that can be populated later using `--add-to`:
+To add Tasks to a Work Requirement that is already running, submit a specification with `--add-to` (`-A`), naming the Work Requirement by its name or YellowDog ID:
+
+```bash
+yd workrequirement submit --add-to my-work-requirement more-frames.json
+```
+
+Each Task Group in the specification is matched by name against the Task Groups the Work Requirement already has. Tasks for an existing Task Group are added to it, numbered on from its existing Tasks. A Task Group the Work Requirement doesn't have yet is added to it, with its Tasks. One submission can do both. For example, if `my-work-requirement` has a Task Group `render` holding 100 Tasks, this `more-frames.json` adds Tasks 101 and 102 to `render` and adds a new Task Group, `encode`, with one Task:
+
+```json
+{
+  "taskGroups": [
+    {
+      "name": "render",
+      "taskCount": 2,
+      "tasks": [{"taskType": "bash", "arguments": ["render.sh", "{{task_number}}"]}]
+    },
+    {
+      "name": "encode",
+      "taskCount": 1,
+      "tasks": [{"taskType": "bash", "arguments": ["encode.sh"]}]
+    }
+  ]
+}
+```
+
+The Work Requirement must be `RUNNING` or `HELD`. Add `--dry-run` (`-D`) to see what would be added without adding it, and `--follow` (`-f`) to follow the Work Requirement once the Tasks are added.
+
+To create a Work Requirement now and add its Tasks later, submit it with `--empty` (`-e`), which gives it no Task Groups or Tasks:
 
 ```bash
 WR_ID=$(yd workrequirement submit --empty --quiet)
 yd workrequirement submit --add-to "$WR_ID" my-spec.json
 ```
 
-When a JSON spec file is supplied, empty arrays are honoured directly — `--empty` is not required:
+#### Details
 
-```json
-{ "taskGroups": [] }
-```
+**Choosing the Work Requirement.** A YellowDog ID is found in whatever namespace it belongs to. A name is looked up in the configured `namespace`, unless it is given as `namespace/name`. A name can be reused, so the `RUNNING` or `HELD` Work Requirement of that name is chosen; if there are two, give its YellowDog ID instead. A target that does not exist exits with code 6. A `FINISHING` Work Requirement takes no new Tasks, and the other states have finished or are being cancelled. `--add-to` cannot be combined with `--hold` or `--empty`, which apply only to a new Work Requirement.
 
-or a Task Group with no Tasks:
+**Adding to an existing Task Group.** The specification's own settings for the Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied: the existing Task Group keeps its own. The properties its new Tasks inherit are taken from the specification, as the table below shows. `{{task_count}}` (in the Tasks' names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
 
-```json
-{
-  "taskGroups": [
-    { "name": "my-task-group", "tasks": [] }
-  ]
-}
-```
+**Waiting for the Task count.** The Platform updates a Task Group's count of Tasks a few seconds after Tasks are added to it. So `--add-to` first looks in the Task Group for the name its first new Task would be given. If that name is already there, because Tasks were added moments before, it says so and waits for the count to catch up, up to 10 seconds at a time, before numbering the new Tasks. A name still there once the count has stood still for 10 seconds is one already in use, and the submission is refused. Tasks without names (`setTaskNames = false`) have no name to look for, so the existing Tasks are counted instead, which for a large Task Group takes a moment.
 
-The `--add-to` (`-A`) option allows Task Groups and/or Tasks to be added to a Work Requirement that has already been submitted, as long as it is `RUNNING` or `HELD`: a `FINISHING` one takes no new Tasks, and the rest have finished or are being cancelled. It cannot be combined with `--hold` or `--empty`, which apply only to a new Work Requirement.
+**Adding a new Task Group.** Its Tasks are numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'. Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
 
-The argument to `--add-to` is the name or YellowDog ID of the target Work Requirement. A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`, and since a name can be reused, the `RUNNING` or `HELD` Work Requirement of that name is chosen (if there are two, its YDID must be given instead). A target that does not exist exits with code 6:
-
-```bash
-yd workrequirement submit --add-to my-work-requirement my-spec.json
-```
-
-The Work Requirement specification supplied is processed in the same way as for a normal submission. The resulting Task Groups are then matched against the Task Groups already present in the target Work Requirement, by name:
-
-- **Matching Task Group name**: the new Tasks are appended to the existing Task Group; the specification's own settings for that Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied, the existing Task Group keeping its own, though the properties its Tasks inherit are taken from it, as below. Their numbers continue from where the existing Tasks left off, and `{{task_count}}` (in their names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
-- **New Task Group name**: the Task Group is added to the Work Requirement, and its Tasks are submitted in the normal way, numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
-
-Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
-
-A single `yd workrequirement submit --add-to` invocation can add a mix of new Task Groups and Tasks to existing Task Groups simultaneously.
-
-What is taken from each part of the specification:
+**What is taken from each part of the specification:**
 
 | Part of the specification | For a new Task Group | For an existing Task Group (matched by name) |
 |:---|:---|:---|
@@ -961,29 +1169,48 @@ What is taken from each part of the specification:
 
 So a specification written to add Tasks to an existing Task Group can carry the Task-level defaults those Tasks need at its Task Group level, as a new submission would, while the Task Group's scheduling stays as it was submitted.
 
-As with a normal `yd workrequirement submit`, `--follow` (or `-f`) can be used to follow the Work Requirement to completion after additions have been submitted.
-
-If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
-
-If the spec contains `taskDataInputs` with `localPath` entries, those files will be uploaded to the remote destination as usual. A file already at its upload path, from the original submission or otherwise, is skipped by default, whether or not the local file has changed since. Use `--overwrite` (`-O`) to upload it again:
+**Uploaded files.** If the specification contains `taskDataInputs` with `localPath` entries, those files are uploaded to the remote destination as usual. A file already at its upload path, from the original submission or otherwise, is skipped, whether or not the local file has changed since. Use `--overwrite` (`-O`) to upload every file again, replacing the remote copy:
 
 ```bash
 yd workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
 ```
 
-By default, `yd workrequirement submit` checks whether a file already exists at the remote destination before uploading, and skips it if so. With `--overwrite`, any file present in the spec is uploaded unconditionally, replacing any existing remote copy.
+**A failure part-way.** If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
 
-`--dry-run` (`-D`) can be used with `--add-to` to report what would be added, without adding it. Unlike a normal dry run, which contacts the platform not at all, this one reads the target Work Requirement — the names, numbering and Task counts of its existing Task Groups are what determine the names and offsets of everything that would be added — so credentials and connectivity are required. The checks that depend on the target are therefore made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded.
+**Dry runs.** Unlike a normal dry run, which does not contact the Platform, a dry run with `--add-to` reads the target Work Requirement, since the names, numbering and Task counts of its existing Task Groups determine the names and offsets of everything that would be added. Credentials and connectivity are therefore required, and the checks that depend on the target are made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded. The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the Platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
 
-The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
+**Empty Work Requirements.** `--empty` uses the TOML configuration only: a specification or CSV file, given or configured, is refused with it. A JSON specification can also create an empty Work Requirement without `--empty`, since empty arrays are honoured as written, either with no Task Groups:
+
+```json
+{ "taskGroups": [] }
+```
+
+or with a Task Group that has no Tasks:
+
+```json
+{
+  "taskGroups": [
+    { "name": "my-task-group", "tasks": [] }
+  ]
+}
+```
 
 ### Submitting 'Raw' JSON Work Requirement Specifications
 
-It's possible to use the JSON output of `yd workrequirement submit --dry-run` (such as the example above) as a self-contained, fully specified Work Requirement specification, using the `--json-raw` (or `-j`) command-line option, i.e. `yd workrequirement submit --json-raw <filename.json>`.
+The JSON a dry run prints is a complete Work Requirement specification in itself, which `--json-raw` (`-j`) submits as it is:
 
-This will submit the Work Requirement, then add all the specified Tasks, using `--parallel-batches` (or the `parallelBatches` configuration property) and following with `--follow` or `--progress` as for any other submission. A batch that fails in a way a retry could cure is retried, as any other submission's are; if the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
+```bash
+yd workrequirement submit --dry-run --quiet > thumbnails.json
+yd workrequirement submit --json-raw thumbnails.json
+```
 
-Note that variable substitutions **can** be used in the raw JSON file, just as in the other Work Requirement JSON examples, but there is no property inheritance, including from the `[workRequirement]` section of the TOML configuration or from Work Requirement properties supplied on the command line.
+The Work Requirement is submitted, then its Tasks are added. `--parallel-batches` (or the `parallelBatches` configuration property), `--follow` and `--progress` work as for any other submission.
+
+#### Details
+
+**Substitutions but no inheritance.** Variable substitutions can be used in the raw JSON file, as in any other Work Requirement JSON file. There is no property inheritance, though, neither from the `[workRequirement]` section of the TOML configuration nor from Work Requirement properties given on the command line.
+
+**Failures.** A batch of Tasks that fails in a way a retry could cure is retried, as any other submission's are. If the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
 
 ## Submitting Large Numbers of Tasks
 
@@ -995,146 +1222,173 @@ With tens of thousands of Tasks or more, how the Tasks are sent decides how long
 
 - Put what the Tasks of a Task Group share — their `taskType`, `taskData` and `environment` — in a [`taskTemplate`](#task-templates), which the Platform applies, rather than on every Task.
 - Leave `addYDEnvironment` off. Its variables ([Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) add about 250 to 300 bytes to every Task, more with long Work Requirement, Task Group or namespace names. Pass a Task what it needs in its arguments instead, with the [Task and Task Group name substitutions](#task-and-task-group-name-substitutions): `"arguments": ["--frame", "{{task_number}}"]` on the Task Group gives each Task its own number at the cost of a few bytes.
-- Consider `setTaskNames: false`, which leaves Tasks without names, saving each Task its name. Two things are lost with the names: a batch whose response times out is then not resubmitted, since the Platform might already have added it and nothing would tell a duplicate (the submission fails instead, saying to check the Work Requirement's Tasks); and a Task can no longer be found by its name (`yd task show wr/tg/task`).
+- Consider `setTaskNames: false`, which leaves Tasks without names, saving each Task its name. See below for what is lost.
 - Keep `taskData` small: a large input is better fetched by each Task as it runs, with [`taskDataInputs`](#specifying-data-client-inputs), than carried in every Task.
+
+**Tasks without names.** Two things are lost with `setTaskNames: false`. First, a Task can no longer be found by its name (`yd task show wr/tg/task`). Second, a batch whose response times out is not resubmitted, because the Platform might already have added it and nothing would tell a duplicate apart. The submission fails instead, saying to check the Work Requirement's Tasks.
 
 ## Using the YellowDog Data Client
 
+A Task can download its input files from remote storage, such as an S3 bucket, before it runs, and upload its output files after it has run. The YellowDog Agent's Data Client does the transfers, which are given in each Task's `taskDataInputs` and `taskDataOutputs`. `yd workrequirement submit` can also upload local files to the remote storage as the Work Requirement is submitted, for the Tasks to download. [Sending Files to Tasks and Collecting Their Results](#sending-files-to-tasks-and-collecting-their-results) shows all three together.
+
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The CLI provides full support for expressing Data Client inputs and outputs as part of Task specifications. In addition, it can provide automatic upload of objects on the local filesystem to Data Client targets. It does this using a local `rclone` binary that will be downloaded to your system the first time the Data Client upload capability is used, if `rclone` is not already present.
+The examples below name the bucket `my-photos` through a remote called `s3`, which the node defines: [`add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-rclone-s3.sh), run as User Data after the Agent installer, adds it to the Agent's rclone configuration, using the instance's IAM role (see [The rclone S3 Remote](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-rclone-s3-remote); set `YD_S3_REGION` to the bucket's region). The remote exists on the node only. A file uploaded from your own machine needs credentials of its own (see [Automatic Upload of Local Files](#automatic-upload-of-local-files)).
 
-An `rclone` already on your `$PATH` is used in preference and is never modified; the downloaded copy is stored in `rclone_api`'s own per-user cache directory (`~/Library/Caches/rclone_api` on macOS, `~/.cache/rclone_api` on Linux, and under `%LOCALAPPDATA%` on Windows), not inside the Python package, so it survives reinstallation of the CLI.
-
-To see which binary is in use, run `yd workrequirement submit --which-rclone` or `yd version --debug`; to force an upgrade of the downloaded copy to the latest version, run `yd workrequirement submit --upgrade-rclone`. Both options are accepted by the Data Client commands as well as by `yd workrequirement submit`, i.e. by `yd data upload`, `yd data download`, `yd data delete`, `yd data list`, and `yd data copy`.
-
-Task data inputs and outputs support only **individual files**, not directories or wildcards. If multiple, unspecified files are required, we recommend you compress/decompress them into a single file. The compression/decompression can be handled as part of the execution of the Task at its start and/or conclusion.
+Task data inputs and outputs are **individual files**, not directories or wildcards. If a Task needs many files, or files whose names are not known in advance, put them in a single archive, and have the Task unpack it as it starts or pack its results as it ends.
 
 ### Specifying Data Client Inputs
 
-Data Client inputs for Tasks are specified as follows:
-
-TOML, in the `workRequirement` section:
+Each input names a remote `source` and a local `destination`. In the `[workRequirement]` section of the TOML file:
 
 ```toml
 taskDataInputs = [
-  {source = "in_src_path_1", destination = "dest_path_1"},
-  {source = "in_src_path_2", destination = "dest_path_2"},
+  {source = "rclone:s3:my-photos/originals/batch_{{task_number}}.zip", destination = "local:originals.zip"},
+  {source = "rclone:s3:my-photos/watermarks/logo.png", destination = "local:logo.png"},
 ]
 ```
 
-JSON:
+Or in JSON:
 
 ```json
 "taskDataInputs": [
-  {"destination": "dest_path_1", "source": "in_src_path_1"},
-  {"destination": "dest_path_2", "source": "in_src_path_2"}
+  {"source": "rclone:s3:my-photos/originals/batch_{{task_number}}.zip", "destination": "local:originals.zip"},
+  {"source": "rclone:s3:my-photos/watermarks/logo.png", "destination": "local:logo.png"}
 ],
 ```
 
-- The `source` property must be an rclone-compliant path starting with `rclone:`, e.g. `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
-- The `destination` property must specify a local pathname and be prefixed with `local:`, e.g. `local:my_output.txt`
+- The `source` property is an rclone path starting with `rclone:`.
+- The `destination` property is a local pathname, in the Task's directory, prefixed with `local:`.
+
+### Using Files Uploaded with `yd data`
+
+A Task can download a file that `yd data upload` put in the data store. The `{{dataClient.remote}}`, `{{dataClient.bucket}}` and `{{dataClient.prefix}}` variables give the `[dataClient]` section's values, so the input names the same place the upload did:
+
+```bash
+yd data upload originals.zip
+```
+
+```toml
+taskDataInputs = [
+  {source = "rclone:{{dataClient.remote}}:{{dataClient.bucket}}/{{dataClient.prefix}}/originals.zip", destination = "local:originals.zip"},
+]
+```
+
+Leave out the `rclone:` if the configured `remote` already starts with it. A named profile's values are `{{dataClient.<profile>.remote}}` and so on: see [Variable Substitutions for Data Client Properties](data-client.md#variable-substitutions-for-data-client-properties).
 
 ### Automatic Upload of Local Files
 
-The `yd workrequirement submit` command can automatically upload files in the `taskDataInputs` list. This is enabled by adding the `localPath` property, and optionally the `uploadPath` property, to the relevant input specification, e.g.:
-
-TOML, in the `workRequirement` section:
+`yd workrequirement submit` uploads a local file for an input that names it in `localPath`. The Task's `source` names the node's remote, which your own machine does not have, so `uploadPath` names where to upload the file with credentials your machine does have: here, the AWS credentials in your environment (see [Rclone Authentication](#rclone-authentication)):
 
 ```toml
 taskDataInputs = [
-  {localPath = "my_local_file", uploadPath = "in_upload_path_1", source = "in_src_path_1", destination = "dest_path_1"},
+  {localPath = "make-thumbnails.sh", uploadPath = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/scripts/make-thumbnails.sh", source = "rclone:s3:my-photos/scripts/make-thumbnails.sh", destination = "local:make-thumbnails.sh"},
 ]
 ```
 
-JSON:
+Without `uploadPath`, the file is uploaded to the `source` itself. That works when your machine can reach the `source` as written: a remote of the same name in your own `rclone.conf`, or an inline connection string such as the one in `uploadPath` above.
 
-```json
-"taskDataInputs": [
-  {
-    "localPath": "my_local_file",
-    "uploadPath": "in_upload_path_1",
-    "source": "in_src_path_1",
-    "destination": "dest_path_1"
-  }
-]
-```
+#### Details
 
-If `uploadPath` is not specified, the local file will be uploaded to the rclone target specified by the `source` property. The local file can be specified using an absolute or relative pathname. A relative one is found from the files directory: the `--content-path <directory>`/`-F` option supplied to `yd workrequirement submit`, else the specification file's directory, else the configuration file's (as Task Data files and CSV files are). Two different local files given the same upload path are refused.
+**Finding the local file.** `localPath` can be an absolute or a relative pathname. A relative one is found from the files directory, as Task Data files and CSV files are: the `--content-path <directory>` (`-F`) option of `yd workrequirement submit`, else the specification file's directory, else the configuration file's.
 
-If `yd workrequirement submit` fails for any reason while submitting a new Work Requirement, the Work Requirement is cancelled and the objects it uploaded are deleted automatically; with `--add-to`, the Tasks already added and the files uploaded for them are left in place, with a warning. An object that was already at its upload path is left in place, whether it was skipped or replaced with `--overwrite`, since another Work Requirement may be using it.
+**One file per upload path.** Two different local files given the same upload path are refused.
+
+**Clean-up on failure.** If `yd workrequirement submit` fails while submitting a new Work Requirement, the Work Requirement is cancelled and the files it uploaded are deleted. With `--add-to`, the Tasks already added and the files uploaded for them are left in place, with a warning. A file that was already at its upload path is always left in place, whether it was skipped or replaced with `--overwrite`, because another Work Requirement may be using it.
 
 ### Rclone Authentication
 
-Use of rclone to upload to targets depends on the presence of the required authentication, and this is handled outside the YellowDog CLI.
+Uploading a local file from your own machine with rclone needs credentials for the remote storage, which are set up outside the YellowDog CLI. (A node's credentials come from its own rclone configuration, as above.) For an S3 bucket, for example, AWS credentials such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` can be set as environment variables. An rclone path can then reach them in any of three ways:
 
-As an example, if the requirement is to upload to an S3 bucket then appropriate AWS credentials must be present to perform the task, such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` being set as environment variables. Example rclone paths could then be:
+1. Taking the credentials from the environment: `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/originals/batch_01.zip`
 
-1. Specifying that the environment should be used for authentication: `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:<bucket-name>/<pathname>`
+2. Substituting the environment variables into the path: `rclone:S3,type=s3,provider=AWS,access_key_id={{env:AWS_ACCESS_KEY_ID}},secret_access_key={{env:AWS_SECRET_ACCESS_KEY}},region=eu-west-2,location_constraint=eu-west-2:my-photos/originals/batch_01.zip`. This puts the key ID and secret in plain text in the Task specification.
 
-2. Explicitly using environment variables for authentication: `rclone:S3,type=s3,provider=AWS,access_key_id={{env:AWS_ACCESS_KEY_ID}},secret_access_key={{env:AWS_SECRET_ACCESS_KEY}},region=eu-west-2,location_constraint=eu-west-2:<bucket-name>/<pathname>`. Note that this will include the key ID and secret in plain text in the task specification.
-
-3. Using an rclone configuration file, e.g. referencing a `[mys3]` section in `rclone.conf`: `rclone:mys3:<bucket-name>/<pathname>`.
+3. Using an rclone configuration file, e.g. referencing a `[mys3]` section in `rclone.conf`: `rclone:mys3:my-photos/originals/batch_01.zip`.
 
 ### Specifying Data Client Outputs
 
-Data Client outputs for Tasks are specified as follows:
+Each output names a local `source` and a remote `destination`. In the `[workRequirement]` section of the TOML file:
 
-TOML, in the `workRequirement` section:
 ```toml
 taskDataOutputs = [
-  {source = "out_src_path_1", destination = "dest_path_1"},
-  {source = "out_src_path_2", destination = "dest_path_2", alwaysUpload = true},
+  {source = "local:thumbnails.zip", destination = "rclone:s3:my-photos/thumbnails/batch_{{task_number}}.zip"},
+  {source = "local:taskoutput.txt", destination = "rclone:s3:my-photos/logs/task_{{task_number}}.txt", alwaysUpload = true},
 ]
 ```
 
-JSON:
+Or in JSON:
+
 ```json
 "taskDataOutputs": [
-  {"destination": "dest_path_1", "source": "out_src_path_1"},
-  {"destination": "dest_path_2", "source": "out_src_path_2", "alwaysUpload": true}
+  {"source": "local:thumbnails.zip", "destination": "rclone:s3:my-photos/thumbnails/batch_{{task_number}}.zip"},
+  {"source": "local:taskoutput.txt", "destination": "rclone:s3:my-photos/logs/task_{{task_number}}.txt", "alwaysUpload": true}
 ],
 ```
 
-- The `source` property must specify a local pathname and be prefixed with `local:`, e.g. `local:my_output.txt`
-- The `destination` property must be an rclone-compliant path, e.g. `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my_bucket_name/directory_name/filename`.
+- The `source` property is a local pathname, in the Task's directory, prefixed with `local:`.
+- The `destination` property is an rclone path starting with `rclone:`.
+
+### The `rclone` Binary
+
+`yd workrequirement submit` uploads local files with an `rclone` binary on your own machine: one on your `PATH`, or else one it downloads the first time it is needed. It is the binary the `yd data` commands use, described under [Configuration](data-client.md#configuration) in the Data Client page's Details. `yd workrequirement submit --which-rclone` reports the binary in use, and `--upgrade-rclone` upgrades the downloaded copy.
 
 ## Task Execution Context
 
-This section discusses the context within which a Task operates when it's executed by a Worker on a node. It applies specifically to the YellowDog Agent running on a Linux node, and configured using the default username, directories, etc. Configurations can vary.
+This section describes how a Worker on a node runs a Task: the steps it takes, the user the Task runs as, and the directories it uses. It describes the YellowDog Agent on a Linux node, with the default username, directories and so on; configurations can vary. [Windows Nodes](#windows-nodes) gives the differences on Windows.
 
 ### Task Execution Steps
 
 When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the following steps are followed:
 
-1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskData`. A number of `YD_` environment variables are also automatically set by a combination (optionally) of `yd workrequirement submit` and the Agent itself — see above for details.
+1. The Agent running on the node gets the Task's properties: its `taskType`, `arguments`, `environment`, `taskData`. `YD_` environment variables are also set, by the Agent and optionally by `yd workrequirement submit` (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)).
 2. An ephemeral working directory is created. Data Client input objects are downloaded to this directory, and the contents of the `taskData` property (if set) are written to the file `taskdata.txt`.
 3. The Agent runs the command specified for the `taskType` in the Agent's `application.yaml` configuration file. This is done as a simple `exec` of a subprocess to run the Task.
 4. When the Task concludes, the Agent uses the exit code of the subprocess to report success (zero) or failure (non-zero).
 5. The Agent uploads any Data Client outputs specified in `taskDataOutputs` to their destinations. The ephemeral Task directory is then deleted.
 
-Note that if a Task is aborted during execution, the Task's subprocess is sent a `SIGTERM`, allowing the Task an opportunity to terminate any child processes or other resources (e.g. containers) that may have been started as part of Task execution. In addition, there is the option to set an `abort` clause as part of the Task Type specification in the Agent's `application.yaml` file, in which case the script specified in the `abort` clause takes over complete responsibility for any abort handling.
+Once the steps above have been completed, the Worker is ready to process its next Task. If the Agent on a node advertises several Workers, Tasks run in parallel on the node and start and stop independently.
 
-Once the steps above have been completed, the Worker is ready to process its next Task.
+**Aborting a Task.** If a Task is aborted while it runs, its subprocess is sent a `SIGTERM` (on Linux). This gives the Task a chance to stop any child processes or other resources, such as containers, that it started. Alternatively, a Task Type in the Agent's `application.yaml` file can set an `abort` clause. The script the `abort` clause names then takes over all abort handling.
 
-Note that if the Agent on a node advertises multiple Workers, then Tasks are executed in parallel on the node and can start and stop independently.
+### Where Task Types Come From
+
+A Task's `taskType` names one of the Task Types the Agent on the node defines in its `application.yaml`, each with the command that runs a Task of that type. A Task Group's Tasks go only to Workers whose Agent has every Task Type in its `taskTypes`.
+
+The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) defines one Task Type, `bash`, which runs `/bin/bash` with the Task's arguments: `"arguments": ["-c", "echo hello"]` runs a command, and `"arguments": ["process.sh", "{{task_number}}"]` runs a script the Task downloaded. Any other Task Type is one you define, by editing the installer's settings (see [YellowDog Task Types](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#yellowdog-task-types)) or with [`add-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-task-type.sh) in the instances' User Data.
+
+### The `docker` Task Type
+
+A node has a `docker` Task Type once [`install-docker.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/install-docker.sh) and [`add-docker-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-docker-task-type.sh) have run on it, as User Data after the Agent installer (see [The docker Task Type](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type)). A `docker` Task runs `docker run` with the Task's arguments, so they are any `docker run` options, then the image and, optionally, the command to run in the container:
+
+```json
+{"taskType": "docker", "arguments": ["-e", "BATCH_SIZE", "my-org/thumbnailer:2.1", "--input", "/yd_working/originals.zip"], "environment": {"BATCH_SIZE": "50"}}
+```
+
+The Task's working directory, where its inputs are downloaded and from where its outputs are uploaded, is mounted in the container at `/yd_working`.
+
+#### Details
+
+**The Task's environment.** The container does not see the Task's environment variables unless the arguments pass them in, as `-e BATCH_SIZE` does above. The variables that control the container itself (`DOCKER_USERNAME`, `DOCKER_PASSWORD`, `DOCKER_REGISTRY`, `DOCKER_IMAGE`, `YD_STOP_SIGNAL`, `YD_STOP_TIMEOUT` and `YD_WORKING`) are read from the Task's environment; the [`docker` Task Type's README](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type) describes each.
+
+**Registry credentials.** A `DOCKER_PASSWORD` in the Task's environment is visible to anyone who can read the Task's specification. A Docker credential helper on the image, or the instance's role where the registry accepts one, keeps the password out of the specification.
 
 ### The User and Group used for Tasks
 
 By default, in the standard YellowDog Agent VM images and in images/instances created using the [YellowDog Agent Installer Script](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), the Agent runs as user and group `yd-agent`, and hence Tasks also execute under this user.
 
-`yd-agent` does not have `sudo` privileges as standard, but this can be added if required (e.g.) at instance boot time via the `userData` property of a provisioning request. E.g. (for Ubuntu):
+`yd-agent` does not have `sudo` privileges as standard. They can be added where needed, for example at instance boot time through the `userData` property of a provisioning request:
 
 ```shell
-usermod -aG wheel yd-agent
-echo -e "yd-agent\tALL=(ALL)\tNOPASSWD: ALL" > /etc/sudoers.d/020-yd-agent
+echo "yd-agent ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/020-yd-agent
+chmod 440 /etc/sudoers.d/020-yd-agent
 ```
 
 ### Home Directory for `yd-agent`
 
 By default, the home directory of the `yd-agent` user is `/opt/yellowdog/agent`. This directory typically contains the `application.yaml` file used to configure the Agent, as well as any scripts that are used to execute the Task Types that the node supports.
 
-If one wants to SSH to an instance as user `yd-agent`, perhaps for debugging purposes, SSH keys can be inserted via instance `userData`, e.g.:
+To SSH to an instance as user `yd-agent`, for debugging say, add your public key through the instance's `userData`:
 
 ```shell
 YDA_HOME=/opt/yellowdog/agent
@@ -1149,33 +1403,46 @@ chown -R yd-agent:yd-agent $YDA_HOME/.ssh
 
 ### Task Execution Directory
 
-Ephemeral Task working directories are by default created under `/var/opt/yellowdog/agent/data/workers`, named using their YellowDog Task IDs with colons substituted by underscores.
-
-(On Windows hosts, the Task directories are found under `%AppData%\yellowdog\agent\data\workers`.)
-
-When a Task is started by a worker, an ephemeral directory is created, e.g.:
+Each Task runs in a working directory of its own, created when the Task starts and deleted when it ends. The directories are created under `/var/opt/yellowdog/agent/data/workers` (on Windows, see [Windows Nodes](#windows-nodes)), named from the Task's YellowDog ID with its colons replaced by underscores, e.g.:
 
 `/var/opt/yellowdog/agent/data/workers/ydid_task_559EBE_74949336-ac2b-4811-a7d5-f3ecd9739908_1_1`
 
-This is the directory into which downloaded objects are placed, and in which output files are created by default. The console output file, `taskoutput.txt`, containing combined `stderr` and `stdout` output will also be created in this directory.
+Downloaded files are placed in this directory, and output files are created in it by default. The Task's console output, `stderr` and `stdout` combined, is written to `taskoutput.txt` in it too.
 
-Note that the Task directory — including `taskoutput.txt` — is **ephemeral**: it is deleted once the Task completes and its outputs have been uploaded. To preserve console output beyond Task execution, add `taskoutput.txt` as a `taskDataOutputs` entry.
+The Task directory, `taskoutput.txt` included, is **ephemeral**: it is deleted once the Task completes and its outputs have been uploaded. To keep the console output, add `taskoutput.txt` as a `taskDataOutputs` entry (see [Specifying Data Client Outputs](#specifying-data-client-outputs)).
+
+### Windows Nodes
+
+On a Windows node, with the Agent installed by its MSI installer or the [YellowDog Agent Installer Script for Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-INSTALLER.md), the Task Execution Steps above are the same, but the user, the directories and abort handling differ:
+
+| | Linux | Windows |
+|---|---|---|
+| The Agent | User and group `yd-agent` | The Windows service `yd-agent`, running as `LocalSystem` by default |
+| Installation directory (`YD_AGENT_HOME`) | `/opt/yellowdog/agent` | `C:\Program Files\YellowDog\Agent` |
+| Configuration file | `/opt/yellowdog/agent/application.yaml` | `C:\Program Files\YellowDog\Agent\config\application.yaml` |
+| Data directory (`YD_AGENT_DATA`) | `/var/opt/yellowdog/agent/data` | `C:\ProgramData\YellowDog\Agent` |
+| Task directories | `/var/opt/yellowdog/agent/data/workers` | `C:\ProgramData\YellowDog\Agent\workers` |
+| Task abort, with no `abort` clause | The Task's process is sent a `SIGTERM` | The Task's process is terminated |
+
+**The user.** Tasks run as the Agent's service account, `LocalSystem` unless the MSI was installed with its `SERVICE_ACCOUNT` property naming another, so by default they have full administrative rights on the node: nothing like the `sudo` set-up above is needed, and a Task can change anything on the node. A `LocalSystem` Task's user profile is the system profile, `C:\Windows\System32\config\systemprofile`, so `%USERPROFILE%`, `%AppData%` and `%LocalAppData%` all point inside it, and a tool that keeps its configuration or cache in the user's profile keeps it there. `YD_AGENT_HOME` and `YD_AGENT_DATA` are system environment variables, and `C:\ProgramData\YellowDog\Agent\scripts` is on the system `PATH`, so Tasks see them too.
+
+**Task Types.** The installer script defines two general-purpose Task Types, `cmd` (running `cmd.exe`) and `powershell` (running `powershell.exe`), and a Task's `arguments` are passed to that command, so a `cmd` Task's arguments start with `/c` (e.g. `["/c", "my_script.bat"]`) and a `powershell` Task's with `-File` or `-Command`. These Task Types can run arbitrary commands on the node; for production use, Task Types running specific scripts are recommended.
+
+**Aborting a Task.** Without an `abort` clause, an aborted Task's process is terminated, with no chance to clean up after itself, and any child processes it started are left running. The installer script's Task Types therefore name the abort handler supplied with the Agent, `yd_abort.bat` (in `C:\ProgramData\YellowDog\Agent\scripts`, which is on the `PATH`), which is passed the Task's process ID and ends the Task's whole process tree (`taskkill /F /T /PID <pid>`).
+
+**The Task directory.** Task directories are created under `C:\ProgramData\YellowDog\Agent\workers`, named as on Linux, and hold the same `taskdata.txt` and `taskoutput.txt`; they are just as ephemeral.
+
+**Logging in.** To inspect a node, e.g. for debugging, connect over RDP as an administrator rather than as the Agent's user, which is not an account that can log in. The Agent's own output is in `C:\Program Files\YellowDog\Agent\output.log` and `error.log`, holding the current run of the service only.
 
 ## Specifying Work Requirements using CSV Data
 
-CSV data files can be used to drive the generation of lists of Tasks, as follows:
+A CSV file can make one Task per row from a single prototype Task. The prototype's properties hold `<<column>>` substitutions, named by the CSV file's headings, and each row of the file fills them in for one Task.
 
-- A **prototype** Task specification is created within a JSON Work Requirement specification or in the `workRequirement` section of the TOML configuration file
-- The prototype Task includes one or more variable substitutions using the CSV delimiter syntax `<<variable_name>>`
-- A CSV file is created, with the **headers** (first row) matching the names of the variable substitutions in the Task prototype
-- Each subsequent row of the CSV file represents a new Task to be built using the prototype, with the variables substituted by the values in the row
-- A Task will be created for each row of data
-
-Note that CSV substitutions use `<<` and `>>` as delimiters, which is distinct from the `{{` and `}}` delimiters used for general variable substitutions. This means that regular variable substitutions (e.g. `{{namespace}}`) can coexist with CSV substitutions in the same Task prototype without ambiguity.
+CSV substitutions use `<<` and `>>` as delimiters, distinct from the `{{` and `}}` of general variable substitutions, so the two (e.g. `<<photo>>` and `{{namespace}}`) can be used together in the same prototype.
 
 ### Work Requirement CSV Data Example
 
-As an example, consider the following JSON Work Requirement `wr.json`:
+This `wr.json` has a prototype Task that resizes one photo:
 
 ```json
 {
@@ -1183,8 +1450,8 @@ As an example, consider the following JSON Work Requirement `wr.json`:
     {
       "tasks": [
         {
-          "arguments": ["<<arg_1>>", "<<arg_2>>", "<<arg_3>>"],
-          "environment": {"ENV_VAR_1": "<<env_1>>"}
+          "arguments": ["resize.sh", "<<photo>>", "<<width>>"],
+          "environment": {"OUTPUT_FORMAT": "<<format>>"}
         }
       ]
     }
@@ -1192,20 +1459,22 @@ As an example, consider the following JSON Work Requirement `wr.json`:
 }
 ```
 
-Note that the Task Group must contain only a single Task, acting as the prototype. A prototype holding no `<<variable>>` that names a heading of its CSV file is not expanded, with a warning.
-
-Now consider a CSV file `wr_data.csv` with the following contents:
+This `photos.csv` gives three photos, one per row:
 
 ```text
-arg_1, arg_2, arg_3, env_1
-A,     B,     C,     E-1
-D,     E,     F,     E-2
-G,     H,     I,     E-3
+photo,       width, format
+holiday.jpg, 800,   png
+wedding.jpg, 1200,  jpg
+poster.jpg,  2400,  png
 ```
 
-Note that the (optional) leading spaces after each comma are ignored, but trailing spaces are not and will form part of the imported data.
+Submitting them together with `--csv-file` (`-V`):
 
-If these files are processed using `yd workrequirement submit wr.json -V wr_data.csv`, the following expanded list of three Tasks will be created prior to further processing by the `yd workrequirement submit` command:
+```bash
+yd workrequirement submit wr.json -V photos.csv
+```
+
+expands the prototype into three Tasks before the rest of the processing:
 
 ```json
 {
@@ -1213,32 +1482,50 @@ If these files are processed using `yd workrequirement submit wr.json -V wr_data
     {
       "tasks": [
         {
-          "arguments": ["A", "B", "C"],
-          "environment": {"ENV_VAR_1": "E-1"}
+          "arguments": ["resize.sh", "holiday.jpg", "800"],
+          "environment": {"OUTPUT_FORMAT": "png"}
         },
         {
-          "arguments": ["D", "E", "F"],
-          "environment": {"ENV_VAR_1": "E-2"}
+          "arguments": ["resize.sh", "wedding.jpg", "1200"],
+          "environment": {"OUTPUT_FORMAT": "jpg"}
         },
         {
-          "arguments": ["G", "H", "I"],
-          "environment": {"ENV_VAR_1": "E-3"}
+          "arguments": ["resize.sh", "poster.jpg", "2400"],
+          "environment": {"OUTPUT_FORMAT": "png"}
         }
       ]
     }
   ]
 }
 ```
+
+#### Details
+
+**One prototype.** The Task Group must contain a single Task, the prototype. A prototype holding no `<<variable>>` that names a heading of its CSV file is not expanded, with a warning.
+
+**Spaces.** Spaces after each comma are optional and ignored. Spaces at the end of a value are not ignored, and form part of it.
+
+**Where the file is found.** A CSV file named with `-V` is looked for in the specification's directory, not the current one, as the specification's other files are. So `yd workrequirement submit work/wr.json -V photos.csv` reads `work/photos.csv`. `--content-path` names another directory to look in, and an absolute path is used as it is. `--debug` shows the path each CSV file was read from.
 
 ### CSV Variable Substitutions
 
-When the CSV file data is processed, the only substitutions made are those which match the variable substitutions in the prototype Task. The CSV file is the **only** source of substitutions used for this processing phase; all other variable substitutions (supplied on the command line, in the TOML configuration file, or from environment variables) are ignored — i.e. they do not override the contents of the CSV file.
+A `<<...>>` substitution takes its value from the CSV file alone. Variables supplied on the command line, in the TOML configuration file or from environment variables do not override the file's values. Every substitution that is not a `<<...>>` one is left unchanged, for `yd workrequirement submit` to make afterwards.
 
-All variable substitutions unrelated to the CSV file data are left unchanged, for subsequent processing by `yd workrequirement submit`.
+A value is substituted as a string. For a number, a Boolean, an array or a table, use the `<<num:...>>`, `<<bool:...>>`, `<<array:...>>` and `<<table:...>>` forms, and `<<format_name:...>>` for a name. With the `photos.csv` above, `"timeout": "<<num:width>>"` gives each Task a numeric `timeout` (`800`, `1200`, `2400`).
 
-If the value to be inserted is a number, a Boolean, an array or a table, the `<<num:my_number_var>>`, `<<bool:my_boolean_var>>`, `<<array:my_array_var>>` and `<<table:my_table_var>>` forms can be used in the JSON file, and `<<format_name:my_var>>` for a name. The value is converted exactly as in a `{{...}}` [substitution](variables.md#variable-substitutions), so the same spellings are accepted: a substitution that is a whole string assumes the nominated type rather than being a string, and one inside a longer string is checked as its type and written as text. A value that is not of its type is an error naming the CSV file, the line in it and the column, e.g. `'tasks.csv' line 7, column 'count': 'abc' is not a number`.
+#### Details
 
-A CSV value is substituted as it is, whatever it contains: an apostrophe, a quotation mark, a backslash in a Windows path, or text that looks like a CSV substitution. A `{{...}}` [variable substitution](variables.md#variable-substitutions) in a CSV value is made afterwards like any other, so a cell can refer to a variable (e.g. `{{namespace}}`), and `{{::}}` in a cell removes its property. Substitutions are also made in property names, e.g. `"environment": {"<<var_name>>": "<<var_value>>"}`. The CSV file is read as UTF-8, a byte order mark (which Excel's *CSV UTF-8* format writes) is ignored, and blank lines are skipped. Every column needs a heading of its own, so an empty or repeated heading is an error, as is a file with headings but no data rows, which would make a Task Group with no Tasks.
+**Typed values.** A typed value is converted exactly as in a `{{...}}` [substitution](variables.md#variable-substitutions), so the same spellings are accepted. A substitution that is a whole string takes the nominated type rather than being a string. One inside a longer string is checked as its type and written as text. A value that is not of its type is an error naming the CSV file, the line in it and the column, e.g. `'tasks.csv' line 7, column 'count': 'abc' is not a number`.
+
+**Values are substituted as they are.** A CSV value is substituted whatever it contains: an apostrophe, a quotation mark, a backslash in a Windows path, or text that looks like a CSV substitution.
+
+**`{{...}}` in a value.** A `{{...}}` [variable substitution](variables.md#variable-substitutions) in a CSV value is made afterwards like any other. So a cell can refer to a variable (e.g. `{{namespace}}`), and `{{::}}` in a cell removes its property.
+
+**Property names.** Substitutions are also made in property names, e.g. `"environment": {"<<var_name>>": "<<var_value>>"}`.
+
+**Reading the file.** The CSV file is read as UTF-8, and a byte order mark (which Excel's *CSV UTF-8* format writes) is ignored. Blank lines are skipped.
+
+**Headings and rows.** Every column needs a heading of its own, so an empty or repeated heading is an error. A file with headings but no data rows is an error too, since it would make a Task Group with no Tasks.
 
 ### Property Inheritance
 
@@ -1246,26 +1533,26 @@ All the usual property inheritance features operate as normal. Properties are in
 
 ### Multiple Task Groups using Multiple CSV Files
 
-The use of multiple Task Groups is also supported, by using one CSV file per Task Group. Each Task Group must contain only a single prototype Task.
-
-The CSV files are supplied on the command line in the order of the Task Groups to which they apply. For example, if `wr.json` contains two Task Groups, as follows:
+For several Task Groups, give one CSV file per Task Group, each Task Group holding a single prototype Task. The CSV files are applied to the Task Groups in the order given. For example, if `wr.json` contains two Task Groups:
 
 ```json
 {
   "taskGroups": [
     {
+      "name": "resize",
       "tasks": [
         {
-          "arguments": ["<<arg_1>>", "<<arg_2>>", "<<arg_3>>"],
-          "environment": {"ENV_VAR_1": "<<env_1>>"}
+          "arguments": ["resize.sh", "<<photo>>", "<<width>>"],
+          "environment": {"OUTPUT_FORMAT": "<<format>>"}
         }
       ]
     },
     {
+      "name": "watermark",
       "tasks": [
         {
-          "arguments": ["<<arg_1>>", "<<arg_2>>"],
-          "environment": {"ENV_VAR_1": "<<env_1>>", "ENV_VAR_2": "<<env_2>>"}
+          "arguments": ["watermark.sh", "<<photo>>"],
+          "environment": {"LOGO": "<<logo>>", "POSITION": "<<position>>"}
         }
       ]
     }
@@ -1273,42 +1560,57 @@ The CSV files are supplied on the command line in the order of the Task Groups t
 }
 ```
 
-The `yd workrequirement submit` command would then be invoked with a separate CSV file for each Task Group, e.g.:
+then each gets its own CSV file:
 
 ```shell
-yd workrequirement submit wr.json -V wr_data_task_group_1.csv -V wr_data_task_group_2.csv
+yd workrequirement submit wr.json -V photos.csv -V watermarks.csv
 ```
 
-If there are **fewer** CSV files than Task Groups, a note is printed and, if there are 'n' CSV files, CSV data processing will be applied to the first 'n' Task Groups in the Work Requirement by default, in the order in which the CSV files were supplied. If there are **more** CSV files than Task Groups, an error will be raised and processing will stop.
-
-It is possible to apply CSV files explicitly to specific Task Groups, by using an optional **index postfix** (e.g. `:2`) at the end of each CSV filename. For example, if there are two CSV files to be applied to the second and fourth Task Groups in a JSON Work Requirement, use the following syntax:
+To apply CSV files to particular Task Groups, add an **index postfix** (e.g. `:2`) to each filename. For example, to apply two CSV files to the second and fourth Task Groups:
 
 ```shell
-yd workrequirement submit wr.json -V wr_data_task_group_2.csv:2 -V wr_data_task_group_4.csv:4
+yd workrequirement submit wr.json -V photos.csv:2 -V watermarks.csv:4
 ```
 
-Alternatively, the **Task Group name** (if supplied in the JSON file) can be used as the postfix. For example, if the Task Groups above are named `tg_two` and `tg_four`, the `yd workrequirement submit` command would become:
+The postfix can also be a Task Group's **name**, where the JSON file names it:
 
 ```shell
-yd workrequirement submit wr.json -V wr_data_task_group_2.csv:tg_two -V wr_data_task_group_4.csv:tg_four
+yd workrequirement submit wr.json -V photos.csv:resize -V watermarks.csv:watermark
 ```
 
-Note that only one CSV file can be applied to any given Task Group, however it is chosen (by position, number or name): two for the same Task Group are an error naming both. A single CSV file can, however, be reused for multiple Task Groups.
+#### Details
+
+**Fewer or more CSV files than Task Groups.** With fewer CSV files than Task Groups, a note is printed, and the 'n' CSV files are applied to the first 'n' Task Groups, in the order given. With more CSV files than Task Groups, an error is raised and processing stops.
+
+**One CSV file per Task Group.** Only one CSV file can be applied to any Task Group, however it is chosen (by position, number or name): two for the same Task Group are an error naming both. A single CSV file can, however, be reused for several Task Groups.
 
 ### Using CSV Data with Simple, TOML-Only Work Requirement Specifications
 
-It's possible to use TOML exclusively to derive a list of Tasks from CSV data — i.e. a JSON Work Requirement specification is not required.
+A CSV file can also expand a Work Requirement given in the TOML file alone, with no JSON specification. Put the `<<...>>` substitutions in the `[workRequirement]` properties and name the CSV file in `csvFiles`:
 
-To make use of this:
+```toml
+[workRequirement]
+    taskType = "bash"
+    arguments = ["resize.sh", "<<photo>>", "<<width>>"]
+    environment = {OUTPUT_FORMAT = "<<format>>"}
+    workerTag = "render"
+    csvFiles = ["photos.csv"]
+```
 
-1. Ensure that no JSON Work Requirement document is specified (no `workRequirementData` in the TOML file, or no positional argument on the command line)
-2. Insert the required CSV-supplied variable substitutions directly into the TOML properties, e.g. `arguments = ["<<arg_1>>", "<<arg_2>>"]`
-3. Specify a single CSV file in the `csvFiles` TOML property, e.g. `csvFiles = ["wr_data.csv"]`, or provide the CSV file on the command line `-V wr_data.csv`; naming more than one is an error, since there is only one Task Group to apply them to
+`yd workrequirement submit` then makes one Task for each data row of the CSV file.
 
-When `yd workrequirement submit` is run, it will expand the Task list to match the number of data rows in the CSV file.
+#### Details
 
-In this form the CSV substitutions are made only in the properties a Task takes: `addYDEnvironment`, `arguments`, `environment`, `setTaskNames`, `taskData`, `taskDataFile`, `taskDataFiles`, `taskDataInputs`, `taskDataOutputs`, `taskGroupName`, `taskName`, `taskTimeout`, `taskType` and `timeout`. A `<<variable>>` anywhere else in the `[workRequirement]` section, such as `argumentsPrefix`, `addEnvironment` or `taskTemplate`, is left as written.
+**No JSON specification.** This form applies only when no JSON Work Requirement is given: no `workRequirementData` in the TOML file, and no specification on the command line.
+
+**One CSV file.** The CSV file can be given with `-V photos.csv` on the command line in place of `csvFiles`. Naming more than one is an error, since there is only one Task Group to apply them to.
+
+**Where substitutions are made.** In this form the CSV substitutions are made only in the properties a Task takes: `addYDEnvironment`, `arguments`, `environment`, `setTaskNames`, `taskData`, `taskDataFile`, `taskDataFiles`, `taskDataInputs`, `taskDataOutputs`, `taskGroupName`, `taskName`, `taskTimeout`, `taskType` and `timeout`. A `<<variable>>` anywhere else in the `[workRequirement]` section, such as `argumentsPrefix`, `addEnvironment` or `taskTemplate`, is left as written.
 
 ### Inspecting the Results of CSV Variable Substitution
 
-The `--process-csv-only` (or `-p`) option can be used with `yd workrequirement submit` to output the JSON Work Requirement after CSV variable substitutions only, prior to all other substitutions and property inheritance applied by `yd workrequirement submit`.
+To see the Work Requirement after the CSV substitutions alone, before any other substitution or property inheritance, add `--process-csv-only` (`-p`):
+
+```bash
+yd workrequirement submit wr.json -V photos.csv --process-csv-only
+```

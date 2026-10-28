@@ -4,6 +4,7 @@
 A script to submit Node Actions to Worker Pool nodes.
 """
 
+import logging
 import time
 from dataclasses import dataclass
 from os.path import abspath, dirname
@@ -94,6 +95,8 @@ from yellowdog_cli.utils.variable_syntax import (
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 # Action type strings used in spec files
 _RUN_COMMAND = "runCommand"
@@ -442,6 +445,10 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                 return None
             if content_file is not None:
                 try:
+                    _LOG.debug(
+                        "Reading content file '%s'",
+                        abspath(path_join(source_dir, cast(str, content_file))),
+                    )
                     with open(
                         path_join(source_dir, cast(str, content_file)), encoding="utf-8"
                     ) as f:
@@ -468,6 +475,10 @@ def _parse_action(action_spec: dict, source_dir: str) -> NodeAction | None:
                 parts = []
                 for file_path in content_files:
                     try:
+                        _LOG.debug(
+                            "Reading content file '%s'",
+                            abspath(path_join(source_dir, file_path)),
+                        )
                         with open(
                             path_join(source_dir, file_path), encoding="utf-8"
                         ) as f:
@@ -656,6 +667,11 @@ def _submit_actions(ctx: RunContext):
     # Priority: --content-path > spec file's directory > config file directory.
     source_dir = (
         ctx.args.content_path or dirname(abspath(spec_file)) or config_file_dir() or "."
+    )
+    _LOG.debug(
+        "Content files are found from %s, '%s'",
+        "--content-path" if ctx.args.content_path else "the specification's directory",
+        source_dir,
     )
 
     # The actions are parsed before anything is looked up, so that a faulty

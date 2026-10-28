@@ -450,7 +450,7 @@ def _run_specification(
         maximumTaskRetries=(
             None
             if retry_policy is not None
-            else levels.checked(MAX_RETRIES, check_int, config_wr.max_retries or 0)
+            else levels.checked(MAX_RETRIES, check_int, config_wr.max_retries)
         ),
         retryPolicy=retry_policy,
         failurePolicy=failure_policy,

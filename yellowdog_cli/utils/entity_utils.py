@@ -3,6 +3,7 @@ Various utility functions for finding objects, etc.
 """
 
 import fnmatch
+import logging
 import re
 from collections.abc import Callable, Collection, Iterator
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ from yellowdog_client.model import (
     RequirementsAllowance,
     RoleSearch,
     RoleSummary,
+    SliceReference,
     SourceAllowance,
     SourcesAllowance,
     Task,
@@ -86,6 +88,8 @@ from yellowdog_cli.utils.ydid_utils import (
     work_requirement_id_of_task_group,
 )
 
+_LOG = logging.getLogger(__name__)
+
 
 def search_namespaces(
     client: PlatformClient, namespace: str | None
@@ -105,8 +109,26 @@ def search_namespaces(
         return [namespace]
     details = get_application_details(client)
     if details.allNamespacesReadable or not details.readableNamespaces:
+        _trace_scope_once("every namespace")
         return None
+    _trace_scope_once(
+        "those the Application can read, "
+        + ", ".join(repr(n) for n in details.readableNamespaces)
+    )
     return list(details.readableNamespaces)
+
+
+_SCOPES_TRACED: set[str] = set()
+
+
+def _trace_scope_once(scope: str) -> None:
+    """
+    Trace the namespaces a search with none given is scoped to, once per
+    run rather than per search.
+    """
+    if scope not in _SCOPES_TRACED:
+        _SCOPES_TRACED.add(scope)
+        _LOG.debug("No namespace given: searching %s", scope)
 
 
 @lru_cache
@@ -840,6 +862,40 @@ def iterate_tasks_in_task_group(
     ).iterate()
 
 
+def count_tasks_in_task_group(client: PlatformClient, task_group_id: str) -> int:
+    """
+    The number of tasks in a task group, counted by searching for them a
+    slice of SliceReference.MAX_SIZE at a time, so a request per thousand.
+    A task group's taskSummary also counts them, but seconds behind the
+    tasks last added. Not cached, as a count of what is being added to.
+    """
+    search = client.work_client.get_tasks(TaskSearch(taskGroupId=task_group_id))
+    count = 0
+    slice_id = None
+    while True:
+        tasks = search.slice(
+            SliceReference(sliceId=slice_id, size=SliceReference.MAX_SIZE)
+        )
+        count += len(tasks.items or [])
+        slice_id = tasks.nextSliceId
+        if slice_id is None:
+            return count
+
+
+def task_name_taken(client: PlatformClient, task_group_id: str, name: str) -> bool:
+    """
+    Whether a task group holds a task of this name. The Platform's name
+    search matches a substring, so the tasks found are read until one has
+    the name itself. Not cached, as a check of what is being added to.
+    """
+    return any(
+        task.name == name
+        for task in iterate_tasks_in_task_group(
+            client, task_group_id, name_contains=name
+        )
+    )
+
+
 def split_namespace_and_name(
     namespace_and_name: str | None,
 ) -> tuple[str | None, str | None]:
@@ -962,7 +1018,16 @@ def expand_name_globs(
     for pattern in patterns:
         namespace, name = resolve_name_glob(pattern, default_namespace)
         candidates = fetch(namespace, glob_search_prefix(name))
-        for summary in filter_summaries_by_name_glob(candidates, name):
+        matched = filter_summaries_by_name_glob(candidates, name)
+        _LOG.debug(
+            "'%s' matched %d of the %d found%s: %s",
+            pattern,
+            len(matched),
+            len(candidates),
+            f" in namespace '{namespace}'" if namespace else "",
+            ", ".join(repr(summary.name) for summary in matched) or "none",
+        )
+        for summary in matched:
             if summary.id not in seen:
                 seen.add(summary.id)
                 result.append(summary)

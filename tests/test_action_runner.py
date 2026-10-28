@@ -8,6 +8,7 @@ everything as skipped; a failed unit recorded and the next one done. And
 main_wrapper's RunContext, given to a main() that takes one.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -86,6 +87,30 @@ class TestResolve:
     def test_each_once_grouped_by_type_in_the_order_given(self, record):
         items = _resolve_all(["b1", "x", "b2", "y", "x"], record)
         assert [item.key for item in items] == ["x", "y", "b1", "b2"]
+
+    def test_each_resolution_is_traced(self, record, caplog):
+        def resolve(target):
+            if target == "broken":
+                raise RuntimeError("lookup failed")
+            # A name and its ID name the one entity
+            return Item(SimpleNamespace(id="ydid:x"), "a", "x", None)
+
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            resolve_targets(
+                ["x", "ydid:x", "broken"],
+                resolve=resolve,
+                describe=lambda target: (target, "a"),
+                record=record,
+                verb="act on",
+                order=by_type("a"),
+            )
+        assert caplog.messages == [
+            "'x' is a ydid:x",
+            "'ydid:x' is a ydid:x",
+            "a ydid:x named twice: acted on once",
+            "'broken' not resolved",
+        ]
+        assert caplog.records[-1].exc_info is not None
 
     def test_what_cannot_be_acted_on_is_recorded_and_left_out(
         self, record, records, printed

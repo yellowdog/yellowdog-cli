@@ -5,13 +5,13 @@ exit code, or is listed in ALLOWED with the reason it may not.
 
 A broad handler is where an authentication or connection failure gets
 swallowed, or turned into the wrong exit code (a 401 shown as 'not found', a
-lost stream taken as finished, a failure recorded under exit 0). So a handler passes this scan only if it
-re-raises the failure (a bare 'raise', 'raise e', 'raise X from e', or
-'raise ReportedFailure(e)' at the top level of the handler), or routes it by
-its exit code: it uses classify(), SESSION_FAILURES or
-_raise_session_failure(), or calls one of ROUTING_HELPERS, each of which does
-so itself (checked below). Anything else is listed in ALLOWED, keyed by its
-file, its enclosing function and its place among that function's broad
+lost stream taken as finished, a failure recorded under exit 0). So a handler
+passes this scan only if it re-raises the failure (a bare 'raise', 'raise e',
+'raise X from e', or 'raise ReportedFailure(e)' at the top level of the
+handler), or routes it by its exit code: it uses classify(), SESSION_FAILURES
+or _raise_session_failure(), or calls one of ROUTING_HELPERS, each of which
+does so itself (checked below). Anything else is listed in ALLOWED, keyed by
+its file, its enclosing function and its place among that function's broad
 handlers, with the reason. A new broad handler fails the scan until it routes
 its failure or says why it need not; an ALLOWED entry that no longer names a
 handler needing it fails too, so the list cannot outlive its reasons.

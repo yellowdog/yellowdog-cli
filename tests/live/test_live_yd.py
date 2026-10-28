@@ -11,7 +11,15 @@ import pytest
 from harness import config, coverage
 from harness.config import load_live_config
 from harness.run import Run
-from harness.yd import MASK, Result, SecretInOutput, Yd, YdError, mask_variants
+from harness.yd import (
+    MASK,
+    Result,
+    SecretInOutput,
+    Yd,
+    YdError,
+    mask_variants,
+    split_trace,
+)
 from live_samples import (
     AWS,
     PLATFORM,
@@ -29,6 +37,10 @@ import hashlib, json, os, sys
 args = sys.argv[1:]
 if args[0] == "fail":
     print(args[1], file=sys.stderr)
+    sys.exit(1)
+if args[0] == "trace":
+    print("2026-10-28 14:48:21 : DEBUG : [+0.001s] submit: " + args[1], file=sys.stderr)
+    print("ERROR : it failed", file=sys.stderr)
     sys.exit(1)
 if args[0] == "exit":
     sys.exit(int(args[1]))
@@ -75,7 +87,13 @@ def yd(run):
 def test_yd_is_given_the_runs_config_directory_and_environment(yd, run, monkeypatch):
     monkeypatch.setenv("YD_NAMESPACE", "someone-elses")
     seen = yd("list", "keyrings").document
-    assert seen["args"] == ["list", "keyrings", "--config", str(run.cli_config)]
+    assert seen["args"] == [
+        "list",
+        "keyrings",
+        "--config",
+        str(run.cli_config),
+        "--debug",
+    ]
     assert seen["cwd"] == str(run.directory.resolve())
     assert seen["key_sha256"] == hashlib.sha256(b"app-key-1234567890").hexdigest()
     assert seen["namespace"] is None
@@ -265,3 +283,52 @@ def test_input_is_given_on_standard_input(yd):
 
 def test_without_input_standard_input_is_empty(yd):
     assert yd("--echo-stdin").document == {"stdin": ""}
+
+
+# ---------------------------------------------------------------------------
+# The '--debug' trace, split from the messages
+# ---------------------------------------------------------------------------
+
+TRACED = """\
+WARNING : first message
+2026-10-28 14:48:21 : DEBUG : [+0.010s] load_config: Loading configuration data from: 'config.toml'
+2026-10-28 14:48:21 (012345) : DEBUG : [+0.300s] command_runner: HTTPError raised
+Traceback (most recent call last):
+  File "a.py", line 1, in f
+    g()
+ValueError: the cause
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "b.py", line 2, in h
+    raise HTTPError("404") from e
+requests.exceptions.HTTPError: 404
+ERROR : 404 not found
+"""
+
+
+def test_the_trace_is_split_from_the_messages():
+    messages, trace = split_trace(TRACED)
+    assert messages == "WARNING : first message\nERROR : 404 not found\n"
+    assert trace.startswith("2026-10-28 14:48:21 : DEBUG : [+0.010s] load_config:")
+    assert trace.rstrip().endswith("requests.exceptions.HTTPError: 404")
+    assert "The above exception was the direct cause" in trace
+
+
+def test_a_traceback_after_no_trace_line_stays_a_message():
+    crash = "Traceback (most recent call last):\n  File \"x\"\nKeyError: 'k'\n"
+    assert split_trace(crash) == (crash, "")
+
+
+def test_a_secret_in_the_trace_fails_the_call(yd):
+    with pytest.raises(SecretInOutput):
+        yd("trace", "app-secret-abcdefghijklmnop")
+
+
+def test_a_failure_shows_the_messages_and_the_trace(yd):
+    result = yd("trace", "the decision", check=False)
+    assert result.stderr == "ERROR : it failed\n"
+    assert "the decision" in result.trace
+    shown = yd.describe(result)
+    assert "--- trace ---" in shown and "the decision" in shown

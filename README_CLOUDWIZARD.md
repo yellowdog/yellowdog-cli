@@ -7,6 +7,7 @@
    * [AWS Account Prerequisites](#aws-account-prerequisites)
    * [Quickstart Guide (AWS)](#quickstart-guide-aws)
       * [Creation](#creation)
+         * [Details](#details)
       * [Removal](#removal)
    * [Details of Operation: AWS](#details-of-operation-aws)
       * [Cloud Wizard Setup](#cloud-wizard-setup)
@@ -16,10 +17,12 @@
       * [Cloud Wizard Teardown](#cloud-wizard-teardown)
       * [Idempotency](#idempotency)
       * [Adding and Removing support for Inbound SSH](#adding-and-removing-support-for-inbound-ssh)
+         * [Details](#details-1)
 * [Cloud Wizard for GCP](#cloud-wizard-for-gcp)
    * [GCP Prerequisites](#gcp-prerequisites)
    * [Quickstart Guide (GCP)](#quickstart-guide-gcp)
       * [Creation](#creation-1)
+         * [Details](#details-2)
       * [Removal](#removal-1)
    * [Details of Operation: GCP](#details-of-operation-gcp)
       * [Cloud Wizard Setup](#cloud-wizard-setup-1)
@@ -34,6 +37,7 @@
          * [Adding Custom Role](#adding-custom-role)
    * [Quickstart Guide (Azure)](#quickstart-guide-azure)
       * [Creation](#creation-2)
+         * [Details](#details-3)
       * [Removal](#removal-2)
    * [Details of Operation: Azure](#details-of-operation-azure)
       * [Cloud Wizard Setup](#cloud-wizard-setup-2)
@@ -48,35 +52,42 @@
    * [Provision From Them](#provision-from-them)
    * [Try a Dynamic Template First](#try-a-dynamic-template-first)
    * [Use Another Instance Type](#use-another-instance-type)
+* [Options, Errors and Exit Codes](#options-errors-and-exit-codes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Oct 26 10:31:05 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
 
 <!--te-->
 
 # Overview
 
-YellowDog Cloud Wizard is an **experimental** utility that automates the process of configuring a cloud provider account for use with YellowDog, and for creating YellowDog resources that work with the account. The goal is to make it quick and easy to get from opening a new cloud provider account to using it productively with YellowDog. 
+YellowDog Cloud Wizard is an **experimental** utility that configures a cloud provider account for use with YellowDog, and creates YellowDog resources that work with the account. The goal is to make it quick and easy to get from opening a new cloud provider account to using it productively with YellowDog.
 
-Cloud Wizard currently supports Amazon AWS, Google GCP and Microsoft Azure: `--cloud-provider` takes `aws` (or `amazon`), `gcp` (`gce`, `google`) or `azure` (`microsoft`), in any case, and any other name is refused as the command line is read, as is GCP without `--credentials-file`, `add-ssh`/`remove-ssh` for GCP, and Azure's `add-ssh`/`remove-ssh` without `--region-name`.
+Cloud Wizard supports Amazon AWS, Google GCP and Microsoft Azure. For example, to set up an AWS account for YellowDog:
 
-Each step of a setup or teardown carries on past a step that fails, so that, for example, a teardown removes everything it can; the errors are reported as they happen, and a run that reported any ends with `Cloud Wizard finished with N error(s)` and exit code 1.
+```commandline
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup
+```
 
-The exception is a teardown whose connection to the YellowDog Platform is lost, or whose YellowDog credentials are refused, part-way: the YellowDog removals left are not attempted, since each would fail the same way, but the cloud provider's removals still run, and the run ends by saying so with the failure's own exit code (8 for the connection, 4 for the credentials). Running the teardown again removes the YellowDog resources that were left.
-
-The same applies to the YellowDog credential an Azure setup creates last: if the Platform cannot be reached for it, the resource definition file is still saved, and the run ends with the failure's exit code; running the setup again creates what is missing.
+The same command with `teardown` in place of `setup` removes what it created. The sections below cover each provider in turn, then [how to use what Cloud Wizard created](#using-what-cloud-wizard-created). [Options, Errors and Exit Codes](#options-errors-and-exit-codes) covers the provider names, what is refused, and how a run that fails part-way ends.
 
 # YellowDog Prerequisites
 
 The `yellowdog-cli` Python package must be installed, with the optional Cloud Wizard dependencies:
 
 ```commandline
-pip install -U "yellowdog-cli[cloudwizard]"
+uv tool install "yellowdog-cli[cloudwizard]"
 ```
 
-You'll need a YellowDog Platform account, and to have created an **Application** via the [YellowDog Portal](https://portal.yellowdog.co/#/account/applications). The Application must belong to a group that has the following permissions at a minimum: `KEYRING_WRITE`, `COMPUTE_SOURCE_TEMPLATE_WRITE` and `COMPUTE_REQUIREMENT_TEMPLATE_WRITE`. If you make the Application a member of the `administrators` group, it will acquire these rights automatically.
+In a virtual environment, install it with `uv pip install -U "yellowdog-cli[cloudwizard]"` or `pip install -U "yellowdog-cli[cloudwizard]"` instead (see [Installation](docs/installation.md)).
 
-The Application's **Key ID** and **Key Secret** need to be available to the Cloud Wizard command either (1) via the environment variables `YD_KEY` and `YD_SECRET`, or (2) they can be set on the command line using the `--key`/`-k` and `--secret`/`-s` options, or (3) they can be set in a `config.toml` configuration file as follows:
+You'll need a YellowDog Platform account, and an **Application** created in the [YellowDog Portal](https://portal.yellowdog.co/#/account/applications). The Application must belong to a group that has at least the `KEYRING_WRITE`, `COMPUTE_SOURCE_TEMPLATE_WRITE` and `COMPUTE_REQUIREMENT_TEMPLATE_WRITE` permissions. A member of the `administrators` group has these permissions already.
+
+Cloud Wizard needs the Application's **Key ID** and **Key Secret**. Give them in one of three ways:
+
+1. The environment variables `YD_KEY` and `YD_SECRET`.
+2. The `--key`/`-k` and `--secret`/`-s` command line options.
+3. A `config.toml` configuration file:
 
 ```toml
 common.key = "<Insert Key ID>"
@@ -106,13 +117,13 @@ You'll need an AWS account along with AWS access keys for the root user or for a
 
 ### Creation
 
-Run the Cloud Wizard setup command:
+To set up an AWS account for YellowDog, run `setup`:
 
 ```commandline
 yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup
 ```
 
-Once the command has configured the necessary aspects of your AWS account, it will present a list of AWS Availability Zones. Select the Availability Zone(s) you'd like to use. For example:
+Once the command has configured your AWS account, it presents a list of the AWS Availability Zones in the regions your account has enabled. Select the Availability Zones you'd like to use. For example:
 
 ```commandline
 2023-10-23 10:37:25 : Please select the AWS availability zones for which to create YellowDog Source Templates
@@ -134,25 +145,31 @@ Once the command has configured the necessary aspects of your AWS account, it wi
 2023-10-23 10:37:35 : Creating YellowDog Compute Source Templates
 ```
 
-The command will then proceed to create two YellowDog Compute Source templates for each selected Availability Zone, one for on-demand VMs, one for spot VMs. The command will also create a small selection of Compute Requirement Templates that make use of the Source Templates. All templates created have the prefix `cloudwizard-aws`.
+The command then creates two YellowDog Compute Source Templates for each selected Availability Zone, one for on-demand VMs and one for spot VMs. It also creates a small selection of Compute Requirement Templates that use the Source Templates. All the templates are named with the prefix `cloudwizard-aws`, in the `cloudwizard-aws` namespace.
 
-The YellowDog resources are created in the `cloudwizard-aws` namespace, so a template is named `cloudwizard-aws/<template-name>` from another namespace. The definitions of the Compute Source and Compute Requirement Templates that were created can be inspected in JSON format in the file `cloudwizard-aws-yellowdog-resources.json` (the Keyring and its Credential are left out); an existing file is replaced only after confirmation.
+At the end of setup, the command displays the YellowDog Keyring name and password. Make a note of the password: it is not displayed again. You need it to [claim the Keyring](#claim-the-keyring) for your YellowDog Portal user account, which lets you control AWS resources from the Portal.
 
-The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
+The Compute Requirement Templates are then ready for provisioning, which must supply an image (an `Images ID`): see [Using What Cloud Wizard Created](#using-what-cloud-wizard-created).
 
-The AWS Key Secret is not displayed during command operation, and is not retained locally, for security reasons. If you wish to display it, use the `--show-secrets` command line option when invoking `yd cloudwizard`.
+#### Details
 
-At the conclusion of setup, the command will display the YellowDog Keyring name and password, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control AWS resources via the Portal.
+**Namespace.** From another namespace, a template is named with its namespace, for example `cloudwizard-aws/cloudwizard-aws-split-ondemand`.
+
+**The resource file.** The definitions of the Compute Source and Compute Requirement Templates are saved as JSON in the file `cloudwizard-aws-yellowdog-resources.json`. The Keyring and its Credential are left out. An existing file is replaced only after confirmation.
+
+**The AWS secret.** The AWS Key Secret is not displayed while the command runs, and is not kept locally, for security reasons. To display it, add the `--show-secrets` option.
+
+**The Keyring password.** The password is displayed even if a later step failed, and even with `--quiet`.
 
 ### Removal
 
-The AWS account settings and resources, and the YellowDog resources that were created can be entirely removed using the `teardown` operation:
+To remove the AWS account settings and resources, and the YellowDog resources, that Cloud Wizard created, run `teardown`:
 
 ```commandline
 yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown
 ```
 
-All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
+Every destructive operation asks for confirmation first. To skip the confirmations, add `--yes`/`-y`.
 
 ## Details of Operation: AWS
 
@@ -170,7 +187,9 @@ The default **subnets** are provided with a route to a gateway which allows inst
 
 The default **security group** allows unrestricted traffic between instances on the subnet, and allows unrestricted outbound traffic to any address including the public Internet. It allows **no** inbound access from outside the subnet. Hence, if inbound access is required (e.g., SSH access to an instance), this must be added for each default security group in each region for which it is required. Cloud Wizard provides a command for adding and removing SSH access; please see below.
 
-Cloud Wizard will interrogate your AWS account to find out which regions are available, and to determine the default security group for the region (the security group named `default` in the region's default VPC), and the default subnet for each availability zone within the region. `setup` needs a region, to check that the access key it creates works for EC2: `--region-name`, or the default region of your AWS configuration (`AWS_DEFAULT_REGION`, or `region` in `~/.aws/config`); without one it stops before creating anything.
+Cloud Wizard asks your AWS account which regions are available. In each region it finds the default security group (the security group named `default` in the region's default VPC) and the default subnet for each availability zone.
+
+`setup` needs a region, to check that the access key it creates works for EC2. It uses `--region-name`, else the default region of your AWS configuration (`AWS_DEFAULT_REGION`, or `region` in `~/.aws/config`). Without either, it stops before creating anything.
 
 #### AWS Account Setup
 
@@ -179,10 +198,10 @@ Cloud Wizard performs the following actions in your AWS account:
 1. It creates a new IAM user called `yellowdog-cloudwizard-user`.
 2. It creates a new IAM policy called `yellowdog-cloudwizard-policy`, containing the capabilities required for YellowDog to use your AWS account on behalf of `yellowdog-cloudwizard-user`.
 3. It attaches the IAM policy to the IAM user.
-4. It creates a new access key for the IAM user; note that the secret access key is not displayed by default and will not be recorded other than in the Credential to be created within YellowDog. To display the secret access key, run the Cloud Wizard command with the `--show-secrets` option.
-5. It adds the `AWSServiceRoleForEC2Spot` service linked role to the AWS account. This allows spot instances to be provisioned by YellowDog.
+4. It creates a new access key for the IAM user. The secret access key is not displayed (unless you add `--show-secrets`), and is recorded only in the Credential Cloud Wizard creates in YellowDog.
+5. It adds the `AWSServiceRoleForEC2Spot` service linked role to the AWS account. This allows YellowDog to provision spot instances.
 
-The steps above are essentially an automated version of YellowDog's [AWS account configuration guidelines](https://docs.yellowdog.co/#/knowledge-base/configuring-an-aws-account-for-use-with-yellowdog). Note that the addition of the Service linked role for AWS Fleet is omitted.
+These steps automate YellowDog's [AWS account configuration guidelines](https://docs.yellowdog.co/#/knowledge-base/configuring-an-aws-account-for-use-with-yellowdog), except that the Service linked role for AWS Fleet is not added.
 
 Some AWS IAM settings take a little while to percolate through the AWS account. In particular, the `AWSServiceRoleForEC2Spot` service linked role may not take effect immediately, meaning that spot instances cannot be provisioned.
 
@@ -190,23 +209,27 @@ Some AWS IAM settings take a little while to percolate through the AWS account. 
 
 Cloud Wizard performs the following actions in your YellowDog Platform account:
 
-1. It creates a YellowDog Keyring called `cloudwizard-aws`. The Keyring name and password are displayed at the end of the Cloud Wizard setup process, and the password will not be displayed again. The Keyring name and password are required for your YellowDog Portal user account to be able to claim the Keyring, and use the credential(s) it contains via the Portal.
-
-
+1. It creates a YellowDog Keyring called `cloudwizard-aws`. The Keyring name and password are displayed at the end of setup, and the password is not displayed again. Your YellowDog Portal user account needs them to claim the Keyring and use the credentials it contains.
 2. It creates a Credential called `cloudwizard-aws` contained within the `cloudwizard-aws` Keyring, containing the access key created during the AWS account setup described above.
+3. It creates Compute Source Templates, two for each selected AWS availability zone: one for **on-demand** instances and one for **spot** instances. They are named like `cloudwizard-aws-eu-west-1a-ondemand`. Their instances use the `cloudwizard-aws/cloudwizard-aws` Credential, and have public IP addresses for outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels. Any instances created from the source are tagged with `yd-cloudwizard=yellowdog-cloudwizard-source`.
+4. It creates seven example Compute Requirement Templates that use the sources above, named like `cloudwizard-aws-split-ondemand` or `cloudwizard-aws-dynamic-split-lowestcost`:
+   - Two **static waterfall** templates, one over all the on-demand sources and one over all the spot sources.
+   - Two **static split** templates, over the same sources.
+   - A fifth static template, `cloudwizard-aws-waterfall-spot-to-ondemand`, using the waterfall strategy over all the spot sources and then all the on-demand ones.
+   - Two **dynamic** templates, one waterfall and one split, constrained to AWS instances with 4GB of memory or more, ordered by lowest cost first.
 
-
-3. It creates a range of Compute Source Templates, two for each selected AWS availability zone, one for **on-demand** instances and the other for **spot** instances. Each source is given a name with the following pattern: `cloudwizard-aws-eu-west-1a-ondemand`. Instances will use the `cloudwizard-aws/cloudwizard-aws` Credential. Instances will be created with public IP addresses, to permit outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels. Any instances created from the source will be tagged with `yd-cloudwizard=yellowdog-cloudwizard-source`.
-
-
-4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `t3a.micro` AWS instance type. A fifth static template, `cloudwizard-aws-waterfall-spot-to-ondemand`, uses the waterfall strategy over all the spot sources and then all the on-demand ones. In addition, two example **dynamic** templates are created, one with the waterfall strategy and one with split, constrained to AWS instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-aws-split-ondemand` or `cloudwizard-aws-dynamic-split-lowestcost`. Seven templates are created in all. Note that the default instance type can be overridden using the `--instance-type` command line option; without it, the saved resource file holds it as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=<type> <file>` can create them again with another type.
-
-
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
+   The static templates use the `t3a.micro` AWS instance type, unless `--instance-type` gives another. None of the templates specifies an `Images Id`, so one must be supplied when instances are provisioned.
+5. It saves the Compute Source Template and Compute Requirement Template definitions in a JSON resource specification file called `cloudwizard-aws-yellowdog-resources.json`. You can edit this file (for example, to change the instance types) and update the resources from it with `yd resource create`. Without `--instance-type`, the file holds the instance type as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=t3a.small cloudwizard-aws-yellowdog-resources.json` creates the templates again with another type (see [Use Another Instance Type](#use-another-instance-type)).
 
 ### Cloud Wizard Teardown
 
-All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+To remove everything Cloud Wizard created, run:
+
+```commandline
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 teardown
+```
+
+Every destructive step asks for confirmation first, unless you add `--yes`/`-y`.
 
 The following actions are taken in the **YellowDog account**:
 
@@ -229,15 +252,23 @@ If there are multiple invocations of `setup`, then the AWS access key and Yellow
 
 ### Adding and Removing support for Inbound SSH
 
-To add an inbound SSH rule to the default security group for a region, Cloud Wizard provides a convenient `add-ssh` option:
+To allow inbound SSH to your instances in a region, add an SSH rule to the region's default security group with `add-ssh`:
 
-`yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 add-ssh`
+```commandline
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 add-ssh
+```
 
-Without `--region-name`, `add-ssh` adds the rule in the default security group of every region the account has opted into. Since the rule allows SSH from anywhere (`0.0.0.0/0`), `add-ssh` asks for confirmation first, naming the region or the number of regions (`--yes` skips it).
+To remove the rule:
 
-The rule can be removed using:
+```commandline
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 remove-ssh
+```
 
-`yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 remove-ssh`
+#### Details
+
+**Every region.** Without `--region-name`, `add-ssh` adds the rule to the default security group of every region the account has opted into.
+
+**Confirmation.** The rule allows SSH from anywhere (`0.0.0.0/0`), so `add-ssh` asks for confirmation first, naming the region or the number of regions. `--yes` skips it.
 
 # Cloud Wizard for GCP
 
@@ -267,13 +298,13 @@ Ensure you have credentials (keys) for a **GCP Service Account** in a GCP projec
 
 ### Creation
 
-Run the Cloud Wizard setup command:
+To set up a GCP project for YellowDog, run `setup`, giving the Service Account's credentials file:
 
 ```commandline
 yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json setup
 ```
 
-Once the command has discovered the GCP regions in which your service account has a default subnet, it will present them in a list. Select the regions for which to create YellowDog Compute Source Templates, e.g.:
+The command lists the GCP regions in which your Service Account has a default subnet. Select the regions for which to create YellowDog Compute Source Templates. For example:
 
 ```commandline
 2023-11-03 11:01:05 : Please select the Google Compute Engine regions for which to create YellowDog Compute Source Templates
@@ -292,23 +323,30 @@ Once the command has discovered the GCP regions in which your service account ha
 
 2023-11-03 11:01:05 : Please select items (e.g.: 1,2,4-7 / *) or press <Return> to cancel:
 ```
-The command will then proceed to create two YellowDog Compute Source templates for each selected region, one for on-demand VMs, one for spot VMs. The command will also create a small selection of Compute Requirement Templates that make use of the Source Templates. All templates created have the prefix `cloudwizard-gcp`.
 
-The YellowDog resources are created in the `cloudwizard-gcp` namespace, so a template is named `cloudwizard-gcp/<template-name>` from another namespace. The definitions of the Compute Source and Compute Requirement Templates that were created can be inspected in JSON format in the file `cloudwizard-gcp-yellowdog-resources.json` (the Keyring and its Credential are left out); an existing file is replaced only after confirmation.
+The command then creates two YellowDog Compute Source Templates for each selected region, one for on-demand VMs and one for spot VMs. It also creates a small selection of Compute Requirement Templates that use the Source Templates. All the templates are named with the prefix `cloudwizard-gcp`.
 
-The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
+At the end of setup, the command displays the YellowDog Keyring name and password. Make a note of the password: it is not displayed again. You need it to [claim the Keyring](#claim-the-keyring) for your YellowDog Portal user account, which lets you control GCP resources from the Portal.
 
-At the conclusion of setup, the command will display the YellowDog Keyring name and password, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control GCP resources via the Portal.
+The Compute Requirement Templates are then ready for provisioning, which must supply an image (an `Images ID`): see [Using What Cloud Wizard Created](#using-what-cloud-wizard-created).
+
+#### Details
+
+**Namespace.** The templates are in the `cloudwizard-gcp` namespace. From another namespace, a template is named with its namespace, for example `cloudwizard-gcp/cloudwizard-gcp-split-ondemand`.
+
+**The resource file.** The definitions of the Compute Source and Compute Requirement Templates are saved as JSON in the file `cloudwizard-gcp-yellowdog-resources.json`. The Keyring and its Credential are left out. An existing file is replaced only after confirmation.
+
+**The Keyring password.** The password is displayed even if a later step failed, and even with `--quiet`.
 
 ### Removal
 
-The GCP account and YellowDog resources that were created can be entirely removed using the `teardown` operation:
+To remove the YellowDog resources that Cloud Wizard created, run `teardown`:
 
 ```commandline
 yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
 ```
 
-All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
+Every destructive operation asks for confirmation first. To skip the confirmations, add `--yes`/`-y`.
 
 ## Details of Operation: GCP
 
@@ -330,23 +368,27 @@ No changes are made to your GCP account.
 
 Cloud Wizard performs the following actions in your YellowDog Platform account:
 
-1. It creates a YellowDog Keyring called `cloudwizard-gcp`. The Keyring name and password are displayed at the end of the Cloud Wizard setup process, and the password will not be displayed again. The Keyring name and password are required for your YellowDog Portal user account to be able to claim the Keyring, and use the credential(s) it contains via the Portal.
-
-
+1. It creates a YellowDog Keyring called `cloudwizard-gcp`. The Keyring name and password are displayed at the end of setup, and the password is not displayed again. Your YellowDog Portal user account needs them to claim the Keyring and use the credentials it contains.
 2. It creates a Credential called `cloudwizard-gcp` contained within the `cloudwizard-gcp` Keyring, containing the credentials in the supplied JSON file.
+3. It creates Compute Source Templates, two for each selected GCP region: one for **on-demand** instances and one for **spot** instances. They are named like `cloudwizard-gcp-europe-west1-ondemand`. Their instances use the `cloudwizard-gcp/cloudwizard-gcp` Credential, and have public IP addresses for outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels.
+4. It creates seven example Compute Requirement Templates that use the sources above, named like `cloudwizard-gcp-split-ondemand` or `cloudwizard-gcp-dynamic-split-lowestcost`:
+   - Two **static waterfall** templates, one over all the on-demand sources and one over all the spot sources.
+   - Two **static split** templates, over the same sources.
+   - A fifth static template, `cloudwizard-gcp-waterfall-spot-to-ondemand`, using the waterfall strategy over all the spot sources and then all the on-demand ones.
+   - Two **dynamic** templates, one waterfall and one split, constrained to GCP instances with 4GB of memory or more, ordered by lowest cost first.
 
+   The static templates use the `f1-micro` GCP instance type, unless `--instance-type` gives another. None of the templates specifies an `Images Id`, so one must be supplied when instances are provisioned.
+5. It saves the Compute Source Template and Compute Requirement Template definitions in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. You can edit this file (for example, to change the instance types) and update the resources from it with `yd resource create`. Without `--instance-type`, the file holds the instance type as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=e2-small cloudwizard-gcp-yellowdog-resources.json` creates the templates again with another type (see [Use Another Instance Type](#use-another-instance-type)).
 
-3. It creates a range of Compute Source Templates, two for each selected GCP region, one for **on-demand** instances and the other for **spot** instances. Each source is given a name with the following pattern: `cloudwizard-gcp-europe-west1-ondemand`. Instances will use the `cloudwizard-gcp/cloudwizard-gcp` Credential. Instances will be created with public IP addresses, to permit outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels.
+### Cloud Wizard Teardown
 
+To remove everything Cloud Wizard created, run:
 
-4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `f1-micro` GCP instance type by default. A fifth static template, `cloudwizard-gcp-waterfall-spot-to-ondemand`, uses the waterfall strategy over all the spot sources and then all the on-demand ones. In addition, two example **dynamic** templates are created, one with the waterfall strategy and one with split, constrained to GCP instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-gcp-split-ondemand` or `cloudwizard-gcp-dynamic-split-lowestcost`. Seven templates are created in all. Note that the default instance type can be overridden using the `--instance-type` command line option; without it, the saved resource file holds it as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=<type> <file>` can create them again with another type.
+```commandline
+yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
+```
 
-
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-gcp-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
-
-###  Cloud Wizard Teardown
-
-All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+Every destructive step asks for confirmation first, unless you add `--yes`/`-y`.
 
 The following actions are taken in the **YellowDog account**:
 
@@ -389,6 +431,7 @@ Please see the article [Create a Microsoft Entra application and service princip
 #### Adding Custom Role
 
 You can also add a **custom role** to provide fine-tuned permissions to your **yellowdog-app Service Principal**.
+
 Here is a complete list of the permissions your custom role will need:
 ```
 Microsoft.Resources/subscriptions/read
@@ -422,13 +465,22 @@ The `delete` permissions are what `teardown` (which deletes the resource groups 
 
 Your Azure account is now prepared for use with YellowDog.
 
-Cloud Wizard requires the following environment variables to be set in order to access your Azure account:
+Cloud Wizard reads your Azure account's details from four environment variables, set from the values you recorded above:
 
-```
-AZURE_SUBSCRIPTION_ID=<Use the 'Subscription ID' recorded above>
-AZURE_TENANT_ID=<Use the 'Directory (tenant) ID' recorded above>
-AZURE_CLIENT_ID=<Use the 'Application (client) ID' recorded above>
-AZURE_CLIENT_SECRET=<Use the client secret 'Value' recorded above>
+| Variable | Value recorded above |
+|:---|:---|
+| `AZURE_SUBSCRIPTION_ID` | the **Subscription ID** |
+| `AZURE_TENANT_ID` | the **Directory (tenant) ID** |
+| `AZURE_CLIENT_ID` | the **Application (client) ID** |
+| `AZURE_CLIENT_SECRET` | the client secret's **Value** |
+
+For example, on Linux and macOS:
+
+```commandline
+export AZURE_SUBSCRIPTION_ID=3f2b9c1e-7a4d-4e8b-9c62-1d5a0e7f4b38
+export AZURE_TENANT_ID=8c1d5e2a-0b3f-4a6c-b7d9-2e4f6a8c0d1b
+export AZURE_CLIENT_ID=5a7e9c2b-4d6f-4b1a-8e3c-7f9b1d3e5a20
+export AZURE_CLIENT_SECRET=Xq8~kL2pR.vN4tY7wZ1sB3dF6gH9jM0cE5aU_iO
 ```
 
 Please treat the `AZURE_CLIENT_SECRET` **very securely** -- it allows full access to your Azure account.
@@ -437,13 +489,13 @@ Please treat the `AZURE_CLIENT_SECRET` **very securely** -- it allows full acces
 
 ### Creation
 
-Run the Cloud Wizard setup command:
+To set up an Azure account for YellowDog, set the [Azure environment variables](#azure-account-prerequisites) and run `setup`:
 
 ```commandline
 yd cloudwizard --cloud-provider=azure setup
 ```
 
-The command will present a list of Azure regions, allowing you to choose which regions you'd like to use with YellowDog: 
+The command lists the Azure regions. Select the regions you'd like to use with YellowDog:
 
 ```commandline
 2024-01-16 11:34:24 : Please select the Azure regions in which to create resource groups and network resources.
@@ -466,23 +518,29 @@ The command will present a list of Azure regions, allowing you to choose which r
 2024-01-16 11:34:24 : Please select items (e.g.: 1,2,4-7 / *):
 ```
 
-Cloud Wizard will then proceed to create various resources for each selected Azure region, in the Azure account. Then, it will create a YellowDog Keyring and Credentials, and two YellowDog Compute Source templates for each selected region, one for on-demand VMs, one for spot VMs. The command will also create a small selection of Compute Requirement Templates that make use of the Source Templates. All templates created have the prefix `cloudwizard-azure`.
+Cloud Wizard then creates network resources in your Azure account for each selected region. It then creates a YellowDog Keyring and Credential, and two YellowDog Compute Source Templates for each selected region, one for on-demand VMs and one for spot VMs. It also creates a small selection of Compute Requirement Templates that use the Source Templates. All the templates are named with the prefix `cloudwizard-azure`.
 
-The YellowDog resources are created in the `cloudwizard-azure` namespace, so a template is named `cloudwizard-azure/<template-name>` from another namespace. The definitions of the Compute Source and Compute Requirement Templates that were created can be inspected in JSON format in the file `cloudwizard-azure-yellowdog-resources.json` (the Keyring and its Credential are left out); an existing file is replaced only after confirmation.
+At the end of setup, the command displays the YellowDog **Keyring name and password**. Make a note of the password: it is not displayed again. You need it to [claim the Keyring](#claim-the-keyring) for your YellowDog Portal user account, which lets you control Azure resources from the Portal.
 
-The Compute Requirement Templates are then available for use in YellowDog provisioning requests via the YellowDog API; note that an `Images ID` must be supplied.
+The Compute Requirement Templates are then ready for provisioning, which must supply an image (an `Images ID`): see [Using What Cloud Wizard Created](#using-what-cloud-wizard-created).
 
-At the conclusion of setup, the command will display the YellowDog **Keyring name and password**, even if a later step failed, and with `--quiet`. This password will not be displayed again, and is required to claim access to the Keyring on behalf of your YellowDog Portal user account, allowing you to control Azure resources via the Portal.
+#### Details
+
+**Namespace.** The templates are in the `cloudwizard-azure` namespace. From another namespace, a template is named with its namespace, for example `cloudwizard-azure/cloudwizard-azure-split-ondemand`.
+
+**The resource file.** The definitions of the Compute Source and Compute Requirement Templates are saved as JSON in the file `cloudwizard-azure-yellowdog-resources.json`. The Keyring and its Credential are left out. An existing file is replaced only after confirmation.
+
+**The Keyring password.** The password is displayed even if a later step failed, and even with `--quiet`.
 
 ### Removal
 
-The Azure account settings and resources and the YellowDog resources that were created by Cloud Wizard can be entirely removed using the `teardown` operation:
+To remove the Azure resources and the YellowDog resources that Cloud Wizard created, run `teardown`:
 
 ```commandline
 yd cloudwizard --cloud-provider=azure teardown
 ```
 
-All destructive operations will require user confirmation; to avoid this, use the `--yes`/`-y` command line option.
+Every destructive operation asks for confirmation first. To skip the confirmations, add `--yes`/`-y`.
 
 ## Details of Operation: Azure
 
@@ -508,48 +566,56 @@ The **subnets** are provided with a route to a gateway which allows instances to
 
 Cloud Wizard performs the following actions in your YellowDog Platform account:
 
-1. It creates a YellowDog Keyring called `cloudwizard-azure`. The Keyring name and password are displayed at the end of the Cloud Wizard setup process, and the password will not be displayed again. The Keyring name and password are required for your YellowDog Portal user account to be able to claim the Keyring, and use the credential(s) it contains via the Portal.
-
-
+1. It creates a YellowDog Keyring called `cloudwizard-azure`. The Keyring name and password are displayed at the end of setup, and the password is not displayed again. Your YellowDog Portal user account needs them to claim the Keyring and use the credentials it contains.
 2. It creates a Credential called `cloudwizard-azure` contained within the `cloudwizard-azure` Keyring.
+3. It creates Compute Source Templates, two for each selected Azure region: one for **on-demand** instances and one for **spot** instances. They are named like `cloudwizard-azure-northeurope-ondemand`. Their instances use the `cloudwizard-azure/cloudwizard-azure` Credential, and have public IP addresses for outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels.
+4. It creates seven example Compute Requirement Templates that use the sources above, named like `cloudwizard-azure-split-ondemand` or `cloudwizard-azure-dynamic-split-lowestcost`:
+   - Two **static waterfall** templates, one over all the on-demand sources and one over all the spot sources.
+   - Two **static split** templates, over the same sources.
+   - A fifth static template, `cloudwizard-azure-waterfall-spot-to-ondemand`, using the waterfall strategy over all the spot sources and then all the on-demand ones.
+   - Two **dynamic** templates, one waterfall and one split, constrained to Azure instances with 4GB of memory or more, ordered by lowest cost first.
 
-
-3. It creates a range of Compute Source Templates, two for each selected Azure region, one for **on-demand** instances and the other for **spot** instances. Each source is given a name with the following pattern: `cloudwizard-azure-northeurope-ondemand`. Instances will use the `cloudwizard-azure/cloudwizard-azure` Credential. Instances will be created with public IP addresses, to permit outbound Internet access. The instance type and Images ID are left as `any`, to be set at higher levels.
-
-
-4. It creates a small range of example Compute Requirement Templates that use the sources above. There are two **static waterfall** provisioning strategy examples, one containing all the on-demand sources, the other containing all the spot sources. Two equivalent templates are created for the **static split** provisioning strategy. All of these templates specify the `Standard_A1_v2` Azure instance type. A fifth static template, `cloudwizard-azure-waterfall-spot-to-ondemand`, uses the waterfall strategy over all the spot sources and then all the on-demand ones. In addition, two example **dynamic** templates are created, one with the waterfall strategy and one with split, constrained to Azure instances with 4GB of memory or greater, ordered by lowest cost first. In all cases, no `Images Id` is specified, so this must be supplied at the time of instance provisioning. Each template is given a name such as: `cloudwizard-azure-split-ondemand` or `cloudwizard-azure-dynamic-split-lowestcost`. Seven templates are created in all. Note that the default instance type can be overridden using the `--instance-type` command line option; without it, the saved resource file holds it as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=<type> <file>` can create them again with another type.
-
-
-5. The Compute Source Template and Compute Requirement Template definitions are saved in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. This file can be edited (for example, to change the instance types), and used with the `yd resource create` command to update the resources.
+   The static templates use the `Standard_A1_v2` Azure instance type, unless `--instance-type` gives another. None of the templates specifies an `Images Id`, so one must be supplied when instances are provisioned.
+5. It saves the Compute Source Template and Compute Requirement Template definitions in a JSON resource specification file called `cloudwizard-azure-yellowdog-resources.json`. You can edit this file (for example, to change the instance types) and update the resources from it with `yd resource create`. Without `--instance-type`, the file holds the instance type as the variable `{{instance_type:=<default>}}`, so `yd resource create -v instance_type=Standard_B2s cloudwizard-azure-yellowdog-resources.json` creates the templates again with another type (see [Use Another Instance Type](#use-another-instance-type)).
 
 ### Cloud Wizard Teardown
 
-All settings and resources created by Cloud Wizard can be removed using `yd cloudwizard --cloud-provider=azure teardown`. All destructive steps will require user confirmation unless the `--yes`/`-y` option is used.
+To remove everything Cloud Wizard created, run:
+
+```commandline
+yd cloudwizard --cloud-provider=azure teardown
+```
+
+Every destructive step asks for confirmation first, unless you add `--yes`/`-y`.
 
 The following actions are taken in the **YellowDog account**:
 
 1. All Compute Source Templates and Compute Requirement Templates with names starting with `cloudwizard-azure` are removed.
 2. The `cloudwizard-azure` Keyring is removed.
 
-In the **Azure account**, all resource groups with names starting with **yellowdog-cloudwizard-rg-** are removed. This will remove all resources contained within these resource groups. Note that this action is asynchronous, so it might take a few minutes after the Cloud Wizard command has ended for Azure to conclude its deletions.
+In the **Azure account**, all resource groups with names starting with **yellowdog-cloudwizard-rg-** are removed, with all the resources they contain. Azure deletes them asynchronously, so its deletions may finish a few minutes after the command has ended.
 
 ### Idempotency
 
 In general, it's safe to invoke Cloud Wizard multiple times for both setup and teardown operations. Depending on the setting/resource it will be ignored if present, or the user will be asked to confirm deletion/replacement.
 
-If there are multiple invocations of `setup` the Compute Source and Compute Requirement templates will be updated, and may differ in their contents if different regions are selected during each invocation, and the resource specification JSON file will be overwritten. No resource groups will be deleted as part of a `setup` operation.
+Running `setup` again updates the Compute Source and Compute Requirement templates, whose contents differ if different regions are selected. It also overwrites the resource specification JSON file. `setup` never deletes a resource group.
 
 ### Adding and Removing support for Inbound SSH
 
-To add an inbound SSH rule to the Cloud Wizard security group for a region, Cloud Wizard provides a convenient `add-ssh` option:
+To allow inbound SSH to your instances in a region, add an SSH rule to the region's Cloud Wizard security group with `add-ssh`:
 
-`yd cloudwizard --cloud-provider=azure --region-name=northeurope add-ssh`
+```commandline
+yd cloudwizard --cloud-provider=azure --region-name=northeurope add-ssh
+```
 
-Since the rule allows SSH from anywhere, `add-ssh` asks for confirmation first, naming the security group and the region (`--yes` skips it).
+To remove the rule:
 
-The rule can be removed using:
+```commandline
+yd cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh
+```
 
-`yd cloudwizard --cloud-provider=azure --region-name=northeurope remove-ssh`
+The rule allows SSH from anywhere, so `add-ssh` asks for confirmation first, naming the security group and the region. `--yes` skips it.
 
 # Using What Cloud Wizard Created
 
@@ -557,7 +623,16 @@ Once setup has finished, the account has a Keyring holding the cloud provider cr
 
 ## Claim the Keyring
 
-The Keyring can be used at first only by the Application that ran Cloud Wizard. To use the templates from the YellowDog Portal as well, claim the Keyring for your Portal user there, with the password Cloud Wizard displayed at the end of setup. The password is displayed only once; if it has been lost, remove the Keyring (`yd resource remove --type Keyring cloudwizard-aws`) and run the setup again, which creates it anew, with its Credential, and shows the new password.
+To use the templates from the YellowDog Portal, claim the Keyring there for your Portal user, with the password Cloud Wizard displayed at the end of setup. Until it is claimed, only the Application that ran Cloud Wizard can use the Keyring.
+
+The password is displayed only once. If it has been lost, remove the Keyring and run the setup again:
+
+```shell
+yd resource remove --type Keyring cloudwizard-aws
+yd cloudwizard --cloud-provider=aws --region-name=eu-west-2 setup
+```
+
+The setup creates the Keyring anew, with its Credential, and shows the new password.
 
 ## See the Templates
 
@@ -579,12 +654,13 @@ The static templates all use the one instance type Cloud Wizard was given (`t3a.
 
 ## Provision From Them
 
-None of the templates names an image, so a Worker Pool or Compute Requirement provisioned from one must: an image with the YellowDog Agent installed, as an Image Family name or a cloud provider image ID. In `config.toml`:
+To provision a Worker Pool from a template, name the template and an image in `config.toml`, then run `yd workerpool provision`. None of the templates names an image, so a Worker Pool or Compute Requirement provisioned from one must. YellowDog provides no stock images. Give a stock operating system image, such as an AWS AMI ID from the template's region, with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) as User Data, as here, or an image of your own with the Agent installed, by its ID or its Image Family's name:
 
 ```toml
 [workerPool]
 templateId = "cloudwizard-aws/cloudwizard-aws-split-ondemand"
-imagesId = "<namespace>/<image-family>"
+imagesId = "ami-…"                     # a stock Ubuntu image in the template's region
+userDataFile = "yd-agent-installer.sh"
 targetInstanceCount = 1
 ```
 
@@ -592,7 +668,7 @@ targetInstanceCount = 1
 yd workerpool provision
 ```
 
-A template in another namespace is named with its namespace, `cloudwizard-aws/<template>`, as here. The CLI track of [Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started) in the YellowDog Documentation goes on to a first Task run on such a Worker Pool.
+A template in another namespace is named with its namespace, as `cloudwizard-aws/cloudwizard-aws-split-ondemand` is here. The CLI track of [Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started) in the YellowDog Documentation goes on to a first Task run on such a Worker Pool.
 
 ## Try a Dynamic Template First
 
@@ -614,3 +690,15 @@ yd resource create -v instance_type=t3a.small cloudwizard-aws-yellowdog-resource
 ```
 
 `yd resource create` updates the templates that already exist, asking first (`--yes` does not ask). A template can also be edited in the file, or a new one added to it, in the same way: see [Creating, Updating and Removing Resources](docs/resources.md).
+
+# Options, Errors and Exit Codes
+
+**Provider names.** `--cloud-provider` takes `aws` (or `amazon`), `gcp` (or `gce`, `google`) or `azure` (or `microsoft`), in any case. Any other name is refused as the command line is read.
+
+**Refused combinations.** These are also refused as the command line is read: GCP without `--credentials-file`, `add-ssh` and `remove-ssh` for GCP, and `add-ssh` and `remove-ssh` for Azure without `--region-name`.
+
+**Errors.** A setup or teardown carries on past a step that fails, so that, for example, a teardown removes everything it can. Each error is reported as it happens. A run that reported any errors ends with `Cloud Wizard finished with N error(s)` and exit code 1.
+
+**A lost Platform connection during teardown.** If a teardown loses its connection to the YellowDog Platform part-way, or its YellowDog credentials are refused, the YellowDog removals left are not attempted, since each would fail the same way. The cloud provider's removals still run. The run ends by saying so, with the failure's own exit code: 8 for the connection, 4 for the credentials. Running the teardown again removes the YellowDog resources that were left.
+
+**A lost Platform connection during Azure setup.** The YellowDog credential is the last thing an Azure setup creates. If the Platform cannot be reached for it, the resource definition file is still saved, and the run ends with the failure's exit code. Running the setup again creates what is missing.

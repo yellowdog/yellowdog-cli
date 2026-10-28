@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 Extract the Work Requirement Property Dictionary's descriptions from
-docs/property-dictionary.md
-as JSON on stdout: {property name: plain-text description}. Run by
-`make schema_descriptions`, which writes yellowdog_cli/spec_data/descriptions.json,
-the file yd-schema ships; tests/test_spec_properties.py fails when that file
-is not a fresh extraction. Markdown is unwrapped: code spans lose their
-backticks, links keep their text, bold loses its markers.
+docs/work-requirement-property-dictionary.md as JSON on stdout: {property
+name: plain-text description}. Run by `make schema_descriptions`, which
+writes yellowdog_cli/spec_data/descriptions.json, the file yd-schema ships;
+tests/test_spec_properties.py fails when that file is not a fresh
+extraction. Markdown is unwrapped: code spans lose their backticks, links
+keep their text, bold loses its markers.
 """
 
 import json
@@ -14,7 +14,11 @@ import re
 import sys
 from pathlib import Path
 
-DICTIONARY = Path(__file__).resolve().parent.parent / "docs" / "property-dictionary.md"
+DICTIONARY = (
+    Path(__file__).resolve().parent.parent
+    / "docs"
+    / "work-requirement-property-dictionary.md"
+)
 
 
 def plain(markdown: str) -> str:

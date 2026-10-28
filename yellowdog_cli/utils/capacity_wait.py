@@ -17,6 +17,7 @@ settles, so the caller's timeout is what ends the wait then.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -29,6 +30,8 @@ from yellowdog_cli.utils.printing import print_info
 
 if TYPE_CHECKING:
     from yellowdog_client.model import ComputeRequirement, Instance
+
+_LOG = logging.getLogger(__name__)
 
 # Instance states that mean a change is still being carried out
 _TRANSITIONAL_INSTANCE_STATUSES = ("PENDING", "STOPPING", "TERMINATING")
@@ -223,6 +226,8 @@ def capacity_reached(
     may lag), and remembering whether it has been seen unsettled.
     """
 
+    rule = f"{getattr(done, '__name__', 'the test')}()"
+
     def for_stream(cr_id: str) -> Callable[[dict], bool]:
         changed = False
 
@@ -230,7 +235,18 @@ def capacity_reached(
             nonlocal changed
             capacity = _current_capacity(ctx, cr_id)
             changed = changed or not capacity.settled
-            return done(capacity, changed)
+            reached = done(capacity, changed)
+            _LOG.debug(
+                "%s: %s, %s%s: %s",
+                capacity.label,
+                capacity.describe(),
+                "settled" if capacity.settled else "not settled",
+                ", having changed" if changed else "",
+                f"{done.__name__}() is met"
+                if reached
+                else f"waiting: {done.__name__}()",
+            )
+            return reached
 
         return settled
 

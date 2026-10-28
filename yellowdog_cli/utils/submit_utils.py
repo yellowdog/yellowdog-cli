@@ -2,6 +2,7 @@
 Utility functions for use with the submit command.
 """
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
@@ -81,6 +82,8 @@ from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # Names for environment variables optionally added to each Task's environment
 YD_NAMESPACE = "YD_NAMESPACE"
@@ -934,6 +937,11 @@ def _substituted_task_data_file(filename: str, files_directory: str) -> str:
     text, so no substitution pass walks it: an undefined variable left in it
     is reported here, by file.
     """
+    _LOG.debug(
+        "Reading Task Data file '%s' from '%s'",
+        filename,
+        abspath(join(files_directory, filename)),
+    )
     with open(join(files_directory, filename), encoding="utf-8") as f:
         contents = process_variable_substitutions_in_file_contents(
             f.read(), source=filename

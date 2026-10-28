@@ -18,9 +18,8 @@ WARNING_STYLE = "red3"
 # Mark the messages printed by print_error() and print_warning()
 ERROR_MARKER = "ERROR : "
 WARNING_MARKER = "WARNING : "
-# Marks and colours the configuration/startup messages shown only under '--debug'
+# Begins every line of the '--debug' trace (debug_log.py)
 DEBUG_MARKER = "DEBUG : "
-DEBUG_STYLE = "dark_orange"
 # Marks the messages reporting what a '--dry-run' would have done
 DRY_RUN_MARKER = "DRY-RUN : "
 

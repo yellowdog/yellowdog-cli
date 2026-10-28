@@ -6,6 +6,7 @@ resolution, the Compute Requirement Template name lookup, the
 messages.
 """
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -220,6 +221,19 @@ class TestSearchNamespaces:
         # Unscoped, the Platform's 403 names the permission that is missing
         assert entity_utils.search_namespaces(_application(False, []), None) is None
 
+    def test_the_scope_is_traced_once_per_run(
+        self, _fresh_application_details, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(entity_utils, "_SCOPES_TRACED", set())
+        client = _application(False, ["a", "b"])
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            entity_utils.search_namespaces(client, None)
+            entity_utils.search_namespaces(client, None)
+            entity_utils.search_namespaces(client, "ns")
+        assert caplog.messages == [
+            "No namespace given: searching those the Application can read, 'a', 'b'"
+        ]
+
     def test_a_template_lookup_without_a_namespace_is_scoped(
         self, _fresh_application_details
     ):
@@ -357,3 +371,39 @@ def test_a_name_only_terminated_compute_requirements_share_finds_the_newest(
         MagicMock(), "cr", "ns", [ComputeRequirementStatus.RUNNING]
     )
     assert found.id == "new"
+
+
+def test_a_task_groups_tasks_are_counted_across_every_slice():
+    from yellowdog_client.model import SliceReference
+
+    slices = {
+        None: SimpleNamespace(items=[object()] * 1000, nextSliceId="s2"),
+        "s2": SimpleNamespace(items=[object()] * 2, nextSliceId="s3"),
+        "s3": SimpleNamespace(items=None, nextSliceId=None),
+    }
+    asked: list[SliceReference] = []
+
+    def slice_of(reference: SliceReference) -> SimpleNamespace:
+        asked.append(reference)
+        return slices[reference.sliceId]
+
+    client = MagicMock()
+    client.work_client.get_tasks.return_value.slice.side_effect = slice_of
+    assert entity_utils.count_tasks_in_task_group(client, "ydid:taskgrp:x") == 1002
+    search = client.work_client.get_tasks.call_args.args[0]
+    assert search.taskGroupId == "ydid:taskgrp:x"
+    assert [r.sliceId for r in asked] == [None, "s2", "s3"]
+    assert {r.size for r in asked} == {SliceReference.MAX_SIZE}
+
+
+def test_a_task_name_is_taken_only_by_a_task_of_that_name_itself():
+    # The Platform's name search matches a substring: 'task_1' finds 'task_10'
+    client = MagicMock()
+    client.work_client.get_tasks.return_value.iterate.return_value = [
+        SimpleNamespace(name="task_10"),
+        SimpleNamespace(name="task_11"),
+    ]
+    assert not entity_utils.task_name_taken(client, "ydid:taskgrp:x", "task_1")
+    search = client.work_client.get_tasks.call_args.args[0]
+    assert (search.taskGroupId, search.name) == ("ydid:taskgrp:x", "task_1")
+    assert entity_utils.task_name_taken(client, "ydid:taskgrp:x", "task_11")

@@ -3,22 +3,8 @@
 <!--ts-->
 * [Overview](#overview)
 * [YellowDog Prerequisites](#yellowdog-prerequisites)
+* [What It Looks Like](#what-it-looks-like)
 * [Installation](#installation)
-   * [Installing uv](#installing-uv)
-   * [Option 1: uv tool](#option-1-uv-tool)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli)
-      * [Update](#update)
-      * [With Jsonnet support](#with-jsonnet-support)
-   * [Option 2: a virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)
-      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli-1)
-      * [Update](#update-1)
-      * [With Jsonnet support](#with-jsonnet-support-1)
-   * [Option 3: pip in a virtual environment](#option-3-pip-in-a-virtual-environment)
-      * [Create and activate a virtual environment](#create-and-activate-a-virtual-environment-1)
-      * [Install the YellowDog CLI](#install-the-yellowdog-cli-2)
-      * [Update](#update-2)
-      * [With Jsonnet support](#with-jsonnet-support-2)
 * [YellowDog Commander (GUI)](#yellowdog-commander-gui)
 * [YellowDog MCP Server](#yellowdog-mcp-server)
 * [Usage](#usage)
@@ -34,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:50:49 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:25:42 GMT 2026 -->
 
 <!--te-->
 
@@ -51,11 +37,11 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
 - **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them; listing and showing Workers with **`yd worker`**
-- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or, for a resource of a few properties, on the command line (`yd resource create --type Keyring --set name=team-keys`), and showing or removing them by name
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or on the command line, and showing or removing them by name
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — listing YellowDog items with **`yd list`**, filtered by name, status or provider, or within one Work Requirement, Task Group, Compute Requirement, Worker Pool or Node (`yd task list --within <wr>`), the largest listings stopping at 1000 items unless `--limit` says otherwise, showing any entity's details by its YellowDog ID with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**; every noun for Platform objects (all but `yd data` and `yd cloudinfo`) also has `list` and `show` verbs for its own objects
+- **Inspecting** — listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**. Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
@@ -84,7 +70,7 @@ To create **Provisioned Worker Pools**, you'll need:
 3. A **Keyring** created via the YellowDog Portal, with access to Cloud Provider credentials as required. The Application must be granted access to the Keyring.
 
 
-4. One or more **Compute Sources** defined, and a **Compute Requirement Template** created. The images used by instances must include the YellowDog agent, configured with the Task Type(s) to match the Work Requirements to be submitted.
+4. One or more **Compute Sources** defined, and a **Compute Requirement Template** created. Instances must run the YellowDog Agent, and **YellowDog provides no stock images**: use an image of your own with the Agent installed, or a stock operating system image with the Agent installer as User Data. The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) does either, and defines the `bash` Task Type; any other Task Type your Work Requirements use is one you add.
 
 To set up **Configured Worker Pools**, you'll need:
 
@@ -93,134 +79,56 @@ To set up **Configured Worker Pools**, you'll need:
 
 6. Obtain the YellowDog Agent and install/configure it on your on-premises systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-CONFIGURED.md).
 
+# What It Looks Like
+
+A `config.toml` holds your Application key and secret, namespace and tag (`yd init` writes them), and here a Work Requirement of three Tasks:
+
+```toml
+[workRequirement]
+    taskType = "bash"
+    arguments = ["-c", "echo Rendering frame {{task_number}}"]
+    taskCount = 3
+    workerTag = "render"
+```
+
+`yd workrequirement submit` submits it. With `--dry-run`, it shows what it would submit instead:
+
+```text
+% yd workrequirement submit --dry-run
+2026-10-27 16:18:07 : Generated Work Requirement 'render_261027-1618071-ff'
+2026-10-27 16:18:07 : Generated Task Group 'task_group_1'
+2026-10-27 16:18:07 : Expanding number of Tasks in Task Group 'task_group_1' to 'taskCount=3' Tasks
+2026-10-27 16:18:07 : DRY-RUN : Printing JSON Work Requirement specification:
+{
+  "namespace": "image-processing",
+  "name": "render_261027-1618071-ff",
+  …
+```
+
+[Typical Workflow](#typical-workflow) runs it on a Worker Pool from start to finish.
+
 # Installation
 
-Python 3.10 or later is required. There are several ways to install the CLI, each keeping it and its dependencies in an environment of their own; choose the one that fits how you work:
-
-- **[uv tool](#option-1-uv-tool)** — the commands on your PATH everywhere, with no environment to activate. uv supplies Python itself if you have none.
-- **[A virtual environment created with uv](#option-2-a-virtual-environment-created-with-uv)** — an environment you activate, for using the CLI alongside other Python tools. uv supplies Python itself if you have none.
-- **[pip in a virtual environment](#option-3-pip-in-a-virtual-environment)** — the standard Python tooling, with a Python you have installed.
-
-Other installers, such as pipx, work too.
-
-## Installing uv
-
-**[uv](https://docs.astral.sh/uv/)** installs Python packages, and Python itself: the first two options need it, and no Python of your own. See the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/) for full instructions. Quick options:
-
-| Platform         | Command                                            |
-|------------------|----------------------------------------------------|
-| macOS / Linux    | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| macOS (Homebrew) | `brew install uv`                                  |
-| Windows          | `winget install --id=astral-sh.uv -e`              |
-
-## Option 1: uv tool
-
-uv installs the CLI into an environment of its own and puts the `yd` command on your PATH, downloading a suitable Python if none is installed.
-
-### Install the YellowDog CLI
+Python 3.10 or later is required. The simplest way to install the CLI is with **[uv](https://docs.astral.sh/uv/)**, which downloads a suitable Python if you have none, and puts the `yd` command on your PATH:
 
 ```shell
 uv tool install yellowdog-cli
 ```
 
-To choose the Python it runs on, which uv downloads if it is not installed:
+To update it, run `uv tool upgrade yellowdog-cli`. For [Jsonnet](docs/jsonnet.md) support, install `"yellowdog-cli[jsonnet]"` instead.
 
-```shell
-uv tool install --python 3.14 yellowdog-cli
-```
-
-### Update
-
-```shell
-uv tool upgrade yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-uv tool install "yellowdog-cli[jsonnet]"
-```
-
-## Option 2: a virtual environment created with uv
-
-uv creates the virtual environment, downloading the Python you ask for if it is not installed, and installs the CLI into it.
-
-### Create and activate a virtual environment
-
-```shell
-uv venv --python 3.14 yd-env
-source yd-env/bin/activate   # macOS / Linux
-yd-env\Scripts\activate      # Windows
-```
-
-### Install the YellowDog CLI
-
-```shell
-uv pip install yellowdog-cli
-```
-
-### Update
-
-```shell
-uv pip install -U yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-uv pip install -U "yellowdog-cli[jsonnet]"
-```
-
-> **Note:** You will need to activate the virtual environment (`source yd-env/bin/activate`) each time you open a new terminal session, or add the activation to your shell profile.
-
-## Option 3: pip in a virtual environment
-
-This uses the standard Python tooling, with a Python you have installed. If you don't have Python 3.10 or later, download it from **[python.org](https://www.python.org/downloads/)**, or use your system package manager:
-
-| Platform        | Command                             |
-|-----------------|-------------------------------------|
-| macOS           | `brew install python`               |
-| Ubuntu / Debian | `sudo apt install python3`          |
-| Windows         | `winget install Python.Python.3.12` |
-
-### Create and activate a virtual environment
-
-```shell
-python3 -m venv yd-env
-source yd-env/bin/activate   # macOS / Linux
-yd-env\Scripts\activate      # Windows
-```
-
-### Install the YellowDog CLI
-
-```shell
-pip install -U yellowdog-cli
-```
-
-### Update
-
-```shell
-pip install -U yellowdog-cli
-```
-
-### With Jsonnet support
-
-```shell
-pip install -U "yellowdog-cli[jsonnet]"
-```
-
-> **Note:** As with uv's, you will need to activate the virtual environment each time you open a new terminal session, or add the activation to your shell profile.
+To install uv itself, run `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS or Linux, or `winget install --id=astral-sh.uv -e` on Windows. **[Installation](docs/installation.md)** has the other ways to install uv, choosing the Python the CLI runs on, and installing into a virtual environment with uv or pip instead.
 
 # YellowDog Commander (GUI)
 
 Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra, as you installed the CLI, and launch it with `yd commander`:
 
 ```commandline
-uv tool install "yellowdog-cli[commander]"      # Option 1
-uv pip install -U "yellowdog-cli[commander]"    # Option 2, in the virtual environment
-pip install -U "yellowdog-cli[commander]"       # Option 3, in the virtual environment
+uv tool install "yellowdog-cli[commander]"
 yd commander
 ```
+
+In a virtual environment, install `"yellowdog-cli[commander]"` with `uv pip install -U` or `pip install -U` instead (see [Installation](docs/installation.md)).
 
 It works by running `yd` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
@@ -229,11 +137,11 @@ It works by running `yd` commands on your behalf and displaying their output. Se
 `yd mcp` is an MCP server exposing the `yd` commands as tools for an agent. Install it with the `mcp` extra, as you installed the CLI, and launch it with `yd mcp`:
 
 ```commandline
-uv tool install "yellowdog-cli[mcp]"      # Option 1
-uv pip install -U "yellowdog-cli[mcp]"    # Option 2, in the virtual environment
-pip install -U "yellowdog-cli[mcp]"       # Option 3, in the virtual environment
+uv tool install "yellowdog-cli[mcp]"
 yd mcp config.toml
 ```
+
+In a virtual environment, install `"yellowdog-cli[mcp]"` with `uv pip install -U` or `pip install -U` instead.
 
 The extras can be combined, e.g. `"yellowdog-cli[jsonnet,commander,mcp]"`; the `cloudwizard` extra, for `yd cloudwizard`, is described in [`README_CLOUDWIZARD.md`](README_CLOUDWIZARD.md).
 
@@ -241,7 +149,7 @@ It runs `yd` commands on an agent's behalf and returns their `--json` results. S
 
 # Usage
 
-All three installation methods add the **`yd`** command to your PATH (for a virtual environment, while it is active). Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
+However it is installed, the **`yd`** command is on your PATH (for a virtual environment, while it is active). Most of its commands name an object and take a verb, `yd <noun> <verb>`, and the rest are `yd <command>`; see the [Command List](docs/commands.md).
 
 Commands are run from the command line. Invoking any command with the `--help` or `-h` option will display the command-line options applicable to that command, e.g.:
 
@@ -280,14 +188,15 @@ options:
 universal options:
   --docs                provide a link to the documentation for this version
   --config, -c <config_file.toml>
-                        configuration file in TOML format; the default to use is 'config.toml' in the current directory, else
-                        ~/.config/yellowdog/config.toml
+                        configuration file in TOML format, whose values take precedence over environment variables, unlike a file found by default;
+                        the default to use is 'config.toml' in the current directory, else ~/.config/yellowdog/config.toml
   --key, -k <app-key-id>
                         the application key ID
   --secret, -s <app-key-secret>
                         the application key secret
   --url, -u <url>       the YellowDog Platform API URL (defaults to 'https://api.yellowdog.ai')
-  --debug               display the Python stack trace on error, and the configuration preamble
+  --debug               trace on stderr what the command does: the configuration it loaded, each request to the Platform, and the stack trace of a
+                        failure
   --pac                 enable PAC (proxy auto-configuration) support
   --no-format, --nf     disable colouring and text wrapping in command output
   --quiet, -q           suppress (non-error, non-interactive) status and progress messages
@@ -299,7 +208,15 @@ universal options:
                         supplied multiple times
 ```
 
-For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation. To start, run **[`yd init`](docs/commands.md#yd-init)**: it asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory, or with `--user` to your own `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads.
+To start, run **[`yd init`](docs/commands.md#yd-init)**. It asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory:
+
+```shell
+yd init
+```
+
+With `--user`, it writes them to your own `~/.config/yellowdog/config.toml` instead, which every directory without a `config.toml` of its own reads.
+
+For a first run from start to finish, follow the CLI track of **[Getting Started](https://docs.yellowdog.ai/#/getting-started/getting-started)** in the YellowDog Documentation.
 
 If a command fails and the reason isn't clear, run **[`yd doctor`](docs/commands.md#yd-doctor)**: it checks the installation, the configuration, the credentials and the connection to the Platform, and suggests a remedy for anything wrong.
 
@@ -325,7 +242,9 @@ Every kind of specification, and the configuration file, has a JSON Schema descr
 
 ## Applications That Can Read Only Some Namespaces
 
-Wherever a command searches without a namespace — a name given without `namespace/`, or `yd list` with an empty namespace — it searches the namespaces the Application can read rather than every namespace, since the platform refuses a search across every namespace from an Application without global read access. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
+An Application without global read access can still find items by name. Wherever a command searches without a namespace, it searches only the namespaces the Application can read: for example, a name given without `namespace/`, or `yd list` with an empty namespace.
+
+The Platform refuses a search across every namespace from such an Application, which is why the search is narrowed. A permission the Application lacks even in those namespaces is still reported as a missing permission (exit code 5).
 
 ## Machine-readable Output and Exit Codes
 
@@ -333,7 +252,33 @@ What `--json` prints, its shapes and the exit codes every command uses are descr
 
 # Typical Workflow
 
-A common pattern when using YellowDog is to submit a Work Requirement and provision a Worker Pool simultaneously, then follow both to completion. The `--quiet` flag returns just the YDID, making it easy to compose commands in shell scripts:
+A common pattern when using YellowDog is to submit a Work Requirement and provision a Worker Pool simultaneously, then follow both to completion.
+
+Both commands read their settings from `config.toml`. This one runs ten Bash Tasks on up to two nodes:
+
+```toml
+[common]
+    # key and secret, as 'yd init' writes them
+    namespace = "image-processing"
+    tag = "thumbnails"
+
+[workRequirement]
+    taskType = "bash"
+    arguments = ["-c", "echo Processing frame {{task_number}}"]
+    taskCount = 10
+    workerTag = "thumbnails"
+
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    imagesId = "ami-…"                     # a stock Ubuntu image in your region
+    userDataFile = "yd-agent-installer.sh"
+    maxNodes = 2
+    workerTag = "thumbnails"
+```
+
+`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID, with the Keyring and Compute Source Templates it uses (see [Creating, Updating and Removing YellowDog Resources](docs/resources.md#keyrings)). YellowDog provides no stock images, so each instance installs the YellowDog Agent as it boots, from [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`. With an image of your own that has the Agent installed, leave out `userDataFile`, and leave out `imagesId` too if the template names the image (see [A First Run, with No Image of Your Own](docs/worker-pools.md#a-first-run-with-no-image-of-your-own)). The matching `workerTag` values send the Tasks to this pool's Workers. The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
+
+With `--quiet`, each command prints just the YellowDog ID (YDID) of what it created, so its output can be captured in a shell script:
 
 ```bash
 # Submit a Work Requirement and capture its YDID
@@ -358,7 +303,7 @@ yd workrequirement submit --follow
 
 When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout` (30 minutes by default).
 
-Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools.
+Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools. [How a Task Finds a Worker](docs/concepts.md) describes the matching, and if the Tasks don't start, [Why Isn't My Work Running?](docs/troubleshooting.md) finds out why.
 
 # Documentation
 
@@ -368,6 +313,9 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 
 | Page | What it covers |
 |---|---|
+| **[How a Task Finds a Worker](docs/concepts.md)** | The pieces (Work Requirements, Task Groups, Worker Pools, Nodes and Workers) and how the Scheduler matches a Task Group's run specification to Workers: Task Types, Worker Tags, namespaces, instance types, RAM and vCPUs |
+| **[Why Isn't My Work Running?](docs/troubleshooting.md)** | A step-by-step path from a Work Requirement whose Tasks don't start to the cause, built around `yd workrequirement compare` |
+| **[Installation](docs/installation.md)** | Installing the CLI with uv, or into a virtual environment with uv or pip; updating it, choosing its Python, and the Jsonnet extra |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
 | **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
@@ -382,7 +330,7 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 | Page | What it covers |
 |---|---|
 | **[Command List](docs/commands.md)** | Every command, the options they share, and each command's own options and examples |
-| **[Work Requirement Property Dictionary](docs/property-dictionary.md)** | Every Work Requirement property, its type, and the levels it can be set at |
+| **[Work Requirement Property Dictionary](docs/work-requirement-property-dictionary.md)** | Every Work Requirement property, its type, and the levels it can be set at |
 | **[Machine-readable Output and Exit Codes](docs/json-output.md)** | What `--json` prints for each command, and the exit codes every command uses |
 
 ## Optional Extensions

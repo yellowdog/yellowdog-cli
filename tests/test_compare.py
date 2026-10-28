@@ -4,6 +4,7 @@ and each property's matching rule, with the Compute Requirement and Node
 fetches stubbed. The '--json' document is tested in test_json_output.py.
 """
 
+import logging
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -11,7 +12,13 @@ from unittest.mock import MagicMock
 import pytest
 from requests import ConnectionError as RequestsConnectionError
 from requests import HTTPError, Response
-from yellowdog_client.model import CloudProvider, DoubleRange, NodeStatus
+from yellowdog_client.model import (
+    CloudProvider,
+    DoubleRange,
+    InstancePricing,
+    InstancePricingPreference,
+    NodeStatus,
+)
 
 import yellowdog_cli.compare as compare_module
 from yellowdog_cli.compare import (
@@ -47,6 +54,7 @@ def _pm(match: MatchType) -> PropertyMatch:
 
 
 def _make_report(
+    instance_pricing: MatchType = MatchType.YES,
     instance_types: MatchType = MatchType.YES,
     namespaces: MatchType = MatchType.YES,
     providers: MatchType = MatchType.YES,
@@ -60,6 +68,7 @@ def _make_report(
         worker_pool_name="wp",
         worker_pool_id="wp-id",
         worker_pool_status="RUNNING",
+        instance_pricing=_pm(instance_pricing),
         instance_types=_pm(instance_types),
         namespaces=_pm(namespaces),
         providers=_pm(providers),
@@ -238,6 +247,7 @@ def _run_spec(**kwargs) -> Any:
     fields = {
         "workerTags": None,
         "instanceTypes": None,
+        "instancePricingPreference": None,
         "taskTypes": ["bash"],
         "providers": None,
         "regions": None,
@@ -264,10 +274,16 @@ def _pool(worker_tag: str | None = "wt", namespace: str = "ns") -> Any:
     )
 
 
-def _aws(instance_type="t3.small", region="eu-west-2", overrides=None) -> Any:
+def _aws(
+    instance_type="t3.small",
+    region="eu-west-2",
+    overrides=None,
+    pricing=InstancePricing.ON_DEMAND_ONLY,
+) -> Any:
     return SimpleNamespace(
         type="co.yellowdog.platform.model.AwsFleetComputeSource",
         provider=CloudProvider.AWS,
+        instancePricing=pricing,
         region=region,
         instanceType=instance_type,
         instanceOverrides=overrides,
@@ -278,6 +294,7 @@ def _node(
     status=NodeStatus.RUNNING, ram=8.0, vcpus=2.0, task_types=("bash",), details=True
 ) -> Any:
     return SimpleNamespace(
+        id=f"ydid:node:000000:x:{status.name.lower()}",
         status=status,
         details=(
             SimpleNamespace(ram=ram, vcpus=vcpus, supportedTaskTypes=list(task_types))
@@ -390,6 +407,32 @@ class TestMatching:
             "YES",
         ]
 
+    def test_the_sources_nodes_and_task_types_node_are_traced(self, platform, caplog):
+        platform.nodes = [
+            _node(status=NodeStatus.TERMINATED, task_types=()),
+            _node(task_types=("bash", "docker")),
+            _node(details=False),
+        ]
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _rows(platform, _run_spec())
+        assert caplog.messages == [
+            "Compute Requirement ydid:cr:000000:x has 1 source(s); AWS eu-west-2"
+            " ON_DEMAND_ONLY",
+            "Worker Pool ydid:wrkrpool:000000:x has 3 Node(s) listed, 2 RUNNING, 2"
+            " reporting details",
+            "Worker Pool ydid:wrkrpool:000000:x: Task Types taken from Node"
+            " ydid:node:000000:x:running (RUNNING)",
+        ]
+
+    def test_task_types_unknown_are_traced(self, platform, caplog):
+        platform.nodes = []
+        with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
+            _rows(platform, _run_spec())
+        assert (
+            "Worker Pool ydid:wrkrpool:000000:x: Task Types unknown, no Node having"
+            " reported details" in caplog.messages
+        )
+
     def test_a_node_without_details_is_not_a_non_match(self, platform):
         platform.nodes = [_node(details=False)]
         rows = _rows(platform, _run_spec(ram=_dr(4.0, None), vcpus=_dr(1.0, 4.0)))
@@ -417,6 +460,66 @@ class TestMatching:
         platform.ctx.args.running_nodes_only = True
         platform.nodes = [_node(status=NodeStatus.TERMINATED, ram=2.0), _node()]
         assert _rows(platform, _run_spec(ram=_dr(4.0, None)))["RAM (GB)"][2] == "YES"
+
+    @pytest.mark.parametrize(
+        "preference",
+        [
+            None,
+            InstancePricingPreference.SPOT_THEN_ON_DEMAND,
+            InstancePricingPreference.ON_DEMAND_THEN_SPOT,
+        ],
+    )
+    def test_a_preference_that_only_orders_is_no_constraint(self, platform, preference):
+        platform.sources = [_aws(pricing=InstancePricing.SPOT_AND_ON_DEMAND)]
+        rows = _rows(platform, _run_spec(instancePricingPreference=preference))
+        assert rows["Instance Pricing"][2] == "YES"
+
+    def test_spot_only_matches_a_pool_provisioning_spot_alone(self, platform):
+        platform.sources = [
+            _aws(pricing=InstancePricing.SPOT_ONLY),
+            _aws(instance_type="t3.large", pricing=InstancePricing.SPOT_ONLY),
+        ]
+        rows = _rows(
+            platform,
+            _run_spec(instancePricingPreference=InstancePricingPreference.SPOT_ONLY),
+        )
+        assert rows["Instance Pricing"] == ["SPOT_ONLY", "SPOT_ONLY", "YES"]
+
+    def test_a_pool_mixing_pricings_is_not_scaled_up_for_an_only(self, platform):
+        # Scaling up is per pool: a source of the other pricing rules it out
+        platform.sources = [
+            _aws(pricing=InstancePricing.SPOT_ONLY),
+            _aws(pricing=InstancePricing.ON_DEMAND_ONLY),
+        ]
+        rows = _rows(
+            platform,
+            _run_spec(instancePricingPreference=InstancePricingPreference.SPOT_ONLY),
+        )
+        assert rows["Instance Pricing"] == [
+            "SPOT_ONLY",
+            "ON_DEMAND_ONLY, SPOT_ONLY",
+            "NO",
+        ]
+
+    def test_a_source_providing_both_fails_an_only(self, platform):
+        platform.sources = [_aws(pricing=InstancePricing.SPOT_AND_ON_DEMAND)]
+        rows = _rows(
+            platform,
+            _run_spec(
+                instancePricingPreference=InstancePricingPreference.ON_DEMAND_ONLY
+            ),
+        )
+        assert rows["Instance Pricing"][2] == "NO"
+
+    def test_an_unknown_pricing_fails_an_only(self, platform):
+        platform.sources = [_aws(pricing=None)]
+        rows = _rows(
+            platform,
+            _run_spec(
+                instancePricingPreference=InstancePricingPreference.ON_DEMAND_ONLY
+            ),
+        )
+        assert rows["Instance Pricing"] == ["ON_DEMAND_ONLY", "UNKNOWN", "NO"]
 
     def test_a_pool_that_cannot_be_compared_fails_in_its_place(self, platform):
         # The other pools are still compared
