@@ -8,12 +8,12 @@
    * [4. Does the Worker Pool Match?](#4-does-the-worker-pool-match)
       * [Comparing a Task Group with a Worker Pool](#comparing-a-task-group-with-a-worker-pool)
          * [Details](#details-1)
-   * [5. Has the Worker Pool Got Nodes?](#5-has-the-worker-pool-got-nodes)
+   * [5. Does the Worker Pool Have Nodes?](#5-does-the-worker-pool-have-nodes)
    * [6. Are the Tasks Failing?](#6-are-the-tasks-failing)
    * [If a Command Fails](#if-a-command-fails)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 08:46:21 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 09:22:00 GMT 2026 -->
 
 <!--te-->
 
@@ -113,7 +113,7 @@ When every row is `YES`, the pool matches. If the Task Group still starves, its 
 
 **Nodes still starting.** Every Node registered to the pool is compared, whatever its state. `--running-nodes-only` compares only the `RUNNING` ones.
 
-## 5. Has the Worker Pool Got Nodes?
+## 5. Does the Worker Pool Have Nodes?
 
 ```bash
 yd node list --within render-pool
