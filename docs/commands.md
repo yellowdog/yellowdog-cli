@@ -1557,6 +1557,8 @@ Valid entity types are:
 | `worker-pools` | `P` | Worker Pools |
 | `workers` | `F` | Workers (interactive: select a Worker Pool first) |
 
+A Task Group's status in the listing is followed by `/STARVED` when it can't claim any Workers, and `/WAITING` when it is waiting for a dependency, as in `PENDING/STARVED`. These show the Task Group's `starved` and `waitingOnDependency` flags: `--status` matches the status alone, and `--json` gives the two flags as fields (see [Task Group Statuses](work-requirements.md#task-group-statuses)).
+
 The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the items of one parent directly — the Task Groups or Tasks of a Work Requirement, the Instances of a Compute Requirement, the Nodes or Workers of a Worker Pool — name it with `--within` (below).
 
 Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
@@ -1673,6 +1675,8 @@ At least one ID is required, and each must be a Work Requirement's, Worker Pool'
 The command will continue to run until manually stopped using `CTRL-C`, unless all the IDs to be followed are in a terminal state. A stream that drops is reconnected, waiting 5, 10, 20 and then 30 seconds between attempts, for up to five minutes of continuous outage, which ends only once a stream delivers an event, so a connection that is accepted and then drops before any, over and over, is given up on as well; a stream closed while its entity is still live (by a proxy dropping an idle connection, say) is reconnected too, the entity's status being checked when its stream closes.
 
 It exits with code 0 if every stream could be followed. Otherwise it exits with the code of the failure — for example 6 for an entity that does not exist, 4 for credentials that are not accepted, 8 for a connection that could not be made or re-made (see [Machine-readable Output and Exit Codes](json-output.md) for the others) — or 1 if the streams failed for different reasons. This applies to the event streams that other commands follow with `--follow` too, though only `yd follow` takes its exit code from them.
+
+A Work Requirement's events list each of its Task Groups with its status, followed by `/STARVED` or `/WAITING` when either holds it up (see [Task Group Statuses](work-requirements.md#task-group-statuses)).
 
 Note that the exit code reflects only whether the event streams could be followed, not the final status of the entities themselves — use `yd wait` (or `yd workrequirement submit --exit-on-failure`) to act on Work Requirement outcomes.
 

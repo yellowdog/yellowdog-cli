@@ -1028,6 +1028,31 @@ The Task variables work wherever a property a Task takes is set. A property such
 
 **Arithmetic on padded numbers.** A padded number is still text with leading zeros, so take care where those mean something. In bash arithmetic, for example, `$((008))` fails because a leading zero means octal; `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
+## Task Group Statuses
+
+`yd taskgroup list` and `yd workrequirement follow` show each Task Group's status, followed by `/STARVED` or `/WAITING` when either holds it up. For example, `yd workrequirement follow` prints:
+
+```text
+Work Requirement 'nightly-render' is RUNNING
+--> [RUNNING] Task Group 'render': 20 Task(s)
+    16 READY, 4 EXECUTING
+--> [PENDING/STARVED] Task Group 'encode': 1 Task(s)
+    1 READY
+--> [PENDING/WAITING] Task Group 'publish': 1 Task(s)
+    1 PENDING
+```
+
+- **`/STARVED`**: the Task Group can't claim any Workers. The Platform reports this as the Task Group's `starved` flag.
+- **`/WAITING`**: the Task Group is waiting for a Task Group named in its `dependencies` to complete. The Platform reports this as its `waitingOnDependency` flag.
+
+A Task Group that is `PENDING` with neither is waiting for the Workers it needs, for example while a matching Worker Pool starts up. A `RUNNING` one has them. [Why Isn't My Work Running?](troubleshooting.md) works through what to do about a Task Group that stays starved.
+
+#### Details
+
+**Not statuses of their own.** `/STARVED` and `/WAITING` are the CLI's display of the two flags beside the status, not statuses: `--status` matches the status alone, so `yd list task-groups --status pending` lists starved and waiting Task Groups too, and `--status starved` matches nothing. `--json` gives the flags as `starved` and `waitingOnDependency`, and the status without them.
+
+**The statuses.** A Task Group is `PENDING` until it has Workers, then `RUNNING`. It is `HELD` while its Work Requirement is held, and `FINISHING` once no more Tasks can be added and the rest are running to the end. It ends `COMPLETED`, or `FAILED` if a Task failed (passing through `FAILING` while its outstanding Tasks are discarded), or `CANCELLED` (through `CANCELLING`).
+
 ## Dry-Running Work Requirement Submissions
 
 To see the Work Requirement that would be submitted, after all processing, add `--dry-run` (`-D`) to `yd workrequirement submit`. It prints the Work Requirement as JSON and submits nothing. `--quiet` (`-q`) prints the JSON alone. With this configuration:
