@@ -3,21 +3,23 @@
 <!--ts-->
    * [Examples](#examples)
       * [A Worker Pool from the Configuration File](#a-worker-pool-from-the-configuration-file)
+      * [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own)
       * [Installing Software as Each Node Boots](#installing-software-as-each-node-boots)
+         * [Details](#details)
    * [Worker Pools vs. Compute Requirements](#worker-pools-vs-compute-requirements)
    * [Worker Pool Properties](#worker-pool-properties)
    * [Using Textual Names instead of IDs for Compute Requirement Templates and Image Families](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)
-      * [Details](#details)
-   * [Large-Scale Provisioning](#large-scale-provisioning)
       * [Details](#details-1)
+   * [Large-Scale Provisioning](#large-scale-provisioning)
+      * [Details](#details-2)
    * [Automatic Properties](#automatic-properties)
    * [All Properties in the workerPool Section](#all-properties-in-the-workerpool-section)
    * [Worker Pool Specification Using JSON Documents](#worker-pool-specification-using-json-documents)
       * [Worker Pool JSON Examples](#worker-pool-json-examples)
       * [TOML Properties Inherited by Worker Pool JSON Specifications](#toml-properties-inherited-by-worker-pool-json-specifications)
-         * [Details](#details-2)
+         * [Details](#details-3)
    * [Variable Substitutions in Worker Pool Properties](#variable-substitutions-in-worker-pool-properties)
-      * [Details](#details-3)
+      * [Details](#details-4)
    * [Following a Worker Pool](#following-a-worker-pool)
    * [Dry-Running Worker Pool Provisioning](#dry-running-worker-pool-provisioning)
    * [Node Actions](#node-actions)
@@ -28,15 +30,15 @@
       * [Action Fields Reference](#action-fields-reference)
          * [Common Fields (all action types)](#common-fields-all-action-types)
       * [Node Selection](#node-selection)
-         * [Details](#details-4)
+         * [Details](#details-5)
       * [Worker Pool Selection](#worker-pool-selection)
       * [Checking Node Action Queue Status](#checking-node-action-queue-status)
-         * [Details](#details-5)
-      * [Following Progress](#following-progress)
          * [Details](#details-6)
+      * [Following Progress](#following-progress)
+         * [Details](#details-7)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:19:02 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
 
 <!--te-->
 
@@ -53,7 +55,9 @@ The only mandatory property is `templateId`, the Compute Requirement Template to
 
 ## Examples
 
-Each example runs in a directory whose `config.toml` holds your Application key and secret, namespace and tag in its `[common]` section, as `yd init` writes them. `templateId` names a Compute Requirement Template you have already created, whose image runs the YellowDog Agent; the [Cloud Wizard](../README_CLOUDWIZARD.md) can create one for you.
+Each example runs in a directory whose `config.toml` holds your Application key and secret, namespace and tag in its `[common]` section, as `yd init` writes them. `templateId` names a Compute Requirement Template you have already created, with the Keyring and Compute Source Templates it uses: see [Keyrings](resources.md#keyrings), [Compute Source Templates](resources.md#compute-source-templates) and [Compute Requirement Templates](resources.md#compute-requirement-templates).
+
+Every instance must run the YellowDog Agent. **YellowDog provides no stock images**: use an image of your own with the Agent installed, built with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), or a stock operating system image with the installer as User Data, as in [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own). The first two examples assume that the template names an image with the Agent installed; where it doesn't, `imagesId` names one.
 
 ### A Worker Pool from the Configuration File
 
@@ -73,6 +77,24 @@ yd workerpool provision
 ```
 
 The pool starts with one node and can grow to four. Each node runs one Worker per vCPU, so it runs that many Tasks at once. A node with no work for 10 minutes is shut down, and the pool shuts itself down after 30 idle minutes (`idlePoolTimeout`). Add `--dry-run` to print the Worker Pool without provisioning it, or `--follow` to follow it until it shuts down.
+
+### A First Run, with No Image of Your Own
+
+A stock operating system image can run Tasks if each instance installs the Agent as it boots. Download [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`, and give it as the User Data:
+
+```toml
+[workerPool]
+    templateId = "image-processing/ubuntu-small"
+    imagesId = "ami-…"                     # a stock Ubuntu image in your region
+    userDataFile = "yd-agent-installer.sh"
+    workerTag = "render"
+```
+
+```bash
+yd workerpool provision
+```
+
+The installer defines one Task Type, `bash` (see [Where Task Types Come From](work-requirements.md#where-task-types-come-from)), so the nodes run Tasks such as those in the [Work Requirement examples](work-requirements.md#examples). Every instance downloads the Agent, about 60 MB, as it boots. For use at scale, build an image with the Agent already installed instead (see [Modes of Use](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#modes-of-use)).
 
 ### Installing Software as Each Node Boots
 
@@ -95,6 +117,13 @@ and name the file with `userDataFile`:
 
 The file is found next to `config.toml`, or in the `--content-path` directory if one is given. Use `--dry-run --hide-user-data` to check the rest of the specification without the script in the output.
 
+#### Details
+
+**With the Agent in User Data.** This example works as written when the image has the Agent installed. When the Agent installer is in the User Data too, the order of the scripts matters, and `userDataFiles` gives them in order:
+
+- Software the Tasks need goes **before** the installer, because the installer starts the Agent, which may then give a Task to the node: `userDataFiles = ["install-ffmpeg.sh", "yd-agent-installer.sh"]`.
+- Scripts that change the Agent's configuration, such as [`add-task-type.sh`, `add-docker-task-type.sh` and `add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#additional-user-data-scripts), go **after** it, because the installer writes that configuration afresh.
+
 ## Worker Pools vs. Compute Requirements
 
 It is worth clarifying the distinction between the two related concepts:
@@ -116,7 +145,7 @@ The following properties are available:
 | `computeRequirementData` | The name of a file containing a JSON specification of a Compute Requirement; used by `yd computerequirement instantiate` (see [yd computerequirement instantiate](commands.md#yd-computerequirement-instantiate)).  |                         |
 | `idleNodeTimeout`       | The timeout in minutes after which an idle node will be shut down. Set this to `0` to disable the timeout.                                        | `5.0`                   |
 | `idlePoolTimeout`       | The timeout in minutes after which an idle Worker Pool will be shut down. Set this to `0` to disable the timeout.                                 | `30.0`                  |
-| `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances.                                              |                         |
+| `imagesId`              | The Image ID, Image Family ID, Image Family name, or Image Group name to use when booting instances. YellowDog provides no stock images (see [Examples](#examples)).                                              |                         |
 | `instanceTags`          | The dictionary of instance tags to apply to the instances. Tag names must be lower case.                                                          |                         |
 | `maintainInstanceCount` | Only used when instantiating Compute Requirements; attempt to maintain the requested number of instances.                                         | `false`                 |
 | `maxNodes`              | The maximum number of nodes to which the Worker Pool can be scaled up.                                                                            | `targetInstanceCount`, or `1` if that is `0` |
@@ -261,7 +290,7 @@ This JSON specification provisions a Worker Pool that starts with one node and c
 }
 ```
 
-The next example is of a more complex JSON specification of an Advanced Worker Pool, from one of the YellowDog demos. It includes node specialisation, and action groups that respond to the `STARTUP_NODES_ADDED` and `NODES_ADDED` events to drive **Node Actions**.
+The next example is of a more complex JSON specification of an Advanced Worker Pool, which runs a small Slurm cluster. It includes node specialisation, and action groups that respond to the `STARTUP_NODES_ADDED` and `NODES_ADDED` events to drive **Node Actions**.
 
 ```json
 {
@@ -363,7 +392,7 @@ A JSON Worker Pool specification takes the properties it leaves out from the `[w
 - `templateId`
 - `userData`: from the configuration's `userData`, or read from its `userDataFile` or `userDataFiles`
 
-Like the configuration's own, `templateId` and `imagesId` may be names (e.g. `"yd-agent-docker"`) as well as YDIDs (see [Using Textual Names](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)).
+Like the configuration's own, `templateId` and `imagesId` may be names (e.g. `"image-processing/render-images"`) as well as YDIDs (see [Using Textual Names](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)).
 
 **Properties Inherited within the `provisionedProperties` Property**
 

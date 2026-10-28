@@ -64,24 +64,27 @@
       * [The rclone Binary](#the-rclone-binary)
    * [Task Execution Context](#task-execution-context)
       * [Task Execution Steps](#task-execution-steps)
+      * [Where Task Types Come From](#where-task-types-come-from)
+      * [The docker Task Type](#the-docker-task-type)
+         * [Details](#details-11)
       * [The User and Group used for Tasks](#the-user-and-group-used-for-tasks)
       * [Home Directory for yd-agent](#home-directory-for-yd-agent)
       * [Task Execution Directory](#task-execution-directory)
       * [Windows Nodes](#windows-nodes)
    * [Specifying Work Requirements using CSV Data](#specifying-work-requirements-using-csv-data)
       * [Work Requirement CSV Data Example](#work-requirement-csv-data-example)
-         * [Details](#details-11)
-      * [CSV Variable Substitutions](#csv-variable-substitutions)
          * [Details](#details-12)
+      * [CSV Variable Substitutions](#csv-variable-substitutions)
+         * [Details](#details-13)
       * [Property Inheritance](#property-inheritance-1)
       * [Multiple Task Groups using Multiple CSV Files](#multiple-task-groups-using-multiple-csv-files)
-         * [Details](#details-13)
-      * [Using CSV Data with Simple, TOML-Only Work Requirement Specifications](#using-csv-data-with-simple-toml-only-work-requirement-specifications)
          * [Details](#details-14)
+      * [Using CSV Data with Simple, TOML-Only Work Requirement Specifications](#using-csv-data-with-simple-toml-only-work-requirement-specifications)
+         * [Details](#details-15)
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:19:02 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
 
 <!--te-->
 
@@ -283,7 +286,7 @@ This Task Group has no `taskTypes`, so its list becomes `["bash"]`:
 }
 ```
 
-When a Task Group sets `taskTypes` and its Tasks set `taskType` too, the list is the **union** of the two. Here it becomes `["bash", "docker"]`:
+When a Task Group sets `taskTypes` and its Tasks set `taskType` too, the list is the **union** of the two. (The `docker` Task Type here is one a node has only once it is added: see [The `docker` Task Type](#the-docker-task-type).) Here it becomes `["bash", "docker"]`:
 
 ```json
 {
@@ -1203,6 +1206,8 @@ A Task can download its input files from remote storage, such as an S3 bucket, b
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
+The examples below name the bucket `my-photos` through a remote called `s3`, which the node defines: [`add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-rclone-s3.sh), run as User Data after the Agent installer, adds it to the Agent's rclone configuration, using the instance's IAM role (see [The rclone S3 Remote](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-rclone-s3-remote); set `YD_S3_REGION` to the bucket's region). The remote exists on the node only. A file uploaded from your own machine needs credentials of its own (see [Automatic Upload of Local Files](#automatic-upload-of-local-files)).
+
 Task data inputs and outputs are **individual files**, not directories or wildcards. If a Task needs many files, or files whose names are not known in advance, put them in a single archive, and have the Task unpack it as it starts or pack its results as it ends.
 
 ### Specifying Data Client Inputs
@@ -1211,8 +1216,8 @@ Each input names a remote `source` and a local `destination`. In the `[workRequi
 
 ```toml
 taskDataInputs = [
-  {source = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/originals/batch_{{task_number}}.zip", destination = "local:originals.zip"},
-  {source = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/watermarks/logo.png", destination = "local:logo.png"},
+  {source = "rclone:s3:my-photos/originals/batch_{{task_number}}.zip", destination = "local:originals.zip"},
+  {source = "rclone:s3:my-photos/watermarks/logo.png", destination = "local:logo.png"},
 ]
 ```
 
@@ -1220,8 +1225,8 @@ Or in JSON:
 
 ```json
 "taskDataInputs": [
-  {"source": "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/originals/batch_{{task_number}}.zip", "destination": "local:originals.zip"},
-  {"source": "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/watermarks/logo.png", "destination": "local:logo.png"}
+  {"source": "rclone:s3:my-photos/originals/batch_{{task_number}}.zip", "destination": "local:originals.zip"},
+  {"source": "rclone:s3:my-photos/watermarks/logo.png", "destination": "local:logo.png"}
 ],
 ```
 
@@ -1246,26 +1251,15 @@ Leave out the `rclone:` if the configured `remote` already starts with it. A nam
 
 ### Automatic Upload of Local Files
 
-`yd workrequirement submit` uploads a local file for an input that names it in `localPath`. By default it is uploaded to the input's `source`, from where the Task downloads it:
+`yd workrequirement submit` uploads a local file for an input that names it in `localPath`. The Task's `source` names the node's remote, which your own machine does not have, so `uploadPath` names where to upload the file with credentials your machine does have: here, the AWS credentials in your environment (see [Rclone Authentication](#rclone-authentication)):
 
 ```toml
 taskDataInputs = [
-  {localPath = "make-thumbnails.sh", source = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/scripts/make-thumbnails.sh", destination = "local:make-thumbnails.sh"},
+  {localPath = "make-thumbnails.sh", uploadPath = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/scripts/make-thumbnails.sh", source = "rclone:s3:my-photos/scripts/make-thumbnails.sh", destination = "local:make-thumbnails.sh"},
 ]
 ```
 
-`uploadPath` uploads the file to a different rclone path from the one the Task downloads it from. Here the upload uses the `[mys3]` remote in your own `rclone.conf`, while the Task uses the node's credentials:
-
-```json
-"taskDataInputs": [
-  {
-    "localPath": "make-thumbnails.sh",
-    "uploadPath": "rclone:mys3:my-photos/scripts/make-thumbnails.sh",
-    "source": "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/scripts/make-thumbnails.sh",
-    "destination": "local:make-thumbnails.sh"
-  }
-]
-```
+Without `uploadPath`, the file is uploaded to the `source` itself. That works when your machine can reach the `source` as written: a remote of the same name in your own `rclone.conf`, or an inline connection string such as the one in `uploadPath` above.
 
 #### Details
 
@@ -1277,7 +1271,7 @@ taskDataInputs = [
 
 ### Rclone Authentication
 
-Uploading with rclone needs credentials for the remote storage, which are set up outside the YellowDog CLI. For an S3 bucket, for example, AWS credentials such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` can be set as environment variables. An rclone path can then reach them in any of three ways:
+Uploading a local file from your own machine with rclone needs credentials for the remote storage, which are set up outside the YellowDog CLI. (A node's credentials come from its own rclone configuration, as above.) For an S3 bucket, for example, AWS credentials such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` can be set as environment variables. An rclone path can then reach them in any of three ways:
 
 1. Taking the credentials from the environment: `rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/originals/batch_01.zip`
 
@@ -1291,8 +1285,8 @@ Each output names a local `source` and a remote `destination`. In the `[workRequ
 
 ```toml
 taskDataOutputs = [
-  {source = "local:thumbnails.zip", destination = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/thumbnails/batch_{{task_number}}.zip"},
-  {source = "local:taskoutput.txt", destination = "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/logs/task_{{task_number}}.txt", alwaysUpload = true},
+  {source = "local:thumbnails.zip", destination = "rclone:s3:my-photos/thumbnails/batch_{{task_number}}.zip"},
+  {source = "local:taskoutput.txt", destination = "rclone:s3:my-photos/logs/task_{{task_number}}.txt", alwaysUpload = true},
 ]
 ```
 
@@ -1300,8 +1294,8 @@ Or in JSON:
 
 ```json
 "taskDataOutputs": [
-  {"source": "local:thumbnails.zip", "destination": "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/thumbnails/batch_{{task_number}}.zip"},
-  {"source": "local:taskoutput.txt", "destination": "rclone:S3,type=s3,provider=AWS,env_auth=true,region=eu-west-2,location_constraint=eu-west-2:my-photos/logs/task_{{task_number}}.txt", "alwaysUpload": true}
+  {"source": "local:thumbnails.zip", "destination": "rclone:s3:my-photos/thumbnails/batch_{{task_number}}.zip"},
+  {"source": "local:taskoutput.txt", "destination": "rclone:s3:my-photos/logs/task_{{task_number}}.txt", "alwaysUpload": true}
 ],
 ```
 
@@ -1329,6 +1323,28 @@ When a Task is allocated to a Worker on a node by the YellowDog Scheduler, the f
 Once the steps above have been completed, the Worker is ready to process its next Task. If the Agent on a node advertises several Workers, Tasks run in parallel on the node and start and stop independently.
 
 **Aborting a Task.** If a Task is aborted while it runs, its subprocess is sent a `SIGTERM` (on Linux). This gives the Task a chance to stop any child processes or other resources, such as containers, that it started. Alternatively, a Task Type in the Agent's `application.yaml` file can set an `abort` clause. The script the `abort` clause names then takes over all abort handling.
+
+### Where Task Types Come From
+
+A Task's `taskType` names one of the Task Types the Agent on the node defines in its `application.yaml`, each with the command that runs a Task of that type. A Task Group's Tasks go only to Workers whose Agent has every Task Type in its `taskTypes`.
+
+The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) defines one Task Type, `bash`, which runs `/bin/bash` with the Task's arguments: `"arguments": ["-c", "echo hello"]` runs a command, and `"arguments": ["process.sh", "{{task_number}}"]` runs a script the Task downloaded. Any other Task Type is one you define, by editing the installer's settings (see [YellowDog Task Types](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#yellowdog-task-types)) or with [`add-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-task-type.sh) in the instances' User Data.
+
+### The `docker` Task Type
+
+A node has a `docker` Task Type once [`install-docker.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/install-docker.sh) and [`add-docker-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-docker-task-type.sh) have run on it, as User Data after the Agent installer (see [The docker Task Type](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type)). A `docker` Task runs `docker run` with the Task's arguments, so they are any `docker run` options, then the image and, optionally, the command to run in the container:
+
+```json
+{"taskType": "docker", "arguments": ["-e", "BATCH_SIZE", "my-org/thumbnailer:2.1", "--input", "/yd_working/originals.zip"], "environment": {"BATCH_SIZE": "50"}}
+```
+
+The Task's working directory, where its inputs are downloaded and from where its outputs are uploaded, is mounted in the container at `/yd_working`.
+
+#### Details
+
+**The Task's environment.** The container does not see the Task's environment variables unless the arguments pass them in, as `-e BATCH_SIZE` does above. The variables that control the container itself (`DOCKER_USERNAME`, `DOCKER_PASSWORD`, `DOCKER_REGISTRY`, `DOCKER_IMAGE`, `YD_STOP_SIGNAL`, `YD_STOP_TIMEOUT` and `YD_WORKING`) are read from the Task's environment; the [`docker` Task Type's README](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type) describes each.
+
+**Registry credentials.** A `DOCKER_PASSWORD` in the Task's environment is visible to anyone who can read the Task's specification. A Docker credential helper on the image, or the instance's role where the registry accepts one, keeps the password out of the specification.
 
 ### The User and Group used for Tasks
 

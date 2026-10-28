@@ -48,7 +48,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:25 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:21 GMT 2026 -->
 
 <!--te-->
 
@@ -67,8 +67,10 @@ Commander is offered as a useful adjunct to the CLI, but is not formally support
 Commander requires the optional `commander` extra (it pulls in PyQt6):
 
 ```commandline
-pip install -U "yellowdog-cli[commander]"
+uv tool install "yellowdog-cli[commander]"
 ```
+
+In a virtual environment, install it with `uv pip install -U "yellowdog-cli[commander]"` or `pip install -U "yellowdog-cli[commander]"` instead (see [Installation](../../docs/installation.md)).
 
 ## Running
 

@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:25 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:21 GMT 2026 -->
 
 <!--te-->
 
@@ -38,8 +38,10 @@ It is a stdio server, for an agent running on the same machine as the developer'
 ## Installation
 
 ```shell
-pip install -U "yellowdog-cli[mcp]"
+uv tool install "yellowdog-cli[mcp]"
 ```
+
+In a virtual environment, install it with `uv pip install -U "yellowdog-cli[mcp]"` or `pip install -U "yellowdog-cli[mcp]"` instead (see [Installation](../../docs/installation.md)).
 
 `yd mcp --help` works without the extra installed. Launched without the `mcp` package present, `yd mcp` prints an instruction to install it and exits, before serving anything.
 

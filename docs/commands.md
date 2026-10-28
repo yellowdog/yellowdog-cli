@@ -82,7 +82,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 09:11:58 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:16 GMT 2026 -->
 
 <!--te-->
 
@@ -606,7 +606,7 @@ Key options:
 - `--json` — emit the actions taken, or with `--dry-run` what would be taken, as a JSON array, each with its `targetInstanceCount` (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd workerpool resize pyex-slurm-pwt_230711-1243561-0d 10
+yd workerpool resize render-pool 10
 yd workerpool resize ydid:wrkrpool:D9C548:1f020696-ae9a-4786-bed2-c31b484b1d4f 10
 ```
 
@@ -703,7 +703,7 @@ Key options:
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
-yd computerequirement instantiate my_compute_requirement.json --target 4
+yd computerequirement instantiate render-cr.json --target 4
 ```
 
 An example JSON specification is shown below:
@@ -711,18 +711,18 @@ An example JSON specification is shown below:
 ```json
 {
   "imagesId": "ydid:imgfam:000000:41962592-577c-4fde-ab03-d852465e7f8b",
-  "instanceTags": {"a1": "one", "a2": "two"},
-  "requirementName": "cr_test___{{datetime}}__",
-  "requirementNamespace": "pyexamples",
-  "requirementTag": "pyexamples-test",
+  "instanceTags": {"project": "render"},
+  "requirementName": "render-cr",
+  "requirementNamespace": "image-processing",
+  "requirementTag": "render",
   "templateId": "ydid:crt:000000:230e9a42-97db-4d69-aa91-29ff309951b4",
-  "userData": "#!/bin/bash\n#Other stuff...",
+  "userData": "#!/bin/bash\napt-get update && apt-get install -y ffmpeg",
   "targetInstanceCount": 1,
   "maintainInstanceCount": true
 }
 ```
 
-Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property.
+Note that the `templateId` property can use either the YellowDog ID ('YDID') for the Compute Requirement Template, or its name. The same is true for the `imagesId` property, which names an image of your own: YellowDog provides no stock images (see [A First Run, with No Image of Your Own](worker-pools.md#a-first-run-with-no-image-of-your-own)).
 
 Values missing from a JSON specification are taken from the configuration file; `targetInstanceCount` only if the configuration actually sets it, so that a specification with no count is never sent with a count of zero. User Data merged in from the configuration is reported by its source and size, never printed. A JSON specification is provisioned as one Compute Requirement, whatever its count.
 
@@ -778,9 +778,9 @@ Key options:
 With `--wait`, the command returns only once the resized Compute Requirement has settled: it is `RUNNING`, as many of its Instances are `RUNNING` as its new target asks for, and none is still starting, stopping or terminating. Scaling up therefore waits for the new Instances to start, and scaling down for the surplus Instances to finish terminating, which can take a minute or more. Progress is printed whenever it changes. A Compute Requirement that cannot reach its target, because the cloud provider has no more capacity of the kind it asks for (on-demand as well as spot) or an Allowance or quota stands in the way, never settles, so give a `--timeout` when that is possible: if it passes first, the command reports what is still missing and exits 1, though the resize itself has been made and is recorded as `resized`. `--wait` cannot be combined with `--follow`.
 
 ```shell
-yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5
+yd computerequirement resize render-cr 5
 yd computerequirement resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
-yd computerequirement resize pyex-slurm-pwt_230712-1102264-4c 5 --wait --timeout 600
+yd computerequirement resize render-cr 5 --wait --timeout 600
 ```
 
 ### yd computerequirement stop

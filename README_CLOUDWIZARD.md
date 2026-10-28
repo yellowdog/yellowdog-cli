@@ -55,7 +55,7 @@
 * [Options, Errors and Exit Codes](#options-errors-and-exit-codes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:14:05 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
 
 <!--te-->
 
@@ -76,8 +76,10 @@ The same command with `teardown` in place of `setup` removes what it created. Th
 The `yellowdog-cli` Python package must be installed, with the optional Cloud Wizard dependencies:
 
 ```commandline
-pip install -U "yellowdog-cli[cloudwizard]"
+uv tool install "yellowdog-cli[cloudwizard]"
 ```
+
+In a virtual environment, install it with `uv pip install -U "yellowdog-cli[cloudwizard]"` or `pip install -U "yellowdog-cli[cloudwizard]"` instead (see [Installation](docs/installation.md)).
 
 You'll need a YellowDog Platform account, and an **Application** created in the [YellowDog Portal](https://portal.yellowdog.co/#/account/applications). The Application must belong to a group that has at least the `KEYRING_WRITE`, `COMPUTE_SOURCE_TEMPLATE_WRITE` and `COMPUTE_REQUIREMENT_TEMPLATE_WRITE` permissions. A member of the `administrators` group has these permissions already.
 
@@ -652,12 +654,13 @@ The static templates all use the one instance type Cloud Wizard was given (`t3a.
 
 ## Provision From Them
 
-To provision a Worker Pool from a template, name the template and an image in `config.toml`, then run `yd workerpool provision`. None of the templates names an image, so a Worker Pool or Compute Requirement provisioned from one must. The image must have the YellowDog Agent installed. It is given as an Image Family name, as here, or as a cloud provider image ID, such as an AWS AMI ID from the template's region:
+To provision a Worker Pool from a template, name the template and an image in `config.toml`, then run `yd workerpool provision`. None of the templates names an image, so a Worker Pool or Compute Requirement provisioned from one must. YellowDog provides no stock images. Give a stock operating system image, such as an AWS AMI ID from the template's region, with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) as User Data, as here, or an image of your own with the Agent installed, by its ID or its Image Family's name:
 
 ```toml
 [workerPool]
 templateId = "cloudwizard-aws/cloudwizard-aws-split-ondemand"
-imagesId = "image-processing/ubuntu-with-agent"
+imagesId = "ami-…"                     # a stock Ubuntu image in the template's region
+userDataFile = "yd-agent-installer.sh"
 targetInstanceCount = 1
 ```
 

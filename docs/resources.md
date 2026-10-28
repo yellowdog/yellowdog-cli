@@ -42,7 +42,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:22 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:18 GMT 2026 -->
 
 <!--te-->
 
@@ -387,7 +387,9 @@ An example Compute Source Template:
 }
 ```
 
-The `imageId` property takes an Image Family's name, **namespace/family-name**, or an Image Group's, **namespace/family-name/group-name**, in place of an ID: `"imageId": "yellowdog/yd-agent-docker"`, for example. `yd resource create` looks the name up and substitutes a well-formed name or ID. A **`yd/`** prefix may also be used.
+The `imageId` property takes an Image Family's name, **namespace/family-name**, or an Image Group's, **namespace/family-name/group-name**, in place of an ID: `"imageId": "image-processing/ubuntu-render-agent"`, for example. `yd resource create` looks the name up and substitutes a well-formed name or ID. A **`yd/`** prefix may also be used.
+
+The image must run the YellowDog Agent. YellowDog provides no stock images: use an image of your own with the Agent installed, or a stock operating system image with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) as the source's User Data.
 
 The `userData` property inside the `source` object takes an inline script. Alternatively, `userDataFile` takes the path of a script file, and `userDataFiles` a list of paths whose contents are concatenated in order.
 
@@ -404,7 +406,7 @@ A **static** template:
 ```json
 {
   "resource": "ComputeRequirementTemplate",
-  "imagesId": "ami-097767a3a3e071555",
+  "imagesId": "image-processing/ubuntu-render-agent",
   "instanceTags": {},
   "name": "render-static",
   "namespace": "image-processing",
@@ -419,7 +421,7 @@ A **static** template:
 
 A source's `sourceTemplateId` can name its Compute Source Template, as `namespace/compute_source_template_name` or by name alone, in place of its ID. A name alone is looked up in the Compute Requirement Template's own namespace. `yd resource create` looks the IDs up and substitutes them. The Compute Source Templates must already exist.
 
-The `imagesId` property takes an Image Family's name, **namespace/family-name**, or an Image Group's, **namespace/family-name/group-name**, in place of an ID: `"imagesId": "yellowdog/yd-agent-docker/latest"`, for example. `yd resource create` looks the name up and substitutes a well-formed name or ID.
+The `imagesId` property takes an Image Family's name, **namespace/family-name**, or an Image Group's, **namespace/family-name/group-name**, in place of an ID: `"imagesId": "image-processing/ubuntu-render-agent/latest"`, for example. `yd resource create` looks the name up and substitutes a well-formed name or ID.
 
 A **dynamic** template:
 

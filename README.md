@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:18:58 GMT 2026 -->
+<!-- Added by: pwt, at: Wed Oct 28 08:18:15 GMT 2026 -->
 
 <!--te-->
 
@@ -70,7 +70,7 @@ To create **Provisioned Worker Pools**, you'll need:
 3. A **Keyring** created via the YellowDog Portal, with access to Cloud Provider credentials as required. The Application must be granted access to the Keyring.
 
 
-4. One or more **Compute Sources** defined, and a **Compute Requirement Template** created. The images used by instances must include the YellowDog agent, configured with the Task Type(s) to match the Work Requirements to be submitted.
+4. One or more **Compute Sources** defined, and a **Compute Requirement Template** created. Instances must run the YellowDog Agent, and **YellowDog provides no stock images**: use an image of your own with the Agent installed, or a stock operating system image with the Agent installer as User Data. The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) does either, and defines the `bash` Task Type; any other Task Type your Work Requirements use is one you add.
 
 To set up **Configured Worker Pools**, you'll need:
 
@@ -124,11 +124,11 @@ To install uv itself, run `curl -LsSf https://astral.sh/uv/install.sh | sh` on m
 Commander is an optional cross-platform desktop GUI for driving the CLI. Install it with the `commander` extra, as you installed the CLI, and launch it with `yd commander`:
 
 ```commandline
-uv tool install "yellowdog-cli[commander]"      # Option 1
-uv pip install -U "yellowdog-cli[commander]"    # Option 2, in the virtual environment
-pip install -U "yellowdog-cli[commander]"       # Option 3, in the virtual environment
+uv tool install "yellowdog-cli[commander]"
 yd commander
 ```
+
+In a virtual environment, install `"yellowdog-cli[commander]"` with `uv pip install -U` or `pip install -U` instead (see [Installation](docs/installation.md)).
 
 It works by running `yd` commands on your behalf and displaying their output. See [`yellowdog_cli/commander/README.md`](yellowdog_cli/commander/README.md) for details.
 
@@ -137,11 +137,11 @@ It works by running `yd` commands on your behalf and displaying their output. Se
 `yd mcp` is an MCP server exposing the `yd` commands as tools for an agent. Install it with the `mcp` extra, as you installed the CLI, and launch it with `yd mcp`:
 
 ```commandline
-uv tool install "yellowdog-cli[mcp]"      # Option 1
-uv pip install -U "yellowdog-cli[mcp]"    # Option 2, in the virtual environment
-pip install -U "yellowdog-cli[mcp]"       # Option 3, in the virtual environment
+uv tool install "yellowdog-cli[mcp]"
 yd mcp config.toml
 ```
+
+In a virtual environment, install `"yellowdog-cli[mcp]"` with `uv pip install -U` or `pip install -U` instead.
 
 The extras can be combined, e.g. `"yellowdog-cli[jsonnet,commander,mcp]"`; the `cloudwizard` extra, for `yd cloudwizard`, is described in [`README_CLOUDWIZARD.md`](README_CLOUDWIZARD.md).
 
@@ -269,11 +269,13 @@ Both commands read their settings from `config.toml`. This one runs ten Bash Tas
 
 [workerPool]
     templateId = "image-processing/ubuntu-small"
+    imagesId = "ami-…"                     # a stock Ubuntu image in your region
+    userDataFile = "yd-agent-installer.sh"
     maxNodes = 2
     workerTag = "thumbnails"
 ```
 
-`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID. The [Cloud Wizard](README_CLOUDWIZARD.md) can create one for you. The matching `workerTag` values send the Tasks to this pool's Workers. The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
+`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID, with the Keyring and Compute Source Templates it uses (see [Creating, Updating and Removing YellowDog Resources](docs/resources.md#keyrings)). YellowDog provides no stock images, so each instance installs the YellowDog Agent as it boots, from [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`. With an image of your own that has the Agent installed, leave out `userDataFile`, and leave out `imagesId` too if the template names the image (see [A First Run, with No Image of Your Own](docs/worker-pools.md#a-first-run-with-no-image-of-your-own)). The matching `workerTag` values send the Tasks to this pool's Workers. The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
 
 With `--quiet`, each command prints just the YellowDog ID (YDID) of what it created, so its output can be captured in a shell script:
 
