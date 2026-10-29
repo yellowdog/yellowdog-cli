@@ -10,6 +10,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd taskgroup list` shows each Task Group's Tasks**, completed of total, as `yd workrequirement list` does for a Work Requirement's.
 - **`yd workerpool list` shows each pool's Nodes, its Workers (working of all) and whether it is healthy.**
 - **`yd worker list` shows each Worker's Node, and the Task Group that has claimed it** (`Claimed By`).
+- **A `--debug` line names the part of the CLI that wrote it by its place in the package**, so the `yd data` verbs' rclone runs are `dataclient.operations` rather than `operations`.
 
 ## 15.5.0 — 2026-10-28
 

@@ -159,7 +159,7 @@ The trace also helps when a command succeeds but doesn't do what you expected, s
 
 #### What the Trace Shows
 
-Each line starts with the date and time, as the command's other messages do, then `DEBUG`, the seconds since the command started, in brackets, and the part of the CLI that wrote it:
+Each line starts with the date and time, as the command's other messages do, then `DEBUG`, the seconds since the command started, in brackets, and the part of the CLI that wrote it (`dataclient.operations` for the `yd data` verbs' rclone runs):
 
 ```text
 2026-10-28 14:48:21 : DEBUG : [+0.026s] load_config: Loading configuration data from: 'config.toml'

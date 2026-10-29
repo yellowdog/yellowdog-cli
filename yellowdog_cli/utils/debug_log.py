@@ -16,7 +16,8 @@ calls it, so every command that configures its output has the trace it asks
 for. Off, nothing is formatted and nothing is written.
 
 A line is '<date> <time> : DEBUG : [+<seconds since start>s] <module>:
-<message>', plain text, prefixed as an info line is (printing.print_string(),
+<message>', the module named by its path in the package less 'yellowdog_cli'
+and 'utils' ('submit', 'load_config', 'dataclient.operations'), plain text, prefixed as an info line is (printing.print_string(),
 the process ID too under '--print-pid'), and a traceback logged with it
 ('exc_info=True') follows it. Never log a
 credential: no request headers, no key or secret, no variable's value, a
@@ -26,6 +27,7 @@ Stdlib only: every command imports it, before any SDK.
 """
 
 import logging
+import os
 import sys
 import time
 
@@ -35,6 +37,10 @@ CLI_LOGGER = "yellowdog_cli"
 HTTP_LOGGER = "urllib3"
 
 _START = time.time()
+
+# The package's directory, and its 'utils', which a module's name leaves out
+_PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_DROPPED = ("utils",)
 
 
 class _StderrHandler(logging.StreamHandler):
@@ -56,15 +62,16 @@ class _TraceFormatter(logging.Formatter):
     """
     '2026-10-28 14:48:21 : DEBUG : [+1.234s] submit: message', with the
     process ID after the time when 'print_pid' is set: the CLI's records
-    named by their module (the caller's, for print_debug()'s), any other
-    library's by its logger.
+    named by their module's path in the package (the caller's, for
+    print_debug()'s, so from the record's file rather than its logger), any
+    other library's by its logger.
     """
 
     print_pid = False
 
     def format(self, record: logging.LogRecord) -> str:
         name = (
-            record.module
+            _module_name(record)
             if record.name == CLI_LOGGER or record.name.startswith(f"{CLI_LOGGER}.")
             else record.name.split(".")[0]
         )
@@ -79,6 +86,21 @@ class _TraceFormatter(logging.Formatter):
         if record.exc_info:
             line = f"{line}\n{self.formatException(record.exc_info)}"
         return line
+
+
+def _module_name(record: logging.LogRecord) -> str:
+    """
+    The module that logged the record, by its path in the package less the
+    package and 'utils' ('dataclient.operations'); a file outside the
+    package (a test's) by its module name alone.
+    """
+    path = os.path.abspath(record.pathname)
+    if os.path.commonpath([path, _PACKAGE]) != _PACKAGE:
+        return record.module
+    parts = os.path.splitext(os.path.relpath(path, _PACKAGE))[0].split(os.sep)
+    while len(parts) > 1 and parts[0] in _DROPPED:
+        parts = parts[1:]
+    return ".".join(parts)
 
 
 _FORMATTER = _TraceFormatter()

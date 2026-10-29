@@ -63,6 +63,39 @@ class TestOnAndOff:
         assert name == "urllib3"
         assert '"GET /work/requirements?namespace=ns HTTP/1.1" 200 512' in message
 
+    def test_a_module_in_a_subpackage_is_named_by_its_path(self, capsys, trace_on):
+        from yellowdog_cli.utils.dataclient import operations
+
+        record = logging.LogRecord(
+            "yellowdog_cli.utils.dataclient.operations",
+            logging.DEBUG,
+            operations.__file__,
+            1,
+            "rclone run",
+            None,
+            None,
+        )
+        logging.getLogger(CLI_LOGGER).handle(record)
+        assert _lines(capsys.readouterr().err) == [
+            ("dataclient.operations", "rclone run")
+        ]
+
+    def test_a_module_in_utils_or_the_package_keeps_its_bare_name(
+        self, capsys, trace_on
+    ):
+        from yellowdog_cli import submit
+        from yellowdog_cli.utils import load_config
+
+        for module in (load_config, submit):
+            record = logging.LogRecord(
+                module.__name__, logging.DEBUG, module.__file__, 1, "x", None, None
+            )
+            logging.getLogger(CLI_LOGGER).handle(record)
+        assert [name for name, _ in _lines(capsys.readouterr().err)] == [
+            "load_config",
+            "submit",
+        ]
+
     def test_turning_it_on_twice_writes_each_line_once(self, capsys, trace_on):
         set_debug_logging(True)
         logging.getLogger(CLI_LOGGER).debug("once")
