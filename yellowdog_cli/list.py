@@ -1324,7 +1324,7 @@ def _matching_nodes(ctx: RunContext, worker_pool_summary: Any) -> Iterator[Node]
 def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker]:
     """
     The Workers on the Nodes, as --active-only and --status filter them,
-    each given its Node's Worker tag, task types and Worker Pool name; the
+    each given its Node's ID, Worker tag, task types and Worker Pool name; the
     Nodes read only as far as the Workers are wanted.
     """
     for node in nodes:
@@ -1336,6 +1336,7 @@ def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker
             ):
                 continue
             # Add extra info to the Worker object
+            worker.nodeId = node.id  # type: ignore[attr-defined]
             if node.details is not None:
                 worker.workerTag = node.details.workerTag  # type: ignore[attr-defined]
                 worker.taskTypes = node.details.supportedTaskTypes  # type: ignore[attr-defined]

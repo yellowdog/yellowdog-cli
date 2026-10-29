@@ -40,8 +40,11 @@ from yellowdog_cli.utils.tables import (
     get_type_name,
     keyring_table,
     task_group_names,
+    task_group_table,
     task_table,
     work_requirement_table,
+    worker_pool_table,
+    workers_table,
 )
 
 # ---------------------------------------------------------------------------
@@ -578,6 +581,91 @@ class TestTaskTable:
         tasks = [self._task(name=f"t{i}") for i in range(4)]
         _, rows = task_table(tasks)
         assert [r[0] for r in rows] == [1, 2, 3, 4]
+
+
+class TestTaskGroupTableTasks:
+    """
+    A Task Group's Tasks, as completed/total, as the Work Requirement
+    table gives them.
+    """
+
+    def _task_group(self, task_summary):
+        return SimpleNamespace(
+            name="render",
+            status="RUNNING",
+            starved=False,
+            waitingOnDependency=False,
+            taskSummary=task_summary,
+            id="ydid:taskgrp:1",
+        )
+
+    def test_completed_of_total(self):
+        from yellowdog_client.model import TaskStatus
+
+        summary = SimpleNamespace(
+            statusCounts={TaskStatus.COMPLETED: 3, TaskStatus.EXECUTING: 2},
+            taskCount=10,
+        )
+        headers, rows = task_group_table([self._task_group(summary)])
+        assert headers[3] == "Tasks"
+        assert rows[0][3] == "3/10"
+
+    def test_none_completed(self):
+        summary = SimpleNamespace(statusCounts={}, taskCount=4)
+        _, rows = task_group_table([self._task_group(summary)])
+        assert rows[0][3] == "0/4"
+
+    def test_no_summary_is_blank(self):
+        _, rows = task_group_table([self._task_group(None)])
+        assert rows[0][3] is None
+
+
+class TestWorkerPoolTableCounts:
+    def test_nodes_workers_and_health(self):
+        pool = SimpleNamespace(
+            name="wp",
+            namespace="ns",
+            type="co.yellowdog.platform.model.ProvisionedWorkerPool",
+            status="RUNNING",
+            registeredNodeCount=3,
+            workingWorkerCount=2,
+            registeredWorkerCount=6,
+            healthy=True,
+            id="ydid:wrkrpool:1",
+        )
+        headers, rows = worker_pool_table([pool])  # type: ignore[list-item]
+        row = dict(zip(headers, rows[0]))
+        assert row["Nodes"] == 3
+        assert row["Workers (Working/All)"] == "2/6"
+        assert row["Healthy"] == "Yes"
+
+
+class TestWorkersTableNodeAndClaim:
+    def _worker(self, task_group_id):
+        return SimpleNamespace(
+            workerPoolName="wp",
+            taskTypes=["bash"],
+            workerTag="t",
+            status="DOING_TASK",
+            claimCount=1,
+            exclusive=False,
+            taskGroupId=task_group_id,
+            nodeId="ydid:node:1",
+            id="ydid:wrkr:1",
+        )
+
+    def test_the_node_and_the_claiming_task_group_are_shown(self):
+        headers, rows = workers_table(
+            [self._worker("tg1")],
+            {"tg1": "render"},  # type: ignore[list-item]
+        )
+        row = dict(zip(headers, rows[0]))
+        assert row["Claimed By"] == "render"
+        assert row["Node ID"] == "ydid:node:1"
+
+    def test_an_unclaimed_worker_is_blank(self):
+        headers, rows = workers_table([self._worker(None)], {})  # type: ignore[list-item]
+        assert dict(zip(headers, rows[0]))["Claimed By"] == ""
 
 
 class TestTaskGroupNames:

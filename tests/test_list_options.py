@@ -398,7 +398,9 @@ class TestActiveInstancesAndWorkers:
             _args(ET_WORKERS, json_output=True, active_only=True),
         )
         workers = [SimpleNamespace(status=status) for status in WorkerStatus]
-        node = SimpleNamespace(details=None, workers=workers, workerPoolName="wp")
+        node = SimpleNamespace(
+            id="ydid:node:1", details=None, workers=workers, workerPoolName="wp"
+        )
         printed: list = []
         monkeypatch.setattr(
             yd_list, "_print_all", lambda _c, objects: printed.append(objects)
@@ -415,7 +417,9 @@ class TestActiveInstancesAndWorkers:
             wrapper_module, "ARGS_PARSER", _args(ET_WORKERS, json_output=True)
         )
         worker = SimpleNamespace(status="SLEEPING")
-        node = SimpleNamespace(details=None, workers=[worker], workerPoolName="wp")
+        node = SimpleNamespace(
+            id="ydid:node:1", details=None, workers=[worker], workerPoolName="wp"
+        )
         printed: list = []
         monkeypatch.setattr(
             yd_list, "_print_all", lambda _c, objects: printed.append(objects)
@@ -997,7 +1001,9 @@ def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
         _args(ET_WORKERS, status_filter=["DOING_TASK"], json_output=True),
     )
     worker = SimpleNamespace(status="DOING_TASK")
-    node = SimpleNamespace(details=None, workers=[worker], status="RUNNING")
+    node = SimpleNamespace(
+        id="ydid:node:1", details=None, workers=[worker], status="RUNNING"
+    )
     listing.client.worker_pool_client.get_nodes.return_value.iterate.return_value = [
         node
     ]
