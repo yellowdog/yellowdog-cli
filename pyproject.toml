@@ -61,7 +61,11 @@
     dev = [
         "cli-test-helpers",
         "pre-commit",
-        "pytest",
+        # Below 9.2 until a pytest-xdist release after 3.8.0: pytest 9.2's
+        # structured node IDs ignore the '_nodeid' xdist 3.8.0 writes its group
+        # into, so '--dist loadgroup' silently stops keeping an xdist_group on
+        # one worker (pytest-dev/pytest-xdist#1386, fixed by #1388, unreleased)
+        "pytest < 9.2",
         "pytest-cov",
         "pytest-timeout",
         "pytest-xdist",
