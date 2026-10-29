@@ -201,19 +201,47 @@ def task_group_table(
     return headers, table
 
 
-def task_table(task_list: list[Task]) -> tuple[list[str], list[list]]:
-    headers = ["#", "Task Name", "Status", "Task ID"]
+def task_table(
+    task_list: list[Task], task_group_names: dict[str, str] | None = None
+) -> tuple[list[str], list[list]]:
+    """
+    The Tasks' table, each with its Task Group's name, from 'task_group_names'
+    (by Task Group ID; a Task Group not in it is left blank).
+    """
+    names = task_group_names or {}
+    headers = ["#", "Task Group", "Task Name", "Status", "Task ID"]
     table = []
     for index, task in enumerate(task_list):
         table.append(
             [
                 index + 1,
+                names.get(task.taskGroupId or "", ""),
                 task.name,
                 _cell(task.status),
                 task.id,
             ]
         )
     return headers, table
+
+
+def task_group_names(client: PlatformClient, tasks: Sequence[Task]) -> dict[str, str]:
+    """
+    The names of the Tasks' Task Groups, by Task Group ID: read from their
+    Work Requirements, which are cached, so a listing that has just read them
+    makes no further request. A Task Group that is no longer there is left
+    out.
+    """
+    from yellowdog_cli.utils.entity_utils import get_task_group_by_id
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    names: dict[str, str] = {}
+    for task_group_id in {task.taskGroupId for task in tasks if task.taskGroupId}:
+        try:
+            task_group = get_task_group_by_id(client, task_group_id)
+        except NotFoundError:
+            continue
+        names[task_group_id] = task_group.name or ""
+    return names
 
 
 def worker_pool_table(
@@ -956,7 +984,13 @@ def print_numbered_object_list(
             )
         )
     else:
-        headers, table = table_builder(objects)
+        if table_builder is task_table:
+            headers, table = task_table(
+                objects,  # type: ignore[arg-type]
+                task_group_names(client, objects),  # type: ignore[arg-type]
+            )
+        else:
+            headers, table = table_builder(objects)
         print_table_core(
             indent(
                 tabulate(

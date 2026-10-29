@@ -39,6 +39,7 @@ from yellowdog_cli.utils.tables import (
     _yes_or_no,
     get_type_name,
     keyring_table,
+    task_group_names,
     task_table,
     work_requirement_table,
 )
@@ -555,26 +556,62 @@ class TestKeyringTable:
 
 
 class TestTaskTable:
-    def _task(self, name="task-1", status="COMPLETED", id="ydid:task:001") -> Task:
-        return SimpleNamespace(name=name, status=status, id=id)  # type: ignore[return-value]
+    def _task(
+        self, name="task-1", status="COMPLETED", id="ydid:task:001", tg="ydid:taskgrp:1"
+    ) -> Task:
+        return SimpleNamespace(name=name, status=status, id=id, taskGroupId=tg)  # type: ignore[return-value]
 
     def test_headers_present(self):
         headers, _ = task_table([self._task()])
-        assert "Task Name" in headers
-        assert "Status" in headers
-        assert "Task ID" in headers
+        assert headers == ["#", "Task Group", "Task Name", "Status", "Task ID"]
 
     def test_single_row_data(self):
         t = self._task(name="my-task", status="FAILED", id="ydid:task:999")
-        _, rows = task_table([t])
-        assert rows[0][1] == "my-task"
-        assert rows[0][2] == "FAILED"
-        assert rows[0][3] == "ydid:task:999"
+        _, rows = task_table([t], {"ydid:taskgrp:1": "render"})
+        assert rows[0][1:] == ["render", "my-task", "FAILED", "ydid:task:999"]
+
+    def test_a_task_group_not_named_is_left_blank(self):
+        _, rows = task_table([self._task(tg="ydid:taskgrp:gone")], {})
+        assert rows[0][1] == ""
 
     def test_multiple_rows_numbered(self):
         tasks = [self._task(name=f"t{i}") for i in range(4)]
         _, rows = task_table(tasks)
         assert [r[0] for r in rows] == [1, 2, 3, 4]
+
+
+class TestTaskGroupNames:
+    """
+    task_group_names(): each Task Group looked up once, from its Work
+    Requirement, and one that is gone left out.
+    """
+
+    def test_each_task_group_is_named_once(self, monkeypatch):
+        from yellowdog_cli.utils import entity_utils
+
+        looked_up = []
+
+        def lookup(_client, task_group_id):
+            looked_up.append(task_group_id)
+            return SimpleNamespace(
+                name={"tg1": "render", "tg2": "encode"}[task_group_id]
+            )
+
+        monkeypatch.setattr(entity_utils, "get_task_group_by_id", lookup)
+        tasks = [SimpleNamespace(taskGroupId=tg) for tg in ("tg1", "tg1", "tg2", None)]
+        assert task_group_names(None, tasks) == {"tg1": "render", "tg2": "encode"}  # type: ignore[arg-type]
+        assert sorted(looked_up) == ["tg1", "tg2"]
+
+    def test_a_task_group_not_found_is_left_out(self, monkeypatch):
+        from yellowdog_cli.utils import entity_utils
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        def lookup(_client, task_group_id):
+            raise NotFoundError(task_group_id)
+
+        monkeypatch.setattr(entity_utils, "get_task_group_by_id", lookup)
+        tasks = [SimpleNamespace(taskGroupId="tg1")]
+        assert task_group_names(None, tasks) == {}  # type: ignore[arg-type]
 
 
 class TestWorkRequirementTable:

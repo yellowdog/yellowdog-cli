@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Listing and actions
+
+- **`yd task list` shows each Task's Task Group**: the table of Tasks has a Task Group column, so Tasks listed across a Work Requirement's Task Groups (`--within` a Work Requirement, or every Task) can be told apart; `--details` and `--json` are unchanged.
+
 ## 15.5.0 — 2026-10-28
 
 ### Upgrading
