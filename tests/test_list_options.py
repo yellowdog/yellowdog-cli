@@ -754,6 +754,23 @@ class TestWithin:
             client=MagicMock(),
         )
 
+    @pytest.mark.parametrize(
+        "with_errors, announced",
+        [
+            (False, f"Listing tasks within '{TG1}'"),
+            (True, f"Listing tasks with errors within '{TG1}'"),
+        ],
+    )
+    def test_the_announcement_says_with_errors(
+        self, monkeypatch, with_errors, announced
+    ):
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        monkeypatch.setattr(yd_list, "_tasks_of", lambda ctx, tgs, limit: (0, []))
+        ctx = self._ctx(monkeypatch, "tasks", TG1, with_errors=with_errors)
+        yd_list._list_within(ctx)
+        assert infos[0] == announced
+
     def test_a_work_requirement_id_gives_its_task_groups(self, monkeypatch):
         ctx = self._ctx(monkeypatch, "task-groups", WR)
         assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1, TG2]

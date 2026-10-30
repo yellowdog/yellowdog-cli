@@ -494,6 +494,8 @@ def list_work_requirements(ctx: RunContext):
 
     if ctx.args.active_only:
         print_info("Listing active Work Requirements only")
+    if ctx.args.entity_type == ET_TASKS and ctx.args.with_errors:
+        print_info("Listing Tasks with errors only")
 
     exclude_filter = (
         [
@@ -773,7 +775,10 @@ def _list_within(ctx: RunContext) -> None:
     '--within': the Task Groups or Tasks of one Work Requirement or Task
     Group, listed without asking which Work Requirement or Task Group.
     """
-    print_info(f"Listing {ctx.args.entity_type} within '{ctx.args.within_target}'")
+    errors = " with errors" if ctx.args.with_errors else ""
+    print_info(
+        f"Listing {ctx.args.entity_type}{errors} within '{ctx.args.within_target}'"
+    )
     task_groups = sorted_objects(_task_groups_within(ctx))
     summarised = 0
     limit = _ListLimit(ctx)

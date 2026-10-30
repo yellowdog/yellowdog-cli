@@ -17,7 +17,9 @@ These changes alter what a command prints without `--debug`:
 - **`yd taskgroup list` shows each Task Group's Tasks**, completed of total, as `yd workrequirement list` does for a Work Requirement's.
 - **`yd workerpool list` shows each pool's Nodes, its Workers (working of all) and whether it is healthy.**
 - **`yd worker list` shows each Worker's Node, and the Task Group that has claimed it** (`Claimed By`).
+- **`yd task list --with-errors` says it lists Tasks with errors only**, as `--active-only` says it lists active Work Requirements only.
 - **A `--debug` line names the part of the CLI that wrote it by its place in the package**, so the `yd data` verbs' rclone runs are `dataclient.operations` rather than `operations`.
+- **A `--debug` line for a setting given on the command line names its option**, and the value for the namespace, tag and URL: `Using 'namespace' 'yd-demo' from the command line (--namespace)`.
 
 ## 15.5.0 — 2026-10-28
 

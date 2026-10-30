@@ -779,21 +779,21 @@ def _apply_common_overrides(
     The command line is the property's own option, then a '--property
     common.<key>' override, which is in the section by now.
     """
-    for key_name, args_parser_value, env_var_name in [
-        (KEY, _ARGS.key, YD_KEY),
-        (SECRET, _ARGS.secret, YD_SECRET),
-        (NAMESPACE, _ARGS.namespace, YD_NAMESPACE),
-        (NAME_TAG, _ARGS.tag, YD_TAG),
-        (URL, _ARGS.url, YD_URL),
+    for key_name, args_parser_value, env_var_name, option in [
+        (KEY, _ARGS.key, YD_KEY, "--key"),
+        (SECRET, _ARGS.secret, YD_SECRET, "--secret"),
+        (NAMESPACE, _ARGS.namespace, YD_NAMESPACE, "--namespace"),
+        (NAME_TAG, _ARGS.tag, YD_TAG, "--tag"),
+        (URL, _ARGS.url, YD_URL, "--url"),
         # No command-line option: '--property common.readTimeout=...' sets it
-        (READ_TIMEOUT, None, YD_READ_TIMEOUT),
+        (READ_TIMEOUT, None, YD_READ_TIMEOUT, None),
     ]:
         if args_parser_value is not None:
             common_section[key_name] = args_parser_value
             CONFIG_SOURCES[key_name] = "command line"
-            print_debug(
-                f"Using '{key_name}' provided on command line (or automatically set)"
-            )
+            # The value too, bar the key's and the secret's
+            shown = "" if key_name in (KEY, SECRET) else f" '{args_parser_value}'"
+            print_debug(f"Using '{key_name}'{shown} from the command line ({option})")
         elif _set_by_property_override(COMMON_SECTION, key_name):
             CONFIG_SOURCES[key_name] = "command line (--property)"
             print_debug(f"Using '{key_name}' provided by --property")

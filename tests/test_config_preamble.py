@@ -195,7 +195,7 @@ def test_the_messages_themselves_are_unchanged(config_dir):
         "Adding environment-defined variable substitution(s) for:",
         "Loading configuration data from:",
         "Loading imported common configuration data from:",
-        "Using 'tag' provided on command line",
+        "Using 'tag' 't' from the command line (--tag)",
         "Using data client profile:",
     ]:
         assert _traced(message, trace), trace
