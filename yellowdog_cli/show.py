@@ -66,7 +66,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.named_targets import resolve_targets
+from yellowdog_cli.utils.named_targets import is_pattern, resolve_targets
 from yellowdog_cli.utils.printing import (
     print_error,
     print_info,
@@ -103,9 +103,14 @@ ShowItem = tuple[Any, dict | None]
 def main(ctx: RunContext):
     # At least one ID is required, and '--substitute-ids' refused where no ID
     # can use it, as the command line is parsed
-    # A noun verb's names are looked up first, every one before any is shown
+    # A noun verb's names are looked up first, every one before any is shown,
+    # and its name patterns matched
     targets = resolve_targets(ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type)
-    if exit_code := show_ydids(ctx, targets):
+    # A pattern asks for many, so is shown as an array however many it matched
+    many = ctx.args.named_target_type is not None and any(
+        is_pattern(target) for target in ctx.args.yellowdog_ids
+    )
+    if exit_code := show_ydids(ctx, targets, many=many):
         sys_exit(exit_code)
 
 
@@ -130,7 +135,7 @@ def _report_not_found(message: str) -> None:
     _report_failure(message, ExitCode.NOT_FOUND)
 
 
-def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
+def show_ydids(ctx: RunContext, ydids: list[str], many: bool = False) -> int:
     """
     Resolve and print the details of each of the supplied YellowDog IDs, and
     return the exit code: 0 if all were shown; the one cause's code if
@@ -151,8 +156,9 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     # of the output follows the request rather than how much of it succeeded;
     # a single ID can also yield more than one object: a Configured Worker
     # Pool with '--show-token', or a Compute Requirement or Provisioned Worker
-    # Pool with '--show-source-report' or '--show-exhaustion'.
-    as_json_array = len(ydids) > 1
+    # Pool with '--show-source-report' or '--show-exhaustion'. 'many' says the
+    # request was for any number (a name pattern), whatever it found.
+    as_json_array = many or len(ydids) > 1
     resource_type = ctx.args.resource_type
     for index, ydid in enumerate(ydids):
         try:

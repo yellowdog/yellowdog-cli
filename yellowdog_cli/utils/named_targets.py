@@ -9,26 +9,42 @@ left as it is. A Work Requirement, Worker Pool or Compute Requirement is
 a live one if there is one, else, a Work Requirement's or Compute
 Requirement's name being reusable once it has finished, the newest.
 
+A name pattern (a name holding '*', '?' or '[', which no name can) stands
+for every object of the type whose name it matches, exactly as 'yd list
+--name' matches: in the last part alone ('wr/tg-*', never 'wr-*/tg'), and
+for yd-follow and yd-wait only among the unfinished ('live_only'). A pattern
+matching nothing is reported as a name finding nothing is.
+
 Every name is looked up before anything else is done, and those that find
 nothing are reported together; a failure every later lookup would repeat
-(authentication, connection) is raised as it is, for the wrapper.
+(authentication, connection) is raised as it is, for the wrapper. An object
+named twice (by its ID and a pattern, or two patterns) is given once.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import logging
 from collections.abc import Callable
+from itertools import chain
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
+    expand_name_globs,
     find_compute_requirement_by_name,
     find_work_requirement_by_name,
+    get_compute_requirement_summaries,
+    get_filtered_work_requirement_summaries,
+    get_task_groups_from_wr_by_id,
     get_worker_pool_id_by_name,
+    get_worker_pool_summaries,
     iterate_tasks_in_task_group,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
-from yellowdog_cli.utils.printing import print_error
+from yellowdog_cli.utils.glob_utils import contains_glob_chars, glob_search_prefix
+from yellowdog_cli.utils.limits import PATTERN_MATCH_WARNING
+from yellowdog_cli.utils.printing import print_error, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.work_targets import resolve_named_target
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -54,24 +70,30 @@ _Resolved = TypeVar("_Resolved")
 
 
 def resolve_targets(
-    ctx: RunContext, targets: list[str], ydid_type: YDIDType | None
+    ctx: RunContext,
+    targets: list[str],
+    ydid_type: YDIDType | None,
+    live_only: bool = False,
 ) -> list[str]:
     """
     The targets with each name replaced by the ID of the object of
-    'ydid_type' it names, in the order given; 'targets' as they are when
-    'ydid_type' is None (a command taking IDs alone). Every name that finds
-    nothing is reported, and then ReportedFailure raised with the cause
-    they share (NOT_FOUND), or FAILURE for different causes.
+    'ydid_type' it names, and each pattern by the IDs of those it matches
+    (the unfinished alone if 'live_only'), in the order given, each object
+    once; 'targets' as they are when 'ydid_type' is None (a command taking
+    IDs alone). Every name or pattern that finds nothing is reported, and
+    then ReportedFailure raised with the cause they share (NOT_FOUND), or
+    FAILURE for different causes.
     """
     if ydid_type is None:
         return list(targets)
     named: YDIDType = ydid_type  # As narrowed, for the lambdas
-    return resolved_each(
+    found = resolved_each(
         [
-            (lambda target=target: _id_or_lookup(ctx, target, named))
+            (lambda target=target: _ids_of(ctx, target, named, live_only))
             for target in targets
         ]
     )
+    return list(dict.fromkeys(chain.from_iterable(found)))
 
 
 def resolve_compare_targets(
@@ -85,17 +107,19 @@ def resolve_compare_targets(
     named: YDIDType | None = ctx.args.named_target_type
 
     def first() -> str:
+        _refuse_pattern(wr_or_tg)
         if named is None:
             return work_target_id(ctx, wr_or_tg)
         return _id_or_lookup(ctx, wr_or_tg, named)
 
+    def pool_id(pool: str) -> str:
+        _refuse_pattern(pool)
+        return _id_or_lookup(ctx, pool, YDIDType.WORKER_POOL)
+
     resolved = resolved_each(
         [
             first,
-            *(
-                (lambda pool=pool: _id_or_lookup(ctx, pool, YDIDType.WORKER_POOL))
-                for pool in worker_pools
-            ),
+            *((lambda pool=pool: pool_id(pool)) for pool in worker_pools),
         ]
     )
     return resolved[0], resolved[1:]
@@ -125,6 +149,191 @@ def resolved_each(lookups: list[Callable[[], _Resolved]]) -> list[_Resolved]:
     return resolved
 
 
+def is_pattern(target: str) -> bool:
+    """
+    Whether a target is a name pattern: not an ID, and holding a wildcard.
+    """
+    return get_ydid_type(target) is None and contains_glob_chars(target)
+
+
+def _refuse_pattern(target: str) -> None:
+    """
+    Refuses a name pattern where one object is wanted (yd-compare's).
+    """
+    if is_pattern(target):
+        raise ValueError(f"'{target}' is a pattern: give one name or ID")
+
+
+def _ids_of(
+    ctx: RunContext, target: str, ydid_type: YDIDType, live_only: bool
+) -> list[str]:
+    """
+    The ID a target gives, or for a pattern the IDs of the objects it
+    matches (warned of when there are many). Raises as target_id() does,
+    and NotFoundError for a pattern matching nothing.
+    """
+    if not is_pattern(target):
+        return [_id_or_lookup(ctx, target, ydid_type)]
+    namespace = _namespace_for(ctx, target, ydid_type)
+    leading, separator, _ = target.rpartition(NAMESPACE_PREFIX_SEPARATOR)
+    if separator and contains_glob_chars(leading):
+        raise ValueError(
+            f"'{target}': a wildcard may be given in the last part of the name alone"
+        )
+    ids = _matching_ids(ctx, target, ydid_type, namespace, live_only)
+    if not ids:
+        unfinished = "unfinished " if live_only else ""
+        raise NotFoundError(
+            f"No {unfinished}{ydid_type.value} matches '{target}'"
+            f"{_in(target, namespace)}"
+        )
+    _LOG.debug("'%s' matches %s", target, ", ".join(ids))
+    if len(ids) > PATTERN_MATCH_WARNING:
+        print_warning(f"'{target}' matches {len(ids)} {ydid_type.value}s")
+    return ids
+
+
+def _matching_ids(
+    ctx: RunContext,
+    target: str,
+    ydid_type: YDIDType,
+    namespace: str | None,
+    live_only: bool,
+) -> list[str]:
+    """
+    The IDs of the objects of the type whose names the pattern matches, in
+    the order the Platform lists them.
+    """
+    from yellowdog_client.model import (
+        ComputeRequirementStatus,
+        TaskGroupStatus,
+        WorkRequirementStatus,
+    )
+
+    from yellowdog_cli.utils.entity_utils import FINISHED_WORK_REQUIREMENT_STATUSES
+
+    match ydid_type:
+        case YDIDType.WORK_REQUIREMENT:
+            unfinished = [
+                status
+                for status in WorkRequirementStatus
+                if status not in FINISHED_WORK_REQUIREMENT_STATUSES
+            ]
+            found = expand_name_globs(
+                [target],
+                namespace,
+                fetch=lambda ns, prefix: get_filtered_work_requirement_summaries(
+                    ctx.client,
+                    name=prefix or None,
+                    namespace=ns,
+                    include_filter=unfinished if live_only else None,
+                ),
+            )
+        case YDIDType.COMPUTE_REQUIREMENT:
+            found = expand_name_globs(
+                [target],
+                namespace,
+                fetch=lambda ns, prefix: get_compute_requirement_summaries(
+                    ctx.client,
+                    ns,
+                    statuses=[
+                        status
+                        for status in ComputeRequirementStatus
+                        if status != ComputeRequirementStatus.TERMINATED
+                    ]
+                    if live_only
+                    else None,
+                    name=prefix or None,
+                ),
+            )
+        case YDIDType.WORKER_POOL:
+            found = [
+                summary
+                for summary in expand_name_globs(
+                    [target],
+                    namespace,
+                    fetch=lambda ns, prefix: get_worker_pool_summaries(
+                        ctx.client, ns, prefix or None
+                    ),
+                )
+                if not (live_only and _finished(summary))
+            ]
+        case YDIDType.TASK_GROUP:
+            # The Work Requirement as a name of one is found ('wr', or
+            # 'namespace/wr'), never as 'wr/tg' might read
+            path, _, pattern = target.rpartition(NAMESPACE_PREFIX_SEPARATOR)
+            work_requirement = find_work_requirement_by_name(
+                ctx.client,
+                path,
+                namespace,
+                [
+                    status
+                    for status in WorkRequirementStatus
+                    if status not in FINISHED_WORK_REQUIREMENT_STATUSES
+                ],
+            )
+            finished = {
+                TaskGroupStatus.COMPLETED,
+                TaskGroupStatus.FAILED,
+                TaskGroupStatus.CANCELLED,
+            }
+            found = [
+                task_group
+                for task_group in get_task_groups_from_wr_by_id(
+                    ctx.client, cast(str, work_requirement.id)
+                )
+                if _matches(task_group.name, pattern)
+                and not (live_only and task_group.status in finished)
+            ]
+        case YDIDType.TASK:
+            path, _, pattern = target.rpartition(NAMESPACE_PREFIX_SEPARATOR)
+            found = [
+                task
+                for task in iterate_tasks_in_task_group(
+                    ctx.client,
+                    _task_group_id(ctx, path, namespace),
+                    name_contains=glob_search_prefix(pattern) or None,
+                )
+                if _matches(task.name, pattern) and not (live_only and _finished(task))
+            ]
+        case _:
+            raise ValueError(f"A {ydid_type.value} cannot be given by name")
+    return [str(item.id) for item in found]
+
+
+def _matches(name: str | None, pattern: str) -> bool:
+    return name is not None and fnmatch.fnmatchcase(name, pattern)
+
+
+def _finished(item: object) -> bool:
+    """
+    Whether an object's status says it has finished (a status's own
+    'finished', as the SDK gives a Worker Pool's and a Task's).
+    """
+    return bool(getattr(getattr(item, "status", None), "finished", False))
+
+
+def _namespace_for(ctx: RunContext, target: str, ydid_type: YDIDType) -> str | None:
+    """
+    The configured namespace, having checked the target's form: as many
+    parts as the type's names have, or one more for a namespace, and a
+    namespace configured when none is given. Raises ValueError.
+    """
+    if target.startswith("ydid:"):
+        raise ValueError(f"'{target}' is not a valid YellowDog ID")
+    namespace = ctx.config.namespace or None
+    parts = target.split(NAMESPACE_PREFIX_SEPARATOR)
+    expected = _PARTS[ydid_type]
+    if len(parts) not in (expected, expected + 1) or not all(parts):
+        raise ValueError(f"'{target}' is not {_form(ydid_type)}")
+    if len(parts) == expected and namespace is None:
+        raise ValueError(
+            f"No namespace is configured to look up '{target}' in: give"
+            f" --namespace, or 'namespace/{target}'"
+        )
+    return namespace
+
+
 def _id_or_lookup(ctx: RunContext, target: str, ydid_type: YDIDType) -> str:
     """
     A YellowDog ID as it is; a name looked up as 'ydid_type'.
@@ -142,18 +351,7 @@ def target_id(ctx: RunContext, target: str, ydid_type: YDIDType) -> str:
     NotFoundError, AmbiguousNameError or ValueError (a name of the wrong
     form, or one needing a namespace when none is configured).
     """
-    if target.startswith("ydid:"):
-        raise ValueError(f"'{target}' is not a valid YellowDog ID")
-    namespace = ctx.config.namespace or None
-    parts = target.split(NAMESPACE_PREFIX_SEPARATOR)
-    expected = _PARTS[ydid_type]
-    if len(parts) not in (expected, expected + 1) or not all(parts):
-        raise ValueError(f"'{target}' is not {_form(ydid_type)}")
-    if len(parts) == expected and namespace is None:
-        raise ValueError(
-            f"No namespace is configured to look up '{target}' in: give"
-            f" --namespace, or 'namespace/{target}'"
-        )
+    namespace = _namespace_for(ctx, target, ydid_type)
 
     match ydid_type:
         case YDIDType.WORK_REQUIREMENT:

@@ -116,9 +116,10 @@ def test_a_work_requirement_is_found_live_or_finished_in_the_namespace(monkeypat
         return SimpleNamespace(id=WR_ID)
 
     monkeypatch.setattr(named_targets, "find_work_requirement_by_name", find)
+    # Named twice, by name and ID: given once
     assert named_targets.resolve_targets(
         _ctx(), ["my-wr", WR_ID], YDIDType.WORK_REQUIREMENT
-    ) == [WR_ID, WR_ID]
+    ) == [WR_ID]
     assert seen == {"target": "my-wr", "namespace": "ns"}
 
 
@@ -268,3 +269,167 @@ def test_how_wr_slash_tg_was_read_is_traced(monkeypatch, caplog, task_group, exp
     with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
         work_targets.resolve_named_target(object(), "a/b", "ns")  # type: ignore[arg-type]
     assert caplog.messages == [expected]
+
+
+# ---------------------------------------------------------------------------
+# Name patterns: every object of the type whose name matches
+# ---------------------------------------------------------------------------
+
+
+def _summary(name, n, status=None):
+    return SimpleNamespace(
+        name=name, id=WR_ID.replace("11111111-1111", f"{n:08d}-1111"), status=status
+    )
+
+
+class TestPatterns:
+    def _work_requirements(self, monkeypatch):
+        searched = []
+        found = [
+            _summary("run-20261030-a", 1),
+            _summary("run-20261030-b", 2),
+            _summary("run-20261031-a", 3),
+        ]
+
+        def search(client, name=None, namespace=None, include_filter=None, **_):
+            searched.append((name, namespace, include_filter))
+            return found
+
+        monkeypatch.setattr(
+            named_targets, "get_filtered_work_requirement_summaries", search
+        )
+        return found, searched
+
+    def test_a_pattern_gives_every_match_and_searches_its_literal_start(
+        self, monkeypatch
+    ):
+        found, searched = self._work_requirements(monkeypatch)
+        assert named_targets.resolve_targets(
+            _ctx(), ["run-20261030*"], YDIDType.WORK_REQUIREMENT
+        ) == [found[0].id, found[1].id]
+        # Any status, for yd-show
+        assert searched == [("run-20261030", "ns", None)]
+
+    def test_live_only_searches_the_unfinished(self, monkeypatch):
+        from yellowdog_client.model import WorkRequirementStatus
+
+        _, searched = self._work_requirements(monkeypatch)
+        named_targets.resolve_targets(
+            _ctx(), ["run-*"], YDIDType.WORK_REQUIREMENT, live_only=True
+        )
+        statuses = searched[0][2]
+        assert WorkRequirementStatus.RUNNING in statuses
+        assert WorkRequirementStatus.COMPLETED not in statuses
+
+    def test_an_object_matched_twice_is_given_once(self, monkeypatch):
+        found, _ = self._work_requirements(monkeypatch)
+        assert named_targets.resolve_targets(
+            _ctx(), [found[1].id, "run-*-a", "run-20261030*"], YDIDType.WORK_REQUIREMENT
+        ) == [found[1].id, found[0].id, found[2].id]
+
+    def test_a_pattern_matching_nothing_is_not_found(self, monkeypatch, capsys):
+        self._work_requirements(monkeypatch)
+        with pytest.raises(ReportedFailure) as raised:
+            named_targets.resolve_targets(
+                _ctx(), ["nothing-*"], YDIDType.WORK_REQUIREMENT, live_only=True
+            )
+        assert classify(raised.value) == ExitCode.NOT_FOUND
+        err = " ".join(capsys.readouterr().err.split())
+        assert (
+            "No unfinished Work Requirement matches 'nothing-*' in namespace 'ns'"
+            in err
+        )
+
+    def test_a_wildcard_only_in_the_last_part(self, monkeypatch, capsys):
+        with pytest.raises(ReportedFailure):
+            named_targets.resolve_targets(_ctx(), ["wr-*/tg"], YDIDType.TASK_GROUP)
+        assert "in the last part of the name alone" in " ".join(
+            capsys.readouterr().err.split()
+        )
+
+    def test_many_matches_are_warned_of(self, monkeypatch):
+        monkeypatch.setattr(named_targets, "PATTERN_MATCH_WARNING", 2)
+        warnings = []
+        monkeypatch.setattr(
+            named_targets, "print_warning", lambda m, **k: warnings.append(m)
+        )
+        self._work_requirements(monkeypatch)
+        named_targets.resolve_targets(_ctx(), ["run-*"], YDIDType.WORK_REQUIREMENT)
+        assert warnings == ["'run-*' matches 3 Work Requirements"]
+
+    def test_finished_worker_pools_are_left_out_live_only(self, monkeypatch):
+        from yellowdog_client.model import WorkerPoolStatus
+
+        pools = [
+            _summary("pool-a", 1, WorkerPoolStatus.RUNNING),
+            _summary("pool-b", 2, WorkerPoolStatus.TERMINATED),
+        ]
+        monkeypatch.setattr(
+            named_targets, "get_worker_pool_summaries", lambda *a, **k: pools
+        )
+        assert named_targets.resolve_targets(
+            _ctx(), ["pool-*"], YDIDType.WORKER_POOL, live_only=True
+        ) == [pools[0].id]
+        assert named_targets.resolve_targets(
+            _ctx(), ["pool-*"], YDIDType.WORKER_POOL
+        ) == [pools[0].id, pools[1].id]
+
+    def test_task_groups_match_within_their_work_requirement(self, monkeypatch):
+        from yellowdog_client.model import TaskGroupStatus
+
+        seen = []
+
+        def find(client, target, namespace, statuses):
+            seen.append((target, namespace))
+            return SimpleNamespace(id=WR_ID)
+
+        groups = [
+            SimpleNamespace(
+                id=f"{TG_ID[:-1]}1", name="render-1", status=TaskGroupStatus.RUNNING
+            ),
+            SimpleNamespace(
+                id=f"{TG_ID[:-1]}2", name="render-2", status=TaskGroupStatus.COMPLETED
+            ),
+            SimpleNamespace(
+                id=f"{TG_ID[:-1]}3", name="encode", status=TaskGroupStatus.RUNNING
+            ),
+        ]
+        monkeypatch.setattr(named_targets, "find_work_requirement_by_name", find)
+        monkeypatch.setattr(
+            named_targets, "get_task_groups_from_wr_by_id", lambda c, wr_id: groups
+        )
+        assert named_targets.resolve_targets(
+            _ctx(), ["other/my-wr/render-*"], YDIDType.TASK_GROUP
+        ) == [groups[0].id, groups[1].id]
+        assert seen == [("other/my-wr", "ns")]
+        assert named_targets.resolve_targets(
+            _ctx(), ["my-wr/render-*"], YDIDType.TASK_GROUP, live_only=True
+        ) == [groups[0].id]
+
+    def test_tasks_match_within_their_task_group(self, monkeypatch):
+        searched = []
+        tasks = [
+            SimpleNamespace(id="t1", name="frame-01", status=None),
+            SimpleNamespace(id="t2", name="frame-02", status=None),
+            SimpleNamespace(id="t3", name="frame-10", status=None),
+        ]
+        monkeypatch.setattr(
+            named_targets, "_task_group_id", lambda ctx, path, namespace: TG_ID
+        )
+
+        def iterate(client, tg_id, name_contains=None):
+            searched.append(name_contains)
+            return iter(tasks)
+
+        monkeypatch.setattr(named_targets, "iterate_tasks_in_task_group", iterate)
+        assert named_targets.resolve_targets(
+            _ctx(), ["wr/tg/frame-0?"], YDIDType.TASK
+        ) == ["t1", "t2"]
+        assert searched == ["frame-0"]
+
+    def test_compare_takes_no_pattern(self, capsys):
+        with pytest.raises(ReportedFailure):
+            named_targets.resolve_compare_targets(
+                _ctx(named=YDIDType.WORK_REQUIREMENT), "wr-*", []
+            )
+        assert "is a pattern" in capsys.readouterr().err

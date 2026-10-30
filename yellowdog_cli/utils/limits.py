@@ -94,3 +94,7 @@ VARIABLE_TABLE_MAX_TEXT = 100_000
 # Tasks
 # ('--limit 0' lists them all)
 DEFAULT_LIST_LIMIT = 1000
+
+# A name pattern given to yd-show, yd-follow or yd-wait matching more than
+# this many objects is warned of (nothing is changed, so nothing is asked)
+PATTERN_MATCH_WARNING = 50

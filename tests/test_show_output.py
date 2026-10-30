@@ -218,7 +218,7 @@ _WARNINGS: list[str] = []
 
 
 def _run(
-    ydids: list[str], client: MagicMock, args: MagicMock, capsys
+    ydids: list[str], client: MagicMock, args: MagicMock, capsys, many: bool = False
 ) -> tuple[int, str]:
     _WARNINGS.clear()
     ctx = RunContext(args=args, config=MagicMock(), client=client)
@@ -231,7 +231,7 @@ def _run(
         patch("yellowdog_client.common.json.Json", _StubJson),
         patch.object(show_module, "print_error"),
     ):
-        failures = show_ydids(ctx, ydids)
+        failures = show_ydids(ctx, ydids, many=many)
     return failures, capsys.readouterr().out
 
 
@@ -271,6 +271,20 @@ def test_one_id_produces_a_bare_object(setup, capsys):
     parsed = loads(output)
     assert isinstance(parsed, dict)  # A bare object, not an array of one
     assert _names(parsed) == [obj.payload["name"]]
+
+
+def test_a_pattern_matching_one_still_produces_an_array(capsys):
+    # A name pattern asks for any number, so its shape never depends on how
+    # many it matched
+    client = MagicMock()
+    ydid, obj = SETUPS[0](client)
+
+    failures, output = _run([ydid], client, _args(), capsys, many=True)
+
+    assert failures == 0
+    parsed = loads(output)
+    assert isinstance(parsed, list)
+    assert _names(parsed[0]) == [obj.payload["name"]]
 
 
 def test_mixed_types_produce_a_parseable_array(capsys):

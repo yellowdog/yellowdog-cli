@@ -67,8 +67,11 @@ def _fetch(ctx: RunContext, ydid: str, ydid_type: YDIDType | None) -> Any:
 def main(ctx: RunContext):
     # At least one ID is required, each a Work Requirement's, Worker Pool's or
     # Compute Requirement's, as the command line is parsed
-    # A noun verb's names are looked up first
-    targets = resolve_targets(ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type)
+    # A noun verb's names are looked up first, and its name patterns matched
+    # among the unfinished
+    targets = resolve_targets(
+        ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type, live_only=True
+    )
     follow_ids(ctx, targets, timeout=ctx.args.timeout)
 
     # Errors and failure warnings are always printed, including with
