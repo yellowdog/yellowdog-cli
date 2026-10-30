@@ -944,7 +944,7 @@ class TestChosenTaskGroups:
         infos: list[str] = []
         monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
         ctx = RunContext(args=_args("tasks"), config=None, client=MagicMock())
-        yd_list.list_task_groups(ctx, SimpleNamespace(id=WR))
+        yd_list.list_task_groups(ctx, [SimpleNamespace(id=WR)])
         return shown, infos
 
     def test_the_tasks_of_several_task_groups_are_one_table(self, monkeypatch):
@@ -955,6 +955,105 @@ class TestChosenTaskGroups:
     def test_a_cancelled_choice_lists_nothing(self, monkeypatch):
         shown, infos = self._list(monkeypatch, lambda groups: [])
         assert shown == [] and infos == []
+
+
+class TestChosenWorkRequirements:
+    """
+    Several Work Requirements may be chosen: their Task Groups are offered
+    (or listed) together, grouped by Work Requirement in their order, and
+    each Task Group and its Tasks name their Work Requirement; of one Work
+    Requirement, nothing is named, its name having been printed.
+    """
+
+    def _run(self, monkeypatch, entity_type, chosen_wrs):
+        wrs = [
+            SimpleNamespace(id="wr1", name="one"),
+            SimpleNamespace(id="wr2", name="two"),
+        ]
+        groups = {
+            "wr1": [
+                SimpleNamespace(id="tg-b", name="b"),
+                SimpleNamespace(id="tg-a", name="a"),
+            ],
+            "wr2": [SimpleNamespace(id="tg-c", name="a")],
+        }
+        tasks = {
+            "tg-a": [SimpleNamespace(name="t1")],
+            "tg-b": [],
+            "tg-c": [SimpleNamespace(name="t2")],
+        }
+        choices = iter([chosen_wrs, lambda tgs: tgs])
+        offered: list = []
+
+        def select(client, objects, **k):
+            offered.append(list(objects))
+            return next(choices)(objects)
+
+        monkeypatch.setattr(yd_list, "select", select)
+        monkeypatch.setattr(
+            yd_list, "get_filtered_work_requirement_summaries", lambda *a, **k: wrs
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: [SimpleNamespace(**vars(g)) for g in groups[wr_id]],
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "_matching_tasks",
+            lambda ctx, tg: iter(tasks[tg.id]),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "sorted_objects",
+            lambda objects: sorted(objects, key=lambda o: o.name),
+        )
+        monkeypatch.setattr(yd_list, "namespace_scope", lambda *a: "")
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, objects: shown.append(objects),
+        )
+        ctx = RunContext(
+            args=_args(entity_type),
+            config=SimpleNamespace(namespace="ns", name_tag=None),
+            client=MagicMock(),
+        )
+        yd_list.list_work_requirements(ctx)
+        return offered, shown, infos
+
+    def test_the_task_groups_of_several_are_offered_together(self, monkeypatch):
+        offered, shown, infos = self._run(monkeypatch, ET_TASKS, lambda wrs: wrs)
+        task_groups = offered[1]
+        assert [(g.workRequirementName, g.name) for g in task_groups] == [
+            ("one", "a"),
+            ("one", "b"),
+            ("two", "a"),
+        ]
+        (table,) = shown
+        assert [(t.workRequirementName, t.name) for t in table] == [
+            ("one", "t1"),
+            ("two", "t2"),
+        ]
+        assert "Work Requirements 'one', 'two'" in infos
+
+    def test_task_groups_are_listed_together(self, monkeypatch):
+        _, shown, _ = self._run(monkeypatch, ET_TASK_GROUPS, lambda wrs: wrs)
+        (table,) = shown
+        assert [g.workRequirementName for g in table] == ["one", "one", "two"]
+
+    def test_one_work_requirement_names_none(self, monkeypatch):
+        offered, shown, infos = self._run(monkeypatch, ET_TASKS, lambda wrs: wrs[:1])
+        assert not any(hasattr(g, "workRequirementName") for g in offered[1])
+        assert not any(hasattr(t, "workRequirementName") for t in shown[0])
+        assert "Work Requirement 'one'" in infos
+
+    def test_a_cancelled_choice_lists_nothing(self, monkeypatch):
+        offered, shown, _ = self._run(monkeypatch, ET_TASKS, lambda wrs: [])
+        assert len(offered) == 1 and shown == []
 
 
 class TestChosenComputeRequirements:
@@ -1045,7 +1144,7 @@ class TestEmptyListings:
             ),
             (
                 ET_TASK_GROUPS,
-                lambda ctx: yd_list.list_task_groups(ctx, SimpleNamespace(id=WR)),
+                lambda ctx: yd_list.list_task_groups(ctx, [SimpleNamespace(id=WR)]),
                 "No matching Task Groups",
             ),
             (
@@ -1220,7 +1319,7 @@ def test_a_task_status_does_not_filter_their_task_groups(
         "list_tasks",
         lambda _c, tgs: walked.extend(tg.name for tg in tgs),
     )
-    yd_list.list_task_groups(_ctx(), SimpleNamespace(id="wr"))
+    yd_list.list_task_groups(_ctx(), [SimpleNamespace(id="wr")])
     if entity_type == ET_TASKS:
         assert walked == ["tg"]
     else:

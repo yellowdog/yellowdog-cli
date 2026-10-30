@@ -181,18 +181,33 @@ def work_requirement_table(
     return headers, table
 
 
+def _work_requirement_column(items: Sequence[Any]) -> bool:
+    """
+    Whether a table names each row's Work Requirement: when the lister has
+    added it ('workRequirementName', for rows of several Work Requirements).
+    """
+    return any(getattr(i, "workRequirementName", None) is not None for i in items)
+
+
 def task_group_table(
     task_group_list: list[TaskGroup],
 ) -> tuple[list[str], list[list]]:
-    headers = ["#", "Task Group Name", "Status", "Tasks", "Task Group ID"]
+    show_wr_name = _work_requirement_column(task_group_list)
+    headers = ["#"]
+    if show_wr_name:
+        headers.append("Work Requirement")
+    headers += ["Task Group Name", "Status", "Tasks", "Task Group ID"]
     table = []
     for index, task_group in enumerate(task_group_list):
         status_msg = task_group_status_text(
             task_group.status, task_group.starved, task_group.waitingOnDependency
         )
+        row: list = [index + 1]
+        if show_wr_name:
+            row.append(getattr(task_group, "workRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 task_group.name,
                 status_msg,
                 _task_counts(task_group.taskSummary),
@@ -222,15 +237,23 @@ def task_table(
 ) -> tuple[list[str], list[list]]:
     """
     The Tasks' table, each with its Task Group's name, from 'task_group_names'
-    (by Task Group ID; a Task Group not in it is left blank).
+    (by Task Group ID; a Task Group not in it is left blank), and its Work
+    Requirement's where the lister has added it.
     """
     names = task_group_names or {}
-    headers = ["#", "Task Group", "Task Name", "Status", "Task ID"]
+    show_wr_name = _work_requirement_column(task_list)
+    headers = ["#"]
+    if show_wr_name:
+        headers.append("Work Requirement")
+    headers += ["Task Group", "Task Name", "Status", "Task ID"]
     table = []
     for index, task in enumerate(task_list):
+        row: list = [index + 1]
+        if show_wr_name:
+            row.append(getattr(task, "workRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 names.get(task.taskGroupId or "", ""),
                 task.name,
                 _cell(task.status),

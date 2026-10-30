@@ -694,6 +694,42 @@ class TestInstancesTableComputeRequirement:
         assert len(rows[0]) == len(headers)
 
 
+class TestWorkRequirementColumn:
+    """
+    The Task Group and Task tables name each row's Work Requirement when
+    the lister has added it, and have no such column otherwise.
+    """
+
+    def _task_group(self, **extra):
+        return SimpleNamespace(
+            name="tg",
+            status=None,
+            starved=False,
+            waitingOnDependency=False,
+            taskSummary=None,
+            id="ydid:taskgrp:1",
+            **extra,
+        )
+
+    def _task(self, **extra):
+        return SimpleNamespace(
+            name="t", status="READY", taskGroupId="tg1", id="ydid:task:1", **extra
+        )
+
+    @pytest.mark.parametrize(
+        ("builder", "item"),
+        [(task_group_table, "_task_group"), (task_table, "_task")],
+    )
+    def test_named_where_the_lister_adds_it(self, builder, item):
+        make = getattr(self, item)
+        headers, rows = builder([make(workRequirementName="wr")])
+        assert headers[:2] == ["#", "Work Requirement"]
+        assert rows[0][1] == "wr"
+        headers, rows = builder([make()])
+        assert "Work Requirement" not in headers
+        assert len(rows[0]) == len(headers)
+
+
 class TestTaskGroupNames:
     """
     task_group_names(): each Task Group looked up once, from its Work

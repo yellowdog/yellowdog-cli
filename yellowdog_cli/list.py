@@ -599,12 +599,12 @@ def list_work_requirements(ctx: RunContext):
             _print_all(ctx, all_objects)
         limit.warn()
     else:
-        selected_work_summaries = select(
-            ctx.client, work_requirement_summaries, single_result=True
-        )
-        for work_summary in selected_work_summaries:
-            print_info(f"Work Requirement '{work_summary.name}'")
-            list_task_groups(ctx, work_summary)
+        # Several Work Requirements may be chosen; none (the choice
+        # cancelled) lists nothing
+        if chosen := select(ctx.client, work_requirement_summaries):
+            names = ", ".join(f"'{wr.name}'" for wr in chosen)
+            print_info(f"Work Requirement{'s' if len(chosen) > 1 else ''} {names}")
+            list_task_groups(ctx, chosen)
 
 
 def _filtered_task_groups(ctx: RunContext, task_groups: list) -> list:
@@ -808,11 +808,23 @@ def _list_within(ctx: RunContext) -> None:
     limit.warn()
 
 
-def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
-    task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
-        ctx.client, cast(str, work_summary.id)
-    )
-    task_groups = sorted_objects(task_groups)
+def list_task_groups(ctx: RunContext, work_summaries: list[WorkRequirementSummary]):
+    """
+    The Task Groups of the chosen Work Requirements, grouped by Work
+    Requirement in their order, each in order: listed, or, when listing
+    Tasks, chosen from. Of several Work Requirements, each Task Group (and
+    each of its Tasks) names its own for the table.
+    """
+    several = len(work_summaries) > 1
+    task_groups: list[TaskGroup] = []
+    for work_summary in work_summaries:
+        of_one = sorted_objects(
+            get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
+        )
+        if several:
+            for task_group in of_one:
+                task_group.workRequirementName = work_summary.name  # type: ignore[attr-defined]
+        task_groups.extend(of_one)
     # '--status' and '--name' are the Tasks' when listing Tasks, so are no
     # test of the Task Groups walked to reach them
     if ctx.args.entity_type == ET_TASK_GROUPS:
@@ -823,12 +835,17 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
         # Interactive alone: '--ids-only' lists everything, with no choosing
         if ctx.args.details:
             print_yd_object_list(
-                [(task_group, None) for task_group in select(ctx.client, task_groups)]
+                [
+                    (task_group, None)
+                    for task_group in select(
+                        ctx.client, task_groups, sort_objects=False
+                    )
+                ]
             )
         else:
             print_numbered_object_list(ctx.client, task_groups)
     # Several Task Groups may be chosen; none (the choice cancelled) lists nothing
-    elif chosen := select(ctx.client, task_groups):
+    elif chosen := select(ctx.client, task_groups, sort_objects=False):
         list_tasks(ctx, chosen)
 
 
@@ -843,12 +860,18 @@ def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
     for task_group in task_groups:
         if limit.more:
             break
-        tasks.extend(sorted_objects(limit.take(_matching_tasks(ctx, task_group))))
+        of_one = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
+        if (name := getattr(task_group, "workRequirementName", None)) is not None:
+            for task in of_one:
+                task.workRequirementName = name  # type: ignore[attr-defined]
+        tasks.extend(of_one)
     if not tasks:
         _print_empty(ctx, "No matching Tasks")
     # Interactive alone, as list_task_groups() is
     elif ctx.args.details:
-        print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
+        print_yd_object_list(
+            [(task, None) for task in select(ctx.client, tasks, sort_objects=False)]
+        )
     else:
         print_numbered_object_list(ctx.client, tasks)
     limit.warn()
