@@ -11,6 +11,7 @@ one, which the command and any other caller both use.
 """
 
 import dataclasses
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -148,6 +149,8 @@ from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.specs.sdk_models import RESOURCE_TYPES
 from yellowdog_cli.utils.type_check import check_dict, check_list
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -851,8 +854,8 @@ def create_allowance(ctx: RunContext, resource: dict):
     # once it does, so a creation that fails loses nothing
     to_replace = []
     if _OPTIONS.match_allowances_by_description and description is not None:
-        print_info(
-            f"Checking for existing Allowance(s) matching description '{description}'"
+        _LOG.debug(
+            "Checking for existing Allowance(s) matching description '%s'", description
         )
         to_replace = allowances_to_remove(ctx.client, description)
 
@@ -913,7 +916,9 @@ def _resolve_allowance_template(
             )
             return
         raise NotFoundError(f"{label} name '{template_name_or_id}' not found")
-    print_info(f"Replaced {label} name '{template_name_or_id}' with ID {template_id}")
+    _LOG.debug(
+        "Replaced %s name '%s' with ID %s", label, template_name_or_id, template_id
+    )
     resource[property_] = template_id
 
 
@@ -983,7 +988,7 @@ def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
         }
 
     # Attempt attribute creation
-    print_info(f"Attempting to create or update Attribute Definition '{name}'")
+    _LOG.debug("Attempting to create or update Attribute Definition '%s'", name)
     response = post(
         url=url, headers=headers, json=payload, timeout=ctx.config.request_timeout
     )

@@ -5,6 +5,7 @@ Command to list YellowDog entities.
 """
 
 import fnmatch
+import logging
 from collections.abc import Callable, Iterable, Iterator
 from itertools import chain, islice
 from os.path import exists
@@ -134,6 +135,8 @@ from yellowdog_cli.utils.ydid_utils import (
     get_ydid_type,
     work_requirement_id_of_task_group,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 def _filter_by_name_glob_with_warning(
@@ -456,7 +459,7 @@ def _adjust_output_options(ctx: RunContext) -> None:
         ctx.args.details = True
 
     if ctx.args.details and ctx.args.strip_ids:
-        print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
+        _LOG.debug("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
     # ... and '--details' as set here
     configure_output(ctx.args)

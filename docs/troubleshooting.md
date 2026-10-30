@@ -171,8 +171,10 @@ It shows:
 
 - Where the configuration, the variable substitutions and the `.env` variables were loaded from, the Platform API URL and the HTTPS proxy in use.
 - Each request to the Platform, with its response status.
-- Each name resolved to its YellowDog ID, what each name pattern matched, and the namespaces searched when none was given.
+- Each name resolved to its YellowDog ID (a Compute Requirement an action names included), what each name pattern matched, and the namespaces searched when none was given.
 - Each file read, by its full path, and the directory a specification's files were looked for in.
+- For `yd workerpool provision` and `yd computerequirement provision`, each property filled in from the configuration file, `--property` or `--target`; for `yd workrequirement submit`, each property `--property` set in the specification.
+- Each template named in a resource specification and the ID it was replaced with, and the Allowances matched by description that a new one replaces.
 - For `yd workrequirement submit`, how the Tasks were batched and each failed attempt to add a batch; with `--add-to`, which Task Groups were already there and how the new Tasks were numbered.
 - Each event stream opened, closed or reconnected, and the wait before reconnecting; after an action on a Compute Requirement, what `--follow` checked.
 - What each target of an action, such as `cancel` or `terminate`, resolved to.

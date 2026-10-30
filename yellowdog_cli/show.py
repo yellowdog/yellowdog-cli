@@ -4,6 +4,7 @@
 Command to show the JSON details of YellowDog entities via their IDs.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from sys import exit as sys_exit
@@ -87,6 +88,8 @@ from yellowdog_cli.utils.ydid_utils import (
     work_requirement_id_of_task_group,
 )
 
+_LOG = logging.getLogger(__name__)
+
 # An object to be shown, paired with any additional fields to add to its JSON
 # representation. A single YellowDog ID can yield more than one: a Configured
 # Worker Pool shown with '--show-token' yields the pool and its token, and a
@@ -138,7 +141,7 @@ def show_ydids(ctx: RunContext, ydids: list[str]) -> int:
     and the failure raised with its own exit code.
     """
     if ctx.args.strip_ids:
-        print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
+        _LOG.debug("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
     _TALLY.codes.clear()
     items: list[ShowItem] = []
@@ -448,7 +451,7 @@ def _member_of(
 
 def _compute_source_template(ctx: RunContext, ydid: str) -> list[ShowItem]:
     if ctx.args.substitute_ids:
-        print_info("Substituting Image Family ID with name")
+        _LOG.debug("Substituting Image Family ID with name")
     return [
         (
             substitute_image_family_id_for_name_in_cst(
@@ -463,7 +466,7 @@ def _compute_source_template(ctx: RunContext, ydid: str) -> list[ShowItem]:
 
 def _compute_requirement_template(ctx: RunContext, ydid: str) -> list[ShowItem]:
     if ctx.args.substitute_ids:
-        print_info(
+        _LOG.debug(
             "Substituting Compute Source Template IDs and Image Family IDs with names"
         )
     return [
@@ -553,7 +556,7 @@ def _diagnostics(
                 " Requirement provisioned from a dynamic template has one"
             )
     if ctx.args.show_exhaustion:
-        print_info(f"Checking Allowance exhaustion for '{cr_id}'")
+        _LOG.debug("Checking Allowance exhaustion for '%s'", cr_id)
         notifications = (
             ctx.client.allowances_client.check_compute_requirement_exhaustion(
                 compute_requirement
@@ -574,7 +577,7 @@ def _diagnostics(
 def _allowance(ctx: RunContext, ydid: str) -> list[ShowItem]:
     allowance = ctx.client.allowances_client.get_allowance_by_id(ydid)
     if ctx.args.substitute_ids:
-        print_info("Substituting ID with name")
+        _LOG.debug("Substituting ID with name")
         allowance = substitute_id_for_name_in_allowance(
             ctx.client,
             allowance,  # type: ignore[arg-type]

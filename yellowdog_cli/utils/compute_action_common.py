@@ -16,6 +16,7 @@ Instances, which the SDK takes as a list. The rules for what cannot be acted
 on, confirming and stopping on a session failure are action_runner.py's.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeAlias, cast
@@ -83,6 +84,8 @@ from yellowdog_cli.utils.ydid_utils import (
     get_ydid_type,
     split_instance_specification,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -728,7 +731,7 @@ def _resolve_compute_requirement_name(
         )
     except (NotFoundError, AmbiguousNameError) as e:
         raise Unresolved(str(e)) from e
-    print_info(f"Found Compute Requirement ID: {summary.id}")
+    _LOG.debug("Found Compute Requirement ID: %s", summary.id)
     return summary
 
 

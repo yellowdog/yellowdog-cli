@@ -4,6 +4,7 @@
 A script to provision a Compute Requirement.
 """
 
+import logging
 from dataclasses import dataclass
 from math import ceil, floor
 from typing import cast
@@ -62,6 +63,8 @@ from yellowdog_cli.utils.variable_syntax import (
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType
+
+_LOG = logging.getLogger(__name__)
 
 
 # Specifies the number of instances in a Compute Requirement batch
@@ -376,7 +379,7 @@ def _create_compute_requirement_from_json(
         if value is not None and (
             cr_data.get(key) is None or worker_pool_property_overridden(*toml_keys)
         ):
-            print_info(f"Setting '{key}' to '{shown_value(value)}'")
+            _LOG.debug("Setting '%s' to '%s'", key, shown_value(value))
             cr_data[key] = value
 
     # The TOML user data is read only if the specification has none, or
@@ -387,9 +390,10 @@ def _create_compute_requirement_from_json(
         user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
         if user_data is not None:
             # Its source and size, never the script itself
-            print_info(
-                f"Setting 'userData' from {user_data_source(CONFIG_WP)}"
-                f" ({len(user_data):,d} characters)"
+            _LOG.debug(
+                "Setting 'userData' from %s (%s characters)",
+                user_data_source(CONFIG_WP),
+                f"{len(user_data):,d}",
             )
             cr_data["userData"] = user_data
 
@@ -397,8 +401,8 @@ def _create_compute_requirement_from_json(
         ctx.args.target is not None
         and cr_data.get("targetInstanceCount") != ctx.args.target
     ):
-        print_info(
-            f"Setting 'targetInstanceCount' to '{ctx.args.target}' (from '--target')"
+        _LOG.debug(
+            "Setting 'targetInstanceCount' to '%s' (from '--target')", ctx.args.target
         )
         cr_data["targetInstanceCount"] = ctx.args.target
 

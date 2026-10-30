@@ -4,6 +4,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what a command prints without `--debug`:
+
+- **Messages about how a command works out what it sends are in the `--debug` trace**, not its ordinary output: what `yd workerpool provision` and `yd computerequirement provision` fill in from the configuration file (`Setting 'provisionedProperties.workerTag': ...`), what `--property` sets in a Work Requirement, a template name replaced with its ID, a Compute Requirement name resolved to its ID, the check for Allowances to replace, `Attempting to create or update Attribute Definition`, `Checking Allowance exhaustion`, and the notes that `--strip-ids`, `--substitute-ids` and `--no-resequence` are in effect. What a command created, changed or removed is still printed.
+
 ### Listing and actions
 
 - **`yd task list` shows each Task's Task Group**: the table of Tasks has a Task Group column, so Tasks listed across a Work Requirement's Task Groups (`--within` a Work Requirement, or every Task) can be told apart; `--details` and `--json` are unchanged.
