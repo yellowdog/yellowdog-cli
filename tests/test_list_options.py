@@ -63,7 +63,7 @@ def _args(entity_type: str, **values) -> Any:
         provider=None,
         description_glob=None,
         with_errors=False,
-        within_target=None,
+        within_targets=None,
         list_limit=0,
     )
     defaults.update(values)
@@ -152,6 +152,11 @@ def listing(monkeypatch):
             ["compute-requirements", "--within", "cr"],
             "--within does not apply to compute-requirements",
         ),
+        (["tasks", "--within", ""], "--within needs a target"),
+        (
+            ["tasks", "--within", "wr", "--within", CR_ID],
+            "--within takes a Work Requirement or Task Group, not a Compute Requirement",
+        ),
         (["task-groups", "--limit", "5"], "--limit does not apply to task-groups"),
         (["worker-pools", "--limit", "5"], "--limit does not apply to worker-pools"),
         (
@@ -193,6 +198,14 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["nodes", "--within", "my-pool", "--provider", "aws"],
         ["workers", "--within", CR_ID.replace("compreq", "node")],
         ["workers", "--within", CR_ID.replace("compreq", "wrkrpool")],
+        ["tasks", "--within", "wr-1", "--within", "wr-2/tg"],
+        [
+            "workers",
+            "--within",
+            "my-pool",
+            "--within",
+            CR_ID.replace("compreq", "node"),
+        ],
         ["tasks", "--limit", "10", "--json"],
         ["tasks", "--limit", "0"],
         ["instances", "--limit", "50", "--ids-only"],
@@ -749,7 +762,7 @@ class TestWithin:
             lambda client, wr_id: self._groups(),
         )
         return RunContext(
-            args=_args(entity_type, within_target=target, **values),
+            args=_args(entity_type, within_targets=[target], **values),
             config=SimpleNamespace(namespace="ns"),
             client=MagicMock(),
         )
@@ -773,11 +786,15 @@ class TestWithin:
 
     def test_a_work_requirement_id_gives_its_task_groups(self, monkeypatch):
         ctx = self._ctx(monkeypatch, "task-groups", WR)
-        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1, TG2]
+        assert [
+            g.id for g in yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
+        ] == [TG1, TG2]
 
     def test_a_task_group_id_gives_that_task_group(self, monkeypatch):
         ctx = self._ctx(monkeypatch, "tasks", TG2)
-        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG2]
+        assert [
+            g.id for g in yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
+        ] == [TG2]
 
     def test_a_task_group_id_not_in_its_work_requirement_is_not_found(
         self, monkeypatch
@@ -786,13 +803,13 @@ class TestWithin:
 
         ctx = self._ctx(monkeypatch, "tasks", WR.replace("workreq", "taskgrp") + ":9")
         with pytest.raises(NotFoundError) as raised:
-            yd_list._task_groups_within(ctx)
+            yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
         assert classify(raised.value) == ExitCode.NOT_FOUND
 
     def test_another_kind_of_id_is_refused(self, monkeypatch):
         ctx = self._ctx(monkeypatch, "tasks", CR_ID)
         with pytest.raises(ValueError, match="not a Work Requirement or Task Group"):
-            yd_list._task_groups_within(ctx)
+            yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
 
     def test_a_name_is_resolved_as_yd_abort_resolves_it(self, monkeypatch):
         from yellowdog_cli.utils.work_targets import NamedTarget
@@ -805,7 +822,9 @@ class TestWithin:
             return NamedTarget(SimpleNamespace(id=WR), self._groups()[0])
 
         monkeypatch.setattr(yd_list, "resolve_named_target", resolve)
-        assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1]
+        assert [
+            g.id for g in yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
+        ] == [TG1]
         assert seen == [("my-wr/tg-1", "ns")]
 
     def test_the_tasks_within_are_listed_without_asking(
@@ -814,7 +833,7 @@ class TestWithin:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args("tasks", within_target=TG1, ids_only=True),
+            _args("tasks", within_targets=[TG1], ids_only=True),
         )
         monkeypatch.setattr(
             yd_list,
@@ -844,7 +863,7 @@ class TestWithin:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args("tasks", within_target=TG1, json_output=True),
+            _args("tasks", within_targets=[TG1], json_output=True),
         )
         monkeypatch.setattr(
             yd_list,
@@ -863,7 +882,7 @@ class TestWithin:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args("tasks", within_target=WR, ids_only=True),
+            _args("tasks", within_targets=[WR], ids_only=True),
         )
         monkeypatch.setattr(
             yd_list,
@@ -955,6 +974,150 @@ class TestChosenTaskGroups:
     def test_a_cancelled_choice_lists_nothing(self, monkeypatch):
         shown, infos = self._list(monkeypatch, lambda groups: [])
         assert shown == [] and infos == []
+
+
+class TestSeveralWithin:
+    """
+    '--within' repeated: every target's items in one listing, in the order
+    given, an item two targets share listed once; the Task Groups (and
+    Tasks) of several Work Requirements each name theirs; every target not
+    found reported before anything is listed.
+    """
+
+    WR2 = WR.replace("aaaaaaaa-aaaa", "bbbbbbbb-bbbb")
+
+    def _groups(self, wr_id):
+        tg = wr_id.replace("workreq", "taskgrp")
+        return [
+            SimpleNamespace(id=f"{tg}:1", name="main", status=None, taskSummary=None),
+            SimpleNamespace(id=f"{tg}:2", name="post", status=None, taskSummary=None),
+        ]
+
+    def _ctx(self, monkeypatch, entity_type, targets):
+        monkeypatch.setattr(
+            yd_list,
+            "get_task_groups_from_wr_by_id",
+            lambda client, wr_id: self._groups(wr_id),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "sorted_objects",
+            lambda objects: sorted(objects, key=lambda o: o.name),
+        )
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: None)
+        client = MagicMock()
+        client.work_client.get_work_requirement_by_id.side_effect = lambda wr_id: (
+            SimpleNamespace(name="one" if wr_id == WR else "two")
+        )
+        return RunContext(
+            args=_args(entity_type, within_targets=targets),
+            config=SimpleNamespace(namespace="ns"),
+            client=client,
+        )
+
+    def _shown(self, monkeypatch):
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, objects: shown.append(objects),
+        )
+        return shown
+
+    def test_task_groups_of_several_name_their_work_requirement(self, monkeypatch):
+        shown = self._shown(monkeypatch)
+        # The second Work Requirement's 'post' named twice: listed once
+        tg_of_wr2 = self.WR2.replace("workreq", "taskgrp") + ":2"
+        ctx = self._ctx(monkeypatch, ET_TASK_GROUPS, [WR, self.WR2, tg_of_wr2])
+        yd_list._list_within(ctx)
+        (table,) = shown
+        assert [(g.workRequirementName, g.name) for g in table] == [
+            ("one", "main"),
+            ("one", "post"),
+            ("two", "main"),
+            ("two", "post"),
+        ]
+
+    def test_tasks_carry_their_work_requirement(self, monkeypatch):
+        shown = self._shown(monkeypatch)
+        monkeypatch.setattr(
+            yd_list,
+            "_tasks_of",
+            lambda ctx, tgs, limit: (0, [SimpleNamespace(name=f"t-{tgs[0].id[-1]}")]),
+        )
+        ctx = self._ctx(monkeypatch, ET_TASKS, [WR, self.WR2])
+        yd_list._list_within(ctx)
+        (table,) = shown
+        assert [t.workRequirementName for t in table] == ["one", "one", "two", "two"]
+
+    def test_one_work_requirement_names_none(self, monkeypatch):
+        shown = self._shown(monkeypatch)
+        tg = WR.replace("workreq", "taskgrp")
+        ctx = self._ctx(monkeypatch, ET_TASK_GROUPS, [f"{tg}:1", f"{tg}:2"])
+        yd_list._list_within(ctx)
+        (table,) = shown
+        assert [g.name for g in table] == ["main", "post"]
+        assert not any(hasattr(g, "workRequirementName") for g in table)
+
+    def test_every_target_not_found_is_reported_first(self, monkeypatch):
+        from yellowdog_cli.utils import named_targets
+        from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure
+
+        errors: list[str] = []
+        monkeypatch.setattr(named_targets, "print_error", errors.append)
+
+        def find(ctx, target):
+            if target.startswith("gone"):
+                raise NotFoundError(f"Worker Pool '{target}' not found")
+            return SimpleNamespace(id=target), lambda: []
+
+        monkeypatch.setattr(yd_list, "_nodes_within", find)
+        listed: list = []
+        monkeypatch.setattr(
+            yd_list, "list_nodes", lambda ctx, pools: listed.append(pools)
+        )
+        ctx = self._ctx(monkeypatch, "nodes", ["gone-1", "pool", "gone-2"])
+        with pytest.raises(ReportedFailure) as raised:
+            yd_list._list_nodes_within(ctx)
+        assert classify(raised.value) == ExitCode.NOT_FOUND
+        assert errors == [
+            "Worker Pool 'gone-1' not found",
+            "Worker Pool 'gone-2' not found",
+        ]
+        assert listed == []
+
+    def test_workers_of_a_pool_and_a_node_in_it_are_listed_once(self, monkeypatch):
+        node_a, node_b = SimpleNamespace(id="node-a"), SimpleNamespace(id="node-b")
+        monkeypatch.setattr(
+            yd_list,
+            "_nodes_within",
+            lambda ctx, target: (
+                (SimpleNamespace(id="pool"), lambda: iter([node_a, node_b]))
+                if target == "pool"
+                else (None, lambda: [node_b])
+            ),
+        )
+        listed: list = []
+        monkeypatch.setattr(
+            yd_list, "list_workers", lambda ctx, nodes: listed.append(list(nodes))
+        )
+        ctx = self._ctx(monkeypatch, ET_WORKERS, ["node-b", "pool"])
+        yd_list._list_nodes_within(ctx)
+        assert listed == [[node_b, node_a]]
+
+    def test_instances_of_several_compute_requirements(self, monkeypatch):
+        monkeypatch.setattr(
+            yd_list,
+            "_compute_requirement_within",
+            lambda ctx, target: (f"id-{target}", target),
+        )
+        listed: list = []
+        monkeypatch.setattr(
+            yd_list, "list_instances", lambda ctx, crs: listed.append(crs)
+        )
+        ctx = self._ctx(monkeypatch, ET_INSTANCES, ["a", "b", "a"])
+        yd_list._list_instances_within(ctx)
+        assert listed == [[("id-a", "a"), ("id-b", "b")]]
 
 
 class TestChosenWorkRequirements:
@@ -1184,7 +1347,7 @@ class TestWithinCompute:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args(ET_INSTANCES, within_target=CR_ID, ids_only=True),
+            _args(ET_INSTANCES, within_targets=[CR_ID], ids_only=True),
         )
         self._no_search(monkeypatch)
         listing.client.compute_client.get_instances.return_value.iterate.return_value = [
@@ -1199,7 +1362,7 @@ class TestWithinCompute:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args(ET_INSTANCES, within_target="other/my-cr", json_output=True),
+            _args(ET_INSTANCES, within_targets=["other/my-cr"], json_output=True),
         )
         self._no_search(monkeypatch)
         seen = []
@@ -1218,7 +1381,7 @@ class TestWithinCompute:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args("nodes", within_target=WP_ID, json_output=True),
+            _args("nodes", within_targets=[WP_ID], json_output=True),
         )
         self._no_search(monkeypatch)
         pool = SimpleNamespace(id=WP_ID, name="pool")
@@ -1233,25 +1396,25 @@ class TestWithinCompute:
     def test_a_worker_pool_name_that_names_nothing_is_not_found(
         self, listing, monkeypatch
     ):
-        from yellowdog_cli.utils.exit_codes import NotFoundError
+        from yellowdog_cli.utils.exit_codes import ReportedFailure
 
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args("nodes", within_target="no-pool", json_output=True),
+            _args("nodes", within_targets=["no-pool"], json_output=True),
         )
         self._no_search(monkeypatch)
         monkeypatch.setattr(
             yd_list, "get_worker_pool_id_by_name", lambda c, name, namespace: None
         )
-        with pytest.raises(NotFoundError, match="no-pool"):
+        with pytest.raises(ReportedFailure, match="no-pool"):
             yd_list.list_worker_pools(_ctx())
 
     def test_the_workers_within_a_node_id(self, listing, monkeypatch):
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args(ET_WORKERS, within_target=NODE_ID, json_output=True),
+            _args(ET_WORKERS, within_targets=[NODE_ID], json_output=True),
         )
         self._no_search(monkeypatch)
         node = SimpleNamespace(id=NODE_ID, workerPoolId=WP_ID, workers=[])
@@ -1263,7 +1426,7 @@ class TestWithinCompute:
         )
         listed = []
         monkeypatch.setattr(
-            yd_list, "list_workers", lambda _c, nodes: listed.append(nodes)
+            yd_list, "list_workers", lambda _c, nodes: listed.append(list(nodes))
         )
         yd_list.list_worker_pools(_ctx())
         assert listed == [[node]]
@@ -1354,12 +1517,12 @@ def _not_found(*_args, **_kwargs):
 def test_an_id_within_that_names_nothing_is_not_found(
     listing, monkeypatch, entity_type, target, patch, kind
 ):
-    from yellowdog_cli.utils.exit_codes import NotFoundError
+    from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure
 
     monkeypatch.setattr(
         wrapper_module,
         "ARGS_PARSER",
-        _args(entity_type, within_target=target, json_output=True),
+        _args(entity_type, within_targets=[target], json_output=True),
     )
     where, name = patch
     if where == "module":
@@ -1376,10 +1539,13 @@ def test_an_id_within_that_names_nothing_is_not_found(
         ET_WORKERS: yd_list.list_worker_pools,
         ET_TASKS: yd_list.list_work_requirements,
     }[entity_type]
-    with pytest.raises(NotFoundError) as raised:
+    with pytest.raises(ReportedFailure) as raised:
         lister(_ctx())
+    # Reported with any other target not found, then raised as found
     assert str(raised.value) == f"{kind} '{target}' not found"
-    assert isinstance(raised.value.__cause__, HTTPError)
+    assert classify(raised.value) == ExitCode.NOT_FOUND
+    assert isinstance(raised.value.__cause__, NotFoundError)
+    assert isinstance(raised.value.__cause__.__cause__, HTTPError)
 
 
 def test_the_limit_defaults_to_1000_and_0_lifts_it():
@@ -1406,7 +1572,7 @@ class TestTaskLimit:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args(ET_TASKS, within_target=WR, json_output=True, **values),
+            _args(ET_TASKS, within_targets=[WR], json_output=True, **values),
         )
         monkeypatch.setattr(
             yd_list,
@@ -1523,7 +1689,7 @@ class TestTaskLimit:
             "ARGS_PARSER",
             _args(
                 ET_TASKS,
-                within_target=WR,
+                within_targets=[WR],
                 count_only=True,
                 with_errors=True,
                 list_limit=1000,
@@ -1636,7 +1802,7 @@ class TestInstanceAndNodeLimit:
             "ARGS_PARSER",
             _args(
                 ET_INSTANCES,
-                within_target=CR_ID,
+                within_targets=[CR_ID],
                 json_output=True,
                 list_limit=2,
                 active_only=True,
@@ -1724,7 +1890,9 @@ class TestInstanceAndNodeLimit:
         monkeypatch.setattr(
             wrapper_module,
             "ARGS_PARSER",
-            _args(ET_INSTANCES, within_target=CR_ID, count_only=True, list_limit=1000),
+            _args(
+                ET_INSTANCES, within_targets=[CR_ID], count_only=True, list_limit=1000
+            ),
         )
         self._searches(
             listing.client.compute_client,

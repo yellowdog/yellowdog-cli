@@ -63,7 +63,7 @@ def _args(**overrides):
         description_glob=None,
         deletable=False,
         with_errors=False,
-        within_target=None,
+        within_targets=None,
         list_limit=0,
     )
     defaults.update(overrides)

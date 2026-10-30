@@ -117,6 +117,7 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.named_targets import resolved_each
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     print_info,
@@ -488,7 +489,7 @@ def list_work_requirements(ctx: RunContext):
     This function falls through from WRs to TGs to Tasks, depending on the
     options chosen.
     """
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_within(ctx)
         return
 
@@ -729,14 +730,70 @@ def _fetched_within(kind: str, target: str, fetch: Callable[[], _Fetched]) -> _F
         raise NotFoundError(f"{kind} '{target}' not found") from error
 
 
-def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
+def _within_each(ctx: RunContext, find: Callable[[str], _Fetched]) -> list[_Fetched]:
     """
-    The Task Groups '--within' names: a Work Requirement's, or one Task
-    Group, given by YDID or by name as yd-abort takes it ('wr', 'wr/tg',
+    What find() finds for each '--within' target, in the order given: every
+    target that finds nothing is reported, and then ReportedFailure raised
+    (named_targets.resolved_each()).
+    """
+    return resolved_each(
+        [
+            (lambda target=target: find(target))
+            for target in ctx.args.within_targets or []
+        ]
+    )
+
+
+def _within_phrase(ctx: RunContext) -> str:
+    """
+    The '--within' targets as a message names them: 'a', 'b'.
+    """
+    return ", ".join(f"'{target}'" for target in ctx.args.within_targets or [])
+
+
+def _unique(items: Iterable[_Item]) -> Iterator[_Item]:
+    """
+    The items in order, each once by its ID, read as they are wanted (so
+    that '--limit' reads a search no further): two '--within' targets may
+    overlap ('wr' and 'wr/tg', a Worker Pool and one of its Nodes).
+    """
+    seen: set = set()
+    for item in items:
+        if (key := getattr(item, "id", None)) not in seen:
+            seen.add(key)
+            yield item
+
+
+def _name_work_requirements(ctx: RunContext, task_groups: list[TaskGroup]) -> None:
+    """
+    Of Task Groups of several Work Requirements, each tagged with its Work
+    Requirement's name for the tables (as list_task_groups() tags them), a
+    Task Group's name being no guide to which it belongs.
+    """
+    ids = list(
+        dict.fromkeys(
+            work_requirement_id_of_task_group(cast(str, tg.id)) for tg in task_groups
+        )
+    )
+    if len(ids) < 2:
+        return
+    names = {
+        wr_id: ctx.client.work_client.get_work_requirement_by_id(wr_id).name
+        for wr_id in ids
+    }
+    for task_group in task_groups:
+        task_group.workRequirementName = names[  # type: ignore[attr-defined]
+            work_requirement_id_of_task_group(cast(str, task_group.id))
+        ]
+
+
+def _task_groups_within(ctx: RunContext, target: str) -> list[TaskGroup]:
+    """
+    The Task Groups a '--within' target names: a Work Requirement's, or one
+    Task Group, given by YDID or by name as yd-abort takes it ('wr', 'wr/tg',
     'namespace/wr', 'namespace/wr/tg'). A target that names nothing raises
     NotFoundError.
     """
-    target = cast(str, ctx.args.within_target)
     match get_ydid_type(target):
         case YDIDType.WORK_REQUIREMENT:
             return _fetched_within(
@@ -772,14 +829,22 @@ def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
 
 def _list_within(ctx: RunContext) -> None:
     """
-    '--within': the Task Groups or Tasks of one Work Requirement or Task
-    Group, listed without asking which Work Requirement or Task Group.
+    '--within': the Task Groups or Tasks of the Work Requirements and Task
+    Groups named, in the order named, listed without asking which.
     """
     errors = " with errors" if ctx.args.with_errors else ""
-    print_info(
-        f"Listing {ctx.args.entity_type}{errors} within '{ctx.args.within_target}'"
+    print_info(f"Listing {ctx.args.entity_type}{errors} within {_within_phrase(ctx)}")
+    task_groups = list(
+        _unique(
+            chain.from_iterable(
+                _within_each(
+                    ctx,
+                    lambda target: sorted_objects(_task_groups_within(ctx, target)),
+                )
+            )
+        )
     )
-    task_groups = sorted_objects(_task_groups_within(ctx))
+    _name_work_requirements(ctx, task_groups)
     summarised = 0
     limit = _ListLimit(ctx)
     if ctx.args.entity_type == ET_TASK_GROUPS:
@@ -791,7 +856,7 @@ def _list_within(ctx: RunContext) -> None:
         for task_group in task_groups:
             counted, tasks = _tasks_of(ctx, [task_group], limit)
             summarised += counted
-            objects.extend(sorted_objects(tasks))
+            objects.extend(_named_as_their_group(task_group, sorted_objects(tasks)))
     if ctx.args.count_only:
         print(summarised + len(objects))
     elif _listing_all(ctx):
@@ -849,6 +914,17 @@ def list_task_groups(ctx: RunContext, work_summaries: list[WorkRequirementSummar
         list_tasks(ctx, chosen)
 
 
+def _named_as_their_group(task_group: TaskGroup, tasks: list[Task]) -> list[Task]:
+    """
+    The Tasks, each tagged with the Work Requirement's name its Task Group
+    was tagged with, if any, for the table.
+    """
+    if (name := getattr(task_group, "workRequirementName", None)) is not None:
+        for task in tasks:
+            task.workRequirementName = name  # type: ignore[attr-defined]
+    return tasks
+
+
 def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
     """
     The Tasks of the chosen Task Groups, in one table: grouped by Task Group,
@@ -860,11 +936,12 @@ def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
     for task_group in task_groups:
         if limit.more:
             break
-        of_one = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
-        if (name := getattr(task_group, "workRequirementName", None)) is not None:
-            for task in of_one:
-                task.workRequirementName = name  # type: ignore[attr-defined]
-        tasks.extend(of_one)
+        tasks.extend(
+            _named_as_their_group(
+                task_group,
+                sorted_objects(limit.take(_matching_tasks(ctx, task_group))),
+            )
+        )
     if not tasks:
         _print_empty(ctx, "No matching Tasks")
     # Interactive alone, as list_task_groups() is
@@ -895,30 +972,47 @@ def _worker_pool_within(ctx: RunContext, target: str) -> WorkerPool:
     )
 
 
+def _nodes_within(
+    ctx: RunContext, target: str
+) -> tuple[WorkerPool | None, Callable[[], Iterable[Node]]]:
+    """
+    What a '--within' target for Nodes or Workers names: a Worker Pool, with
+    its Nodes searched when they are wanted, or a Node by its ID (no
+    Worker Pool), with its Worker Pool's name for the table.
+    """
+    if get_ydid_type(target) != YDIDType.NODE:
+        pool = _worker_pool_within(ctx, target)
+        return pool, lambda: _matching_nodes(ctx, pool)
+    node: Node = _fetched_within(
+        "Node",
+        target,
+        lambda: ctx.client.worker_pool_client.get_node_by_id(target),
+    )
+    node.workerPoolName = get_worker_pool_by_id(  # type: ignore[attr-defined]
+        ctx.client, cast(str, node.workerPoolId)
+    ).name
+    return None, lambda: [node]
+
+
 def _list_nodes_within(ctx: RunContext) -> None:
     """
-    '--within' for Nodes and Workers: the Nodes of a Worker Pool, or for
-    Workers those of a Worker Pool or of one Node, listed without searching
-    for Worker Pools or asking which.
+    '--within' for Nodes and Workers: the Nodes of the Worker Pools named,
+    or for Workers those of the Worker Pools and Nodes named, in the order
+    named, listed without searching for Worker Pools or asking which.
     """
-    target = cast(str, ctx.args.within_target)
-    print_info(f"Listing {ctx.args.entity_type} within '{target}'")
-    if get_ydid_type(target) == YDIDType.NODE:
-        node: Node = _fetched_within(
-            "Node",
-            target,
-            lambda: ctx.client.worker_pool_client.get_node_by_id(target),
-        )
-        node.workerPoolName = get_worker_pool_by_id(  # type: ignore[attr-defined]
-            ctx.client, cast(str, node.workerPoolId)
-        ).name
-        list_workers(ctx, [node])
+    print_info(f"Listing {ctx.args.entity_type} within {_within_phrase(ctx)}")
+    found = _within_each(ctx, lambda target: _nodes_within(ctx, target))
+    if ctx.args.entity_type == ET_NODES:
+        # Worker Pools alone, as parsed: list_nodes() searches them itself
+        pools = [pool for pool, _ in found if pool is not None]
+        list_nodes(ctx, list(_unique(pools)))  # type: ignore[arg-type]
         return
-    list_nodes(ctx, [_worker_pool_within(ctx, target)])  # type: ignore[list-item]
+    # Each in turn; a Node named twice, or in a Worker Pool named too, listed once
+    list_workers(ctx, _unique(chain.from_iterable(nodes() for _, nodes in found)))
 
 
 def list_worker_pools(ctx: RunContext):
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_nodes_within(ctx)
         return
 
@@ -1037,36 +1131,45 @@ _ACTIVE_CR_STATUSES: tuple[ComputeRequirementStatus, ...] = (
 )
 
 
-def _list_instances_within(ctx: RunContext) -> None:
+def _compute_requirement_within(ctx: RunContext, target: str) -> tuple[str, str | None]:
     """
-    '--within' for Instances: those of one Compute Requirement, by its ID or
-    by its name (found as the actions find one, in the configured namespace
-    unless given as 'namespace/name'), listed without searching for Compute
-    Requirements or asking which.
+    The Compute Requirement a '--within' target names, as its ID and name:
+    by its ID, or by its name (found as the actions find one, in the
+    configured namespace unless given as 'namespace/name').
     """
-    target = cast(str, ctx.args.within_target)
-    print_info(f"Listing instances within '{target}'")
     if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
         # Fetched, since an Instance search for an ID that names nothing
         # finds nothing rather than failing
-        compute_requirement_id = target
-        name = _fetched_within(
+        return target, _fetched_within(
             "Compute Requirement",
             target,
             lambda: ctx.client.compute_client.get_compute_requirement_by_id(target),
         ).name
-    else:
-        found = find_compute_requirement_by_name(
-            ctx.client,
-            target,
-            ctx.config.namespace,
-            _ACTIVE_CR_STATUSES,
+    found = find_compute_requirement_by_name(
+        ctx.client,
+        target,
+        ctx.config.namespace,
+        _ACTIVE_CR_STATUSES,
+    )
+    return cast(str, found.id), found.name
+
+
+def _list_instances_within(ctx: RunContext) -> None:
+    """
+    '--within' for Instances: those of the Compute Requirements named, in
+    the order named, listed without searching for Compute Requirements or
+    asking which.
+    """
+    print_info(f"Listing instances within {_within_phrase(ctx)}")
+    compute_requirements = list(
+        dict.fromkeys(
+            _within_each(ctx, lambda target: _compute_requirement_within(ctx, target))
         )
-        compute_requirement_id, name = cast(str, found.id), found.name
+    )
     if _listing_all(ctx):
-        _print_all_instances(ctx, [compute_requirement_id])
+        _print_all_instances(ctx, [cr_id for cr_id, _ in compute_requirements])
     else:
-        list_instances(ctx, [(compute_requirement_id, name)])
+        list_instances(ctx, compute_requirements)
 
 
 def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) -> None:
@@ -1093,7 +1196,7 @@ def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) ->
 
 
 def list_compute_requirements(ctx: RunContext):
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_instances_within(ctx)
         return
 

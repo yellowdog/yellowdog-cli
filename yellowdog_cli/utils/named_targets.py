@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
@@ -50,6 +50,8 @@ _PARTS: dict[YDIDType, int] = {
 # What a refused name is reported as
 _FAILURES = (NotFoundError, AmbiguousNameError, ValueError)
 
+_Resolved = TypeVar("_Resolved")
+
 
 def resolve_targets(
     ctx: RunContext, targets: list[str], ydid_type: YDIDType | None
@@ -64,7 +66,7 @@ def resolve_targets(
     if ydid_type is None:
         return list(targets)
     named: YDIDType = ydid_type  # As narrowed, for the lambdas
-    return _resolved(
+    return resolved_each(
         [
             (lambda target=target: _id_or_lookup(ctx, target, named))
             for target in targets
@@ -87,7 +89,7 @@ def resolve_compare_targets(
             return work_target_id(ctx, wr_or_tg)
         return _id_or_lookup(ctx, wr_or_tg, named)
 
-    resolved = _resolved(
+    resolved = resolved_each(
         [
             first,
             *(
@@ -99,13 +101,13 @@ def resolve_compare_targets(
     return resolved[0], resolved[1:]
 
 
-def _resolved(lookups: list[Callable[[], str]]) -> list[str]:
+def resolved_each(lookups: list[Callable[[], _Resolved]]) -> list[_Resolved]:
     """
-    Each lookup's ID, in order. Every one refused is reported, and then
-    ReportedFailure raised with the cause they share (NOT_FOUND), or
-    FAILURE for different causes.
+    Each lookup's result (an ID, or what it found), in order. Every one
+    refused is reported, and then ReportedFailure raised with the cause they
+    share (NOT_FOUND), or FAILURE for different causes.
     """
-    resolved: list[str] = []
+    resolved: list[_Resolved] = []
     failures: list[Exception] = []
     for lookup in lookups:
         try:

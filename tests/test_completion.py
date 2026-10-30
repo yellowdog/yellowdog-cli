@@ -555,6 +555,15 @@ class TestAnOptionsValueTypedWithIt:
         assert joined.lookup == spaced.lookup
         assert (joined.current, joined.prefix) == ("", "--within=")
 
+    def test_a_repeated_within_leaves_out_what_is_given(self):
+        from yellowdog_cli.utils.completion import complete
+
+        words = ["yd", "task", "list", "--within", "wr1", "--within=wr2"]
+        spaced = complete([*words, "--within"], "").lookup
+        joined = complete(words, "--within=").lookup
+        assert spaced is not None and joined is not None
+        assert spaced.given == joined.given == ("wr1", "wr2")
+
     def test_what_it_finds_keeps_the_option(self, monkeypatch):
         from yellowdog_cli.utils.completion import Candidate
 

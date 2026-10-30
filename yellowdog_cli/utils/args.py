@@ -465,8 +465,8 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
-    def within_target(self) -> str | None:
-        return self.args.within_target
+    def within_targets(self) -> list[str] | None:
+        return self.args.within_targets
 
     @property
     @allow_missing_attribute

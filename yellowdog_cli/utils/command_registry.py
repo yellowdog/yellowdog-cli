@@ -3147,16 +3147,17 @@ WITH_ERRORS = option(
 )
 WITHIN = option(
     "--within",
-    dest="within_target",
+    dest="within_targets",
+    action="append",
     metavar="<target>",
     required=False,
     help=(
-        "list the items of one parent without asking which: the task groups or"
+        "list the items of a parent without asking which: the task groups or"
         " tasks of a work requirement or task group ('wr', 'wr/tg',"
         " 'namespace/wr', 'namespace/wr/tg' or its ID), the instances of a"
         " compute requirement, the nodes of a worker pool, or the workers of a"
         " worker pool or node (its name, 'namespace/name' or its ID; a node by"
-        " its ID)"
+        " its ID); repeat it for several parents, listed in one table"
     ),
 )
 LIST_LIMIT = option(
@@ -3204,7 +3205,7 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("provider", "--provider", LIST_PROVIDER_TYPES),
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
         ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
-        ("within_target", "--within", LIST_WITHIN_TYPES),
+        ("within_targets", "--within", LIST_WITHIN_TYPES),
         ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
         # Given at all ('--limit 0' and '--name ""' as much as any other;
@@ -3225,16 +3226,19 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
     # '--count' is exact, read from the Task Groups' own counts where it can
     if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
         parser.error("--limit cannot be used with --count, which is never limited")
-    within = getattr(args, "within_target", None)
+    within = getattr(args, "within_targets", None) or []
     if within and entity_type in LIST_WITHIN_KINDS:
         from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
         kinds = LIST_WITHIN_KINDS[entity_type]
-        ydid_type = get_ydid_type(within)
-        if ydid_type is not None and ydid_type.value not in kinds:
-            parser.error(
-                f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
-            )
+        for target in within:
+            if not target:
+                parser.error("--within needs a target")
+            ydid_type = get_ydid_type(target)
+            if ydid_type is not None and ydid_type.value not in kinds:
+                parser.error(
+                    f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
+                )
     if args.public_ips_only:
         for dest, flag in (
             ("json", "--json"),
