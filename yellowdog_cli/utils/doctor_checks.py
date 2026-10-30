@@ -27,7 +27,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import requests
 from pypac import pac_context_for_url
@@ -1027,6 +1027,47 @@ def check_groups_and_roles(ctx: Context) -> Result:
     return Result(Status.OK, f"{group_text}; roles: {role_text}")
 
 
+def check_keyrings(ctx: Context) -> Result:
+    """
+    The Keyrings the Application can use, each with its credentials' names:
+    none is a WARN, since provisioning on a cloud needs the Keyring holding
+    its credential (a Configured Worker Pool, or work alone, needs none), and
+    lacking the permission to list them a SKIP.
+    """
+    from yellowdog_cli.utils.entity_utils import (
+        get_application_keyrings,
+        keyring_credential_names,
+    )
+
+    if ctx.application is None:
+        return Result(Status.SKIP, "not authenticated")
+    app_id = cast(str, ctx.application.id)
+    try:
+        outcome = with_timeout(
+            lambda: get_application_keyrings(ctx.client, app_id), ctx.timeout
+        )
+    except Exception as e:
+        if classify(e) == ExitCode.PERMISSION:
+            return Result(Status.SKIP, "not permitted to read Keyrings")
+        raise
+    if isinstance(outcome, Result):
+        return outcome
+    if not outcome:
+        return Result(
+            Status.WARN,
+            "none",
+            "To provision on a cloud, give the Application access to the Keyring"
+            " holding its credential, in the YellowDog Portal",
+        )
+    return Result(
+        Status.OK,
+        "; ".join(
+            f"{keyring.name} ({', '.join(keyring_credential_names(keyring)) or 'no credentials'})"
+            for keyring in outcome
+        ),
+    )
+
+
 def check_namespace_granted(ctx: Context) -> Result:
     if ctx.application is None:
         return Result(Status.SKIP, "not authenticated")
@@ -1171,6 +1212,7 @@ CHECKS: tuple[Check, ...] = (
         Need.CREDENTIALS_AND_NETWORK,
         check_namespace_granted,
     ),
+    Check("Keyrings", "Platform", Need.CREDENTIALS_AND_NETWORK, check_keyrings),
     Check(
         "Remote reachable",
         DATA_CLIENT_GROUP,

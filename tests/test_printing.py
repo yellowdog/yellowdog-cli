@@ -39,8 +39,12 @@ from yellowdog_cli.utils.tables import (
     _yes_or_no,
     get_type_name,
     keyring_table,
+    task_group_names,
+    task_group_table,
     task_table,
     work_requirement_table,
+    worker_pool_table,
+    workers_table,
 )
 
 # ---------------------------------------------------------------------------
@@ -555,26 +559,147 @@ class TestKeyringTable:
 
 
 class TestTaskTable:
-    def _task(self, name="task-1", status="COMPLETED", id="ydid:task:001") -> Task:
-        return SimpleNamespace(name=name, status=status, id=id)  # type: ignore[return-value]
+    def _task(
+        self, name="task-1", status="COMPLETED", id="ydid:task:001", tg="ydid:taskgrp:1"
+    ) -> Task:
+        return SimpleNamespace(name=name, status=status, id=id, taskGroupId=tg)  # type: ignore[return-value]
 
     def test_headers_present(self):
         headers, _ = task_table([self._task()])
-        assert "Task Name" in headers
-        assert "Status" in headers
-        assert "Task ID" in headers
+        assert headers == ["#", "Task Group", "Task Name", "Status", "Task ID"]
 
     def test_single_row_data(self):
         t = self._task(name="my-task", status="FAILED", id="ydid:task:999")
-        _, rows = task_table([t])
-        assert rows[0][1] == "my-task"
-        assert rows[0][2] == "FAILED"
-        assert rows[0][3] == "ydid:task:999"
+        _, rows = task_table([t], {"ydid:taskgrp:1": "render"})
+        assert rows[0][1:] == ["render", "my-task", "FAILED", "ydid:task:999"]
+
+    def test_a_task_group_not_named_is_left_blank(self):
+        _, rows = task_table([self._task(tg="ydid:taskgrp:gone")], {})
+        assert rows[0][1] == ""
 
     def test_multiple_rows_numbered(self):
         tasks = [self._task(name=f"t{i}") for i in range(4)]
         _, rows = task_table(tasks)
         assert [r[0] for r in rows] == [1, 2, 3, 4]
+
+
+class TestTaskGroupTableTasks:
+    """
+    A Task Group's Tasks, as completed/total, as the Work Requirement
+    table gives them.
+    """
+
+    def _task_group(self, task_summary):
+        return SimpleNamespace(
+            name="render",
+            status="RUNNING",
+            starved=False,
+            waitingOnDependency=False,
+            taskSummary=task_summary,
+            id="ydid:taskgrp:1",
+        )
+
+    def test_completed_of_total(self):
+        from yellowdog_client.model import TaskStatus
+
+        summary = SimpleNamespace(
+            statusCounts={TaskStatus.COMPLETED: 3, TaskStatus.EXECUTING: 2},
+            taskCount=10,
+        )
+        headers, rows = task_group_table([self._task_group(summary)])
+        assert headers[3] == "Tasks"
+        assert rows[0][3] == "3/10"
+
+    def test_none_completed(self):
+        summary = SimpleNamespace(statusCounts={}, taskCount=4)
+        _, rows = task_group_table([self._task_group(summary)])
+        assert rows[0][3] == "0/4"
+
+    def test_no_summary_is_blank(self):
+        _, rows = task_group_table([self._task_group(None)])
+        assert rows[0][3] is None
+
+
+class TestWorkerPoolTableCounts:
+    def test_nodes_workers_and_health(self):
+        pool = SimpleNamespace(
+            name="wp",
+            namespace="ns",
+            type="co.yellowdog.platform.model.ProvisionedWorkerPool",
+            status="RUNNING",
+            registeredNodeCount=3,
+            workingWorkerCount=2,
+            registeredWorkerCount=6,
+            healthy=True,
+            id="ydid:wrkrpool:1",
+        )
+        headers, rows = worker_pool_table([pool])  # type: ignore[list-item]
+        row = dict(zip(headers, rows[0]))
+        assert row["Nodes"] == 3
+        assert row["Workers (Working/All)"] == "2/6"
+        assert row["Healthy"] == "Yes"
+
+
+class TestWorkersTableNodeAndClaim:
+    def _worker(self, task_group_id):
+        return SimpleNamespace(
+            workerPoolName="wp",
+            taskTypes=["bash"],
+            workerTag="t",
+            status="DOING_TASK",
+            claimCount=1,
+            exclusive=False,
+            taskGroupId=task_group_id,
+            nodeId="ydid:node:1",
+            id="ydid:wrkr:1",
+        )
+
+    def test_the_node_and_the_claiming_task_group_are_shown(self):
+        headers, rows = workers_table(
+            [self._worker("tg1")],
+            {"tg1": "render"},  # type: ignore[list-item]
+        )
+        row = dict(zip(headers, rows[0]))
+        assert row["Claimed By"] == "render"
+        assert row["Node ID"] == "ydid:node:1"
+
+    def test_an_unclaimed_worker_is_blank(self):
+        headers, rows = workers_table([self._worker(None)], {})  # type: ignore[list-item]
+        assert dict(zip(headers, rows[0]))["Claimed By"] == ""
+
+
+class TestTaskGroupNames:
+    """
+    task_group_names(): each Task Group looked up once, from its Work
+    Requirement, and one that is gone left out.
+    """
+
+    def test_each_task_group_is_named_once(self, monkeypatch):
+        from yellowdog_cli.utils import entity_utils
+
+        looked_up = []
+
+        def lookup(_client, task_group_id):
+            looked_up.append(task_group_id)
+            return SimpleNamespace(
+                name={"tg1": "render", "tg2": "encode"}[task_group_id]
+            )
+
+        monkeypatch.setattr(entity_utils, "get_task_group_by_id", lookup)
+        tasks = [SimpleNamespace(taskGroupId=tg) for tg in ("tg1", "tg1", "tg2", None)]
+        assert task_group_names(None, tasks) == {"tg1": "render", "tg2": "encode"}  # type: ignore[arg-type]
+        assert sorted(looked_up) == ["tg1", "tg2"]
+
+    def test_a_task_group_not_found_is_left_out(self, monkeypatch):
+        from yellowdog_cli.utils import entity_utils
+        from yellowdog_cli.utils.exit_codes import NotFoundError
+
+        def lookup(_client, task_group_id):
+            raise NotFoundError(task_group_id)
+
+        monkeypatch.setattr(entity_utils, "get_task_group_by_id", lookup)
+        tasks = [SimpleNamespace(taskGroupId="tg1")]
+        assert task_group_names(None, tasks) == {}  # type: ignore[arg-type]
 
 
 class TestWorkRequirementTable:

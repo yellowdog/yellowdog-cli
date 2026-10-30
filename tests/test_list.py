@@ -408,9 +408,14 @@ class TestOutputOptions:
         assert args.details is False
         assert infos == []
 
-    def test_stripping_the_ids_from_the_details_is_said(self, monkeypatch):
-        _, infos = self._adjust(monkeypatch, details=True, strip_ids=True)
-        assert "Stripping YellowDog IDs (etc.) from detailed JSON objects" in infos
+    def test_stripping_the_ids_from_the_details_is_traced(self, monkeypatch, capsys):
+        # '--debug', since the options are configured again as they are adjusted
+        _, infos = self._adjust(monkeypatch, details=True, strip_ids=True, debug=True)
+        assert (
+            "list: Stripping YellowDog IDs (etc.) from detailed JSON objects"
+            in capsys.readouterr().err
+        )
+        assert not any("Stripping" in info for info in infos)
 
 
 class TestUnknownStatuses:

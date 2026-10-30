@@ -4,6 +4,7 @@
 A script to Provision a Worker Pool.
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from math import ceil, floor
@@ -78,6 +79,8 @@ from yellowdog_cli.utils.variable_syntax import (
     WP_VARIABLES_PREFIX,
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
+
+_LOG = logging.getLogger(__name__)
 
 
 # Specifies the cardinality for a Worker Pool batch
@@ -282,8 +285,8 @@ def _merge_into_template_usage(
             reqt_template_usage.get(key) is None
             or worker_pool_property_overridden(*toml_keys)
         ):
-            print_info(
-                f"Setting 'requirementTemplateUsage.{key}': '{shown_value(value)}'"
+            _LOG.debug(
+                "Setting 'requirementTemplateUsage.%s': '%s'", key, shown_value(value)
             )
             reqt_template_usage[key] = value
 
@@ -295,17 +298,20 @@ def _merge_into_template_usage(
         user_data = get_user_data_property(CONFIG_WP, ctx.args.content_path)
         if user_data is not None:
             # Its source and size, never the script itself
-            print_info(
-                f"Setting 'requirementTemplateUsage.{USERDATA}' from"
-                f" {user_data_source(CONFIG_WP)} ({len(user_data):,d} characters)"
+            _LOG.debug(
+                "Setting 'requirementTemplateUsage.%s' from %s (%s characters)",
+                USERDATA,
+                user_data_source(CONFIG_WP),
+                f"{len(user_data):,d}",
             )
             reqt_template_usage[USERDATA] = user_data
 
     if ctx.args.target is not None:
         if reqt_template_usage.get(TARGET_INSTANCE_COUNT) != ctx.args.target:
-            print_info(
-                f"Setting 'requirementTemplateUsage.{TARGET_INSTANCE_COUNT}':"
-                f" '{ctx.args.target}' (from '--target')"
+            _LOG.debug(
+                "Setting 'requirementTemplateUsage.%s': '%s' (from '--target')",
+                TARGET_INSTANCE_COUNT,
+                ctx.args.target,
             )
             reqt_template_usage[TARGET_INSTANCE_COUNT] = ctx.args.target
     elif (
@@ -315,9 +321,10 @@ def _merge_into_template_usage(
         CONFIG_WP.target_instance_count is not None
         and CONFIG_WP.target_instance_count_set is True
     ):
-        print_info(
-            f"Setting 'requirementTemplateUsage.{TARGET_INSTANCE_COUNT}':"
-            f" '{CONFIG_WP.target_instance_count}'"
+        _LOG.debug(
+            "Setting 'requirementTemplateUsage.%s': '%s'",
+            TARGET_INSTANCE_COUNT,
+            CONFIG_WP.target_instance_count,
         )
         reqt_template_usage[TARGET_INSTANCE_COUNT] = CONFIG_WP.target_instance_count
 
@@ -356,7 +363,9 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
             provisioned_properties.get(key) is None
             or worker_pool_property_overridden(*toml_keys)
         ):
-            print_info(f"Setting 'provisionedProperties.{key}': '{shown_value(value)}'")
+            _LOG.debug(
+                "Setting 'provisionedProperties.%s': '%s'", key, shown_value(value)
+            )
             provisioned_properties[key] = value
 
     for key, value, is_set in [
@@ -367,7 +376,7 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
             provisioned_properties.get(key) is None
             or worker_pool_property_overridden(key)
         ) and (value is not None and is_set is True):
-            print_info(f"Setting 'provisionedProperties.{key}': '{value}'")
+            _LOG.debug("Setting 'provisionedProperties.%s': '%s'", key, value)
             provisioned_properties[key] = value
 
 

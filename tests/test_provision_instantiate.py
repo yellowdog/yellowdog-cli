@@ -722,19 +722,22 @@ class TestProvisionMessages:
         assert "**" not in out
         assert "with a delay of 2.5 minute(s)" in out
 
-    def test_merged_values_are_shown_as_json(self, run, wp_file):
-        out, _ = run(
+    def test_merged_values_are_traced_as_json(self, run, wp_file):
+        run(
             yd_provision,
             ConfigWorkerPool(),
             dry_run=True,
+            debug=True,
             worker_pool_file_positional=wp_file({"targetInstanceCount": 1}, {}),
         )
+        trace = run.err
         assert (
             "Setting 'provisionedProperties.idleNodeShutdown':"
             ' \'{"enabled": true, "timeout": "PT5M"}\''
-        ) in out
-        assert "Setting 'provisionedProperties.metricsEnabled': 'false'" in out
-        assert "True" not in out and "False" not in out
+        ) in trace
+        assert "Setting 'provisionedProperties.metricsEnabled': 'false'" in trace
+        setting_lines = [line for line in trace.splitlines() if "Setting '" in line]
+        assert not any("True" in line or "False" in line for line in setting_lines)
 
 
 class TestMinutes:
@@ -752,18 +755,19 @@ class TestMinutes:
 
 
 class TestProvisionReporting:
-    def test_merged_user_data_is_described_not_printed(self, run, wp_file):
-        out, _ = run(
+    def test_merged_user_data_is_described_not_traced(self, run, wp_file):
+        run(
             yd_provision,
             ConfigWorkerPool(user_data_file="boot.sh"),
             user_data=_UserData("export TOKEN=s3cret\n"),
             dry_run=True,
+            debug=True,
             worker_pool_file_positional=wp_file({"targetInstanceCount": 1}, {}),
         )
         (setting,) = [
             line
-            for line in out.splitlines()
-            if "requirementTemplateUsage.userData" in line
+            for line in run.err.splitlines()
+            if "Setting 'requirementTemplateUsage.userData'" in line
         ]
         assert "from 'boot.sh' (20 characters)" in setting
         assert "s3cret" not in setting
@@ -1014,15 +1018,18 @@ class TestInstantiateReporting:
         assert run.exit_code == ExitCode.FAILURE
         assert "No 'templateId' supplied" in run.err
 
-    def test_merged_user_data_is_described_not_printed(self, run, cr_file):
-        out, _ = run(
+    def test_merged_user_data_is_described_not_traced(self, run, cr_file):
+        run(
             yd_instantiate,
             ConfigWorkerPool(user_data_files=["a.sh", "b.sh"]),
             user_data=_UserData("export TOKEN=s3cret\n"),
             dry_run=True,
+            debug=True,
             compute_requirement_file_positional=cr_file({"targetInstanceCount": 1}),
         )
-        (setting,) = [line for line in out.splitlines() if "'userData'" in line]
+        (setting,) = [
+            line for line in run.err.splitlines() if "Setting 'userData'" in line
+        ]
         assert "from 'a.sh', 'b.sh' (20 characters)" in setting
         assert "s3cret" not in setting
 

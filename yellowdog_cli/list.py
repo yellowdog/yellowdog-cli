@@ -5,6 +5,7 @@ Command to list YellowDog entities.
 """
 
 import fnmatch
+import logging
 from collections.abc import Callable, Iterable, Iterator
 from itertools import chain, islice
 from os.path import exists
@@ -134,6 +135,8 @@ from yellowdog_cli.utils.ydid_utils import (
     get_ydid_type,
     work_requirement_id_of_task_group,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 def _filter_by_name_glob_with_warning(
@@ -456,7 +459,7 @@ def _adjust_output_options(ctx: RunContext) -> None:
         ctx.args.details = True
 
     if ctx.args.details and ctx.args.strip_ids:
-        print_info("Stripping YellowDog IDs (etc.) from detailed JSON objects")
+        _LOG.debug("Stripping YellowDog IDs (etc.) from detailed JSON objects")
 
     # ... and '--details' as set here
     configure_output(ctx.args)
@@ -491,6 +494,8 @@ def list_work_requirements(ctx: RunContext):
 
     if ctx.args.active_only:
         print_info("Listing active Work Requirements only")
+    if ctx.args.entity_type == ET_TASKS and ctx.args.with_errors:
+        print_info("Listing Tasks with errors only")
 
     exclude_filter = (
         [
@@ -770,7 +775,10 @@ def _list_within(ctx: RunContext) -> None:
     '--within': the Task Groups or Tasks of one Work Requirement or Task
     Group, listed without asking which Work Requirement or Task Group.
     """
-    print_info(f"Listing {ctx.args.entity_type} within '{ctx.args.within_target}'")
+    errors = " with errors" if ctx.args.with_errors else ""
+    print_info(
+        f"Listing {ctx.args.entity_type}{errors} within '{ctx.args.within_target}'"
+    )
     task_groups = sorted_objects(_task_groups_within(ctx))
     summarised = 0
     limit = _ListLimit(ctx)
@@ -1324,7 +1332,7 @@ def _matching_nodes(ctx: RunContext, worker_pool_summary: Any) -> Iterator[Node]
 def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker]:
     """
     The Workers on the Nodes, as --active-only and --status filter them,
-    each given its Node's Worker tag, task types and Worker Pool name; the
+    each given its Node's ID, Worker tag, task types and Worker Pool name; the
     Nodes read only as far as the Workers are wanted.
     """
     for node in nodes:
@@ -1336,6 +1344,7 @@ def _matching_workers(ctx: RunContext, nodes: Iterable[Node]) -> Iterator[Worker
             ):
                 continue
             # Add extra info to the Worker object
+            worker.nodeId = node.id  # type: ignore[attr-defined]
             if node.details is not None:
                 worker.workerTag = node.details.workerTag  # type: ignore[attr-defined]
                 worker.taskTypes = node.details.supportedTaskTypes  # type: ignore[attr-defined]

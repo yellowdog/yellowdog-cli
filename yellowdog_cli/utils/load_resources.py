@@ -2,6 +2,7 @@
 Load data for resource creation/update/removal requests.
 """
 
+import logging
 import sys
 from os import getcwd
 from os.path import abspath, dirname
@@ -55,6 +56,8 @@ from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_insitu,
 )
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+_LOG = logging.getLogger(__name__)
 
 # A resource specification read from standard input, as given on the command
 # line, and how a message names it
@@ -264,7 +267,7 @@ def _resequence_resources(
     """
 
     if not resequence:
-        print_info("Not re-sequencing the resource list")
+        _LOG.debug("Not re-sequencing the resource list")
         return resources
 
     if len(resources) == 1:

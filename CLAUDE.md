@@ -92,7 +92,7 @@ yellowdog_cli/
     ├── failure_advice.py        # What to check on a 403 or 401: the wrapper's wording, and advise(), said once per run by the sites reporting a failure per item
     ├── results.py               # The --json accumulator: record*(), flush_results(), any_failed(); never imports wrapper or load_config
     ├── printing.py              # Rich consoles and print_info/warning/error/debug/dry_run; JSON and SDK object printing; --hide-user-data
-    ├── debug_log.py             # The '--debug' trace: set_debug_logging() (output_settings.configure_output() and restore() call it) puts one stderr handler on the 'yellowdog_cli' and 'urllib3' loggers, never the root one (rclone_api's), neither propagating while on; '<date> <time> : DEBUG : [+<s>s] <module>: ...', the info lines' prefix (the PID too under --print-pid), plain text; stdlib only
+    ├── debug_log.py             # The '--debug' trace: set_debug_logging() (output_settings.configure_output() and restore() call it) puts one stderr handler on the 'yellowdog_cli' and 'urllib3' loggers, never the root one (rclone_api's), neither propagating while on; '<date> <time> : DEBUG : [+<s>s] <module>: ...' (the module by its path less 'yellowdog_cli' and 'utils': 'dataclient.operations'), the info lines' prefix (the PID too under --print-pid), plain text; stdlib only
     ├── tables.py                # Table builders per entity type; numbered listing and sort order for selection and yd-list
     ├── event_printing.py        # print_event() for yd-follow and --follow; tolerates null fields so a stream never dies on one
     ├── interactive.py           # confirmed() (--yes only), select() with ranges; NoAnswerToPrompt at EOF; prompts to stderr under --json

@@ -7,6 +7,7 @@ Covers:
   - _portal_url()          deriving the Portal's sign-in URL from the API's
 """
 
+import re
 from json import loads as json_loads
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -75,6 +76,8 @@ def _run(
     roles: dict | None = None,
     groups_error: Exception | None = None,
     debug: bool = False,
+    keyrings: list | None = None,
+    keyrings_error: Exception | None = None,
 ) -> str:
     """
     Run report_application() with the platform lookups stubbed, and return
@@ -88,6 +91,12 @@ def _run(
         mock_groups.side_effect = groups_error
     else:
         mock_groups.return_value = [SimpleNamespace(name=name) for name in groups]
+
+    mock_keyrings = MagicMock()
+    if keyrings_error is not None:
+        mock_keyrings.side_effect = keyrings_error
+    else:
+        mock_keyrings.return_value = [] if keyrings is None else keyrings
 
     mock_roles = MagicMock()
     if groups_error is not None:
@@ -112,6 +121,7 @@ def _run(
             "get_all_roles_and_namespaces_for_application",
             mock_roles,
         ),
+        patch.object(application_module, "get_application_keyrings", mock_keyrings),
         output_settings.configured(args),
     ):
         report_application(ctx)
@@ -145,6 +155,7 @@ class TestJsonOutput:
             "features",
             "groups",
             "id",
+            "keyrings",
             "name",
             "portalUrl",
             "readableNamespaces",
@@ -251,7 +262,7 @@ class TestHumanReadableReport:
             )
         assert raised.value.code == ExitCode.CONNECTION
         trace = capsys.readouterr().err
-        assert "application: Groups and roles failed" in trace
+        assert "application: Looking up groups and roles failed" in trace
         assert "ConnectionError: connection reset" in trace
 
     def test_report_with_no_groups_or_roles_says_none(self, capsys):
@@ -282,7 +293,7 @@ class TestHumanReadableReport:
             + "my-app"
         )
         # A second role continues under the first
-        assert values[-1] == " " * column + "VIEWER [ns]"
+        assert " " * column + "VIEWER [ns]" in values
 
     def test_a_role_with_no_namespaces_has_no_empty_brackets(self, capsys):
         output = _run(capsys, json_output=False, roles={"VIEWER": []})
@@ -293,6 +304,61 @@ class TestHumanReadableReport:
 # ---------------------------------------------------------------------------
 # The Portal URL
 # ---------------------------------------------------------------------------
+
+
+class TestKeyrings:
+    """
+    The Keyrings the Application can use, with their credentials' names:
+    in the report and under --json, permission denied an ordinary state,
+    any other failure warned of with its exit code.
+    """
+
+    KEYRINGS = (
+        SimpleNamespace(
+            name="cloud",
+            id="ydid:keyring:000000:1",
+            credentials=[SimpleNamespace(name="gcp"), SimpleNamespace(name="aws")],
+        ),
+        SimpleNamespace(name="empty", id="ydid:keyring:000000:2", credentials=[]),
+    )
+
+    def test_json_lists_each_keyring_with_its_credentials(self, capsys):
+        data = json_loads(_run(capsys, json_output=True, keyrings=list(self.KEYRINGS)))
+        assert data["keyrings"] == [
+            {
+                "name": "cloud",
+                "id": "ydid:keyring:000000:1",
+                "credentials": ["aws", "gcp"],
+            },
+            {"name": "empty", "id": "ydid:keyring:000000:2", "credentials": []},
+        ]
+        assert "keyringsLookup" not in data
+
+    def test_report_lists_each_keyring_with_its_credentials(self, capsys):
+        out = _run(capsys, json_output=False, keyrings=list(self.KEYRINGS))
+        assert "Keyring(s) [credentials]:" in out
+        assert "cloud [aws, gcp]" in out
+        assert re.search(r"^\s+empty$", out, re.M)
+
+    def test_no_keyrings_is_none(self, capsys):
+        out = _run(capsys, json_output=False, keyrings=[])
+        assert re.search(r"Keyring\(s\) \[credentials\]:\s+none", out)
+        assert json_loads(_run(capsys, json_output=True, keyrings=[]))["keyrings"] == []
+
+    def test_no_permission_is_null_and_said(self, capsys):
+        error = _http_error(403, "MissingPermissionException")
+        data = json_loads(_run(capsys, json_output=True, keyrings_error=error))
+        assert data["keyrings"] is None
+        assert data["keyringsLookup"] == "permission denied"
+        out = _run(capsys, json_output=False, keyrings_error=error)
+        assert "Keyrings:" in out and "Cannot be determined" in out
+
+    def test_any_other_failure_warns_and_exits_with_its_code(self, capsys):
+        with pytest.raises(SystemExit) as exit_info:
+            _run(capsys, json_output=True, keyrings_error=_http_error(500, "boom"))
+        assert exit_info.value.code == ExitCode.PLATFORM
+        captured = capsys.readouterr()
+        assert "Unable to determine the Keyrings it can use" in captured.err
 
 
 class TestPortalUrl:

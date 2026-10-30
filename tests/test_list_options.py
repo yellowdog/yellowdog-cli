@@ -398,7 +398,9 @@ class TestActiveInstancesAndWorkers:
             _args(ET_WORKERS, json_output=True, active_only=True),
         )
         workers = [SimpleNamespace(status=status) for status in WorkerStatus]
-        node = SimpleNamespace(details=None, workers=workers, workerPoolName="wp")
+        node = SimpleNamespace(
+            id="ydid:node:1", details=None, workers=workers, workerPoolName="wp"
+        )
         printed: list = []
         monkeypatch.setattr(
             yd_list, "_print_all", lambda _c, objects: printed.append(objects)
@@ -415,7 +417,9 @@ class TestActiveInstancesAndWorkers:
             wrapper_module, "ARGS_PARSER", _args(ET_WORKERS, json_output=True)
         )
         worker = SimpleNamespace(status="SLEEPING")
-        node = SimpleNamespace(details=None, workers=[worker], workerPoolName="wp")
+        node = SimpleNamespace(
+            id="ydid:node:1", details=None, workers=[worker], workerPoolName="wp"
+        )
         printed: list = []
         monkeypatch.setattr(
             yd_list, "_print_all", lambda _c, objects: printed.append(objects)
@@ -750,6 +754,23 @@ class TestWithin:
             client=MagicMock(),
         )
 
+    @pytest.mark.parametrize(
+        "with_errors, announced",
+        [
+            (False, f"Listing tasks within '{TG1}'"),
+            (True, f"Listing tasks with errors within '{TG1}'"),
+        ],
+    )
+    def test_the_announcement_says_with_errors(
+        self, monkeypatch, with_errors, announced
+    ):
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        monkeypatch.setattr(yd_list, "_tasks_of", lambda ctx, tgs, limit: (0, []))
+        ctx = self._ctx(monkeypatch, "tasks", TG1, with_errors=with_errors)
+        yd_list._list_within(ctx)
+        assert infos[0] == announced
+
     def test_a_work_requirement_id_gives_its_task_groups(self, monkeypatch):
         ctx = self._ctx(monkeypatch, "task-groups", WR)
         assert [g.id for g in yd_list._task_groups_within(ctx)] == [TG1, TG2]
@@ -997,7 +1018,9 @@ def test_a_worker_status_does_not_filter_their_nodes(listing, monkeypatch):
         _args(ET_WORKERS, status_filter=["DOING_TASK"], json_output=True),
     )
     worker = SimpleNamespace(status="DOING_TASK")
-    node = SimpleNamespace(details=None, workers=[worker], status="RUNNING")
+    node = SimpleNamespace(
+        id="ydid:node:1", details=None, workers=[worker], status="RUNNING"
+    )
     listing.client.worker_pool_client.get_nodes.return_value.iterate.return_value = [
         node
     ]

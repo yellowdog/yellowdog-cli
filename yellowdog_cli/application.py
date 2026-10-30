@@ -6,6 +6,7 @@ A script for reporting on the details of the Application being used.
 
 import logging
 import sys
+from dataclasses import dataclass
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -17,6 +18,8 @@ from yellowdog_cli.utils.entity_utils import (
     get_all_roles_and_namespaces_for_application,
     get_application_details,
     get_application_group_summaries,
+    get_application_keyrings,
+    keyring_credential_names,
 )
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.misc_utils import portal_base_url
@@ -29,6 +32,8 @@ _LOG = logging.getLogger(__name__)
 # the permission to look them up
 PERMISSION_DENIED = "permission denied"
 ROLES_LABEL = "With role(s) [in namespace(s)]"
+KEYRINGS_LABEL = "Keyring(s) [credentials]"
+NOT_PERMITTED = "Cannot be determined due to application permissions"
 
 
 @main_wrapper
@@ -40,26 +45,57 @@ def report_application(ctx: RunContext):
     """
     Report the details of the Application, as JSON or as a readable report.
 
-    The groups and roles are left out (null in the JSON) when they can't be
-    determined. Lacking the permission to look them up is an ordinary state
-    for an Application, and is reported as such; any other failure is warned
-    of, and exits with the failure's exit code once the rest is reported.
+    The groups and roles, and the Keyrings the Application can use, are each
+    left out (null in the JSON) when they can't be determined. Lacking the
+    permission to look them up is an ordinary state for an Application, and
+    is reported as such; any other failure is warned of, and exits with the
+    failure's exit code once the rest is reported.
     """
     application_details: ApplicationDetails = get_application_details(ctx.client)
+    application_id = cast(str, application_details.id)
     portal_url = _portal_url(ctx.config.url, application_details.accountName)
-    groups, roles, error = _groups_and_roles(ctx, cast(str, application_details.id))
-    exit_code = None if error is None else classify(error)
-    permission_denied = exit_code == ExitCode.PERMISSION
+    groups, roles, error = _groups_and_roles(ctx, application_id)
+    keyrings, keyrings_error = _keyrings(ctx, application_id)
+    lookups = _Lookups(
+        groups_denied=_denied(error), keyrings_denied=_denied(keyrings_error)
+    )
 
     if ctx.args.json_output:
-        _print_json(application_details, portal_url, groups, roles, permission_denied)
+        _print_json(application_details, portal_url, groups, roles, keyrings, lookups)
     else:
-        _print_report(application_details, portal_url, groups, roles, permission_denied)
+        _print_report(application_details, portal_url, groups, roles, keyrings, lookups)
 
-    if error is not None and not permission_denied:
-        print_warning(f"Unable to determine groups and roles: {error}")
-        _LOG.debug("Groups and roles failed", exc_info=error)
-        sys.exit(exit_code)
+    failures = [
+        (what, e)
+        for what, e in (
+            ("groups and roles", error),
+            ("the Keyrings it can use", keyrings_error),
+        )
+        if e is not None and not _denied(e)
+    ]
+    for what, e in failures:
+        print_warning(f"Unable to determine {what}: {e}")
+        _LOG.debug("Looking up %s failed", what, exc_info=e)
+    if failures:
+        sys.exit(classify(failures[0][1]))
+
+
+@dataclass(frozen=True)
+class _Lookups:
+    """
+    Which lookups the Application lacks the permission to make.
+    """
+
+    groups_denied: bool = False
+    keyrings_denied: bool = False
+
+
+def _denied(error: Exception | None) -> bool:
+    """
+    Whether a lookup failed for want of permission, an ordinary state for an
+    Application rather than a failure.
+    """
+    return error is not None and classify(error) == ExitCode.PERMISSION
 
 
 def _portal_url(url: str, account_name: str | None) -> str | None:
@@ -95,19 +131,42 @@ def _groups_and_roles(
         return None, None, e
 
 
+def _keyrings(
+    ctx: RunContext, application_id: str
+) -> tuple[list[dict] | None, Exception | None]:
+    """
+    The Keyrings the Application can use, each as its name, ID and
+    credential names; None, accompanied by the exception, when they can't be
+    determined.
+    """
+    try:
+        return [
+            {
+                "name": keyring.name,
+                "id": keyring.id,
+                "credentials": keyring_credential_names(keyring),
+            }
+            for keyring in get_application_keyrings(ctx.client, application_id)
+        ], None
+    except Exception as e:
+        return None, e
+
+
 def _print_json(
     application_details: ApplicationDetails,
     portal_url: str | None,
     groups: list[str] | None,
     roles: dict | None,
-    permission_denied: bool,
+    keyrings: list[dict] | None,
+    lookups: _Lookups,
 ):
     """
     Print the Application's details as JSON: the properties of the
     ApplicationDetails object, plus the derived and looked-up properties,
-    in alphabetical order. When the groups and roles are null for want of
-    the permission to look them up, 'groupsAndRoles' says so, as the
-    report's line does; a lookup that failed otherwise exits non-zero.
+    in alphabetical order. When the groups and roles, or the Keyrings, are
+    null for want of the permission to look them up, 'groupsAndRoles' or
+    'keyringsLookup' says so, as the report's line does; a lookup that
+    failed otherwise exits non-zero.
     """
     # 'Json.dump' is typed as returning 'object'; it is a dict in practice
     application_data: Any = Json.dump(application_details)
@@ -116,10 +175,13 @@ def _print_json(
             "portalUrl": portal_url,
             "groups": groups,
             "roles": roles,
+            "keyrings": keyrings,
         }
     )
-    if permission_denied:
+    if lookups.groups_denied:
         application_data["groupsAndRoles"] = PERMISSION_DENIED
+    if lookups.keyrings_denied:
+        application_data["keyringsLookup"] = PERMISSION_DENIED
     print_json(dict(sorted(application_data.items())))
 
 
@@ -128,12 +190,14 @@ def _print_report(
     portal_url: str | None,
     groups: list[str] | None,
     roles: dict | None,
-    permission_denied: bool,
+    keyrings: list[dict] | None,
+    lookups: _Lookups,
 ):
     """
     Print the Application's details as a readable report. The groups and
-    roles are left out when they can't be determined, with a line saying so
-    when that is for want of permission; an Application with none says so.
+    roles, and the Keyrings, are each left out when they can't be
+    determined, with a line saying so when that is for want of permission;
+    an Application with none says so.
     """
     features = (
         ""
@@ -163,10 +227,8 @@ def _print_report(
             )
         )
 
-    if permission_denied:
-        rows.append(
-            ("Groups and roles", "Cannot be determined due to application permissions")
-        )
+    if lookups.groups_denied:
+        rows.append(("Groups and roles", NOT_PERMITTED))
     elif groups is not None:
         rows.append(("In group(s)", ", ".join(groups) or "none"))
         role_lines = [
@@ -175,6 +237,18 @@ def _print_report(
         ] or ["none"]
         rows.append((ROLES_LABEL, role_lines[0]))
         rows += [("", line) for line in role_lines[1:]]
+
+    if lookups.keyrings_denied:
+        rows.append(("Keyrings", NOT_PERMITTED))
+    elif keyrings is not None:
+        keyring_lines = [
+            f"{k['name']} [{', '.join(k['credentials'])}]"
+            if k["credentials"]
+            else k["name"]
+            for k in keyrings
+        ] or ["none"]
+        rows.append((KEYRINGS_LABEL, keyring_lines[0]))
+        rows += [("", line) for line in keyring_lines[1:]]
 
     _print_rows(rows)
 

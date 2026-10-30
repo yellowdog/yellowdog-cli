@@ -184,7 +184,7 @@ def work_requirement_table(
 def task_group_table(
     task_group_list: list[TaskGroup],
 ) -> tuple[list[str], list[list]]:
-    headers = ["#", "Task Group Name", "Status", "Task Group ID"]
+    headers = ["#", "Task Group Name", "Status", "Tasks", "Task Group ID"]
     table = []
     for index, task_group in enumerate(task_group_list):
         status_msg = task_group_status_text(
@@ -195,25 +195,72 @@ def task_group_table(
                 index + 1,
                 task_group.name,
                 status_msg,
+                _task_counts(task_group.taskSummary),
                 task_group.id,
             ]
         )
     return headers, table
 
 
-def task_table(task_list: list[Task]) -> tuple[list[str], list[list]]:
-    headers = ["#", "Task Name", "Status", "Task ID"]
+def _task_counts(task_summary: Any) -> str | None:
+    """
+    A Task Group's Tasks as completed/total, as the Work Requirement table
+    gives them; blank without a summary.
+    """
+    if task_summary is None:
+        return None
+    completed = sum(
+        count or 0
+        for status, count in (task_summary.statusCounts or {}).items()
+        if getattr(status, "value", status) == "COMPLETED"
+    )
+    return _counts(completed, task_summary.taskCount)
+
+
+def task_table(
+    task_list: list[Task], task_group_names: dict[str, str] | None = None
+) -> tuple[list[str], list[list]]:
+    """
+    The Tasks' table, each with its Task Group's name, from 'task_group_names'
+    (by Task Group ID; a Task Group not in it is left blank).
+    """
+    names = task_group_names or {}
+    headers = ["#", "Task Group", "Task Name", "Status", "Task ID"]
     table = []
     for index, task in enumerate(task_list):
         table.append(
             [
                 index + 1,
+                names.get(task.taskGroupId or "", ""),
                 task.name,
                 _cell(task.status),
                 task.id,
             ]
         )
     return headers, table
+
+
+def task_group_names(
+    client: PlatformClient, items: Sequence[Task | Worker]
+) -> dict[str, str]:
+    """
+    The names of the Task Groups the Tasks belong to, or the Workers are
+    claimed by, by Task Group ID: read from their Work Requirements, which are
+    cached, so a listing that has just read them makes no further request. A
+    Task Group that is no longer there is left out.
+    """
+    from yellowdog_cli.utils.entity_utils import get_task_group_by_id
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    names: dict[str, str] = {}
+    ids = {getattr(item, "taskGroupId", None) for item in items}
+    for task_group_id in sorted(i for i in ids if i):
+        try:
+            task_group = get_task_group_by_id(client, task_group_id)
+        except NotFoundError:
+            continue
+        names[task_group_id] = task_group.name or ""
+    return names
 
 
 def worker_pool_table(
@@ -225,6 +272,9 @@ def worker_pool_table(
         "Namespace",
         "Type",
         "Status",
+        "Nodes",
+        "Workers (Working/All)",
+        "Healthy",
         "Worker Pool ID",
     ]
     table = []
@@ -238,6 +288,12 @@ def worker_pool_table(
                 .split(".")[-1]
                 .replace("WorkerPool", ""),
                 _cell(worker_pool_summary.status),
+                worker_pool_summary.registeredNodeCount,
+                _counts(
+                    worker_pool_summary.workingWorkerCount,
+                    worker_pool_summary.registeredWorkerCount,
+                ),
+                _yes_or_no(worker_pool_summary.healthy),
                 worker_pool_summary.id,
             ]
         )
@@ -434,8 +490,14 @@ def nodes_table(
 
 
 def workers_table(
-    workers: list[Worker],
+    workers: list[Worker], task_group_names: dict[str, str] | None = None
 ) -> tuple[list[str], list[str]]:
+    """
+    The Workers' table, each with its Node (the 'nodeId' the lister adds)
+    and the name of the Task Group claiming it, from 'task_group_names' (by
+    Task Group ID; blank for a Worker unclaimed or a Task Group not in it).
+    """
+    names = task_group_names or {}
     headers = [
         "#",
         "Worker Pool Name",
@@ -444,6 +506,8 @@ def workers_table(
         "Status",
         "Claims",
         "Exclusive",
+        "Claimed By",
+        "Node ID",
         "Worker ID",
     ]
     table = []
@@ -457,6 +521,8 @@ def workers_table(
                 worker.status,
                 getattr(worker, "claimCount", None),
                 _yes_or_no(getattr(worker, "exclusive", None)),
+                names.get(worker.taskGroupId or "", ""),
+                getattr(worker, "nodeId", None),
                 worker.id,
             ]
         )
@@ -956,7 +1022,13 @@ def print_numbered_object_list(
             )
         )
     else:
-        headers, table = table_builder(objects)
+        if table_builder in (task_table, workers_table):
+            headers, table = table_builder(
+                objects,  # type: ignore[arg-type]
+                task_group_names(client, objects),  # type: ignore[arg-type]
+            )
+        else:
+            headers, table = table_builder(objects)
         print_table_core(
             indent(
                 tabulate(

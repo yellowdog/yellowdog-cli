@@ -153,7 +153,9 @@ def apply_property_overrides(
         for where, level, node in nodes:
             if level in prop.levels and isinstance(node, dict) and path[0] in node:
                 if _set_at_path(node, path, deepcopy(value)):
-                    print_info(f"Setting '{where}{'.'.join(path)}' from '--property'")
+                    _LOG.debug(
+                        "Setting '%s%s' from '--property'", where, ".".join(path)
+                    )
 
 
 def _set_at_path(node: dict, path: list[str], value: object) -> bool:

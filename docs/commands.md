@@ -1724,7 +1724,7 @@ The `yd application` command shows the details of the current Application, i.e. 
 yd application [options]
 ```
 
-It takes no positional arguments, and is the quickest way to confirm which Application a set of credentials belongs to.
+It takes no positional arguments, and is the quickest way to confirm which Application a set of credentials belongs to. The report includes the Application's groups and roles, and the Keyrings it can use, each with the names of the credentials it holds.
 
 Key options:
 - `--json`/`-J` — emit the Application's details as JSON instead of the readable report
@@ -1733,11 +1733,11 @@ Key options:
 yd application --config prod.toml
 ```
 
-The JSON output contains the Application's properties, plus `portalUrl`, `groups` and `roles`, in alphabetical order. Each of these three is `null` when it can't be determined.
+The JSON output contains the Application's properties, plus `portalUrl`, `groups`, `roles` and `keyrings`, in alphabetical order. Each of these four is `null` when it can't be determined. `keyrings` lists each Keyring the Application can use as its `name`, `id` and `credentials` (the credentials' names).
 
 `portalUrl` is derived from the Platform API URL as every Portal link the commands print is: a hostname label that is exactly `api` becomes `portal` (so `https://api.yellowdog.ai` gives `https://portal.yellowdog.ai`), and any other URL, such as `https://host/api`, is used as it is; it is `null` only when the account's name is not known.
 
-`groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure, and `groupsAndRoles` is then added, saying `"permission denied"`; an Application in no groups, or with no roles, has `[]` or `{}` (the readable report says `none`); if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](json-output.md) once the rest has been reported.
+`groups` and `roles` are `null` when the Application lacks the permissions required to look them up, which is not a failure, and `groupsAndRoles` is then added, saying `"permission denied"`; an Application in no groups, or with no roles, has `[]` or `{}` (the readable report says `none`); if the lookup fails for any other reason they are `null` too, a warning naming the failure is printed (on stderr, under `--json`), and the command exits with that failure's [exit code](json-output.md) once the rest has been reported. `keyrings` follows the same rules, with `keyringsLookup` saying `"permission denied"` when the Application may not read Keyrings.
 
 ```shell
 yd application --json
@@ -1751,6 +1751,9 @@ yd application --json
   "features": ["PLATFORM"],
   "groups": ["administrators"],
   "id": "ydid:app:000000:557cc657-4fca-4e00-aa7a-3f6bd59dc6f2",
+  "keyrings": [
+    {"name": "cloud-credentials", "id": "ydid:keyring:000000:89238d50-c048-44e5-88d8-8146c1392c4e", "credentials": ["aws", "gcp"]}
+  ],
   "name": "my-app",
   "portalUrl": "https://portal.yellowdog.ai/#/signin?account=my-account",
   "roles": {"administrator": ["GLOBAL"]}
@@ -1867,6 +1870,7 @@ and then, live:
 - whether the Platform API is reachable (a `WARN` if it answers with a server error)
 - whether the credentials are accepted (naming the Application, its groups and roles, or why not: the key or secret not recognised, the Application without a role, the connection, or a server error)
 - whether the configured namespace is readable by the Application
+- the Keyrings the Application can use, each with its credentials' names (a `WARN` when there are none, since provisioning on a cloud needs the Keyring holding that cloud's credential; a `SKIP` when the Application may not read Keyrings)
 - whether the data client's remote can be reached at the configured prefix, where the data client commands work (a prefix not created yet is `OK` if its bucket is there, and a bucket that is not there is a `FAIL`)
 
 A check that cannot run says why (`SKIP`) rather than disappearing.
