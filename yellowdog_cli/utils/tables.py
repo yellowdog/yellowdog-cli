@@ -417,8 +417,18 @@ def image_family_table(
 def instances_table(
     instances: list[Instance],
 ) -> tuple[list[str], list[str]]:
-    headers = [
-        "#",
+    """
+    The Instances' table, each with its Compute Requirement's name where the
+    lister has added it ('computeRequirementName': an Instance does not name
+    its Compute Requirement).
+    """
+    show_cr_name = any(
+        getattr(i, "computeRequirementName", None) is not None for i in instances
+    )
+    headers = ["#"]
+    if show_cr_name:
+        headers.append("Compute Requirement")
+    headers += [
         "Provider",
         "Instance Type",
         "Spot",
@@ -431,9 +441,12 @@ def instances_table(
     ]
     table = []
     for index, instance in enumerate(instances):
+        row: list = [index + 1]
+        if show_cr_name:
+            row.append(getattr(instance, "computeRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 instance.provider,
                 instance.instanceType,
                 _yes_or_no(instance.spot),

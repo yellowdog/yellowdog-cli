@@ -6,7 +6,7 @@ Command to list YellowDog entities.
 
 import fnmatch
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from itertools import chain, islice
 from os.path import exists
 from typing import Any, TypeVar, cast
@@ -1026,26 +1026,24 @@ def _list_instances_within(ctx: RunContext) -> None:
     if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
         # Fetched, since an Instance search for an ID that names nothing
         # finds nothing rather than failing
-        _fetched_within(
+        compute_requirement_id = target
+        name = _fetched_within(
             "Compute Requirement",
             target,
             lambda: ctx.client.compute_client.get_compute_requirement_by_id(target),
-        )
-        compute_requirement_id = target
+        ).name
     else:
-        compute_requirement_id = cast(
-            str,
-            find_compute_requirement_by_name(
-                ctx.client,
-                target,
-                ctx.config.namespace,
-                _ACTIVE_CR_STATUSES,
-            ).id,
+        found = find_compute_requirement_by_name(
+            ctx.client,
+            target,
+            ctx.config.namespace,
+            _ACTIVE_CR_STATUSES,
         )
+        compute_requirement_id, name = cast(str, found.id), found.name
     if _listing_all(ctx):
         _print_all_instances(ctx, [compute_requirement_id])
     else:
-        list_instances(ctx, compute_requirement_id)
+        list_instances(ctx, [(compute_requirement_id, name)])
 
 
 def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) -> None:
@@ -1131,10 +1129,10 @@ def list_compute_requirements(ctx: RunContext):
                 ctx, [cast(str, cr.id) for cr in compute_requirement_summaries]
             )
             return
-        for compute_requirement_summary in select(
-            ctx.client, compute_requirement_summaries, single_result=True
-        ):
-            list_instances(ctx, compute_requirement_summary.id)  # type: ignore[arg-type]
+        # Several Compute Requirements may be chosen; none (the choice
+        # cancelled) lists nothing
+        if chosen := select(ctx.client, compute_requirement_summaries):
+            list_instances(ctx, [(cast(str, cr.id), cr.name) for cr in chosen])
         return
 
     if ctx.args.json_output or ctx.args.count_only:
@@ -1250,12 +1248,25 @@ def _status_name(entity: Any) -> str | None:
     return getattr(status, "value", status)
 
 
-def list_instances(ctx: RunContext, compute_requirement_id: str):
+def list_instances(
+    ctx: RunContext,
+    compute_requirements: Sequence[tuple[str, str | None]],
+):
     """
-    List the instances within a Compute Requirement.
+    The Instances of the Compute Requirements, in one table: grouped by
+    Compute Requirement, in the order given, each row naming its Compute
+    Requirement, as many as '--limit' allows. Each is given as its ID and
+    its name.
     """
     limit = _ListLimit(ctx)
-    instances = limit.take(_matching_instances(ctx, compute_requirement_id))
+    instances: list[Instance] = []
+    for compute_requirement_id, name in compute_requirements:
+        if limit.more:
+            break
+        for instance in limit.take(_matching_instances(ctx, compute_requirement_id)):
+            # For the table: an Instance does not name its Compute Requirement
+            instance.computeRequirementName = name  # type: ignore[attr-defined]
+            instances.append(instance)
     if not instances:
         _print_empty(ctx, "No matching Instances")
         return

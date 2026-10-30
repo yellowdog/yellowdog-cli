@@ -7,6 +7,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Listing and actions
 
 - **`yd task list` can list the Tasks of several Task Groups at once**: at the Task Group prompt, answer with a list, a range or `*` (`1,3`, `1-4`), and their Tasks are listed in one table, each row naming its Task Group. Only one Task Group could be chosen before.
+- **`yd instance list` can list the Instances of several Compute Requirements at once**: at the Compute Requirement prompt, answer with a list, a range or `*`, and their Instances are listed in one table. The Instances table has a Compute Requirement column naming each row's.
 - **An empty listing says so the same way for every type**: `No matching <Type>` (`No matching Instances`, `No matching Keyrings`), in place of the mix of `No Nodes to display`, `No instances to list` and `... found`; a listing of Task Groups, Attribute Definitions or Permissions that found none now says so rather than printing nothing.
 
 ## 15.6.0 — 2026-10-30

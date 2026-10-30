@@ -382,7 +382,7 @@ class TestActiveInstancesAndWorkers:
             "print_numbered_object_list",
             lambda _c, objects: shown.extend(objects),
         )
-        yd_list.list_instances(_ctx(), CR_ID)
+        yd_list.list_instances(_ctx(), [(CR_ID, "cr")])
         assert [i.id.instanceId for i in shown] == ["i-up"]
 
     def test_active_workers_are_those_the_sdk_calls_available(
@@ -957,6 +957,61 @@ class TestChosenTaskGroups:
         assert shown == [] and infos == []
 
 
+class TestChosenComputeRequirements:
+    """
+    Listing Instances by choosing: several Compute Requirements may be
+    chosen, and their Instances are listed in one table, grouped in the
+    Compute Requirements' order, each naming its Compute Requirement; a
+    choice cancelled lists nothing.
+    """
+
+    def _list(self, monkeypatch, chosen):
+        crs = [
+            SimpleNamespace(id="cr-1", name="first"),
+            SimpleNamespace(id="cr-2", name="second"),
+        ]
+        instances = {
+            "cr-1": [SimpleNamespace(name="a"), SimpleNamespace(name="b")],
+            "cr-2": [SimpleNamespace(name="c")],
+        }
+        monkeypatch.setattr(
+            yd_list, "select", lambda client, objects, **k: chosen(objects)
+        )
+        monkeypatch.setattr(
+            yd_list, "_matching_instances", lambda ctx, cr_id: iter(instances[cr_id])
+        )
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, objects: shown.append(objects),
+        )
+        monkeypatch.setattr(
+            yd_list, "get_compute_requirement_summaries", lambda *a, **k: crs
+        )
+        monkeypatch.setattr(yd_list, "sorted_objects", lambda objects: objects)
+        monkeypatch.setattr(yd_list, "namespace_scope", lambda *a: "")
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: None)
+        ctx = RunContext(
+            args=_args(ET_INSTANCES),
+            config=SimpleNamespace(namespace="ns", name_tag=None),
+            client=MagicMock(),
+        )
+        yd_list.list_compute_requirements(ctx)
+        return shown
+
+    def test_the_instances_of_several_are_one_table(self, monkeypatch):
+        (table,) = self._list(monkeypatch, lambda crs: crs)
+        assert [(i.name, i.computeRequirementName) for i in table] == [
+            ("a", "first"),
+            ("b", "first"),
+            ("c", "second"),
+        ]
+
+    def test_a_cancelled_choice_lists_nothing(self, monkeypatch):
+        assert self._list(monkeypatch, lambda crs: []) == []
+
+
 class TestEmptyListings:
     """
     An empty listing says 'No matching <Type>', the listings that printed
@@ -995,7 +1050,7 @@ class TestEmptyListings:
             ),
             (
                 ET_INSTANCES,
-                lambda ctx: yd_list.list_instances(ctx, CR_ID),
+                lambda ctx: yd_list.list_instances(ctx, [(CR_ID, "cr")]),
                 "No matching Instances",
             ),
         ],
@@ -1052,7 +1107,7 @@ class TestWithinCompute:
 
         def find(client, name, namespace, statuses):
             seen.append((name, namespace))
-            return SimpleNamespace(id=CR_ID)
+            return SimpleNamespace(id=CR_ID, name="my-cr")
 
         monkeypatch.setattr(yd_list, "find_compute_requirement_by_name", find)
         listing.client.compute_client.get_instances.return_value.iterate.return_value = []
