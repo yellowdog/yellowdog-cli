@@ -12,6 +12,7 @@ These changes alter what a command prints without `--debug`:
 
 ### Listing and actions
 
+- **`yd application` and `yd doctor` show the Keyrings the Application can use**, each with the names of its credentials: `yd application` in its report and as `keyrings` under `--json`, and `yd doctor` in a Keyrings row, a `WARN` when there are none.
 - **`yd task list` shows each Task's Task Group**: the table of Tasks has a Task Group column, so Tasks listed across a Work Requirement's Task Groups (`--within` a Work Requirement, or every Task) can be told apart; `--details` and `--json` are unchanged.
 - **`yd taskgroup list` shows each Task Group's Tasks**, completed of total, as `yd workrequirement list` does for a Work Requirement's.
 - **`yd workerpool list` shows each pool's Nodes, its Workers (working of all) and whether it is healthy.**

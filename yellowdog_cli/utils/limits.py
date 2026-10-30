@@ -18,6 +18,10 @@ DATA_CLIENT_RCLONE_TRANSFERS = 128
 # How many names a wildcard's summary line shows before 'and N more'
 DATA_CLIENT_NAMES_SHOWN = 10
 
+# The most Keyrings fetched at once to find those an Application can use
+# ('yd application', 'yd doctor'): a Keyring's summary carries no accessors
+KEYRING_FETCH_WORKERS = 8
+
 # The MCP server's default bound on a tool call, since a client gives up on one
 # after a fixed time; yd_follow's is shorter, its result being the events
 # collected in that time

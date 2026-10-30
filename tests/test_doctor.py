@@ -877,7 +877,7 @@ class TestConfiguration:
         # the profile rows open the Data client group, after Platform, so
         # that the JSON's order is the table's
         order = list(rows)
-        at = order.index("Namespace granted")
+        at = order.index("Keyrings")
         assert order[at + 1 : at + 4] == [
             "Data client profile [dataClient]",
             "Data client profile backup",
@@ -1234,6 +1234,56 @@ class TestLive:
         )
         assert dc.check_namespace_granted(ctx).status is dc.Status.OK
 
+    def _keyrings_row(self, monkeypatch, lookup):
+        import yellowdog_cli.utils.entity_utils as entity_utils
+
+        monkeypatch.setattr(entity_utils, "get_application_keyrings", lookup)
+        ctx = _ctx(config_loaded=True, config_common=self._cfg(), client=object())
+        ctx.application = SimpleNamespace(id="ydid:app:1")
+        return dc.check_keyrings(ctx)
+
+    def test_keyrings_are_listed_with_their_credentials(self, monkeypatch):
+        keyrings = [
+            SimpleNamespace(
+                name="cloud",
+                credentials=[SimpleNamespace(name="gcp"), SimpleNamespace(name="aws")],
+            ),
+            SimpleNamespace(name="empty", credentials=[]),
+        ]
+        r = self._keyrings_row(monkeypatch, lambda c, a: keyrings)
+        assert (r.status, r.detail) == (
+            dc.Status.OK,
+            "cloud (aws, gcp); empty (no credentials)",
+        )
+
+    def test_no_keyrings_warns(self, monkeypatch):
+        r = self._keyrings_row(monkeypatch, lambda c, a: [])
+        assert (r.status, r.detail) == (dc.Status.WARN, "none")
+        assert r.remedy is not None and "Keyring" in r.remedy
+
+    def test_no_permission_to_read_keyrings_skips(self, monkeypatch):
+        from requests import HTTPError, Response
+
+        response = Response()
+        response.status_code = 403
+
+        def lookup(c, a):
+            raise HTTPError("HTTP 403", response=response)
+
+        r = self._keyrings_row(monkeypatch, lookup)
+        assert r == dc.Result(dc.Status.SKIP, "not permitted to read Keyrings")
+
+    def test_any_other_keyring_failure_is_raised(self, monkeypatch):
+        def lookup(c, a):
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            self._keyrings_row(monkeypatch, lookup)
+
+    def test_keyrings_skip_when_not_authenticated(self):
+        ctx = _ctx(config_loaded=True, config_common=self._cfg())
+        assert dc.check_keyrings(ctx) == dc.Result(dc.Status.SKIP, "not authenticated")
+
     def _remote(self, monkeypatch, stats: dict, name: str = "backup"):
         """
         The Remote reachable row, remote_stat answering from 'stats' (a
@@ -1360,6 +1410,7 @@ class TestLive:
             ("Authenticated", dc.Need.CREDENTIALS_AND_NETWORK),
             ("Groups and roles", dc.Need.CREDENTIALS_AND_NETWORK),
             ("Namespace granted", dc.Need.CREDENTIALS_AND_NETWORK),
+            ("Keyrings", dc.Need.CREDENTIALS_AND_NETWORK),
             ("Remote reachable", dc.Need.DATA_CLIENT),
         ]
 

@@ -6,6 +6,7 @@ import fnmatch
 import logging
 import re
 from collections.abc import Callable, Collection, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -38,6 +39,7 @@ from yellowdog_client.model import (
     Instance,
     InstanceSearch,
     InternalUser,
+    Keyring,
     KeyringSearch,
     KeyringSummary,
     MachineImageFamily,
@@ -74,6 +76,7 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
+from yellowdog_cli.utils.limits import KEYRING_FETCH_WORKERS
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import (
@@ -1346,6 +1349,54 @@ def get_application_group_summaries(
     Get the summaries of the groups to which an application belongs.
     """
     return client.account_client.get_application_groups(app_id).list_all()
+
+
+def get_application_keyrings(
+    client: PlatformClient, application_id: str
+) -> list[Keyring]:
+    """
+    The Keyrings the Application can use, sorted by name: those whose
+    accessors include it. A Keyring's summary carries no accessors, so each is
+    fetched in full, KEYRING_FETCH_WORKERS at a time; its credentials come
+    with it, their secrets withheld by the Platform. A Keyring gone, or not
+    readable, between the listing and its fetch is one the Application
+    cannot use; any other failure, the listing's included, is raised.
+    """
+
+    def fetched(summary: KeyringSummary) -> Keyring | None:
+        try:
+            return client.keyring_client.get_keyring(cast(str, summary.id))
+        except Exception as e:
+            if classify(e) in (ExitCode.NOT_FOUND, ExitCode.PERMISSION):
+                _LOG.debug("Keyring '%s' could not be read: %s", summary.name, e)
+                return None
+            raise
+
+    summaries = client.keyring_client.find_all_keyrings()
+    with ThreadPoolExecutor(max_workers=KEYRING_FETCH_WORKERS) as pool:
+        keyrings = [k for k in pool.map(fetched, summaries) if k is not None]
+    usable = sorted(
+        (
+            keyring
+            for keyring in keyrings
+            if any(
+                accessor.accessorId == application_id
+                for accessor in keyring.accessors or []
+            )
+        ),
+        key=lambda keyring: keyring.name or "",
+    )
+    _LOG.debug(
+        "Read %d Keyring(s); the Application can use %d", len(summaries), len(usable)
+    )
+    return usable
+
+
+def keyring_credential_names(keyring: Keyring) -> list[str]:
+    """
+    The names of a Keyring's credentials, sorted.
+    """
+    return sorted(str(c.name) for c in keyring.credentials or [] if c.name)
 
 
 @lru_cache

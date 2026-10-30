@@ -78,6 +78,9 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/application.py::_groups_and_roles#0": (
         "Returns the failure, which the caller classifies for the exit code"
     ),
+    "yellowdog_cli/application.py::_keyrings#0": (
+        "Returns the failure, which the caller classifies for the exit code"
+    ),
     "yellowdog_cli/commander/command_running.py::CommandRunning._capture_json_document#0": (
         "Commander: a child's output that is not JSON; None falls back to a"
         " confirmation of the whole scope"
