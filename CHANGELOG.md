@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Listing and actions
+
+- **`yd task list` can list the Tasks of several Task Groups at once**: at the Task Group prompt, answer with a list, a range or `*` (`1,3`, `1-4`), and their Tasks are listed in one table, each row naming its Task Group. Only one Task Group could be chosen before.
+
 ## 15.6.0 — 2026-10-30
 
 ### Upgrading

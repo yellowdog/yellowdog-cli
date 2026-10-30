@@ -680,7 +680,7 @@ class TestTaskSearchTerms:
         ctx = RunContext(
             args=_args(entity_type, **values), config=None, client=MagicMock()
         )
-        yd_list.list_tasks(ctx, SimpleNamespace(id="tg"), None)
+        yd_list.list_tasks(ctx, [SimpleNamespace(id="tg")])
         (terms,) = fetched
         return terms
 
@@ -900,6 +900,63 @@ WP_ID = CR_ID.replace("compreq", "wrkrpool")
 NODE_ID = CR_ID.replace("compreq", "node")
 
 
+class TestChosenTaskGroups:
+    """
+    Listing Tasks by choosing: several Task Groups may be chosen, and their
+    Tasks are listed in one table, grouped by Task Group in the Task Groups'
+    order; a choice cancelled lists nothing.
+    """
+
+    def _list(self, monkeypatch, chosen):
+        groups = [
+            SimpleNamespace(id=TG1, name="tg-1", status=None, taskSummary=None),
+            SimpleNamespace(id=TG2, name="tg-2", status=None, taskSummary=None),
+        ]
+        tasks = {
+            TG1: [
+                SimpleNamespace(name="b", id=f"{TG1}:2"),
+                SimpleNamespace(name="a", id=f"{TG1}:1"),
+            ],
+            TG2: [SimpleNamespace(name="c", id=f"{TG2}:1")],
+        }
+        monkeypatch.setattr(
+            yd_list, "get_task_groups_from_wr_by_id", lambda client, wr_id: groups
+        )
+        monkeypatch.setattr(
+            yd_list, "select", lambda client, objects, **k: chosen(objects)
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "iterate_tasks_in_task_group",
+            lambda client, tg_id, **terms: iter(tasks[tg_id]),
+        )
+        monkeypatch.setattr(
+            yd_list,
+            "sorted_objects",
+            lambda objects: sorted(objects, key=lambda o: o.name),
+        )
+        shown: list = []
+        monkeypatch.setattr(
+            yd_list,
+            "print_numbered_object_list",
+            lambda client, objects: shown.append(objects),
+        )
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        ctx = RunContext(args=_args("tasks"), config=None, client=MagicMock())
+        yd_list.list_task_groups(ctx, SimpleNamespace(id=WR))
+        return shown, infos
+
+    def test_the_tasks_of_several_task_groups_are_one_table(self, monkeypatch):
+        shown, _ = self._list(monkeypatch, lambda groups: groups)
+        (table,) = shown
+        assert [task.name for task in table] == ["a", "b", "c"]
+
+    def test_a_cancelled_choice_lists_nothing(self, monkeypatch):
+        shown, infos = self._list(monkeypatch, lambda groups: [])
+        assert shown == [] and infos == []
+
+
 class TestWithinCompute:
     """
     '--within' for Instances (a Compute Requirement), Nodes (a Worker Pool)
@@ -1054,7 +1111,9 @@ def test_a_task_status_does_not_filter_their_task_groups(
     )
     walked: list[str] = []
     monkeypatch.setattr(
-        yd_list, "list_tasks", lambda _c, tg, _wr: walked.append(tg.name)
+        yd_list,
+        "list_tasks",
+        lambda _c, tgs: walked.extend(tg.name for tg in tgs),
     )
     yd_list.list_task_groups(_ctx(), SimpleNamespace(id="wr"))
     if entity_type == ET_TASKS:

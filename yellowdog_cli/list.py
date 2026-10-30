@@ -822,19 +822,27 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
             )
         else:
             print_numbered_object_list(ctx.client, task_groups)
-    else:
-        task_groups = select(ctx.client, task_groups, single_result=True)
-        for task_group in task_groups:
-            list_tasks(ctx, task_group, work_summary)
+    # Several Task Groups may be chosen; none (the choice cancelled) lists nothing
+    elif chosen := select(ctx.client, task_groups):
+        list_tasks(ctx, chosen)
 
 
-def list_tasks(
-    ctx: RunContext, task_group: TaskGroup, _work_summary: WorkRequirementSummary
-):
+def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
+    """
+    The Tasks of the chosen Task Groups, in one table: grouped by Task Group,
+    in the Task Groups' order, each group's Tasks in order (the table names
+    each Task's Task Group), as many as '--limit' allows.
+    """
     limit = _ListLimit(ctx)
-    tasks = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
+    tasks: list[Task] = []
+    for task_group in task_groups:
+        if limit.more:
+            break
+        tasks.extend(sorted_objects(limit.take(_matching_tasks(ctx, task_group))))
+    if not tasks:
+        _print_empty(ctx, f"No matching {ET_TASKS}")
     # Interactive alone, as list_task_groups() is
-    if ctx.args.details:
+    elif ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
     else:
         print_numbered_object_list(ctx.client, tasks)
