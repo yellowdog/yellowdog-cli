@@ -957,6 +957,56 @@ class TestChosenTaskGroups:
         assert shown == [] and infos == []
 
 
+class TestEmptyListings:
+    """
+    An empty listing says 'No matching <Type>', the listings that printed
+    nothing or worded it otherwise included.
+    """
+
+    def _empty(self, monkeypatch):
+        infos: list[str] = []
+        monkeypatch.setattr(yd_list, "print_info", lambda m, **k: infos.append(m))
+        monkeypatch.setattr(yd_list, "get_user_attribute_definitions", lambda c: [])
+        monkeypatch.setattr(
+            yd_list, "get_task_groups_from_wr_by_id", lambda client, wr_id: []
+        )
+        monkeypatch.setattr(yd_list, "_matching_instances", lambda ctx, cr_id: iter(()))
+        client = MagicMock()
+        client.account_client.list_permissions.return_value = []
+        return infos, client
+
+    @pytest.mark.parametrize(
+        ("entity_type", "lister", "message"),
+        [
+            (
+                ET_ATTRIBUTE_DEFINITIONS,
+                lambda ctx: yd_list.list_attribute_definitions(ctx),
+                "No matching Attribute Definitions",
+            ),
+            (
+                "permissions",
+                lambda ctx: yd_list.list_permissions(ctx),
+                "No matching Permissions",
+            ),
+            (
+                ET_TASK_GROUPS,
+                lambda ctx: yd_list.list_task_groups(ctx, SimpleNamespace(id=WR)),
+                "No matching Task Groups",
+            ),
+            (
+                ET_INSTANCES,
+                lambda ctx: yd_list.list_instances(ctx, CR_ID),
+                "No matching Instances",
+            ),
+        ],
+    )
+    def test_says_none_match(self, monkeypatch, capsys, entity_type, lister, message):
+        infos, client = self._empty(monkeypatch)
+        lister(RunContext(args=_args(entity_type), config=None, client=client))
+        assert infos == [message]
+        assert capsys.readouterr().out == ""
+
+
 class TestWithinCompute:
     """
     '--within' for Instances (a Compute Requirement), Nodes (a Worker Pool)

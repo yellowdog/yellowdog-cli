@@ -797,7 +797,10 @@ def _list_within(ctx: RunContext) -> None:
     elif _listing_all(ctx):
         _print_all(ctx, objects)
     elif not objects:
-        print_info(f"No matching {ctx.args.entity_type}")
+        _print_empty(
+            ctx,
+            f"No matching {'Task Groups' if ctx.args.entity_type == ET_TASK_GROUPS else 'Tasks'}",
+        )
     elif ctx.args.details:
         print_yd_object_list([(obj, None) for obj in select(ctx.client, objects)])
     else:
@@ -814,7 +817,9 @@ def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
     # test of the Task Groups walked to reach them
     if ctx.args.entity_type == ET_TASK_GROUPS:
         task_groups = _filtered_task_groups(ctx, task_groups)
-    if ctx.args.entity_type != ET_TASKS:
+    if not task_groups:
+        _print_empty(ctx, "No matching Task Groups")
+    elif ctx.args.entity_type != ET_TASKS:
         # Interactive alone: '--ids-only' lists everything, with no choosing
         if ctx.args.details:
             print_yd_object_list(
@@ -840,7 +845,7 @@ def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
             break
         tasks.extend(sorted_objects(limit.take(_matching_tasks(ctx, task_group))))
     if not tasks:
-        _print_empty(ctx, f"No matching {ET_TASKS}")
+        _print_empty(ctx, "No matching Tasks")
     # Interactive alone, as list_task_groups() is
     elif ctx.args.details:
         print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
@@ -950,7 +955,7 @@ def list_worker_pools(ctx: RunContext):
     )
 
     if not worker_pool_summaries:
-        _print_empty(ctx, "No Worker Pools to display")
+        _print_empty(ctx, "No matching Worker Pools")
         return
 
     if ctx.args.entity_type in (ET_NODES, ET_WORKERS):
@@ -1252,7 +1257,7 @@ def list_instances(ctx: RunContext, compute_requirement_id: str):
     limit = _ListLimit(ctx)
     instances = limit.take(_matching_instances(ctx, compute_requirement_id))
     if not instances:
-        print_info("No instances to list")
+        _print_empty(ctx, "No matching Instances")
         return
 
     if ctx.args.public_ips_only:
@@ -1290,7 +1295,7 @@ def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
             break
         nodes_all += limit.take(_matching_nodes(ctx, worker_pool_summary))
     if not nodes_all:
-        _print_empty(ctx, "No Nodes to display")
+        _print_empty(ctx, "No matching Nodes")
         return
 
     if _listing_all(ctx):
@@ -1371,7 +1376,7 @@ def list_workers(ctx: RunContext, nodes: Iterable[Node]):
     limit = _ListLimit(ctx)
     workers_all = limit.take(_matching_workers(ctx, nodes))
     if not workers_all:
-        _print_empty(ctx, "No Workers to display")
+        _print_empty(ctx, "No matching Workers")
         return
 
     if _listing_all(ctx):
@@ -1431,7 +1436,7 @@ def list_compute_requirement_templates(ctx: RunContext):
         )
 
     if not cr_templates:
-        _print_empty(ctx, "No matching Compute Requirement Templates found")
+        _print_empty(ctx, "No matching Compute Requirement Templates")
         return
 
     _emit(
@@ -1483,7 +1488,7 @@ def list_compute_source_templates(ctx: RunContext):
         ctx, cs_templates, lambda template: template.provider
     )
     if not cs_templates:
-        _print_empty(ctx, "No matching Compute Source Templates found")
+        _print_empty(ctx, "No matching Compute Source Templates")
         return
 
     _emit(
@@ -1517,7 +1522,7 @@ def list_keyrings(ctx: RunContext):
             keyrings, ctx.args.name_glob, "Keyring"
         )
     if not keyrings:
-        _print_empty(ctx, "No Keyrings found")
+        _print_empty(ctx, "No matching Keyrings")
         return
 
     _emit(ctx, keyrings, extra=lambda _: {PROP_RESOURCE: RN_KEYRING})
@@ -1548,7 +1553,7 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                "No matching Machine Image Families found "
+                "No matching Machine Image Families "
                 f"{namespace_scope(ctx.client, namespace)} matching name pattern '{name}'",
             )
             return
@@ -1565,7 +1570,7 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                "No matching Machine Image Families found "
+                "No matching Machine Image Families "
                 f"{namespace_scope(ctx.client, ctx.config.namespace)}"
                 + filter_phrase("with names including '{}'", _shared_tag(ctx)),
             )
@@ -1593,7 +1598,7 @@ def list_allowances(ctx: RunContext):
         ctx, sorted_objects(search_client.list_all())
     )
     if not allowances:
-        _print_empty(ctx, "No Allowances to display")
+        _print_empty(ctx, "No matching Allowances")
         return
 
     _emit(
@@ -1619,6 +1624,10 @@ def list_attribute_definitions(ctx: RunContext):
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, attribute_definition_list)
+        return
+
+    if not attribute_definition_list:
+        _print_empty(ctx, "No matching Attribute Definitions")
         return
 
     if not ctx.args.details:
@@ -1675,7 +1684,7 @@ def list_namespaces(ctx: RunContext):
         ]
 
     if not namespaces:
-        _print_empty(ctx, "No Namespaces found")
+        _print_empty(ctx, "No matching Namespaces")
         return
     _emit(ctx, namespaces, extra=lambda _: {PROP_RESOURCE: RN_NAMESPACE})
 
@@ -1691,7 +1700,7 @@ def list_namespace_policies(ctx: RunContext):
     )
     namespace_policies: list[NamespacePolicy] = search_client.list_all()
     if not namespace_policies:
-        _print_empty(ctx, "No Namespace Policies to display")
+        _print_empty(ctx, "No matching Namespace Policies")
         return
     namespace_policies = sorted_objects(namespace_policies)
 
@@ -1726,7 +1735,7 @@ def list_users(ctx: RunContext):
         users = _filter_by_name_glob_with_warning(users, ctx.args.name_glob, "User")
 
     if not users:
-        _print_empty(ctx, "No Users to display")
+        _print_empty(ctx, "No matching Users")
         return
 
     # With '--details', each User's Groups by name, as yd-create takes them
@@ -1756,7 +1765,7 @@ def list_applications(ctx: RunContext):
         )
 
     if not applications:
-        _print_empty(ctx, "No Applications to display")
+        _print_empty(ctx, "No matching Applications")
         return
 
     # With '--details', each Application's Groups by name
@@ -1786,7 +1795,7 @@ def list_groups(ctx: RunContext):
         )
 
     if not group_summaries:
-        _print_empty(ctx, "No Groups to display")
+        _print_empty(ctx, "No matching Groups")
         return
 
     group_summaries = sorted_objects(group_summaries)
@@ -1833,7 +1842,7 @@ def list_roles(ctx: RunContext):
         )
 
     if not role_summaries:
-        _print_empty(ctx, "No Roles to display")
+        _print_empty(ctx, "No matching Roles")
         return
 
     role_summaries = sorted_objects(role_summaries)
@@ -1886,6 +1895,10 @@ def list_permissions(ctx: RunContext):
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, permissions)
+        return
+
+    if not permissions:
+        _print_empty(ctx, "No matching Permissions")
         return
 
     if not ctx.args.details:
