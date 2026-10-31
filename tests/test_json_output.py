@@ -1307,11 +1307,64 @@ class TestBoost:
         )
 
         parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
-        args = parser.parse_args(["2", ALLOWANCE_ID, "not-an-id"])
+        args = parser.parse_args(["2", ALLOWANCE_ID, "*gpu*", "not-an-id"])
         with pytest.raises(SystemExit) as exit_info:
             check_allowance_ids(args, parser)
         assert exit_info.value.code == 2
-        assert "not a YellowDog Allowance ID: 'not-an-id'" in capsys.readouterr().err
+        assert (
+            "not a YellowDog Allowance ID or a description pattern: 'not-an-id'"
+            in capsys.readouterr().err
+        )
+
+    @staticmethod
+    def _listing(client: MagicMock, descriptions: dict) -> None:
+        """
+        The Allowances a search finds: their IDs and descriptions.
+        """
+        client.allowances_client.get_allowances.return_value.list_all.return_value = [
+            SimpleNamespace(id=allowance_id, description=description)
+            for allowance_id, description in descriptions.items()
+        ]
+
+    def test_a_pattern_boosts_each_allowance_whose_description_matches(self, run):
+        client = self._client()
+        self._listing(
+            client,
+            {ALLOWANCE_ID: "gpu budget", ALLOWANCE_ID_2: "cpu", ALLOWANCE_ID_3: None},
+        )
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=["*gpu*", ALLOWANCE_ID],
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [(ALLOWANCE_ID, "boosted")]
+        # Found by the search, so not fetched again
+        client.allowances_client.get_allowance_by_id.assert_not_called()
+
+    def test_a_pattern_is_matched_case_sensitively(self, run):
+        client = self._client()
+        self._listing(client, {ALLOWANCE_ID: "GPU budget"})
+        out, _, _ = run(
+            yd_boost, client=client, boost_hours=2, allowance_list=["*gpu*"]
+        )
+        assert out == []
+        client.allowances_client.boost_allowance_by_id.assert_not_called()
+
+    def test_a_pattern_matching_nothing_says_so(self, run, monkeypatch):
+        said: list[str] = []
+        monkeypatch.setattr(action_runner_module, "print_info", said.append)
+        client = self._client()
+        self._listing(client, {ALLOWANCE_ID: "cpu"})
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=["*gpu*", ALLOWANCE_ID_2],
+        )
+        assert said == ["No Allowances have a description matching '*gpu*'"]
+        assert [(r["id"], r["outcome"]) for r in out] == [(ALLOWANCE_ID_2, "boosted")]
+        assert run.exit_code in (None, 0)
 
     def test_a_missing_one_fails_before_anything_is_boosted(self, run):
         client = self._client({ALLOWANCE_ID: "a"})

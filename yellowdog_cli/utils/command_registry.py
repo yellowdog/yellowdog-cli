@@ -1710,24 +1710,35 @@ BOOST_HOURS = option(
 )
 ALLOWANCES = option(
     "allowances",
-    metavar="<allowance-ID>",
+    metavar="<allowance-ID-or-pattern>",
     nargs="+",
     type=str,
-    help="the YellowDog ID(s) of the allowance(s) to boost",
+    help=(
+        "the YellowDog ID(s) of the allowance(s) to boost, or a pattern"
+        " ('*gpu*') for those whose descriptions match it"
+    ),
 )
 
 
 def check_allowance_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-boost's Allowance IDs, before anything is fetched or boosted. The
-    YDID parser is imported here, so this module still imports nothing at
-    load beyond the constants modules and glob_utils.py.
+    yd-boost's Allowance IDs, before anything is fetched or boosted: each an
+    Allowance's ID, or a description pattern (holding a wildcard), an
+    Allowance having no name. The YDID parser is imported here, so this
+    module still imports nothing at load beyond the constants modules and
+    glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
     for allowance_id in args.allowances:
-        if get_ydid_type(allowance_id) != YDIDType.ALLOWANCE:
-            parser.error(f"not a YellowDog Allowance ID: '{allowance_id}'")
+        ydid_type = get_ydid_type(allowance_id)
+        if ydid_type == YDIDType.ALLOWANCE or (
+            ydid_type is None and contains_glob_chars(allowance_id)
+        ):
+            continue
+        parser.error(
+            f"not a YellowDog Allowance ID or a description pattern: '{allowance_id}'"
+        )
 
 
 COMMANDS["yd-boost"] = Command(

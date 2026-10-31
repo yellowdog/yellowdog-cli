@@ -228,7 +228,7 @@ How each command takes its targets:
 | `yd workerpool resize`, `yd computerequirement resize` | refused (one target) | no |
 | `yd computerequirement stop`, `start`, `reprovision`, `terminate`, `autoshutdown` | the namespace and tag | yes, not mixed with names or IDs |
 | `yd instance` verbs, `yd node` verbs | refused: Instances (`cr_id.instance_id`) or Node IDs only | no |
-| `yd allowance boost` | refused: Allowance IDs only | no |
+| `yd allowance boost` | refused | yes, matching descriptions, mixed with IDs as wished |
 | `show` verbs (Work Requirement, Task Group, Task, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching objects in any state; `--json` prints an array for a pattern however many it matched |
 | `follow` and `wait` verbs (Work Requirement, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching unfinished objects alone |
 | `compare` verbs | refused | no |
@@ -1245,10 +1245,10 @@ Allowances.
 The `yd allowance boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
 
 ```shell
-yd allowance boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
+yd allowance boost [options] <boost-hours> <allowance-ID-or-pattern> [<allowance-ID-or-pattern> ...]
 ```
 
-The number of hours to add is supplied first, and must be at least 1, followed by the YDID(s) of one or more Allowances to boost. Allowance names are not accepted, and anything that is not an Allowance YDID is a usage error, before anything is boosted; an Allowance ID given more than once is boosted once.
+The number of hours to add is supplied first, and must be at least 1, followed by one or more Allowances to boost, each its YDID or a pattern matched against Allowances' descriptions (`'*gpu*'`), since an Allowance has no name. A pattern holds a wildcard (`*`, `?` or `[...]`), is matched case-sensitively against the whole description, as `yd allowance list --description` matches it, and never matches an Allowance without a description; one matching nothing says so and is not a failure. Anything that is neither an Allowance YDID nor a pattern is a usage error, before anything is boosted; an Allowance named more than once, by ID or by pattern, is boosted once.
 
 Each Allowance is looked up first, so one that does not exist is reported as failed before any is boosted, and the rest are confirmed together, each shown with its description (an Allowance has no name); each one's remaining hours are reported once it has been boosted. An authentication or connection failure stops the command, with that failure's [exit code](json-output.md): the Allowances not yet attempted are reported as skipped rather than each failing in the same way.
 
@@ -1258,6 +1258,7 @@ Key options:
 ```shell
 yd allowance boost 10 ydid:allow:D9C548:...
 yd allowance boost 10 ydid:allow:D9C548:... ydid:allow:D9C548:...
+yd allowance boost 10 '*gpu*'
 ```
 
 See [Allowances](resources.md#allowances) for how Allowances are defined.

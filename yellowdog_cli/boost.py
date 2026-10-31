@@ -4,18 +4,21 @@
 A script to boost allowances, through action_runner.py's rules, as the other
 action commands are.
 
-Each Allowance ID (checked to be one as the command line is parsed) is first
-fetched, in the order given and each once, so that a missing one fails
-before anything is boosted and the confirmation can show each Allowance's
-description, an Allowance having no name. The rest are confirmed once and
-boosted. A failure every later call would repeat (exit_codes.SESSION_FAILURES:
+Each target is an Allowance ID or, an Allowance having no name, a pattern
+matched against Allowances' descriptions ('*gpu*'), as checked when the
+command line is parsed; a pattern stands for every Allowance it matches.
+Each Allowance is first fetched, in the order given and each once, so that a
+missing one fails before anything is boosted and the confirmation can show
+each Allowance's description. The rest are confirmed once and boosted. A
+failure every later call would repeat (exit_codes.SESSION_FAILURES:
 authentication, connection) stops the run, and the Allowances not yet
 attempted are recorded as skipped.
 """
 
+import fnmatch
 from typing import Any, cast
 
-from yellowdog_client.model import Allowance
+from yellowdog_client.model import Allowance, AllowanceSearch
 
 from yellowdog_cli.utils.action_runner import (
     Item,
@@ -24,6 +27,7 @@ from yellowdog_cli.utils.action_runner import (
     Unresolved,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -89,10 +93,30 @@ def _label(allowance: Allowance) -> str:
     return f"{allowance.id} ('{description}')" if description else str(allowance.id)
 
 
-def _resolve(ctx: RunContext, allowance_id: str) -> Item:
+def _matching(ctx: RunContext, pattern: str, found: dict[str, Allowance]) -> list[str]:
+    """
+    The IDs of the Allowances whose descriptions match 'pattern', as
+    'yd allowance list --description' matches them, keeping each in 'found'
+    so that it is not fetched again.
+    """
+    search = ctx.client.allowances_client.get_allowances(AllowanceSearch())
+    ids = []
+    for allowance in search.list_all():
+        description = allowance.description
+        if description is not None and fnmatch.fnmatchcase(description, pattern):
+            found[cast(str, allowance.id)] = allowance
+            ids.append(cast(str, allowance.id))
+    return ids
+
+
+def _resolve(ctx: RunContext, allowance_id: str, found: dict[str, Allowance]) -> Item:
     """
     The Allowance an ID names, raising Unresolved if there is none.
     """
+    if allowance_id in found:
+        return Item(
+            found[allowance_id], ET_ALLOWANCES, allowance_id, found[allowance_id]
+        )
     try:
         allowance = ctx.client.allowances_client.get_allowance_by_id(allowance_id)
     except Exception as e:
@@ -121,11 +145,24 @@ def _boost(ctx: RunContext, allowance: Allowance, hours: str) -> None:
 @main_wrapper
 def main(ctx: RunContext) -> None:
     hours = _hours(ctx.args.boost_hours)
-    allowance_ids = list(dict.fromkeys(ctx.args.allowance_list))
     record = _recorder(ctx)
+    found: dict[str, Allowance] = {}
+    allowance_ids = list(
+        dict.fromkeys(
+            expand_patterns(
+                list(dict.fromkeys(ctx.args.allowance_list)),
+                expand=lambda pattern: _matching(ctx, pattern, found),
+                describe=lambda pattern: (pattern, ET_ALLOWANCES),
+                record=record,
+                none_match=lambda pattern: (
+                    f"No Allowances have a description matching '{pattern}'"
+                ),
+            )
+        )
+    )
     items = resolve_targets(
         allowance_ids,
-        resolve=lambda allowance_id: _resolve(ctx, allowance_id),
+        resolve=lambda allowance_id: _resolve(ctx, allowance_id, found),
         describe=lambda allowance_id: (allowance_id, ET_ALLOWANCES),
         record=record,
         verb="boost",
