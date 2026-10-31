@@ -10,7 +10,8 @@ is. The statuses are the SDK enums' member
 names, written out so that the table, and completion.py with it, stay
 SDK-free: tests/test_completion_targets.py holds them to the enums and to
 the commands' own sets. A verb that takes names takes IDs too, but a name is
-what a user types; an ID-only verb offers IDs, each described by its name.
+what a user types; an ID-only verb offers IDs, each described by its name
+(an Allowance's verbs by its description, through the resource lookups).
 """
 
 from __future__ import annotations
@@ -174,6 +175,10 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_CR} show", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, None),
     (f"{_CR} follow", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
     (f"{_CR} wait", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
+    # Allowances, which have no names: their IDs, each described by its
+    # description, as after 'yd resource show --type allowance'
+    ("yd allowance boost", "allowances"): RESOURCE_LOOKUPS[RN_ALLOWANCE],
+    ("yd allowance show", _SHOWN): RESOURCE_LOOKUPS[RN_ALLOWANCE],
     # The listings within a parent
     ("yd taskgroup list", "--within"): WITHIN_LOOKUPS[ET_TASK_GROUPS],
     ("yd task list", "--within"): WITHIN_LOOKUPS[ET_TASKS],

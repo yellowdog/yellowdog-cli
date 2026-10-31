@@ -71,7 +71,9 @@ def test_within_offers_any_status_untagged_as_the_option_resolves_names():
         assert lookup.statuses is None and lookup.tagged is False
 
 
-@pytest.mark.parametrize("key", sorted(LOOKUPS))
+@pytest.mark.parametrize(
+    "key", sorted(key for key, lookup in LOOKUPS.items() if lookup.resource is None)
+)
 def test_the_statuses_are_the_entitys(key):
     lookup = LOOKUPS[key]
     assert lookup.entity in _STATUSES
@@ -119,7 +121,18 @@ def test_every_verb_offers_names():
     # Each takes names, as well as IDs: the actions, the listings' '--within',
     # and show, follow, wait and compare, whose noun gives a name its type
     for (verb, _), lookup in LOOKUPS.items():
-        assert lookup.ids is False, verb
+        if lookup.resource is None:
+            assert lookup.ids is False, verb
+
+
+def test_the_allowance_verbs_offer_ids_as_the_resource_lookup_does():
+    # An Allowance has no name: its ID, described by its description
+    for key in (
+        ("yd allowance boost", "allowances"),
+        ("yd allowance show", "yellowdog_ids"),
+    ):
+        assert LOOKUPS[key] is RESOURCE_LOOKUPS["Allowance"]
+        assert LOOKUPS[key].ids is True
 
 
 def test_a_task_groups_verbs_offer_wr_slash_tg():

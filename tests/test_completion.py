@@ -576,6 +576,14 @@ class TestAnOptionsValueTypedWithIt:
         )
         assert lines == ["values", "--within=nightly"]
 
+    def test_an_allowances_ids_follow_the_hours(self):
+        words = ["yd", "allowance", "boost"]
+        assert complete(words, "").lookup is None  # the hours
+        request = complete([*words, "10"], "").lookup
+        assert request is not None and request.lookup.resource == "Allowance"
+        shown = complete(["yd", "allowance", "show"], "").lookup
+        assert shown is not None and shown.lookup.resource == "Allowance"
+
     def test_a_task_groups_priority_completes_its_names(self):
         from yellowdog_cli.utils.completion_targets import LOOKUPS
 

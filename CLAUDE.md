@@ -70,7 +70,7 @@ yellowdog_cli/
     ├── command_registry.py      # Every command and option as data: Option, Command, CommandKind, ToolKind, COMMANDS, MCP_EXCLUDED_OPTIONS, build_parser() (see Command Registry)
     ├── noun_registry.py         # The nouns and verbs over the registry: Noun, Verb, NOUNS, NOUN_COMMANDS (a derived Command per verb), REPLACED_BY_VERBS, GENERIC_COMMANDS, command_named(), module_invocation(), typed_command() (see Nouns and Verbs)
     ├── completion.py            # complete(words, current): shell completion from the registries alone (no command module, no SDK); Completes marks a file or directory value; 'yd' and the word after it (top_level.TOP_LEVEL) first; join_bash_words()
-    ├── completion_targets.py    # LOOKUPS: the entity arguments Tab completion looks up (verb, argument) -> Lookup(entity, ids, statuses as SDK member names, configured_only); SDK-free
+    ├── completion_targets.py    # LOOKUPS: the entity arguments Tab completion looks up (verb, argument) -> Lookup(entity, ids, statuses as SDK member names, configured_only), or a RESOURCE_LOOKUPS entry (the Allowance verbs: IDs described by description); SDK-free
     ├── completion_lookups.py    # candidates(LookupRequest): the configuration loaded as the command's (typed options first), the search newest first and capped, cached; never raises; SDK imported inside functions only
     ├── completion_cache.py      # A JSON file per lookup in a private per-user temp dir, fresh for COMPLETION_CACHE_SECONDS, every write removing the expired; imports nothing from the CLI
     ├── top_level.py             # TOP_LEVEL: the words after 'yd' (Entry: word, Kind NOUN/COMMAND/OTHER, target, summary), built from the registries; word_of(), yd_form()

@@ -2004,7 +2004,7 @@ The `yd completion` command prints a shell completion script for `yd`, for bash,
 - The keys `--sort` takes, each after a comma too.
 - The entity types `yd list` takes.
 - Local files and directories, for the options and arguments that name one, such as a specification file or `--config`.
-- With `--names`, Work Requirements, Worker Pools and Compute Requirements from the YellowDog Platform, as [described below](#names-and-ids-from-the-platform).
+- With `--names`, Work Requirements, Worker Pools, Compute Requirements and Allowances from the YellowDog Platform, as [described below](#names-and-ids-from-the-platform).
 
 Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help.
 
@@ -2044,7 +2044,7 @@ yd completion powershell --names | Out-String | Invoke-Expression    # in $PROFI
 
 [`yd doctor`](#yd-doctor) says whether the start-up file's line has `--names`.
 
-Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show`, `compare` and `priority` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`, and `yd taskgroup compare` offers Worker Pools too. An ID is still taken wherever a name is.
+Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show`, `compare` and `priority` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`, and `yd taskgroup compare` offers Worker Pools too. An ID is still taken wherever a name is. `yd allowance boost` and `yd allowance show` offer Allowance IDs, each shown with its description where the shell shows descriptions, an Allowance having no name.
 
 What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. A verb that takes no `--tag`, such as `show`, uses the configuration's tag.
 
