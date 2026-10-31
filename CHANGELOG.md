@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Listing and actions
 
+- **`yd workerpool list --provisioned` and `--configured`** list only Worker Pools of that kind, combining with the other filters, `--json` and `--count`: `yd wp list --configured` lists the on-premise pools.
 - **`yd task list` can list the Tasks of several Task Groups at once**: at the Task Group prompt, answer with a list, a range or `*` (`1,3`, `1-4`), and their Tasks are listed in one table, each row naming its Task Group. Only one Task Group could be chosen before.
 - **`yd task abort` and the `priority` verbs take name patterns**, mixed with names and IDs: `yd task abort 'nightly-*'`, `yd wr priority 20 'my-wr/render-*'`. A pattern stands for every unfinished Work Requirement or Task Group it matches, and the matches are confirmed with the other targets; one matching nothing says so.
 - **Tab completes Instances and Nodes** for the `yd instance` and `yd node` verbs (with `yd completion <shell> --names`): Instances as `cr_id.instance_id` and Node IDs, each shown with its Compute Requirement's or Worker Pool's name and status, in the statuses the verb acts on.

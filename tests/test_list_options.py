@@ -60,6 +60,8 @@ def _args(entity_type: str, **values) -> Any:
         substitute_ids=False,
         deletable=False,
         unhealthy=False,
+        provisioned=False,
+        configured=False,
         provider=None,
         description_glob=None,
         with_errors=False,
@@ -118,6 +120,11 @@ def listing(monkeypatch):
         (["nodes", "--name", "x*"], "--name does not apply to nodes"),
         (["keyrings", "--deletable"], "--deletable does not apply to keyrings"),
         (["keyrings", "--unhealthy"], "--unhealthy does not apply to keyrings"),
+        (["nodes", "--configured"], "--configured does not apply to nodes"),
+        (
+            ["compute-requirements", "--provisioned"],
+            "--provisioned does not apply to compute-requirements",
+        ),
         (["tasks", "--provider", "aws"], "--provider does not apply to tasks"),
         (
             ["keyrings", "--description", "x*"],
@@ -186,6 +193,8 @@ def test_an_option_that_does_not_apply_is_refused(argv, message, capsys):
         ["tasks", "--name", "row-*"],
         ["task-groups", "--name", "tg-*"],
         ["worker-pools", "--unhealthy"],
+        ["worker-pools", "--provisioned", "--active-only"],
+        ["worker-pools", "--configured", "--count"],
         ["instances", "--provider", "google"],
         ["nodes", "--provider", "on-premise"],
         ["compute-source-templates", "--provider", "aws"],
@@ -356,6 +365,53 @@ def test_worker_pools_are_matched_to_the_namespace_exactly(listing, monkeypatch)
     monkeypatch.setattr(yd_list, "get_worker_pool_summaries", lambda *a, **k: pools)
     yd_list.list_worker_pools(_ctx())
     assert [p.id for p in listing.printed[0]] == ["a"]
+
+
+@pytest.mark.parametrize(
+    "flag, pool_type",
+    [("configured", "ConfiguredWorkerPool"), ("provisioned", "ProvisionedWorkerPool")],
+)
+def test_a_worker_pool_kind_is_searched_for(listing, monkeypatch, flag, pool_type):
+    monkeypatch.setattr(
+        wrapper_module,
+        "ARGS_PARSER",
+        _args(ET_WORKER_POOLS, json_output=True, **{flag: True}),
+    )
+    monkeypatch.setattr(
+        wrapper_module,
+        "CONFIG_COMMON",
+        SimpleNamespace(
+            namespace="dev",
+            name_tag="tag",
+            url="https://api.x",
+            request_timeout=(10.0, 90.0),
+        ),
+    )
+    searched = []
+
+    def search(*args, **kwargs):
+        searched.append(kwargs.get("pool_type"))
+        return []
+
+    monkeypatch.setattr(yd_list, "get_worker_pool_summaries", search)
+    yd_list.list_worker_pools(_ctx())
+    assert searched == [pool_type]
+
+
+def test_a_worker_pool_search_sends_the_full_type(monkeypatch):
+    from yellowdog_cli.utils import entity_utils
+
+    monkeypatch.setattr(entity_utils, "search_namespaces", lambda client, ns: [ns])
+    client = MagicMock()
+    client.worker_pool_client.get_worker_pools.return_value.list_all.return_value = []
+    entity_utils.get_worker_pool_summaries(
+        client, "dev", pool_type="ConfiguredWorkerPool"
+    )
+    (search,) = client.worker_pool_client.get_worker_pools.call_args.args
+    # As the Platform takes it: the short name is refused
+    assert search.type == "co.yellowdog.platform.model.ConfiguredWorkerPool"
+    entity_utils.get_worker_pool_summaries(client, "dev")
+    assert client.worker_pool_client.get_worker_pools.call_args.args[0].type is None
 
 
 class TestActiveInstancesAndWorkers:
@@ -591,6 +647,23 @@ class TestTheNewFilters:
             yd_list._apply_health_filter(self._ctx("worker-pools"), entities)
             == entities
         )
+
+    @pytest.mark.parametrize(
+        "flag, kept",
+        [("provisioned", ["p"]), ("configured", ["c"]), (None, ["p", "c", "u"])],
+    )
+    def test_a_worker_pools_kind_is_its_summarys_type(self, flag, kept):
+        pools = [
+            SimpleNamespace(
+                id="p", type="co.yellowdog.platform.model.ProvisionedWorkerPool"
+            ),
+            SimpleNamespace(
+                id="c", type="co.yellowdog.platform.model.ConfiguredWorkerPool"
+            ),
+            SimpleNamespace(id="u", type=None),
+        ]
+        ctx = self._ctx("worker-pools", **({flag: True} if flag else {}))
+        assert [p.id for p in yd_list._apply_pool_kind_filter(ctx, pools)] == kept
 
     def test_a_provider_is_matched_by_its_platform_name(self):
         from yellowdog_client.model import CloudProvider

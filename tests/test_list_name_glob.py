@@ -59,6 +59,8 @@ def _args(**overrides):
         output_file=None,
         # The listing filters, unset as parsed: a MagicMock's would be truthy
         unhealthy=False,
+        provisioned=False,
+        configured=False,
         provider=None,
         description_glob=None,
         deletable=False,
@@ -701,6 +703,40 @@ def test_an_empty_namespace_or_tag_is_not_quoted(namespace, name_tag, expected):
             wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == expected
+
+
+@pytest.mark.parametrize(
+    "flag, name_glob, expected",
+    [
+        ("configured", None, "Displaying Configured Worker Pools in all namespaces"),
+        (
+            "provisioned",
+            "gpu-*",
+            "Displaying Provisioned Worker Pools in all namespaces matching name"
+            " pattern 'gpu-*'",
+        ),
+    ],
+)
+def test_the_message_names_the_kind_of_worker_pool(flag, name_glob, expected):
+    import yellowdog_cli.list as yd_list
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="", name_tag="")
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=name_glob, **{flag: True}),
         ),
         patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
         patch.object(yd_list, "print_info") as mock_print_info,

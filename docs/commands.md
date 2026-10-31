@@ -1615,6 +1615,8 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 | `--reverse` | List items in reverse (descending) order: the whole order `--sort` gives, every key's included |
 | `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
 | `--unhealthy` | List only the Work Requirements, Worker Pools or Compute Requirements the Platform marks unhealthy |
+| `--provisioned` | List only Provisioned Worker Pools |
+| `--configured` | List only Configured (on-premise) Worker Pools; not with `--provisioned` |
 | `--provider <aws\|azure\|google\|oci\|on-premise>` | List only the Instances, Nodes or Compute Source Templates of that cloud provider, e.g. `yd list instances --provider google` |
 | `--description <glob>` | List only the Allowances whose description matches the glob (they have no name), e.g. `yd list allowances --description 'gpu-*'`; a value without wildcards matches the description exactly |
 | `--with-errors` | List only the Tasks that recorded an error, whatever their status: not the same as `--status FAILED`, since a Task can complete after an error (on a retry), e.g. `yd list tasks --with-errors --status COMPLETED` |
@@ -1631,7 +1633,7 @@ For Instances and Nodes, `--status`, `--provider` and `--active-only` are passed
 
 `--count` fetches no Tasks at all where it can: each Task Group's own summary gives its count, or with `--status` the count of each status, so only `--name` and `--with-errors` need the Tasks themselves. A Task Group's counts are the Platform's, which catch up a few seconds after Tasks are added, so `--count` taken straight after submitting a Work Requirement can be short of the Tasks it holds; a listing of the Tasks themselves is always current.
 
-An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
+An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provisioned`, `--configured`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
 Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` asks before replacing an existing file, which `--yes`/`-y` skips. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 

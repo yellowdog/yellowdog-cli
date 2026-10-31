@@ -431,6 +431,32 @@
       "type": null
     },
     {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
       "choices": [
         "aws",
         "azure",
@@ -3831,6 +3857,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null
@@ -8575,6 +8627,32 @@
       "type": null
     },
     {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
       "choices": [
         "aws",
         "azure",
@@ -11333,6 +11411,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null
@@ -14195,6 +14299,32 @@
       "type": null
     },
     {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
       "choices": [
         "aws",
         "azure",
@@ -16072,6 +16202,32 @@
       "type": null
     },
     {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
       "choices": [
         "aws",
         "azure",
@@ -17204,6 +17360,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null
@@ -18375,6 +18557,32 @@
       "type": null
     },
     {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
       "choices": [
         "aws",
         "azure",
@@ -19524,6 +19732,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null
@@ -23508,6 +23742,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null
@@ -32731,6 +32991,32 @@
       "nargs": 0,
       "option_strings": [
         "--unhealthy"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "provisioned",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--provisioned"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "configured",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--configured"
       ],
       "required": false,
       "type": null

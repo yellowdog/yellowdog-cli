@@ -68,6 +68,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.entity_names import PLATFORM_MODEL_PACKAGE
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
     ExitCode,
@@ -545,12 +546,17 @@ def get_worker_pool_summaries(
     namespace: str | None = None,
     name: str | None = None,
     partial_name_matches: bool = True,
+    pool_type: str | None = None,
 ) -> list[WorkerPoolSummary]:
     """
-    Return all Worker Pool summaries for a namespace, name.
+    Return all Worker Pool summaries for a namespace, name, and where given
+    'pool_type' (RN_CONFIGURED_POOL or RN_PROVISIONED_POOL), of that type
+    alone, the Platform filtering.
     """
     wp_search = WorkerPoolSearch(
-        name=name, namespaces=search_namespaces(client, namespace)
+        name=name,
+        namespaces=search_namespaces(client, namespace),
+        type=None if pool_type is None else f"{PLATFORM_MODEL_PACKAGE}.{pool_type}",
     )
     wp_search_client: SearchClient = client.worker_pool_client.get_worker_pools(
         wp_search

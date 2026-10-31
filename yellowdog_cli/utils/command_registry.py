@@ -487,6 +487,9 @@ LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
 LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
 # Those that record errors of their own
 LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
+# Those of two kinds, provisioned and configured ('--provisioned',
+# '--configured')
+LIST_POOL_KIND_TYPES = frozenset({ET_WORKER_POOLS})
 # Those listed from within one parent, with the kinds of parent '--within'
 # takes for each (YDIDType values: ydid_utils.py is imported only to check)
 LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
@@ -3101,6 +3104,18 @@ UNHEALTHY = option(
         " requirements, worker pools and compute requirements"
     ),
 )
+PROVISIONED = option(
+    "--provisioned",
+    action="store_true",
+    required=False,
+    help="list only provisioned worker pools",
+)
+CONFIGURED = option(
+    "--configured",
+    action="store_true",
+    required=False,
+    help="list only configured (on-premise) worker pools",
+)
 PROVIDER = option(
     "--provider",
     choices=LIST_PROVIDERS,
@@ -3186,6 +3201,8 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
         ("deletable", "--deletable", LIST_DELETABLE_TYPES),
         ("unhealthy", "--unhealthy", LIST_UNHEALTHY_TYPES),
+        ("provisioned", "--provisioned", LIST_POOL_KIND_TYPES),
+        ("configured", "--configured", LIST_POOL_KIND_TYPES),
         ("provider", "--provider", LIST_PROVIDER_TYPES),
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
         ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
@@ -3252,6 +3269,7 @@ COMMANDS["yd-list"] = Command(
         NAME,
         STATUS,
         UNHEALTHY,
+        Exclusive((PROVISIONED, CONFIGURED)),
         PROVIDER,
         DESCRIPTION,
         WITH_ERRORS,

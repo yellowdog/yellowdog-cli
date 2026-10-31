@@ -76,11 +76,13 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORKERS,
     RN_ALLOWANCE,
     RN_APPLICATION,
+    RN_CONFIGURED_POOL,
     RN_GROUP,
     RN_IMAGE_FAMILY,
     RN_KEYRING,
     RN_NAMESPACE,
     RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_PROVISIONED_POOL,
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
@@ -319,6 +321,42 @@ def _apply_health_filter(ctx: RunContext, objects: list) -> list:
     if not ctx.args.unhealthy:
         return objects
     return [obj for obj in objects if getattr(obj, "healthy", None) is False]
+
+
+def _pool_kind(ctx: RunContext) -> str | None:
+    """
+    The type of Worker Pool '--provisioned' or '--configured' asks for, if
+    either: the search's, which the Platform filters by.
+    """
+    if ctx.args.configured:
+        return RN_CONFIGURED_POOL
+    if ctx.args.provisioned:
+        return RN_PROVISIONED_POOL
+    return None
+
+
+def _pool_kind_phrase(ctx: RunContext) -> str:
+    """
+    'Configured ' or 'Provisioned ' for the listing's message, when one kind
+    is asked for.
+    """
+    if ctx.args.configured:
+        return "Configured "
+    if ctx.args.provisioned:
+        return "Provisioned "
+    return ""
+
+
+def _apply_pool_kind_filter(ctx: RunContext, worker_pools: list) -> list:
+    """
+    '--provisioned' or '--configured': only the Worker Pools of that kind,
+    as the summary's type names it. The search has asked for that kind
+    alone; what it returns is held to it all the same.
+    """
+    kind = _pool_kind(ctx)
+    if kind is None:
+        return worker_pools
+    return [pool for pool in worker_pools if (pool.type or "").split(".")[-1] == kind]
 
 
 def _apply_provider_filter(
@@ -1020,7 +1058,8 @@ def list_worker_pools(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Displaying Worker Pools {namespace_scope(ctx.client, namespace)} "
+            f"Displaying {_pool_kind_phrase(ctx)}Worker Pools"
+            f" {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         searched_namespace = namespace
@@ -1030,12 +1069,14 @@ def list_worker_pools(ctx: RunContext):
                 namespace,
                 glob_search_prefix(name) or None,
                 partial_name_matches=True,
+                pool_type=_pool_kind(ctx),
             ),
             name,
         )
     else:
         print_info(
-            f"Displaying Worker Pools {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Displaying {_pool_kind_phrase(ctx)}Worker Pools"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with '{}' in name", ctx.config.name_tag)
         )
         worker_pool_summaries = get_worker_pool_summaries(
@@ -1043,6 +1084,7 @@ def list_worker_pools(ctx: RunContext):
             ctx.config.namespace,
             ctx.config.name_tag,
             partial_name_matches=True,
+            pool_type=_pool_kind(ctx),
         )
         searched_namespace = ctx.config.namespace
 
@@ -1068,7 +1110,9 @@ def list_worker_pools(ctx: RunContext):
     worker_pool_summaries = (
         worker_pools
         if ctx.args.entity_type in (ET_NODES, ET_WORKERS)
-        else _apply_health_filter(ctx, _apply_status_filter(ctx, worker_pools))
+        else _apply_pool_kind_filter(
+            ctx, _apply_health_filter(ctx, _apply_status_filter(ctx, worker_pools))
+        )
     )
 
     if not worker_pool_summaries:
