@@ -53,6 +53,9 @@ class Lookup:
     # For Instances or Nodes, the statuses of the Compute Requirements or
     # Worker Pools they are found in (None for any)
     parent_statuses: frozenset[str] | None = None
+    # The option (its long flag) whose value, typed earlier on the line,
+    # names the one Worker Pool whose Nodes are offered
+    scoped_by: str | None = None
     # A resource type ('Keyring'): its names, as 'yd resource remove' and
     # 'show' take them after '--type' (a Credential's after 'keyring/')
     resource: str | None = None
@@ -273,6 +276,16 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     },
     ("yd node shutdown", "worker_pool_nodes_list"): _nodes(_NODE_LIVE),
     ("yd node show", _SHOWN): _nodes(None),
+    # A Node Action's Worker Pool by name, then its running Nodes, those of
+    # the '--worker-pool' typed if one is
+    ("yd node action", "--worker-pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    ("yd node action", "--node"): Lookup(
+        ET_NODES,
+        ids=True,
+        statuses=frozenset({"RUNNING"}),
+        parent_statuses=_WP_UNFINISHED,
+        scoped_by="--worker-pool",
+    ),
     # The listings within a parent
     ("yd taskgroup list", "--within"): WITHIN_LOOKUPS[ET_TASK_GROUPS],
     ("yd task list", "--within"): WITHIN_LOOKUPS[ET_TASKS],

@@ -79,6 +79,10 @@ def candidates(request: LookupRequest) -> tuple[Candidate, ...]:
         common = _load_common(request.settings)
         if common is None:
             return ()
+        if request.lookup.entity == ET_NODES and request.scope:
+            return _offered(
+                _pool_node_items(common, request.scope, request.lookup), request
+            )
         if request.lookup.entity == ET_INSTANCES and "." in request.current:
             cr_id = request.current.partition(".")[0]
             return _offered(_cr_instance_items(common, cr_id, request.lookup), request)
@@ -592,6 +596,30 @@ def _node_items(
         for node in _capped(found)
         if node.id
     ]
+
+
+def _pool_node_items(
+    common: ConfigCommon, pool_name: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The Nodes of the Worker Pool named 'pool_name' ('--worker-pool', a name
+    or 'namespace/name'), from the cache or else the Platform; none for a
+    name that finds no Worker Pool.
+    """
+
+    def fetch(client: PlatformClient) -> list[dict[str, Any]]:
+        from yellowdog_cli.utils.entity_utils import get_worker_pool_id_by_name
+
+        pool_id = get_worker_pool_id_by_name(client, pool_name, common.namespace)
+        if pool_id is None:
+            return []
+        return _node_items(client, pool_id, pool_name, lookup)
+
+    return _cached(
+        common,
+        ("pool-nodes", pool_name, ",".join(sorted(lookup.statuses or ())) or "*"),
+        fetch,
+    )
 
 
 def _cr_instance_items(

@@ -666,6 +666,37 @@ def test_nodes_are_offered_by_id_described_by_their_pools_name(monkeypatch):
     ]
 
 
+NODE_ACTION_NODE = LOOKUPS[("yd node action", "--node")]
+
+
+def test_a_node_action_offers_the_nodes_of_the_pool_typed(monkeypatch):
+    client = _client([])
+    searched = []
+    _with_children(
+        client,
+        {"ydid:wrkrpool:000000:p": [("ydid:node:000000:p:1", "RUNNING")]},
+        searched,
+    )
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
+    named = []
+
+    def pool_id(client, name, namespace=None):
+        named.append((name, namespace))
+        return "ydid:wrkrpool:000000:p" if name == "gpu" else None
+
+    monkeypatch.setattr(entity_utils_module, "get_worker_pool_id_by_name", pool_id)
+    request = LookupRequest(NODE_ACTION_NODE, "", {}, (), scope="gpu")
+    offered = completion_lookups.candidates(request)
+    assert [(c.value, c.description) for c in offered] == [
+        ("ydid:node:000000:p:1", "gpu (RUNNING)")
+    ]
+    assert named == [("gpu", "ns")]
+    # No pool search: the one named
+    client.worker_pool_client.get_worker_pools.assert_not_called()
+    nowhere = LookupRequest(NODE_ACTION_NODE, "", {}, (), scope="nope")
+    assert completion_lookups.candidates(nowhere) == ()
+
+
 # Resources, after 'yd resource remove/show --type <type>'
 
 

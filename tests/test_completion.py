@@ -576,6 +576,18 @@ class TestAnOptionsValueTypedWithIt:
         )
         assert lines == ["values", "--within=nightly"]
 
+    def test_a_node_actions_nodes_are_those_of_the_pool_typed(self):
+        words = ["yd", "node", "action", "--worker-pool", "gpu", "--node"]
+        request = complete(words, "").lookup
+        assert request is not None and request.scope == "gpu"
+        joined = complete(["yd", "node", "action", "--worker-pool=gpu"], "--node=")
+        assert joined.lookup is not None and joined.lookup.scope == "gpu"
+        # No pool typed: every pool's
+        alone = complete(["yd", "node", "action", "--node"], "").lookup
+        assert alone is not None and alone.scope is None
+        pools = complete(["yd", "node", "action", "--worker-pool"], "").lookup
+        assert pools is not None and pools.lookup.entity == "worker-pools"
+
     def test_an_allowances_ids_follow_the_hours(self):
         words = ["yd", "allowance", "boost"]
         assert complete(words, "").lookup is None  # the hours

@@ -143,6 +143,8 @@ class LookupRequest:
     # Put ahead of each name or ID found: the '--flag=' of a value typed
     # in the one word with its option
     prefix: str = ""
+    # The value typed for the lookup's 'scoped_by' option, if any
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -306,7 +308,11 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
         if lookup is not None:
             return Completions(
                 lookup=LookupRequest(
-                    lookup, current, settings, tuple(all_values.get(awaiting.name, ()))
+                    lookup,
+                    current,
+                    settings,
+                    tuple(all_values.get(awaiting.name, ())),
+                    scope=_scope(lookup, typed_values),
                 )
             )
         return _values(command, awaiting, current)
@@ -325,6 +331,7 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
                     settings,
                     tuple(all_values.get(found.name, ())),
                     prefix=f"{flag}=",
+                    scope=_scope(lookup, typed_values),
                 )
             )
         values = _values(command, found, value)
@@ -370,6 +377,13 @@ def _resource_lookup(
         return RESOURCE_LOOKUPS.get(resolve_resource_type(typed))
     except ArgumentTypeError:
         return None
+
+
+def _scope(lookup: Lookup, typed_values: dict[str, str]) -> str | None:
+    """
+    The value typed for the option a lookup is scoped by, if any.
+    """
+    return None if lookup.scoped_by is None else typed_values.get(lookup.scoped_by)
 
 
 def _option_lookup(command: Command, option: Option, typed: list[str]) -> Lookup | None:
