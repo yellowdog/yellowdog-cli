@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
-from yellowdog_cli.utils.printing import print_dry_run, print_info
+from yellowdog_cli.utils.printing import counted, print_dry_run, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.tables import print_numbered_object_list
 
@@ -54,8 +54,9 @@ def report_dry_run(
     if not summaries:
         print_info(f"No {noun}s would be {verb}")
         return
-    print_dry_run(f"{len(summaries)} {noun}(s) would be {verb}:")
-    print_numbered_object_list(client, summaries, object_type_name=noun)
+    print_dry_run(f"{counted(len(summaries), noun)} would be {verb}:")
+    # The line above says how many: the table needs no heading of its own
+    print_numbered_object_list(client, summaries, object_type_name=noun, heading=False)
 
 
 def report_dry_run_items(

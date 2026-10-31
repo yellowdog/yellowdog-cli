@@ -33,7 +33,7 @@ from yellowdog_cli.utils.action_runner import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_ALLOWANCES
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.wrapper import main_wrapper
 
@@ -169,7 +169,7 @@ def main(ctx: RunContext) -> None:
         order=lambda items: items,
     )
     if not items or not confirm_items(
-        f"Boost {len(items)} Allowance(s) by {hours} ("
+        f"Boost {counted(len(items), 'Allowance')} by {hours} ("
         + ", ".join(_label(item.value) for item in items)
         + ")?",
         items,

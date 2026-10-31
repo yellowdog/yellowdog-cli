@@ -52,7 +52,7 @@ from yellowdog_cli.utils.follow_utils import Settled, follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -200,7 +200,9 @@ def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction
     )
     items = [_item(summary) for summary in selected]
     if items and not confirm_items(
-        f"{action.name} {len(items)} Work Requirement(s)?", items, action.recorder()
+        f"{action.name} {counted(len(items), 'Work Requirement')}?",
+        items,
+        action.recorder(),
     ):
         items = []
 
@@ -249,7 +251,7 @@ def _apply_by_name_or_id(
         return
 
     question = (
-        f"{action.name} {len(items)} Work Requirement(s) ("
+        f"{action.name} {counted(len(items), 'Work Requirement')} ("
         + ", ".join(_label(item.value) for item in items)
         + ")?"
     )
@@ -334,7 +336,9 @@ def _carry_out(ctx: RunContext, action: WorkRequirementAction, items: list[Item]
     actioned_ids = [cast(str, unit.items[0].key) for unit in done]
 
     if actioned_ids:
-        print_info(f"{action.past_tense} {len(actioned_ids)} Work Requirement(s)")
+        print_info(
+            f"{action.past_tense} {counted(len(actioned_ids), 'Work Requirement')}"
+        )
         if ctx.args.follow:
             follow_ids(ctx, actioned_ids, settled=action.settled())
     else:

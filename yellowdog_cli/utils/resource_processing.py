@@ -18,7 +18,7 @@ from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
     resource_display_name,
 )
-from yellowdog_cli.utils.printing import print_error
+from yellowdog_cli.utils.printing import counted, print_error
 from yellowdog_cli.utils.property_names import PROP_RESOURCE
 from yellowdog_cli.utils.results import record_resource
 
@@ -78,7 +78,7 @@ def process_each(
                 raise ReportedFailure(e)
 
     if failures:
-        message = f"{len(failures)} resource(s) failed to {verb}"
+        message = f"{counted(len(failures), 'resource')} failed to {verb}"
         print_error(message)
         codes = {classify(e) for e in failures}
         # The shared cause's exit code, or FAILURE for different causes

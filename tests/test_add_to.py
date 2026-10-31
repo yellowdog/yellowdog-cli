@@ -761,8 +761,8 @@ class TestAddToDryRun(TestAddToPartitioning):
             capsys=capsys,
         )
         output = " ".join(result["output"].split())
-        assert "Would add 1 new Task Group(s)" in output
-        assert "Added 1 new Task Group(s)" not in output
+        assert "Would add 1 new Task Group" in output
+        assert "Added 1 new Task Group" not in output
 
     def test_the_existing_task_groups_are_named(self, capsys):
         # Without this they appear in the spec below with no Tasks, and read
@@ -775,7 +775,7 @@ class TestAddToDryRun(TestAddToPartitioning):
         )
         # The line wraps to the terminal width, so compare it collapsed
         output = " ".join(result["output"].split())
-        assert "already contains 2 Task Group(s)" in output
+        assert "already contains 2 Task Groups" in output
         assert "'existing_1'" in output
         assert "'existing_2'" in output
 

@@ -38,7 +38,7 @@ from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import (
     json_requested,
     record_action,
@@ -183,7 +183,9 @@ def _without_duplicates(targets: list[str]) -> list[str]:
     """
     unique = list(dict.fromkeys(targets))
     if len(unique) < len(targets):
-        print_warning(f"Ignoring {len(targets) - len(unique)} duplicate target(s)")
+        print_warning(
+            f"Ignoring {counted(len(targets) - len(unique), 'duplicate target')}"
+        )
     return unique
 
 
@@ -531,7 +533,7 @@ def _abort_tasks(
     """
     already_handled = [task for task in tasks if task.id in run.handled]
     if already_handled:
-        print_info(f"Ignoring {len(already_handled)} Task(s) already handled")
+        print_info(f"Ignoring {counted(len(already_handled), 'Task')} already handled")
     tasks = [task for task in tasks if task.id not in run.handled]
     if not tasks:
         return
@@ -546,7 +548,7 @@ def _abort_tasks(
                 run.handled.add(task.id)
         if not selected:
             return
-        if not confirmed(f"Abort {len(selected)} Task(s)?"):
+        if not confirmed(f"Abort {counted(len(selected), 'Task')}?"):
             for task in selected:
                 _record(task, "skipped", "declined")
                 run.skipped += 1

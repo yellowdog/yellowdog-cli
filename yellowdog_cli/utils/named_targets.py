@@ -46,7 +46,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
 from yellowdog_cli.utils.glob_utils import contains_glob_chars, glob_search_prefix
 from yellowdog_cli.utils.limits import PATTERN_MATCH_WARNING
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_error, print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.work_targets import resolve_named_target
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -146,7 +146,7 @@ def resolved_each(lookups: list[Callable[[], _Resolved]]) -> list[_Resolved]:
         raise ReportedFailure(
             failures[0]
             if len(codes) == 1
-            else RuntimeError(f"{len(failures)} name(s) not resolved")
+            else RuntimeError(f"{counted(len(failures), 'name')} not resolved")
         )
     return resolved
 

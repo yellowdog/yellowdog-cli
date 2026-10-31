@@ -78,7 +78,7 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
     shown_expiry,
 )
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, plural, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -270,7 +270,7 @@ def compute_auto_shutdown(shutdown: AutoShutdown) -> ComputeAction:
         confirmation_verb=(
             "Disable the auto shutdown of"
             if minutes is None
-            else f"Terminate, {minutes:g} minute(s) from now,"
+            else f"Terminate, {counted(minutes, 'minute')} from now,"
         ),
         record_name="autoshutdown",
         cr_arguments=(shutdown,),
@@ -292,7 +292,7 @@ def _auto_shutdown_reported(
         return f": it will be terminated at {shown_expiry(when)}", fields
     if shutdown.timeout is not None:
         minutes = shutdown.timeout.total_seconds() / 60
-        return f": it will be terminated in {minutes:g} minute(s)", fields
+        return f": it will be terminated in {counted(minutes, 'minute')}", fields
     return ": it will be terminated automatically", fields
 
 
@@ -467,7 +467,7 @@ def _apply_action_to_summaries(
     items = [_cr_item(summary) for summary in selected]
 
     if items and not confirm_items(
-        f"{action.prompt} {len(items)} Compute Requirement(s)?",
+        f"{action.prompt} {counted(len(items), 'Compute Requirement')}?",
         items,
         action.recorder(),
     ):
@@ -477,7 +477,9 @@ def _apply_action_to_summaries(
     actioned_ids = [cast(str, unit.items[0].value.id) for unit in done]
 
     if actioned_ids:
-        print_info(f"{action.past_tense} {len(actioned_ids)} Compute Requirement(s)")
+        print_info(
+            f"{action.past_tense} {counted(len(actioned_ids), 'Compute Requirement')}"
+        )
         _after(ctx, action, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
@@ -579,13 +581,13 @@ def _confirmation(action: ComputeAction, items: list[Item]) -> str:
     parts = []
     if crs:
         parts.append(
-            f"{len(crs)} Compute Requirement(s) ("
+            f"{counted(len(crs), 'Compute Requirement')} ("
             + ", ".join(f"'{cr.name}'" if cr.name else cast(str, cr.id) for cr in crs)
             + ")"
         )
     if instances:
         parts.append(
-            f"{len(instances)} Instance(s) ("
+            f"{counted(len(instances), 'Instance')} ("
             + ", ".join(instance.label() for instance in instances)
             + ")"
         )
@@ -654,11 +656,11 @@ def _instances_failure(action: ComputeAction, group: list[_Instance], e: Excepti
     labels = ", ".join(instance.label() for instance in group)
     if "InvalidComputeRequirementStatusException" in str(e):
         return (
-            f"Unable to {action.name.lower()} Instance(s) {labels}: Compute"
+            f"Unable to {action.name.lower()} {plural('Instance', len(group))} {labels}: Compute"
             f" Requirement {group[0].cr_id} is in invalid status"
             f" '{group[0].compute_requirement.status}'"
         )
-    return f"Failed to {action.name.lower()} Instance(s) {labels}: {e}"
+    return f"Failed to {action.name.lower()} {plural('Instance', len(group))} {labels}: {e}"
 
 
 def _act_on_instances(ctx: RunContext, action: ComputeAction, group: list[_Instance]):

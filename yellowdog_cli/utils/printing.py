@@ -335,6 +335,30 @@ def indent(txt: str, indent_width: int = 4) -> str:
     return text_indent(txt, prefix=" " * indent_width)
 
 
+def plural(name: str, count: float) -> str:
+    """
+    A name for a count of the thing, its last word made plural unless the
+    count is one: 'Worker Pool', 'Worker Pools', 'Namespace Policies',
+    'batches'; a name already plural stays as it is.
+    """
+    if count == 1 or name.endswith("s"):
+        return name
+    if name.endswith(("ch", "sh", "x")):
+        return f"{name}es"
+    if name.endswith("y") and name[-2:-1] not in ("a", "e", "o", "u"):
+        return f"{name[:-1]}ies"
+    return f"{name}s"
+
+
+def counted(count: float, name: str) -> str:
+    """
+    A count and the name for it: '1 Worker Pool', '1,204 files', '2.5
+    minutes'.
+    """
+    number = f"{count:,}" if isinstance(count, int) else f"{count:,g}"
+    return f"{number} {plural(name, count)}"
+
+
 def user_data_hidden(data: Any) -> Any:
     """
     A copy of JSON-shaped data with every 'userData' string, at any depth,

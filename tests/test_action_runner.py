@@ -137,7 +137,7 @@ class TestResolve:
             ("y", "skipped"),  # not yet resolved
         ]
         assert records[1][3] == "not attempted: no route"
-        assert any("remaining 3 item(s)" in line for line in printed)
+        assert any("remaining 3 items" in line for line in printed)
 
 
 class TestConfirm:

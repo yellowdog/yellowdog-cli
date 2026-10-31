@@ -47,7 +47,7 @@ from yellowdog_cli.utils.exit_codes import (
 from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_failure_cause
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
@@ -169,7 +169,7 @@ def by_type(*type_order: str) -> Order:
 def warn_not_attempted(count: int) -> None:
     if count:
         print_warning(
-            f"Not attempting the remaining {count} item(s),"
+            f"Not attempting the remaining {counted(count, 'item')},"
             " which would fail in the same way"
         )
 

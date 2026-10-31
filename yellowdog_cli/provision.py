@@ -30,6 +30,7 @@ from yellowdog_cli.utils.load_config import (
 )
 from yellowdog_cli.utils.misc_utils import add_batch_number_postfix, link_entity
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -458,7 +459,7 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
         if num_batches > 1:
             print_info(
                 f"Provisioning Worker Pool {batch_number + 1} '{ctx.config.namespace}/{batch_name}' "
-                f"with {batch.initial_nodes:,d} nodes(s) "
+                f"with {counted(batch.initial_nodes, 'node')} "
                 f"(minNodes: {batch.min_nodes:,d}, "
                 f"maxNodes: {batch.max_nodes:,d})"
             )
@@ -498,9 +499,14 @@ def _print_provisioning(node_workers: NodeWorkerTarget) -> None:
     if node_workers.targetType == NodeWorkerTargetType.CUSTOM:
         workers = "a custom number of workers per node"
     else:
-        workers = f"{node_workers.targetCount} worker(s) {node_workers.targetType}"
+        count = node_workers.targetCount
+        workers = (
+            f"{counted(count, 'worker')} {node_workers.targetType}"
+            if count is not None
+            else f"workers {node_workers.targetType}"
+        )
     print_info(
-        f"Provisioning {CONFIG_WP.target_instance_count:,d} node(s) "
+        f"Provisioning {counted(CONFIG_WP.target_instance_count, 'node')} "
         f"with {workers} "
         f"(minNodes: {CONFIG_WP.min_nodes:,d}, "
         f"maxNodes: {CONFIG_WP.max_nodes:,d})"
@@ -517,7 +523,7 @@ def _report_on_first_batch(
     if len(batches) > 1:
         print_warning(
             f"The report is for the first of {len(batches)} Worker Pools, of"
-            f" {batches[0].initial_nodes:,d} node(s): 'computeRequirementBatchSize'"
+            f" {counted(batches[0].initial_nodes, 'node')}: 'computeRequirementBatchSize'"
             f" divides the {CONFIG_WP.target_instance_count:,d} requested"
         )
     batch_name = add_batch_number_postfix(
@@ -613,33 +619,26 @@ def _provision_batch(
 
 def _print_timeouts() -> None:
     idle_node_shutdown = (
-        f"time limit is {_minutes(CONFIG_WP.idle_node_timeout)} minute(s)"
+        f"time limit is {counted(CONFIG_WP.idle_node_timeout, 'minute')}"
         if CONFIG_WP.idle_node_timeout != 0
         else "is disabled"
     )
     print_info(
         "Node boot time limit is "
-        f"{_minutes(CONFIG_WP.node_boot_timeout)} minute(s) | "
+        f"{counted(CONFIG_WP.node_boot_timeout, 'minute')} | "
         f"Node idle shutdown {idle_node_shutdown}"
     )
 
     if CONFIG_WP.idle_pool_timeout != 0:
         print_info(
             "Worker Pool auto-shutdown is enabled with a delay of"
-            f" {_minutes(CONFIG_WP.idle_pool_timeout)} minute(s)"
+            f" {counted(CONFIG_WP.idle_pool_timeout, 'minute')}"
         )
     else:
         print_info("Worker Pool auto-shutdown is disabled")
 
     if CONFIG_WP.metrics_enabled:
         print_info("Node metrics are enabled")
-
-
-def _minutes(minutes: float) -> str:
-    """
-    A number of minutes as a message shows it: '10', not '10.0'.
-    """
-    return f"{minutes:,.0f}" if float(minutes).is_integer() else f"{minutes:,}"
 
 
 def _allocate_nodes_to_batches(

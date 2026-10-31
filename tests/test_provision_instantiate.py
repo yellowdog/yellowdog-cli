@@ -717,10 +717,10 @@ class TestProvisionMessages:
             ),
             dry_run=True,
         )
-        assert "Node boot time limit is 10 minute(s)" in out
+        assert "Node boot time limit is 10 minutes" in out
         assert "Node idle shutdown is disabled" in out
         assert "**" not in out
-        assert "with a delay of 2.5 minute(s)" in out
+        assert "with a delay of 2.5 minutes" in out
 
     def test_merged_values_are_traced_as_json(self, run, wp_file):
         run(
@@ -743,10 +743,17 @@ class TestProvisionMessages:
 class TestMinutes:
     @pytest.mark.parametrize(
         "minutes, shown",
-        [(10.0, "10"), (0.5, "0.5"), (2.25, "2.25"), (1440.0, "1,440")],
+        [
+            (10.0, "10 minutes"),
+            (0.5, "0.5 minutes"),
+            (1.0, "1 minute"),
+            (1440.0, "1,440 minutes"),
+        ],
     )
     def test_whole_minutes_lose_their_fraction(self, minutes, shown):
-        assert yd_provision._minutes(minutes) == shown
+        from yellowdog_cli.utils.printing import counted
+
+        assert counted(minutes, "minute") == shown
 
 
 # ---------------------------------------------------------------------------
@@ -875,7 +882,7 @@ class TestProvisionReport:
         assert run.exit_code == ExitCode.SUCCESS
         assert client.compute_client.test_compute_requirement_template.call_count == 1
         assert (
-            "The report is for the first of 3 Worker Pools, of 17 node(s)"
+            "The report is for the first of 3 Worker Pools, of 17 nodes"
         ) in out + run.err
 
     def test_a_report_on_a_missing_template_exits_6(self, run):
@@ -1090,7 +1097,7 @@ class TestInstantiateReporting:
         )
         assert run.exit_code == ExitCode.SUCCESS
         assert (
-            "The report is for the first of 3 Compute Requirements, of 17 instance(s)"
+            "The report is for the first of 3 Compute Requirements, of 17 instances"
         ) in out + run.err
 
 

@@ -22,7 +22,7 @@ from yellowdog_cli.utils.output_style import (
     MAX_TABLE_DESCRIPTION,
     task_group_status_text,
 )
-from yellowdog_cli.utils.printing import CONSOLE_TABLE, indent, print_info
+from yellowdog_cli.utils.printing import CONSOLE_TABLE, counted, indent, print_info
 from yellowdog_cli.utils.settings import CLOUD_INFO_NO_SUB_REGION, MIB_PER_GIB
 
 if TYPE_CHECKING:
@@ -103,18 +103,6 @@ def print_table_core(table: str):
         print(table, flush=True)
     else:
         CONSOLE_TABLE.print(escape(table), soft_wrap=True)
-
-
-def counted(type_name: str, count: int) -> str:
-    """
-    A type's name for a count of them: 'Worker Pool', 'Worker Pools',
-    'Namespace Policies'; a name already plural as it is.
-    """
-    if count == 1 or type_name.endswith("s"):
-        return type_name
-    if type_name.endswith("y") and type_name[-2:-1] not in ("a", "e", "o", "u"):
-        return f"{type_name[:-1]}ies"
-    return f"{type_name}s"
 
 
 def get_type_name(obj: Item) -> str:
@@ -1036,9 +1024,11 @@ def print_numbered_object_list(
     object_type_name: str | None = None,
     override_quiet: bool = False,
     showing_all: bool = False,
+    heading: bool = True,
 ) -> None:
     """
-    Print a numbered list of objects.
+    Print a numbered list of objects, headed by how many there are unless
+    the caller has said so ('heading' false).
     Assume that the list supplied is already sorted.
     """
     if not objects:
@@ -1051,11 +1041,13 @@ def print_numbered_object_list(
     type_name = (
         object_type_name if object_type_name is not None else get_type_name(objects[0])  # type: ignore[arg-type]
     )
-    print_info(
-        f"{'All ' if showing_all else ''}{len(objects)}"
-        f"{'' if showing_all else ' matching'} {counted(type_name, len(objects))}:",
-        override_quiet=override_quiet,
-    )
+    if heading:
+        print_info(
+            f"{'All ' if showing_all else ''}"
+            + counted(len(objects), f"{'' if showing_all else 'matching '}{type_name}")
+            + ":",
+            override_quiet=override_quiet,
+        )
     print()
 
     table_builder = _table_builder(objects[0], object_type_name)

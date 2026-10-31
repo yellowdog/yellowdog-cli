@@ -42,6 +42,7 @@ from yellowdog_cli.utils.follow_utils import follow_events, follow_ids
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -159,7 +160,7 @@ def _resize_worker_pool(ctx: RunContext, target: str):
             ctx,
             worker_pool,
             ET_WORKER_POOLS,
-            f"{size:,d} node(s) is outside Worker Pool {label}'s limits"
+            f"{counted(size, 'node')} is outside Worker Pool {label}'s limits"
             f" ({_count(min_nodes)} to {_count(max_nodes)})",
         )
         return
@@ -169,11 +170,11 @@ def _resize_worker_pool(ctx: RunContext, target: str):
             ctx,
             worker_pool,
             ET_WORKER_POOLS,
-            f"Worker Pool {label} already expects {size:,d} node(s)",
+            f"Worker Pool {label} already expects {counted(size, 'node')}",
         )
         return
 
-    change = f"from {_count(current)} to {size:,d} node(s)"
+    change = f"from {_count(current)} to {counted(size, 'node')}"
     if ctx.args.dry_run:
         print_dry_run(f"Would resize Worker Pool {label} {change}")
         _record(ctx, worker_pool, ET_WORKER_POOLS, "would resize")
@@ -270,11 +271,11 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
             compute_requirement,
             ET_COMPUTE_REQUIREMENTS,
             f"Compute Requirement {label} already has a target of"
-            f" {size:,d} instance(s)",
+            f" {counted(size, 'instance')}",
         )
         return
 
-    change = f"from {_count(current)} to {size:,d} instance(s)"
+    change = f"from {_count(current)} to {counted(size, 'instance')}"
     if ctx.args.dry_run:
         print_dry_run(f"Would resize Compute Requirement {label} {change}")
         _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "would resize")

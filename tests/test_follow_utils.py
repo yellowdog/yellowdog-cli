@@ -767,7 +767,7 @@ class TestFollowIds:
         monkeypatch.setattr(fu, "follow_events", stream)
         fu.follow_ids(_ctx(), [WR], timeout=0.2)
         assert fu._STOP_FOLLOWING.is_set()
-        assert warnings == ["Stopped following after 0.2 second(s)"]
+        assert warnings == ["Stopped following after 0.2 seconds"]
         for _ in range(50):
             if stopped:
                 break

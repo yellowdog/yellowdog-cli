@@ -29,6 +29,7 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
 )
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -143,7 +144,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
     if not ctx.args.report:
         print_info(
             "Provisioning Compute Requirement with "
-            f"{CONFIG_WP.target_instance_count:,d} instance(s)"
+            f"{counted(CONFIG_WP.target_instance_count, 'instance')}"
         )
 
     batches: list[CRBatch] = _allocate_nodes_to_batches(
@@ -169,7 +170,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
             if num_batches > 1:
                 print_info(
                     f"Provisioning Compute Requirement {batch_number + 1} '{ctx.config.namespace}/{id}'"
-                    f" with {batch.target_instances:,d} instance(s)"
+                    f" with {counted(batch.target_instances, 'instance')}"
                 )
             else:
                 print_info(
@@ -230,8 +231,8 @@ def _report_on(
         # The Platform tests one Compute Requirement at a time
         print_warning(
             f"The report is for the first of {len(batches)} Compute"
-            f" Requirements, of {batches[0].target_instances:,d}"
-            " instance(s): 'computeRequirementBatchSize' divides the"
+            f" Requirements, of {counted(batches[0].target_instances, 'instance')}:"
+            " 'computeRequirementBatchSize' divides the"
             f" {CONFIG_WP.target_instance_count:,d} requested"
         )
     report_on_usage(ctx, compute_requirement_template_usage)

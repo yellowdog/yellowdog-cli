@@ -58,6 +58,7 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -384,13 +385,13 @@ def _confirmation(ctx: RunContext, items: list[Item]) -> str:
     parts = []
     if pools:
         parts.append(
-            f"{len(pools)} Worker Pool(s) ("
+            f"{counted(len(pools), 'Worker Pool')} ("
             + ", ".join(f"'{pool.name}'" if pool.name else pool.id for pool in pools)
             + ")"
         )
     if nodes:
         parts.append(
-            f"{len(nodes)} Node(s) ({', '.join(cast(str, n.id) for n in nodes)})"
+            f"{counted(len(nodes), 'Node')} ({', '.join(cast(str, n.id) for n in nodes)})"
         )
     terminating = (
         ", immediately terminating their Compute Requirements"
@@ -436,9 +437,9 @@ def _carry_out(ctx: RunContext, items: list[Item]):
 
     if shut_down_pool_ids or shut_down_node_ids:
         if shut_down_pool_ids:
-            print_info(f"Shut down {len(shut_down_pool_ids)} Worker Pool(s)")
+            print_info(f"Shut down {counted(len(shut_down_pool_ids), 'Worker Pool')}")
         if shut_down_node_ids:
-            print_info(f"Shut down {len(shut_down_node_ids)} Node(s)")
+            print_info(f"Shut down {counted(len(shut_down_node_ids), 'Node')}")
         if ctx.args.follow and shut_down_pool_ids:
             follow_ids(ctx, shut_down_pool_ids, auto_cr=ctx.args.auto_cr)
     else:

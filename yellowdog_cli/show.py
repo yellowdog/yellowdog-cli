@@ -68,6 +68,7 @@ from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import is_pattern, resolve_targets
 from yellowdog_cli.utils.printing import (
+    counted,
     print_error,
     print_info,
     print_to_file,
@@ -183,7 +184,7 @@ def show_ydids(ctx: RunContext, ydids: list[str], many: bool = False) -> int:
             advise(e)
             if remaining := len(ydids) - index - 1:
                 print_warning(
-                    f"Not attempting the remaining {remaining} ID(s), which would"
+                    f"Not attempting the remaining {counted(remaining, 'ID')}, which would"
                     " fail in the same way"
                 )
             _print_items(ctx, items, as_json_array=as_json_array or len(items) > 1)

@@ -41,11 +41,11 @@ def test_human_non_empty_delegates_to_table(capsys):
             as_json=False,
         )
     assert (
-        f"{DRY_RUN_MARKER}2 Work Requirement(s) would be cancelled"
+        f"{DRY_RUN_MARKER}2 Work Requirements would be cancelled"
         in capsys.readouterr().out
     )
     mock_table.assert_called_once_with(
-        client, summaries, object_type_name="Work Requirement"
+        client, summaries, object_type_name="Work Requirement", heading=False
     )
     reset_results()
 

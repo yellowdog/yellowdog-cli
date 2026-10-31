@@ -539,7 +539,7 @@ class TestCommandOutput:
 
 class TestCredentialNamePatternNote:
     NOTE = (
-        f"{WARNING_MARKER}Redacted 1 variable(s) whose names match"
+        f"{WARNING_MARKER}Redacted 1 variable whose names match"
         f" '{SECRET_VARIABLE_NAME_PATTERN.pattern}' (case-insensitive);"
         " everything else is shown in full. --show-secrets reports all."
     )
@@ -590,7 +590,7 @@ class TestCredentialNamePatternNote:
 
 class TestInlineRemoteNote:
     NOTE = (
-        f"{WARNING_MARKER}Withheld the parameters of 1 variable(s) holding an"
+        f"{WARNING_MARKER}Withheld the parameters of 1 variable holding an"
         " inline rclone connection string, keeping its name, type and"
         " provider. --show-secrets reports all."
     )

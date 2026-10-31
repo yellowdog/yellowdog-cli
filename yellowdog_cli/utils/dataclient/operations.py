@@ -36,6 +36,7 @@ from yellowdog_cli.utils.limits import (
     DATA_CLIENT_TRANSFER_WORKERS,
 )
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -720,7 +721,7 @@ def _local_files(local_path: Path) -> list[str]:
                 files.append(path)
     if symlinks:
         print_warning(
-            f"{symlinks} symbolic link(s) under '{local_path}' will not be uploaded"
+            f"{counted(symlinks, 'symbolic link')} under '{local_path}' will not be uploaded"
         )
     return sorted(files)
 
@@ -792,7 +793,7 @@ def _upload_directory_flat(
     # one 'rclone copy' cannot do: copied several at once instead
     _, rclone = _rclone_for_config(config)
     print_info(
-        f"Uploading (flat) {len(files):,d} file(s) '{local_path}' → '{remote_path}'"
+        f"Uploading (flat) {counted(len(files), 'file')} '{local_path}' → '{remote_path}'"
     )
     results = _copy_each(
         rclone, [(str(f.resolve()), dest) for f, dest in zip(files, destinations)]
@@ -848,7 +849,7 @@ def upload_files(
     for (local_dir, remote_dir), group in groups.items():
         files = [local for local, _ in group]
         print_info(
-            f"Uploading {len(files):,d} file(s) from '{local_dir}' → '{remote_dir}'"
+            f"Uploading {counted(len(files), 'file')} from '{local_dir}' → '{remote_dir}'"
         )
         result = _copy_files(
             rclone, str(local_dir), remote_dir, [f.name for f in files]
@@ -924,7 +925,7 @@ def _format_glob_matches(remote_path: str, matches: list[dict]) -> str:
     """
     names = [e["Name"] + ("/" if e["IsDir"] else "") for e in matches]
     return (
-        f"Wildcard '{remote_path}' matches {len(names):,d} item(s):"
+        f"Wildcard '{remote_path}' matches {counted(len(names), 'item')}:"
         f" {summarise_names(names)}"
     )
 
@@ -1201,7 +1202,7 @@ def _download_batch(
     """
     names = [entry["Name"] for entry in entries]
     print_info(
-        f"Downloading {len(names):,d} matched file(s) from '{remote_dir}'"
+        f"Downloading {counted(len(names), 'matched file')} from '{remote_dir}'"
         f" → '{local_destination}'"
     )
     result = _copy_files(rclone, remote_dir, str(local_destination), names)
@@ -1217,7 +1218,7 @@ def _download_batch(
     error = None
     if missing:
         error = (
-            f"Download of {len(missing):,d} file(s) from '{remote_dir}' failed:"
+            f"Download of {counted(len(missing), 'file')} from '{remote_dir}' failed:"
             f" {_rclone_error_detail(result)}"
         )
         print_error(error)
@@ -1509,7 +1510,7 @@ def _dry_run_download(
         remote_dir, matches = glob_matches(rclone, remote_path)
         names = [f"'{e['Name'] + ('/' if e['IsDir'] else '')}'" for e in matches]
         print_dry_run(
-            f"Would {action} {len(matches)} matched item(s)"
+            f"Would {action} {counted(len(matches), 'matched item')}"
             f" → '{local_destination}': {', '.join(names)}"
         )
         if json_requested() or flatten:
@@ -1657,7 +1658,7 @@ def describe_deletion(config: ConfigDataClient, path: str, is_dir: bool) -> str:
     entries = _lsjson(rclone, path, recursive=True)
     n_dirs = sum(1 for entry in entries if entry["IsDir"])
     ies = "y" if n_dirs == 1 else "ies"
-    return f"'{path}' ({len(entries) - n_dirs} file(s), {n_dirs} subdirector{ies})"
+    return f"'{path}' ({counted(len(entries) - n_dirs, 'file')}, {n_dirs} subdirector{ies})"
 
 
 def delete_item(config: ConfigDataClient, path: str, is_dir: bool) -> bool:
@@ -1706,7 +1707,7 @@ def delete_items(config: ConfigDataClient, targets: list[tuple[str, bool]]) -> i
         _, rclone = _rclone_for_config(config)
     for remote_dir, group in groups.items():
         names = [path.rstrip("/").rpartition("/")[2] for path, _ in group]
-        print_info(f"Deleting {len(names):,d} file(s) in '{remote_dir}'")
+        print_info(f"Deleting {counted(len(names), 'file')} in '{remote_dir}'")
         result = _delete_files(rclone, remote_dir, names)
         left = (
             set() if result.returncode == 0 else _files_left(rclone, remote_dir, names)

@@ -37,7 +37,13 @@ from yellowdog_cli.utils.exit_codes import (
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import resolve_compare_targets
-from yellowdog_cli.utils.printing import indent, print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import (
+    counted,
+    indent,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.results import json_requested, record, rows_as_objects
 from yellowdog_cli.utils.tables import print_table_core
 from yellowdog_cli.utils.wrapper import main_wrapper
@@ -915,7 +921,7 @@ def main(ctx: RunContext):
         )
 
     if failures:
-        message = f"{len(failures)} comparison(s) could not be made"
+        message = f"{counted(len(failures), 'comparison')} could not be made"
         print_error(message)
         codes = {classify(e) for e in failures}
         # The shared cause's exit code, or FAILURE for different causes

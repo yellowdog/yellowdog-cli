@@ -50,6 +50,8 @@ from yellowdog_cli.utils.limits import NODE_ACTION_QUEUE_POLL_INTERVAL
 from yellowdog_cli.utils.load_config import config_file_dir
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import (
+    counted,
+    plural,
     print_error,
     print_info,
     print_warning,
@@ -169,7 +171,10 @@ def _queues_not_fetched(failures: list[tuple[str, Exception]]) -> ReportedFailur
             )[0]
             record({**row, "error": _queue_error(e)})
     causes = [e for _, e in failures]
-    message = f"The node action queue(s) of {len(causes)} node(s) could not be fetched"
+    message = (
+        f"The {plural('node action queue', len(causes))} of"
+        f" {counted(len(causes), 'node')} could not be fetched"
+    )
     return ReportedFailure(
         causes[0] if len({classify(e) for e in causes}) == 1 else RuntimeError(message)
     )
@@ -229,7 +234,9 @@ def _without_duplicates(node_ids: list[str]) -> list[str]:
     """
     unique = list(dict.fromkeys(node_ids))
     if len(unique) < len(node_ids):
-        print_warning(f"Ignoring {len(node_ids) - len(unique)} duplicate node ID(s)")
+        print_warning(
+            f"Ignoring {counted(len(node_ids) - len(unique), 'duplicate node ID')}"
+        )
     return unique
 
 
@@ -627,7 +634,7 @@ def _after_failure(
     wp_id, _, groups, actions = submission
     if not_attempted:
         print_warning(
-            f"Not attempting the remaining {len(not_attempted)} node(s),"
+            f"Not attempting the remaining {counted(len(not_attempted), 'node')},"
             " which would fail in the same way"
         )
         _record_submission(
@@ -650,8 +657,8 @@ class _ParsedActions:
     @property
     def what(self) -> str:
         if self.action_groups is not None:
-            return f"{self.group_count} action group(s)"
-        return f"{self.action_count} action(s)"
+            return counted(len(self.action_groups), "action group")
+        return counted(self.action_count, "action")
 
 
 def _submit_actions(ctx: RunContext):
@@ -699,7 +706,7 @@ def _submit_actions(ctx: RunContext):
         print_info("No nodes to submit Node Actions to")
         return
 
-    target_desc = "all nodes" if node_ids is None else f"{len(node_ids)} node(s)"
+    target_desc = "all nodes" if node_ids is None else counted(len(node_ids), "node")
     if not confirmed(
         f"Submit {parsed.what} to {target_desc} in Worker Pool {_pool_label(pool)}?"
     ):
@@ -902,7 +909,10 @@ def _follow_node_actions(
     not_fetched: list[tuple[str, Exception]] = []
     timeout = ctx.args.timeout
     deadline = None if timeout is None else time.monotonic() + timeout
-    print_info(f"Following node action queue(s) for {len(pending)} node(s)...")
+    print_info(
+        f"Following the {plural('node action queue', len(pending))} of"
+        f" {counted(len(pending), 'node')}..."
+    )
     if initial_delay:
         time.sleep(0.5)  # Allow submission to stabilize
 
@@ -943,8 +953,9 @@ def _follow_node_actions(
         pending -= completed
         if pending and deadline is not None and time.monotonic() >= deadline:
             print_warning(
-                f"Stopped following after {timeout:,d} second(s): the queue(s) of"
-                f" {len(pending)} node(s) had not finished"
+                f"Stopped following after {counted(cast(int, timeout), 'second')}: the"
+                f" {plural('queue', len(pending))} of"
+                f" {counted(len(pending), 'node')} had not finished"
             )
             rows = {**latest, **done}
             raise _FollowTimedOut(sorted(rows.items(), key=lambda row: row[0]))
@@ -983,7 +994,8 @@ class _QueuesNotFetched(Exception):
         failures: list[tuple[str, Exception]],
     ):
         super().__init__(
-            f"The node action queue(s) of {len(failures)} node(s) could not be fetched"
+            f"The {plural('node action queue', len(failures))} of"
+            f" {counted(len(failures), 'node')} could not be fetched"
         )
         self.rows = rows
         self.failures = failures

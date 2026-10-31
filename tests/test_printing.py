@@ -984,7 +984,7 @@ class TestPrintEventWithNullFields:
             },
             YDIDType.WORK_REQUIREMENT,
         )
-        assert "Task Group 'tg': 0 Task(s)" in printed[0]
+        assert "Task Group 'tg': 0 Tasks" in printed[0]
 
     def test_a_worker_pool_with_no_summaries(self, monkeypatch):
         from yellowdog_cli.utils.ydid_utils import YDIDType

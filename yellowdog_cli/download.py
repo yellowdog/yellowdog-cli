@@ -24,7 +24,7 @@ from yellowdog_cli.utils.dataclient.wrapper import dataclient_wrapper
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.printing import counted, print_error, print_info
 from yellowdog_cli.utils.settings import WINDOWS_RESERVED_CHARACTERS
 
 CONFIG_DATA_CLIENT: ConfigDataClient = lazy(load_config_data_client)
@@ -223,7 +223,7 @@ def main(ctx: DataClientContext):
         failed += 0 if succeeded else 1
 
     if failed:
-        print_error(f"{failed} item(s) failed to download")
+        print_error(f"{counted(failed, 'item')} failed to download")
         raise SystemExit(ExitCode.FAILURE)
     print_info(
         "Dry run complete: nothing was downloaded" if dry_run else "Download complete"

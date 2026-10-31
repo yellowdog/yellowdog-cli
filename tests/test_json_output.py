@@ -829,7 +829,7 @@ class TestAbort:
             ),
         ]
         assert client.work_client.cancel_task.call_count == 1
-        assert "Not attempting the remaining 2 item(s)" in err
+        assert "Not attempting the remaining 2 items" in err
         # The session's failure, not a per-item one: its own exit code, and
         # reported once, by the command, not again by the wrapper
         assert run.exit_code == ExitCode.AUTHENTICATION
@@ -879,7 +879,7 @@ class TestAbort:
         )
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
         assert client.work_client.cancel_task.call_count == 1
-        assert "Ignoring 1 duplicate target(s)" in err
+        assert "Ignoring 1 duplicate target" in err
 
     def test_a_pattern_aborts_in_each_work_requirement_it_matches(
         self, run, wrs, monkeypatch
@@ -1411,7 +1411,7 @@ class TestBoost:
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
         )
         assert asked == [
-            f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
+            f"Boost 2 Allowances by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
             f" {ALLOWANCE_ID_2})?"
         ]
 
@@ -2793,7 +2793,7 @@ class TestLs:
         assert code == 1
         text = " ".join(err.split())
         assert "'loc:remote/nope' does not exist" in text
-        assert "1 path(s) could not be listed" in text
+        assert "1 path could not be listed" in text
         if json_output:
             assert [e["Path"] for e in out] == ["b.txt"]
         else:
@@ -2977,7 +2977,7 @@ class TestUpload:
             ("two.txt", "uploaded"),
         ]
         assert code == 1
-        assert "1 item(s) failed to upload" in " ".join(err.split())
+        assert "1 item failed to upload" in " ".join(err.split())
         assert (remote / "remote" / "two.txt").exists()
 
     def test_several_directories_to_one_destination_keep_their_names(
@@ -3046,7 +3046,7 @@ class TestUpload:
         (remote / "d" / "link.txt").symlink_to(remote / "d" / "real.txt")
         out, err, _ = run_dc(yd_upload, local_paths=["d"], recursive=True)
         assert [r["destination"] for r in out] == ["loc:remote/d/real.txt"]
-        assert "1 symbolic link(s)" in " ".join(err.split())
+        assert "1 symbolic link" in " ".join(err.split())
 
     def test_an_empty_flattened_directory_is_recorded(self, remote, run_dc):
         (remote / "empty").mkdir()
@@ -3228,7 +3228,7 @@ class TestDownload:
             ("loc:remote/a.txt", "downloaded"),
         ]
         assert code == 1
-        assert "1 item(s) failed to download" in " ".join(err.split())
+        assert "1 item failed to download" in " ".join(err.split())
         assert (remote / "a.txt").exists()
 
     def test_a_mid_path_wildcard_fails_only_its_argument(self, remote, run_dc):
@@ -3587,7 +3587,7 @@ class TestDelete:
         )
         assert [r["action"] for r in out] == ["failed", "deleted"]
         assert code == 1
-        assert "1 item(s) failed to delete" in " ".join(err.split())
+        assert "1 item failed to delete" in " ".join(err.split())
 
     @pytest.mark.parametrize(
         "paths", [["loc:"], ["loc:remote"], ["loc:remote/"], ["loc:*"]]

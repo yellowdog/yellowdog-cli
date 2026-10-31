@@ -122,6 +122,7 @@ from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import resolved_each
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
+    counted,
     print_info,
     print_json,
     print_objects_as_json,
@@ -154,7 +155,8 @@ def _filter_by_name_glob_with_warning(
     unnamed = sum(1 for obj in objects if getattr(obj, "name", None) is None)
     if unnamed:
         print_warning(
-            f"{unnamed} {entity_label}(s) have no name and are excluded from "
+            f"{counted(unnamed, entity_label)} {'has' if unnamed == 1 else 'have'}"
+            " no name and are excluded from "
             "'--name' pattern matching"
         )
     return filter_summaries_by_name_glob(objects, pattern)

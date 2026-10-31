@@ -343,7 +343,7 @@ class TestExplicit:
         )
         _run(platform, [WR_A, TASK], abort=True)
         assert prompts == [
-            f"Cancel 1 Work Requirement(s) ('ns/wr-a') and 1 Task(s) ('t1' ({TASK}))"
+            f"Cancel 1 Work Requirement ('ns/wr-a') and 1 Task ('t1' ({TASK}))"
             " and abort their executing Tasks?"
         ]
 

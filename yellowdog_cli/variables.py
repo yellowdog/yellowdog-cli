@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.dataclient.rclone import is_inline_remote, shown_remote
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
-from yellowdog_cli.utils.printing import print_json, print_warning
+from yellowdog_cli.utils.printing import counted, print_json, print_warning
 from yellowdog_cli.utils.property_names import (
     DATA_CLIENT_REMOTE,
     DATA_CLIENT_SECTION,
@@ -198,18 +198,18 @@ def main(ctx: RunContext):
         )
     if report.by_pattern:
         print_warning(
-            f"Redacted {len(report.by_pattern)} variable(s) whose names"
+            f"Redacted {counted(len(report.by_pattern), 'variable')} whose names"
             f" match '{SECRET_VARIABLE_NAME_PATTERN.pattern}' (case-insensitive);"
             " everything else is shown in full. --show-secrets reports all."
         )
     if report.holding_credentials:
         print_warning(
-            f"Redacted {len(report.holding_credentials)} variable(s) whose values"
+            f"Redacted {counted(len(report.holding_credentials), 'variable')} whose values"
             " hold the configured key or secret. --show-secrets reports all."
         )
     if report.by_value:
         print_warning(
-            f"Withheld the parameters of {len(report.by_value)} variable(s) holding an"
+            f"Withheld the parameters of {counted(len(report.by_value), 'variable')} holding an"
             " inline rclone connection string, keeping its name, type and"
             " provider. --show-secrets reports all."
         )

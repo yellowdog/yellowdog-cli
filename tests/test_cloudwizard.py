@@ -154,7 +154,7 @@ def test_a_reported_error_exits_1_after_the_run(printed, operation):
     with pytest.raises(SystemExit) as raised:
         cloudwizard.run_operation(_Config(report_error=True), operation, None)
     assert raised.value.code == 1
-    assert "ERROR Cloud Wizard finished with 1 error(s)" in printed
+    assert "ERROR Cloud Wizard finished with 1 error" in printed
 
 
 def test_a_clean_run_exits_normally(printed):

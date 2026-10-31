@@ -33,7 +33,7 @@ from yellowdog_cli.utils.file_substitution import (
     load_toml_file_with_variable_substitutions,
 )
 from yellowdog_cli.utils.load_config import parse_property_value
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_info, print_warning
 from yellowdog_cli.utils.property_names import (
     PROP_CREDENTIAL,
     PROP_DESCRIPTION,
@@ -189,7 +189,7 @@ def load_resource_specifications(
             resource[RESOURCE_SOURCE_DIR] = spec_dir
 
         print_info(
-            f"Including {len(resources_loaded)} resource(s) from "
+            f"Including {counted(len(resources_loaded), 'resource')} from "
             + (f"'{shown}'" if shown == resource_spec else shown)
         )
         resources += resources_loaded

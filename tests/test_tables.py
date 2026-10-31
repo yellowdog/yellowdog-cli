@@ -197,12 +197,29 @@ def test_a_task_group_status_reads_the_same_listed_and_followed(monkeypatch):
         ("Machine Image Family", 2, "Machine Image Families"),
         ("Key", 2, "Keys"),
         ("AWS Availability Zones", 2, "AWS Availability Zones"),
+        ("batch", 3, "batches"),
+        ("matched item", 0, "matched items"),
     ],
 )
 def test_a_type_is_named_for_its_count(type_name, count, expected):
-    from yellowdog_cli.utils.tables import counted
+    from yellowdog_cli.utils.printing import plural
 
-    assert counted(type_name, count) == expected
+    assert plural(type_name, count) == expected
+
+
+@pytest.mark.parametrize(
+    "count, name, expected",
+    [
+        (1, "Worker Pool", "1 Worker Pool"),
+        (1204, "file", "1,204 files"),
+        (2.5, "minute", "2.5 minutes"),
+        (1.0, "minute", "1 minute"),
+    ],
+)
+def test_a_count_is_given_with_its_name(count, name, expected):
+    from yellowdog_cli.utils.printing import counted
+
+    assert counted(count, name) == expected
 
 
 @pytest.mark.parametrize(

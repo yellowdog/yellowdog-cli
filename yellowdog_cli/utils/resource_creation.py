@@ -97,6 +97,8 @@ from yellowdog_cli.utils.load_resources import (
 from yellowdog_cli.utils.misc_utils import is_http_not_found, shown_expiry
 from yellowdog_cli.utils.output_style import REDACTED_VALUE
 from yellowdog_cli.utils.printing import (
+    counted,
+    plural,
     print_dry_run,
     print_info,
     print_json,
@@ -429,7 +431,8 @@ def create_compute_requirement_template(
 
     if source_template_substitutions > 0:
         print_info(
-            f"Replaced {source_template_substitutions} Compute Source Template name(s) with ID(s)"
+            f"Replaced {counted(source_template_substitutions, 'Compute Source Template name')}"
+            f" with {plural('ID', source_template_substitutions)}"
         )
 
     images_id = resource.get(PROP_IMAGES_ID)

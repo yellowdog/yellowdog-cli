@@ -53,7 +53,7 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.named_targets import pattern_ids, target_id
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -184,7 +184,7 @@ def cancel(ctx: RunContext, names: list[str]):
     )
     items = [_wr_item(summary) for summary in selected]
     if items and not confirm_items(
-        f"Cancel {len(items)} Work Requirement(s){_abort_phrase(ctx)}?",
+        f"Cancel {counted(len(items), 'Work Requirement')}{_abort_phrase(ctx)}?",
         items,
         _recorder,
     ):
@@ -354,13 +354,15 @@ def _confirmation(ctx: RunContext, items: list[Item]) -> str:
     parts = []
     if work_requirements:
         parts.append(
-            f"{len(work_requirements)} Work Requirement(s) ("
+            f"{counted(len(work_requirements), 'Work Requirement')} ("
             + ", ".join(_label(wr) for wr in work_requirements)
             + ")"
         )
     if tasks:
         parts.append(
-            f"{len(tasks)} Task(s) (" + ", ".join(_task_label(t) for t in tasks) + ")"
+            f"{counted(len(tasks), 'Task')} ("
+            + ", ".join(_task_label(t) for t in tasks)
+            + ")"
         )
     return f"Cancel {' and '.join(parts)}{_abort_phrase(ctx)}?"
 
@@ -402,9 +404,9 @@ def _carry_out(ctx: RunContext, items: list[Item]):
 
     if cancelled_ids or tasks_cancelled:
         if cancelled_ids:
-            print_info(f"Cancelled {len(cancelled_ids)} Work Requirement(s)")
+            print_info(f"Cancelled {counted(len(cancelled_ids), 'Work Requirement')}")
         if tasks_cancelled:
-            print_info(f"Cancelled {tasks_cancelled} Task(s)")
+            print_info(f"Cancelled {counted(tasks_cancelled, 'Task')}")
         if ctx.args.follow and cancelled_ids:
             follow_ids(ctx, cancelled_ids)
     else:

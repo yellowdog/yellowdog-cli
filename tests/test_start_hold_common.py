@@ -297,7 +297,7 @@ class TestExplicit:
         )
         platform.wrs[WR_B] = _wr(WR_B, "wr-b")
         _run(platform, START, [WR_A, "wr-b"])
-        assert prompts == ["Start 2 Work Requirement(s) ('ns/wr-a', 'ns/wr-b')?"]
+        assert prompts == ["Start 2 Work Requirements ('ns/wr-a', 'ns/wr-b')?"]
 
     def test_declining_skips_everything(self, platform, monkeypatch):
         monkeypatch.setattr(action_runner, "confirmed", lambda message: False)

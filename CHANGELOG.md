@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Listing and actions
 
+- **Counts read as plain English**: messages and prompts say `Cancel 1 Work Requirement?`, `Shut down 3 Worker Pools` and `1,204 files`, rather than `Work Requirement(s)`; a dry run's table is no longer headed twice.
 - **A listing says each thing once**: its table is headed by how many were found (`3 matching Worker Pools:`, `1 matching Task:`) rather than repeating the line above it; `--active-only` is part of that line (`Listing active Compute Requirements in namespace 'dev'`) rather than a line of its own; Worker Pools are `Listing`, as the other types are; and `--within` names the type as the other lines do (`Listing Tasks within 'my-wr'`).
 - **`yd workerpool list --provisioned` and `--configured`** list only Worker Pools of that kind, combining with the other filters, `--json` and `--count`: `yd wp list --configured` lists the on-premise pools.
 - **`yd task list` can list the Tasks of several Task Groups at once**: at the Task Group prompt, answer with a list, a range or `*` (`1,3`, `1-4`), and their Tasks are listed in one table, each row naming its Task Group. Only one Task Group could be chosen before.

@@ -62,6 +62,7 @@ from yellowdog_cli.utils.misc_utils import (
 from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     WorkRequirementSnapshot,
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -772,13 +773,14 @@ def _extend_work_requirement(
         run.snapshot.set_work_requirement(work_requirement)
         if existing_tgs:
             print_dry_run(
-                f"Work Requirement '{run.name}' already contains {len(existing_tgs)}"
-                " Task Group(s), shown below without their existing Tasks: "
+                f"Work Requirement '{run.name}' already contains"
+                f" {counted(len(existing_tgs), 'Task Group')}, shown below without"
+                " their existing Tasks: "
                 + ", ".join(f"'{tg.name}'" for tg in existing_tgs)
             )
         if extension.new:
             print_dry_run(
-                f"Would add {len(extension.new)} new Task Group(s) to existing"
+                f"Would add {counted(len(extension.new), 'new Task Group')} to existing"
                 f" Work Requirement '{run.name}'"
             )
         return work_requirement, extension.additions
@@ -790,7 +792,7 @@ def _extend_work_requirement(
             work_requirement
         )
         print_info(
-            f"Added {len(extension.new)} new Task Group(s) to existing Work"
+            f"Added {counted(len(extension.new), 'new Task Group')} to existing Work"
             f" Requirement '{run.name}'"
         )
 
@@ -1084,7 +1086,7 @@ def add_tasks_to_task_group(
     if not run.ctx.args.dry_run:
         if num_submitted_tasks > 0:
             print_info(
-                f"Added a total of {num_submitted_tasks:,d} Task(s) to Task Group"
+                f"Added a total of {counted(num_submitted_tasks, 'Task')} to Task Group"
                 f" '{task_group.name}'"
             )
         else:
@@ -1140,7 +1142,7 @@ def submit_batch_of_tasks_to_task_group(
         if num_task_batches > 1:
             print_info(
                 f"Batch {batch_number_str} :"
-                f" Added {len(tasks_list):,d} Task(s) {task_range_str}to Work Requirement Task"
+                f" Added {counted(len(tasks_list), 'Task')} {task_range_str}to Work Requirement Task"
                 f" Group '{task_group.name}'"
             )
 

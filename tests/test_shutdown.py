@@ -338,7 +338,7 @@ class TestExplicit:
         )
         _run(platform, [WP_A, NODE], terminate=True)
         assert prompts == [
-            f"Shut down 1 Worker Pool(s) ('wp-tag-a') and 1 Node(s) ({NODE}),"
+            f"Shut down 1 Worker Pool ('wp-tag-a') and 1 Node ({NODE}),"
             " immediately terminating their Compute Requirements?"
         ]
 
