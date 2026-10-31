@@ -10,7 +10,9 @@ Compute Requirements by tag, Worker Pools by the tag in their name, '-t'
 and '-n' typed on the line taking precedence; for '--within', which resolves
 a name in the namespace, whatever their tag -- in the statuses the verb acts
 on, newest first and at most LOOKUP_MAX_ITEMS of them. After 'wr/', a
-'--within' Work Requirement's Task Groups are offered, as 'wr/tg'. The
+Work Requirement's Task Groups are offered, as 'wr/tg', and after 'wr/tg/'
+for a Task's verbs, the Task Group's Tasks, as 'wr/tg/task' (or, where no
+such Task Group is found, 'namespace/wr/' read as a Work Requirement's). The
 answer is kept for the Tabs that follow (utils/completion_cache.py), unless
 nothing was found.
 
@@ -67,6 +69,10 @@ def candidates(request: LookupRequest) -> tuple[Candidate, ...]:
         common = _load_common(request.settings)
         if common is None:
             return ()
+        if request.lookup.tasks and request.current.count("/") >= 2:
+            parent, _, typed = request.current.rpartition("/")
+            items = _task_items(common, parent, typed, request.lookup)
+            return _offered(items or _task_group_items(common, parent), request)
         if request.lookup.task_groups and "/" in request.current:
             parent = request.current.rpartition("/")[0]
             return _offered(_task_group_items(common, parent), request)
@@ -333,6 +339,86 @@ def _task_group_items(common: ConfigCommon, parent: str) -> list[dict[str, Any]]
             }
             for task_group in get_task_groups_from_wr_by_id(client, work_requirement.id)
             if task_group.name
+        ]
+    finally:
+        client.close()
+    if items:
+        completion_cache.write(key, items)
+    return items
+
+
+def _task_items(
+    common: ConfigCommon, parent: str, typed: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The Tasks of the Task Group named 'parent' ('wr/tg' or 'namespace/wr/tg')
+    whose names contain what is typed of the Task's ('typed', the Platform
+    filtering), in the lookup's Task statuses, each named 'parent/task': at
+    most LOOKUP_MAX_ITEMS, from the cache or else the Platform. None where
+    there is no such Task Group.
+    """
+    key = completion_cache.cache_key(
+        common.url,
+        common.key or "",
+        common.namespace,
+        "tasks",
+        parent,
+        typed,
+        ",".join(sorted(lookup.task_statuses or ())) or "*",
+    )
+    cached = completion_cache.read(key)
+    if cached is not None:
+        return cached
+    from yellowdog_cli.utils.entity_utils import (
+        AmbiguousNameError,
+        find_work_requirement_by_name,
+        get_task_groups_from_wr_by_id,
+        iterate_tasks_in_task_group,
+    )
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    work_requirement_name, _, task_group_name = parent.rpartition("/")
+    if not work_requirement_name:
+        return []
+    client = _client(common)
+    try:
+        try:
+            work_requirement = find_work_requirement_by_name(
+                client, work_requirement_name, common.namespace, statuses=()
+            )
+        except (NotFoundError, AmbiguousNameError):
+            # 'namespace/wr/' perhaps, for the caller to read as that
+            return []
+        task_group = next(
+            (
+                task_group
+                for task_group in get_task_groups_from_wr_by_id(
+                    client, work_requirement.id
+                )
+                if task_group.name == task_group_name
+            ),
+            None,
+        )
+        if task_group is None:
+            return []
+        found = iterate_tasks_in_task_group(
+            client,
+            cast(str, task_group.id),
+            statuses=(
+                tuple(sorted(lookup.task_statuses))
+                if lookup.task_statuses is not None
+                else None
+            ),
+            name_contains=typed or None,
+        )
+        items = [
+            {
+                "id": task.id,
+                "name": f"{parent}/{task.name}",
+                "status": getattr(task.status, "name", None),
+            }
+            for task in _capped(found)
+            if task.name
         ]
     finally:
         client.close()

@@ -43,6 +43,10 @@ class Lookup:
     tagged: bool = True
     # After 'wr/', the Work Requirement's Task Groups, as 'wr/tg'
     task_groups: bool = False
+    # After 'wr/tg/', the Task Group's Tasks, as 'wr/tg/task', in these
+    # statuses (TaskStatus member names; None for any)
+    tasks: bool = False
+    task_statuses: frozenset[str] | None = None
     # A resource type ('Keyring'): its names, as 'yd resource remove' and
     # 'show' take them after '--type' (a Credential's after 'keyring/')
     resource: str | None = None
@@ -65,6 +69,29 @@ def _task_groups(statuses: frozenset[str] | None) -> Lookup:
     Work Requirements by name, then after 'wr/' their Task Groups.
     """
     return Lookup(ET_WORK_REQUIREMENTS, ids=False, statuses=statuses, task_groups=True)
+
+
+# Not finished: the Tasks a cancellation still applies to
+TASK_UNFINISHED = frozenset(
+    {"PENDING", "READY", "ALLOCATED", "DOWNLOADING", "EXECUTING", "UPLOADING"}
+)
+
+
+def _tasks(
+    statuses: frozenset[str] | None, task_statuses: frozenset[str] | None
+) -> Lookup:
+    """
+    Work Requirements by name, then after 'wr/' their Task Groups, then
+    after 'wr/tg/' the Task Group's Tasks.
+    """
+    return Lookup(
+        ET_WORK_REQUIREMENTS,
+        ids=False,
+        statuses=statuses,
+        task_groups=True,
+        tasks=True,
+        task_statuses=task_statuses,
+    )
 
 
 # '--within' for each type 'yd list' lists within a parent: the parent's
@@ -142,6 +169,11 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_TG} compare", "wr_or_tg_id"): _task_groups(_WR_UNFINISHED),
     (f"{_TG} priority", "priority_targets"): _task_groups(_WR_UNFINISHED),
     (f"{_TG} compare", "worker_pool_ids"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    # Tasks: a Work Requirement's name, then 'wr/tg', then for a Task's own
+    # verbs 'wr/tg/task'
+    ("yd task abort", "task_id_list"): _task_groups(_WR_UNFINISHED),
+    ("yd task cancel", "work_requirements"): _tasks(_WR_UNFINISHED, TASK_UNFINISHED),
+    ("yd task show", _SHOWN): _tasks(None, None),
     # Worker Pools
     (f"{_WP} resize", "worker_pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     (f"{_WP} shutdown", "worker_pool_nodes_list"): _names(

@@ -483,6 +483,89 @@ def test_a_slash_is_only_a_task_group_for_a_lookup_that_has_them(monkeypatch):
     assert offered == ()
 
 
+TASK_CANCEL = LOOKUPS[("yd task cancel", "work_requirements")]
+
+
+def _work_with_tasks(monkeypatch, tasks, wrs=("my-wr",)):
+    """
+    Work Requirements named 'wrs', each with Task Groups 'render' and
+    'encode', 'render' holding 'tasks' (name, status); the searches made for
+    them are recorded.
+    """
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: _client([]))
+    searched = []
+
+    def find(client, name, namespace, statuses):
+        if name not in wrs:
+            raise NotFoundError(name)
+        return SimpleNamespace(id=f"ydid:workreq:000000:{name}")
+
+    def task_groups(client, wr_id):
+        return [
+            SimpleNamespace(id=f"{wr_id}:{i}", name=name, status=None)
+            for i, name in enumerate(["render", "encode"], 1)
+        ]
+
+    def iterate(client, task_group_id, statuses=None, name_contains=None):
+        searched.append((task_group_id, statuses, name_contains))
+        if not task_group_id.endswith(":1"):
+            return iter([])
+        return iter(
+            SimpleNamespace(
+                id=f"ydid:task:{name}", name=name, status=SimpleNamespace(name=status)
+            )
+            for name, status in tasks
+            if name_contains is None or name_contains in name
+        )
+
+    monkeypatch.setattr(entity_utils_module, "find_work_requirement_by_name", find)
+    monkeypatch.setattr(
+        entity_utils_module, "get_task_groups_from_wr_by_id", task_groups
+    )
+    monkeypatch.setattr(entity_utils_module, "iterate_tasks_in_task_group", iterate)
+    return searched
+
+
+def test_after_wr_tg_a_task_groups_tasks_are_offered(monkeypatch):
+    searched = _work_with_tasks(
+        monkeypatch,
+        [("frame-1", "EXECUTING"), ("frame-2", "READY"), ("other", "READY")],
+    )
+    offered = completion_lookups.candidates(_request(TASK_CANCEL, "my-wr/render/fr"))
+    assert [(c.value, c.description) for c in offered] == [
+        ("my-wr/render/frame-1", "EXECUTING"),
+        ("my-wr/render/frame-2", "READY"),
+    ]
+    # The Platform filters by status and by what is typed of the name
+    ((_, statuses, name_contains),) = searched
+    assert set(statuses) == TASK_CANCEL.task_statuses
+    assert name_contains == "fr"
+
+
+def test_show_offers_tasks_in_any_status(monkeypatch):
+    searched = _work_with_tasks(monkeypatch, [("frame-1", "COMPLETED")])
+    show = LOOKUPS[("yd task show", "yellowdog_ids")]
+    offered = completion_lookups.candidates(_request(show, "my-wr/render/"))
+    assert [c.value for c in offered] == ["my-wr/render/frame-1"]
+    assert searched[0][1] is None
+
+
+def test_namespace_wr_slash_offers_the_task_groups(monkeypatch):
+    # 'ns2/my-wr/' names no Task Group 'my-wr' in a Work Requirement 'ns2',
+    # so it is a Work Requirement in namespace 'ns2'
+    _work_with_tasks(monkeypatch, [], wrs=("ns2/my-wr",))
+    offered = completion_lookups.candidates(_request(TASK_CANCEL, "ns2/my-wr/"))
+    assert [c.value for c in offered] == ["ns2/my-wr/render", "ns2/my-wr/encode"]
+
+
+def test_a_task_lookup_before_a_slash_offers_task_groups(monkeypatch):
+    _work_with_tasks(monkeypatch, [("frame-1", "READY")])
+    offered = completion_lookups.candidates(_request(TASK_CANCEL, "my-wr/"))
+    assert [c.value for c in offered] == ["my-wr/render", "my-wr/encode"]
+
+
 # Resources, after 'yd resource remove/show --type <type>'
 
 

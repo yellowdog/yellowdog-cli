@@ -160,3 +160,23 @@ def test_every_resource_type_has_a_lookup():
         assert lookup.statuses is None and lookup.tagged is False
         # An Allowance has no name: its ID is offered
         assert lookup.ids is (resource_type == "Allowance")
+
+
+def test_the_task_verbs_offer_wr_tg_and_tasks():
+    from yellowdog_client.model import TaskStatus
+
+    from yellowdog_cli.utils.completion_targets import TASK_UNFINISHED
+
+    abort = LOOKUPS[("yd task abort", "task_id_list")]
+    assert abort.task_groups and not abort.tasks
+    for key in (
+        ("yd task cancel", "work_requirements"),
+        ("yd task show", "yellowdog_ids"),
+    ):
+        assert LOOKUPS[key].task_groups and LOOKUPS[key].tasks, key
+    assert LOOKUPS[("yd task show", "yellowdog_ids")].task_statuses is None
+    # Those cancel still applies to: the SDK's own test, as the command's
+    assert TASK_UNFINISHED == _names(s for s in TaskStatus if not s.finished)
+    assert LOOKUPS[("yd task cancel", "work_requirements")].task_statuses == (
+        TASK_UNFINISHED
+    )
