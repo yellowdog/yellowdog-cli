@@ -122,6 +122,10 @@ def listing(monkeypatch):
         (["keyrings", "--unhealthy"], "--unhealthy does not apply to keyrings"),
         (["nodes", "--configured"], "--configured does not apply to nodes"),
         (
+            ["worker-pools", "--provisioned", "--configured"],
+            "--provisioned and --configured cannot be given together",
+        ),
+        (
             ["compute-requirements", "--provisioned"],
             "--provisioned does not apply to compute-requirements",
         ),

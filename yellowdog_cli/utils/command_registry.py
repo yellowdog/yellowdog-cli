@@ -3192,6 +3192,8 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
     unfiltered listing for a filtered one.
     """
     entity_type = args.entity_type
+    if getattr(args, "provisioned", False) and getattr(args, "configured", False):
+        parser.error("--provisioned and --configured cannot be given together")
     for dest, flag, types in (
         ("name_glob", "--name", LIST_NAME_TYPES),
         ("status_filter", "--status", LIST_STATUS_TYPES),
@@ -3269,7 +3271,10 @@ COMMANDS["yd-list"] = Command(
         NAME,
         STATUS,
         UNHEALTHY,
-        Exclusive((PROVISIONED, CONFIGURED)),
+        # Not an argparse group: every list verb but Worker Pools' hides
+        # them, and Python 3.10's usage line fails on a group all hidden
+        PROVISIONED,
+        CONFIGURED,
         PROVIDER,
         DESCRIPTION,
         WITH_ERRORS,
