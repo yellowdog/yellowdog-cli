@@ -881,6 +881,38 @@ class TestAbort:
         assert client.work_client.cancel_task.call_count == 1
         assert "Ignoring 1 duplicate target(s)" in err
 
+    def test_a_pattern_aborts_in_each_work_requirement_it_matches(
+        self, run, wrs, monkeypatch
+    ):
+        summaries = [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")]
+        monkeypatch.setattr(
+            work_targets,
+            "get_filtered_work_requirement_summaries",
+            lambda client, name=None, namespace=None, **_: summaries,
+        )
+        client = self._client([])
+        client.work_client.get_work_requirement_by_id.side_effect = {
+            WR_ID_1: summaries[0],
+            WR_ID_2: summaries[1],
+        }.get
+        run(yd_abort, client=client, task_id_list=["wr-*", WR_ID_1])
+        searched = [
+            call.args[0].workRequirementId
+            for call in client.work_client.get_tasks.call_args_list
+        ]
+        # The ID named again after the pattern is not searched twice
+        assert searched == [WR_ID_1, WR_ID_2]
+
+    def test_a_pattern_matching_nothing_says_so(self, run, wrs, monkeypatch):
+        monkeypatch.setattr(
+            work_targets,
+            "get_filtered_work_requirement_summaries",
+            lambda client, **_: [],
+        )
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["zz-*"])
+        assert out == []
+        assert run.exit_code in (None, 0)
+
     def test_targets_are_handled_in_the_order_given(self, run, wrs):
         client = self._client([_task()], by_id={TASK_ID_2: _task(TASK_ID_2, "t2")})
         out, _, _ = run(yd_abort, client=client, task_id_list=["wr-a", TASK_ID_2])

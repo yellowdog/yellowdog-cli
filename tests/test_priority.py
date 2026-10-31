@@ -14,6 +14,9 @@ Covers:
   - '--dry-run' recording what would change and changing nothing
   - a session failure stopping the run, the rest recorded as not attempted
   - the command line: a finite number, negative ones included
+  - name patterns: the unfinished Work Requirements or Task Groups matched,
+    mixed with names and IDs, each once; one matching nothing says so, and
+    one with a wildcard before its last part fails
 """
 
 from copy import deepcopy
@@ -109,6 +112,15 @@ class FakePlatform:
                 return work_requirement_summary_of(wr)
         return None
 
+    def search(self, client, name=None, namespace=None, include_filter=None, **_):
+        return [
+            work_requirement_summary_of(wr)
+            for wr in self.wrs.values()
+            if wr.namespace == namespace
+            and (name or "") in (wr.name or "")
+            and (include_filter is None or wr.status in include_filter)
+        ]
+
     def task_groups(self, client, wr_id):
         return self._get(wr_id).taskGroups
 
@@ -128,6 +140,9 @@ def platform(monkeypatch):
         work_targets, "get_work_requirement_summary_by_name_or_id", fake.by_name
     )
     monkeypatch.setattr(work_targets, "get_task_groups_from_wr_by_id", fake.task_groups)
+    monkeypatch.setattr(
+        work_targets, "get_filtered_work_requirement_summaries", fake.search
+    )
 
     def record_action(entity, entity_type, action, outcome, error=None, **extra):
         if isinstance(entity, str):
@@ -196,6 +211,58 @@ class TestTargets:
     def test_a_negative_priority(self, platform):
         _run(platform, -1.0, [WR_A])
         assert platform.priorities() == (-1.0, 0.0, 0.0)
+
+
+class TestPatterns:
+    @pytest.fixture
+    def two(self, platform):
+        platform.wrs[WR_B] = _wr(WR_B, "wr-b")
+        platform.wrs["ydid:workreq:000000:cccccccc-cccc-cccc-cccc-cccccccccccc"] = _wr(
+            "ydid:workreq:000000:cccccccc-cccc-cccc-cccc-cccccccccccc",
+            "wr-c",
+            status=WorkRequirementStatus.COMPLETED,
+        )
+        return platform
+
+    def test_the_unfinished_work_requirements_matched(self, two):
+        _run(two, 3.0, ["wr-*"])
+        assert two.outcomes() == [
+            (WR_A, "work-requirements", "prioritised"),
+            (WR_B, "work-requirements", "prioritised"),
+        ]
+
+    def test_task_groups_matched_within_their_work_requirement(self, platform):
+        _run(platform, 3.0, ["wr-a/*"])
+        assert platform.priorities() == (0.0, 3.0, 3.0)
+
+    def test_mixed_with_names_and_ids_each_once(self, two):
+        _run(two, 3.0, [WR_B, "wr-*"])
+        assert two.outcomes() == [
+            (WR_B, "work-requirements", "prioritised"),
+            (WR_A, "work-requirements", "prioritised"),
+        ]
+
+    def test_a_slash_reads_a_namespace_when_no_work_requirement_has_it(self, platform):
+        platform.wrs[WR_B] = _wr(WR_B, "wr-b")
+        platform.wrs[WR_B].namespace = "other"
+        _run(platform, 3.0, ["other/wr-*"])
+        assert platform.outcomes() == [(WR_B, "work-requirements", "prioritised")]
+
+    def test_a_pattern_matching_nothing_says_so(self, platform, monkeypatch):
+        infos: list[str] = []
+        monkeypatch.setattr(action_runner, "print_info", infos.append)
+        _run(platform, 3.0, ["other-*"])
+        assert infos == [
+            "No unfinished Work Requirements or Task Groups match 'other-*'"
+        ]
+        assert platform.records == []
+
+    def test_a_wildcard_before_the_last_part_fails(self, platform, capsys):
+        _run(platform, 3.0, ["wr-*/render"])
+        assert platform.outcomes() == [(None, "task-groups", "failed")]
+        assert "in the last part of the name alone" in " ".join(
+            capsys.readouterr().err.split()
+        )
 
 
 class TestUpdates:

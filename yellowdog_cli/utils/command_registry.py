@@ -1669,7 +1669,8 @@ TASK_ID_LIST = option(
         " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
         " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
         " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
-        " group. Without arguments, the executing tasks of the work"
+        " group; the last part of a name may be a glob pattern ('wr-*',"
+        " 'wr/tg-*'), matching unfinished ones. Without arguments, the executing tasks of the work"
         " requirements matching the namespace and tag, selected interactively"
         " unless --yes is given."
     ),
@@ -4227,7 +4228,8 @@ PRIORITY_TARGETS = option(
     type=str,
     help=(
         "the work requirement(s) or task group(s): IDs, or names as 'wr',"
-        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'"
+        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg', the last part of which"
+        " may be a glob pattern ('wr-*', 'wr/tg-*'), matching unfinished ones"
     ),
 )
 

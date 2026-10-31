@@ -13,7 +13,9 @@ another state) -- by raising Unresolved. What remains is confirmed once
 (confirm_items(), which records it all as skipped if declined), then acted
 on by carry_out(), a Unit at a time: one Item, or several acted on in one
 call (a Compute Requirement's Instances). A listing (the tag, or glob
-patterns) skips the first pass and goes straight to carry_out().
+patterns) skips the first pass and goes straight to carry_out(). A command
+taking patterns mixed with names and IDs replaces each pattern by the IDs it
+matches first (expand_patterns()), and resolves them with the rest.
 
 In either pass, a failure every later call would repeat
 (exit_codes.SESSION_FAILURES: authentication, connection) stops the run:
@@ -43,9 +45,11 @@ from yellowdog_cli.utils.exit_codes import (
     classify,
 )
 from yellowdog_cli.utils.failure_advice import advise
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import confirmed
-from yellowdog_cli.utils.printing import print_error, print_warning
+from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.results import record_failure_cause
+from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 _LOG = logging.getLogger(__name__)
 
@@ -172,6 +176,41 @@ def warn_not_attempted(count: int) -> None:
 
 def _not_attempted(cause: Exception) -> str:
     return f"not attempted: {cause}"
+
+
+def expand_patterns(
+    targets: list[str],
+    expand: Callable[[str], list[str]],
+    describe: Callable[[str], tuple[object, str]],
+    record: Record,
+    none_match: Callable[[str], str],
+) -> list[str]:
+    """
+    The targets in the order given, each name pattern (not an ID, and
+    holding a wildcard) replaced by the IDs 'expand' gives for it: those it
+    matches in the state the action applies to. A pattern matching none says
+    so ('none_match' words it), as a listing finding nothing does; one that
+    cannot be read (a wildcard in the wrong part, a parent that does not
+    exist) is reported and recorded as failed, as an unresolved target is.
+    """
+    expanded: list[str] = []
+    for target in targets:
+        if get_ydid_type(target) is not None or not contains_glob_chars(target):
+            expanded.append(target)
+            continue
+        try:
+            ids = expand(target)
+        except (LookupError, ValueError) as e:
+            print_error(str(e))
+            entity, entity_type = describe(target)
+            record(entity, entity_type, FAILED, str(e))
+            record_failure_cause(classify(e))
+            continue
+        _LOG.debug("'%s' matches %s", target, ", ".join(ids) or "nothing")
+        if not ids:
+            print_info(none_match(target))
+        expanded.extend(ids)
+    return expanded
 
 
 def resolve_targets(

@@ -25,6 +25,7 @@ from yellowdog_cli.utils.action_runner import (
     Unresolved,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -37,6 +38,7 @@ from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.work_targets import (
     MalformedTarget,
     TargetNotFound,
+    matching_work_ids,
     named_target_entity_type,
     resolve_named_target,
 )
@@ -99,7 +101,17 @@ def set_priorities(ctx: RunContext, priority: float, targets: list[str]):
     Set the priority of each Work Requirement and Task Group named.
     """
     items = resolve_targets(
-        targets,
+        expand_patterns(
+            targets,
+            expand=lambda pattern: matching_work_ids(
+                ctx.client, pattern, ctx.config.namespace
+            ),
+            describe=_describe,
+            record=_record,
+            none_match=lambda pattern: (
+                f"No unfinished Work Requirements or Task Groups match '{pattern}'"
+            ),
+        ),
         resolve=lambda target: _resolve(ctx, target, priority),
         describe=_describe,
         record=_record,

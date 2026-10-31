@@ -15,7 +15,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
-from yellowdog_cli.utils.action_runner import warn_not_attempted
+from yellowdog_cli.utils.action_runner import expand_patterns, warn_not_attempted
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_TASK_GROUPS,
@@ -47,6 +47,7 @@ from yellowdog_cli.utils.results import (
 from yellowdog_cli.utils.work_targets import (
     MalformedTarget,
     TargetNotFound,
+    matching_work_ids,
     named_target_entity_type,
     resolve_named_target,
 )
@@ -135,7 +136,8 @@ def _label(entity: object) -> str:
 def main(ctx: RunContext) -> None:
     run = _Run(ctx)
     if ctx.args.task_id_list:
-        _run_units(_target_units(_without_duplicates(ctx.args.task_id_list), run), run)
+        targets = _expanded(run, _without_duplicates(ctx.args.task_id_list))
+        _run_units(_target_units(targets, run), run)
     else:
         _run_units(_interactive_units(run), run)
 
@@ -146,6 +148,32 @@ def main(ctx: RunContext) -> None:
         )
     elif run.aborted == 0:
         print_info("No Tasks aborted")
+
+
+def _expanded(run: _Run, targets: list[str]) -> list[str]:
+    """
+    The targets, each name pattern replaced by the IDs of the unfinished
+    Work Requirements or Task Groups it matches, each once (a pattern may
+    match what another target names).
+    """
+    return list(
+        dict.fromkeys(
+            expand_patterns(
+                targets,
+                expand=lambda pattern: matching_work_ids(
+                    run.ctx.client, pattern, run.ctx.config.namespace
+                ),
+                describe=lambda target: (target, named_target_entity_type(target)),
+                # The cause is recorded by expand_patterns()
+                record=lambda entity, entity_type, outcome, error: record_action(
+                    entity, entity_type, "abort", outcome, error
+                ),
+                none_match=lambda pattern: (
+                    f"No unfinished Work Requirements or Task Groups match '{pattern}'"
+                ),
+            )
+        )
+    )
 
 
 def _without_duplicates(targets: list[str]) -> list[str]:

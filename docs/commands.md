@@ -221,8 +221,8 @@ How each command takes its targets:
 | Command | No targets | Glob patterns |
 |:---|:---|:---|
 | `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, not mixed with names or IDs |
-| `yd workrequirement priority`, `yd taskgroup priority` | refused | no |
-| `yd task abort` | the namespace and tag | no |
+| `yd workrequirement priority`, `yd taskgroup priority` | refused | yes, mixed with names and IDs as wished |
+| `yd task abort` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workerpool shutdown` | the namespace and tag | yes, not mixed with names or IDs |
 | `yd workerpool token` | refused | yes, mixed with names and IDs as wished |
 | `yd workerpool resize`, `yd computerequirement resize` | refused (one target) | no |
@@ -399,6 +399,7 @@ The new priority, any finite number (negative ones included), comes first, follo
 
 - a Work Requirement name, `<namespace>/<wr-name>` or YDID
 - a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`
+- a name pattern, a wildcard in its last part (`'nightly-*'`, `'my-wr/render-*'`), standing for every unfinished Work Requirement or Task Group it matches
 
 Targets are handled in the order given, each once, and confirmed together, the confirmation showing each one's current and new priority. A target that does not exist, or whose name is ambiguous, is reported as failed; one in a Work Requirement that has finished (`COMPLETED`, `CANCELLED` or `FAILED`), or already at the priority, is skipped with a warning. The Platform takes a Work Requirement whole, so the targets in one Work Requirement are changed together, in one update to a copy fetched just before it is sent: a change made to the Work Requirement since the targets were found is kept. An authentication or connection failure stops the command, with that failure's [exit code](json-output.md), and the targets not yet attempted are reported as skipped.
 
@@ -410,6 +411,7 @@ Key options:
 yd workrequirement priority 10 my-analysis-run
 yd workrequirement priority 5 my-analysis-run/render my-analysis-run/encode
 yd workrequirement priority -1 ydid:workreq:000000:...
+yd workrequirement priority 20 'nightly-20261030*'
 ```
 
 ### yd workrequirement compare
@@ -530,10 +532,11 @@ The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/
 - a Task YDID, to abort that Task, whatever its state
 - a Work Requirement name, `<namespace>/<wr-name>` or YDID, to abort all running Tasks within it (a YDID is found in whatever namespace it belongs to)
 - a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`, to abort running Tasks in a specific Task Group
+- a name pattern, a wildcard in its last part (`'nightly-*'`, `'my-wr/render-*'`), standing for every unfinished Work Requirement or Task Group it matches
 
 A running Task is one that is `DOWNLOADING`, `EXECUTING` or `UPLOADING`; a Task that has yet to start, or has finished, is left alone.
 
-`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`. A Work Requirement name is looked up as for `yd workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
+`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`; a pattern `<a>/<b*>` likewise matches the Task Groups of Work Requirement `<a>` if any match, and otherwise the Work Requirements in namespace `<a>`. A pattern matching nothing says so and is no failure, as a namespace and tag selecting nothing is; one with a wildcard before its last part is reported as failed. A Work Requirement name is looked up as for `yd workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
 
 Targets are handled in the order given, except that the Task YDIDs are confirmed together, where the first of them appears. A repeated target is ignored, and a Task included by more than one target is aborted once. If an attempt fails because the credentials are rejected or the platform cannot be reached, nothing further is attempted, the remaining Tasks and targets are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
