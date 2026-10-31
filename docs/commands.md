@@ -211,7 +211,7 @@ The commands that act on Work Requirements, Task Groups, Tasks, Worker Pools and
 - **A YellowDog ID** (YDID) names its object in whatever namespace it is in.
 - **A name** is looked up in the configured namespace (or `--namespace`), unless it is given with its own: `namespace/name`. A Task Group is named `wr/tg`, or `namespace/wr/tg`, and a Task `wr/tg/task`.
 - **A reused name.** A Work Requirement's or Compute Requirement's name can be used again once the first has finished, so a name is matched to the object of that name in the state the action applies to: the `HELD` Work Requirement for `start`, the `RUNNING` one for `hold`, an unfinished one for `cancel`. If two objects of the name are in that state, the name is ambiguous, reported, and exits 1; give the ID instead. The `show`, `follow`, `wait` and `compare` verbs take the live object of the name if there is one, else the newest.
-- **A glob pattern** (`*`, `?` or `[...]`, quoted so that the shell leaves it alone) is matched against the names in the namespace, by the CLI, and selects every object it matches that is in the state the action applies to; a name without a wildcard matches exactly, so `'proj-*'` rather than `proj-`. The matches are confirmed as a selection by namespace and tag is, and `--interactive` offers them to choose from. `yd list <type> --name '<pattern>'` shows what a pattern matches before acting on it.
+- **A glob pattern** (`*`, `?` or `[...]`, quoted so that the shell leaves it alone) is matched against the names in the namespace, by the CLI, and selects every object it matches that is in the state the action applies to; a name without a wildcard matches exactly, so `'proj-*'` rather than `proj-`. Patterns given alone are a selection, confirmed as one by namespace and tag is, and `--interactive` offers their matches to choose from; given with names or IDs, each pattern stands for the objects it matches, resolved, confirmed and acted on with the rest, and one matching nothing says so. `yd list <type> --name '<pattern>'` shows what a pattern matches before acting on it.
 - **No targets** at all, on the commands that allow it, selects by the namespace and tag: Work Requirements and Compute Requirements carrying the tag, and Worker Pools whose names include it.
 - **The order.** Targets are resolved in the order given, each once (an object named twice, by name and by ID, is acted on once), and confirmed together, `--yes` skipping the confirmation. Each command then acts on them in the order its section gives (`yd workrequirement cancel` the Work Requirements before the Tasks, the Compute Requirement verbs the Compute Requirements before the Instances).
 - **What cannot be acted on** is reported and the rest go ahead: a target that does not exist is a failure (exit 6 if every failure is one), one in a state the action does not apply to is skipped with a warning. A failure every later request would repeat (the credentials refused, the Platform unreachable) stops the command, the targets not yet attempted being reported as skipped, and it exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
@@ -220,13 +220,13 @@ How each command takes its targets:
 
 | Command | No targets | Glob patterns |
 |:---|:---|:---|
-| `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, not mixed with names or IDs |
+| `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workrequirement priority`, `yd taskgroup priority` | refused | yes, mixed with names and IDs as wished |
 | `yd task abort` | the namespace and tag | yes, mixed with names and IDs as wished |
-| `yd workerpool shutdown` | the namespace and tag | yes, not mixed with names or IDs |
+| `yd workerpool shutdown` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workerpool token` | refused | yes, mixed with names and IDs as wished |
 | `yd workerpool resize`, `yd computerequirement resize` | refused (one target) | no |
-| `yd computerequirement stop`, `start`, `reprovision`, `terminate`, `autoshutdown` | the namespace and tag | yes, not mixed with names or IDs |
+| `yd computerequirement stop`, `start`, `reprovision`, `terminate`, `autoshutdown` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd instance` verbs, `yd node` verbs | refused: Instances (`cr_id.instance_id`) or Node IDs only | no |
 | `yd allowance boost` | refused | yes, matching descriptions, mixed with IDs as wished |
 | `show` verbs (Work Requirement, Task Group, Task, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching objects in any state; `--json` prints an array for a pattern however many it matched |
@@ -356,7 +356,7 @@ yd workrequirement start [options] [<work-requirement-name-or-ID> ...]
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, in the `HELD` state: a reused name means the `HELD` Work Requirement of that name, and a glob pattern selects every `HELD` Work Requirement it matches.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, in the `HELD` state: a reused name means the `HELD` Work Requirement of that name, and a glob pattern selects every `HELD` Work Requirement it matches.
 
 Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -631,7 +631,7 @@ Specific Worker Pool names or YDIDs can optionally be supplied as positional arg
 
 They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `yd list worker-pools --name 'wp-*'` to preview what a pattern matches first.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `yd list worker-pools --name 'wp-*'` to preview what a pattern matches first.
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
@@ -802,7 +802,7 @@ yd computerequirement stop [options] [<compute-requirement-name-or-ID> ...]
 
 If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of Compute Requirement names or YDIDs.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a glob pattern selecting every `RUNNING` Compute Requirement it matches.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a glob pattern selecting every `RUNNING` Compute Requirement it matches.
 
 Explicit names and IDs are resolved in the order given, and are confirmed together; the Compute Requirements are then acted on before the Instances. A Compute Requirement that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -885,7 +885,7 @@ yd computerequirement terminate [options] [<compute-requirement-name-or-ID> ...]
 
 Specific Compute Requirement names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview what a pattern matches first.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview what a pattern matches first.
 
 Explicit names and IDs are handled as [`yd computerequirement stop`](#yd-computerequirement-stop) handles them: in the order given, and confirmed together. A Compute Requirement that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 

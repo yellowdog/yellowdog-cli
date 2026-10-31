@@ -32,6 +32,7 @@ from yellowdog_cli.utils.action_runner import (
     by_type,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -128,20 +129,31 @@ def shut_down(ctx: RunContext, names: list[str]):
     """
     globs = [n for n in names if contains_glob_chars(n)]
 
-    if names and not globs:
-        shutdown_by_names_or_ids(ctx, names)
+    if names and len(globs) < len(names):
+        # Names or IDs, with any patterns among them replaced by the IDs of
+        # the unfinished Worker Pools they match
+        shutdown_by_names_or_ids(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: [
+                    cast(str, summary.id)
+                    for summary in _matching(ctx, [pattern])
+                    if not _is_finished(summary)
+                ],
+                describe=_describe,
+                record=_recorder,
+                none_match=lambda pattern: (
+                    f"No unfinished Worker Pools match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
         scope = describe_glob_scope(ctx.client, globs, ctx.config.namespace)
         print_info(f"Shutting down Worker Pools {scope}")
-        worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
-            globs,
-            ctx.config.namespace,
-            fetch=lambda namespace, prefix: get_worker_pool_summaries(
-                ctx.client, namespace, prefix or None, partial_name_matches=True
-            ),
-        )
+        worker_pool_summaries: list[WorkerPoolSummary] = _matching(ctx, globs)
     else:
         scope = namespace_scope(ctx.client, ctx.config.namespace) + filter_phrase(
             "with names including '{}'", ctx.config.name_tag
@@ -196,6 +208,19 @@ def shut_down(ctx: RunContext, names: list[str]):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _matching(ctx: RunContext, globs: list[str]) -> list[WorkerPoolSummary]:
+    """
+    The Worker Pools whose names match the glob patterns, in any state.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_worker_pool_summaries(
+            ctx.client, namespace, prefix or None, partial_name_matches=True
+        ),
+    )
 
 
 def _nothing_to_shut_down(scope: str, finished: list[WorkerPoolSummary]) -> str:

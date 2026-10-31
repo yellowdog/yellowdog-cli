@@ -418,9 +418,9 @@ def test_all_four_actions_pass_ydids_with_their_own_flags(
 def test_name_pattern_narrows_enumeration_but_never_the_run(
     window, captured, monkeypatch
 ):
-    # The CLI rejects mixing glob patterns with literal names/IDs ("cannot mix
-    # name glob patterns with explicit names/IDs"), so the Name pattern must
-    # reach the enumeration and must not reach the run.
+    # The CLI acts on every match of a glob pattern given with IDs, which would
+    # undo the selection, so the Name pattern must reach the enumeration and
+    # must not reach the run.
     all_entities = entities()
     seen = stub_flow(
         window,

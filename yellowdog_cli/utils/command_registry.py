@@ -1540,27 +1540,6 @@ REMOTE_PATHS = option(
 # --- Validators: run after parsing ---------------------------------------
 
 
-def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> None:
-    """
-    Positional names/IDs on the destructive commands. A name may be a glob
-    pattern, but must not be mixed with literal names/IDs. Either may be
-    given with --dry-run.
-    """
-    explicit_names: list[str] = []
-    for attr in (
-        "work_requirements",
-        "worker_pool_nodes_list",
-        "compute_reqs_instances_or_nodes",
-    ):
-        value = getattr(args, attr, None)
-        if isinstance(value, list):
-            explicit_names.extend(value)
-    globs = [n for n in explicit_names if contains_glob_chars(n)]
-    literals = [n for n in explicit_names if not contains_glob_chars(n)]
-    if globs and literals:
-        parser.error("cannot mix name glob patterns with explicit names/IDs")
-
-
 def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-compute-restart and yd-compute-deprovision act on Instances alone: a
@@ -1780,7 +1759,6 @@ COMMANDS["yd-cancel"] = Command(
         YES,
         WORK_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2120,7 +2098,7 @@ COMMANDS["yd-compute-reprovision"] = Command(
         WAIT_FOR_CAPACITY,
         WAIT_TIMEOUT,
     ),
-    validators=(check_glob_and_literal_names, check_wait_options),
+    validators=(check_wait_options,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2163,7 +2141,6 @@ COMMANDS["yd-auto-shutdown"] = Command(
         ),
         AUTO_SHUTDOWN_MINUTES,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
     script=False,
@@ -2174,7 +2151,6 @@ COMMANDS["yd-compute-start"] = Command(
     summary="Start stopped Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2184,7 +2160,6 @@ COMMANDS["yd-compute-stop"] = Command(
     summary="Stop Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2621,7 +2596,6 @@ COMMANDS["yd-finish"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2638,7 +2612,6 @@ COMMANDS["yd-hold"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2656,7 +2629,6 @@ COMMANDS["yd-start"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3923,7 +3895,7 @@ COMMANDS["yd-shutdown"] = Command(
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names, check_auto_follow_needs_follow),
+    validators=(check_auto_follow_needs_follow,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -4217,7 +4189,6 @@ COMMANDS["yd-terminate"] = Command(
         COMPUTE_REQS_INSTANCES_OR_NODES,
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )

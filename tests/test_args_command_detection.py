@@ -67,7 +67,7 @@ class TestExplicitConstruction:
 
     def test_validators_run(self):
         with pytest.raises(SystemExit):
-            CLIParser(command="yd-cancel", argv=["literal-name", "glob-*"])
+            CLIParser(command="yd-compute-restart", argv=["glob-*"])
         # '--json' does not require '--dry-run' on yd-delete: this must
         # parse rather than raise.
         assert (

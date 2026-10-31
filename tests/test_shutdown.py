@@ -501,3 +501,38 @@ class TestSessionFailures:
             (WP_A, "skipped"),  # resolved, not attempted
             (NODE, "skipped"),  # not resolved
         ]
+
+
+# ---------------------------------------------------------------------------
+# Glob patterns mixed with names and IDs
+# ---------------------------------------------------------------------------
+
+
+class TestMixed:
+    def test_a_pattern_a_name_and_a_node_are_shut_down_together(
+        self, platform, monkeypatch
+    ):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.pools[WP_B] = _provisioned(WP_B, "gpu-1")
+        platform.pools[WP_C] = _provisioned(WP_C, "gpu-2", WorkerPoolStatus.SHUTDOWN)
+        _run(platform, ["gpu-*", "wp-tag-a", NODE])
+        assert platform.calls == [
+            ("shutdown_worker_pool_by_id", WP_B),
+            ("shutdown_worker_pool_by_id", WP_A),
+            ("shutdown_node_by_id", NODE),
+        ]
+        # One confirmation for them all
+        assert len(prompts) == 1
+
+    def test_a_pattern_matching_only_finished_pools_says_so(
+        self, platform, monkeypatch
+    ):
+        platform.pools[WP_B] = _provisioned(WP_B, "gpu-1", WorkerPoolStatus.TERMINATED)
+        said = []
+        monkeypatch.setattr(action_runner, "print_info", said.append)
+        _run(platform, ["gpu-*", "wp-tag-a"])
+        assert said == ["No unfinished Worker Pools match 'gpu-*'"]
+        assert platform.calls == [("shutdown_worker_pool_by_id", WP_A)]

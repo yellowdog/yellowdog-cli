@@ -26,10 +26,7 @@ from yellowdog_client.model import WorkRequirementStatus
 
 import yellowdog_cli.utils.start_hold_common as shc_module
 from yellowdog_cli.utils import action_runner, entity_utils
-from yellowdog_cli.utils.command_registry import (
-    COMMANDS,
-    check_glob_and_literal_names,
-)
+from yellowdog_cli.utils.args import CLIParser
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
 from yellowdog_cli.utils.start_hold_common import FINISH, HOLD, START
@@ -409,9 +406,40 @@ class TestFinish:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("command", ["yd-start", "yd-hold", "yd-finish"])
-def test_globs_and_explicit_names_do_not_mix(command):
-    assert check_glob_and_literal_names in COMMANDS[command].validators
+class TestMixed:
+    """
+    Glob patterns mixed with names or IDs: each replaced by the IDs it
+    matches in the required state, resolved and confirmed with the rest.
+    """
+
+    def test_a_pattern_and_a_name_are_acted_on_together(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.wrs = {
+            WR_A: _wr(WR_A, "proj-1"),
+            WR_B: _wr(WR_B, "proj-2", RUNNING),
+            WR_OLD: _wr(WR_OLD, "other"),
+        }
+        _run(platform, START, ["proj-*", "other", WR_A])
+        assert platform.calls == [
+            ("start_work_requirement_by_id", WR_A),
+            ("start_work_requirement_by_id", WR_OLD),
+        ]
+        # One confirmation for them all
+        assert len(prompts) == 1
+
+    def test_a_pattern_matching_nothing_says_so(self, platform, monkeypatch):
+        said = []
+        monkeypatch.setattr(action_runner, "print_info", said.append)
+        _run(platform, START, ["zz-*", "wr-a"])
+        assert said == ["No HELD Work Requirements match 'zz-*'"]
+        assert platform.calls == [("start_work_requirement_by_id", WR_A)]
+
+    @pytest.mark.parametrize("command", ["yd-start", "yd-hold", "yd-finish"])
+    def test_the_command_line_takes_them_mixed(self, command):
+        CLIParser(command, ["proj-*", "some-wr"])
 
 
 class TestFollowingAHoldEnds:

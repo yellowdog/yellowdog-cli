@@ -376,3 +376,40 @@ class TestExplicit:
             _run(platform, [WR_A, TASK])
         assert classify(raised.value) in SESSION_FAILURES
         assert [r["outcome"] for r in platform.records] == ["failed", "skipped"]
+
+
+# ---------------------------------------------------------------------------
+# Glob patterns mixed with names and IDs
+# ---------------------------------------------------------------------------
+
+
+class TestMixed:
+    def test_a_pattern_a_name_and_a_task_are_cancelled_together(
+        self, platform, monkeypatch
+    ):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.wrs[WR_B] = _wr(WR_B, "proj-1")
+        _run(platform, ["proj-*", "wr-a", TASK, WR_B])
+        assert [c[1] for c in platform.calls] == [WR_B, WR_A, TASK]
+        # One confirmation for them all
+        assert len(prompts) == 1
+
+    def test_a_pattern_leaves_out_what_cannot_be_cancelled(self, platform, monkeypatch):
+        platform.wrs[WR_B] = _wr(WR_B, "proj-1", COMPLETED)
+        said = []
+        monkeypatch.setattr(action_runner, "print_info", said.append)
+        _run(platform, ["proj-*", "wr-a"])
+        assert said == ["No cancellable Work Requirements match 'proj-*'"]
+        assert [c[1] for c in platform.calls] == [WR_A]
+
+    def test_a_dry_run_reports_them_all(self, platform, monkeypatch):
+        platform.wrs[WR_B] = _wr(WR_B, "proj-1")
+        _run(platform, ["proj-*", "wr-a"], dry_run=True)
+        assert platform.calls == []
+        assert [(r["id"], r["outcome"]) for r in platform.records] == [
+            (WR_B, "would cancel"),
+            (WR_A, "would cancel"),
+        ]

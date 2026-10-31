@@ -6,7 +6,7 @@ executing Tasks.
 
 Work Requirements are selected by the namespace and tag, by glob patterns
 matched against their names, or explicitly by name or ID, with Task IDs
-alongside. A Work Requirement that is already CANCELLING is a target only
+and patterns alongside (each pattern replaced by the IDs it matches). A Work Requirement that is already CANCELLING is a target only
 with '--abort', which cancels it again to abort its executing Tasks; without
 it, it is left out of a listing and skipped when named. Explicit targets are
 resolved first, in the order given, then confirmed once and acted on, under
@@ -30,6 +30,7 @@ from yellowdog_cli.utils.action_runner import (
     by_type,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -110,9 +111,22 @@ def cancel(ctx: RunContext, names: list[str]):
     """
     globs = [n for n in names if contains_glob_chars(n)]
 
-    if names and not globs:
-        # All literal names/IDs: exact path (mixing is rejected at parse time)
-        _cancel_by_name_or_id(ctx, names)
+    if names and len(globs) < len(names):
+        # Names or IDs, with any patterns among them replaced by their matches
+        _cancel_by_name_or_id(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: [
+                    cast(str, summary.id) for summary in _matching(ctx, [pattern])
+                ],
+                describe=_describe,
+                record=_recorder,
+                none_match=lambda pattern: (
+                    f"No cancellable Work Requirements match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
@@ -120,16 +134,7 @@ def cancel(ctx: RunContext, names: list[str]):
             f"Cancelling Work Requirements "
             f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
-        summaries: list[WorkRequirementSummary] = expand_name_globs(
-            globs,
-            ctx.config.namespace,
-            fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
-                ctx.client,
-                name=prefix or None,
-                namespace=namespace,
-                include_filter=_cancellable_statuses(ctx),
-            ),
-        )
+        summaries: list[WorkRequirementSummary] = _matching(ctx, globs)
     else:
         print_info(
             "Cancelling Work Requirements "
@@ -167,6 +172,22 @@ def cancel(ctx: RunContext, names: list[str]):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _matching(ctx: RunContext, globs: list[str]) -> list[WorkRequirementSummary]:
+    """
+    The cancellable Work Requirements whose names match the glob patterns.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
+            ctx.client,
+            name=prefix or None,
+            namespace=namespace,
+            include_filter=_cancellable_statuses(ctx),
+        ),
+    )
 
 
 def _is_task(target: str) -> bool:

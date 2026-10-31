@@ -91,18 +91,10 @@ def test_dry_run_with_glob_is_allowed_at_parse_time(cmd):
     assert "not supported with explicit names" not in (result.stderr + result.stdout)
 
 
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "yd workrequirement cancel 'proj-*' some-wr",
-        "yd workerpool shutdown 'wp-*' some-wp",
-        "yd computerequirement terminate 'cr-*' some-cr",
-    ],
-)
-def test_mixing_glob_and_literal_errors(cmd):
-    result = shell(cmd)
-    assert result.exit_code == 2
-    assert "cannot mix" in (result.stderr + result.stdout)
+@pytest.mark.parametrize("cmd", ["yd-cancel", "yd-shutdown", "yd-terminate"])
+def test_mixing_glob_and_literal_is_allowed_at_parse_time(cmd):
+    # Each pattern is replaced by the IDs it matches, as the command runs
+    CLIParser(command=cmd, argv=["-D", "proj-*", "some-name"])
 
 
 @pytest.mark.parametrize(

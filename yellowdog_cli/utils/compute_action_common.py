@@ -40,6 +40,7 @@ from yellowdog_cli.utils.action_runner import (
     Unresolved,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.capacity_wait import (
@@ -372,14 +373,31 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
     """
     Entry point for the yd-compute-stop/start/restart/deprovision/reprovision
     commands and yd-terminate. The command registry ensures that yd-compute-restart
-    and yd-compute-deprovision have explicit targets, and that glob patterns
-    are not mixed with explicit names or IDs.
+    and yd-compute-deprovision have explicit targets, and no glob patterns.
+    Glob patterns alone are a listing; mixed with names or IDs, each pattern
+    is replaced by the IDs it matches, and they are resolved with the rest.
     """
     names_or_ids: list[str] = ctx.args.compute_requirements_instances_or_nodes or []
     globs = [name for name in names_or_ids if contains_glob_chars(name)]
 
-    if names_or_ids and not globs:
-        _apply_action_by_name_or_id(ctx, action, names_or_ids)
+    if names_or_ids and len(globs) < len(names_or_ids):
+        _apply_action_by_name_or_id(
+            ctx,
+            action,
+            expand_patterns(
+                names_or_ids,
+                expand=lambda pattern: [
+                    cast(str, summary.id)
+                    for summary in _matching(ctx, action, [pattern])
+                ],
+                describe=_target_entity,
+                record=action.recorder(),
+                none_match=lambda pattern: (
+                    f"No Compute Requirements to {action.name.lower()}"
+                    f" match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
@@ -387,18 +405,8 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
             f"{action.gerund} Compute Requirements "
             f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
-        compute_requirement_summaries: list[ComputeRequirementSummary] = (
-            expand_name_globs(
-                globs,
-                ctx.config.namespace,
-                fetch=lambda namespace, prefix: get_compute_requirement_summaries(
-                    ctx.client,
-                    namespace,
-                    tag=None,
-                    statuses=action.valid_cr_statuses,
-                    name=prefix or None,
-                ),
-            )
+        compute_requirement_summaries: list[ComputeRequirementSummary] = _matching(
+            ctx, action, globs
         )
     else:
         print_info(
@@ -426,6 +434,26 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
         return
 
     _apply_action_to_summaries(ctx, action, compute_requirement_summaries)
+
+
+def _matching(
+    ctx: RunContext, action: ComputeAction, globs: list[str]
+) -> list[ComputeRequirementSummary]:
+    """
+    The Compute Requirements the action applies to whose names match the glob
+    patterns.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_compute_requirement_summaries(
+            ctx.client,
+            namespace,
+            tag=None,
+            statuses=action.valid_cr_statuses,
+            name=prefix or None,
+        ),
+    )
 
 
 def _apply_action_to_summaries(
