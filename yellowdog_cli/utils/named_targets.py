@@ -177,13 +177,8 @@ def _ids_of(
     """
     if not is_pattern(target):
         return [_id_or_lookup(ctx, target, ydid_type)]
+    ids = pattern_ids(ctx, target, ydid_type, live_only)
     namespace = _namespace_for(ctx, target, ydid_type)
-    leading, separator, _ = target.rpartition(NAMESPACE_PREFIX_SEPARATOR)
-    if separator and contains_glob_chars(leading):
-        raise ValueError(
-            f"'{target}': a wildcard may be given in the last part of the name alone"
-        )
-    ids = _matching_ids(ctx, target, ydid_type, namespace, live_only)
     if not ids:
         if live_only and _matching_ids(ctx, target, ydid_type, namespace, False):
             print_info(
@@ -198,6 +193,24 @@ def _ids_of(
     if len(ids) > PATTERN_MATCH_WARNING:
         print_warning(f"'{target}' matches {len(ids)} {ydid_type.value}s")
     return ids
+
+
+def pattern_ids(
+    ctx: RunContext, pattern: str, ydid_type: YDIDType, live_only: bool
+) -> list[str]:
+    """
+    The IDs of the objects of 'ydid_type' whose names a pattern matches in
+    its last part (the unfinished alone if 'live_only'), none if it matches
+    nothing. Raises ValueError for a wildcard before the last part, and as
+    target_id() does for the parent the pattern names.
+    """
+    leading, separator, _ = pattern.rpartition(NAMESPACE_PREFIX_SEPARATOR)
+    if separator and contains_glob_chars(leading):
+        raise ValueError(
+            f"'{pattern}': a wildcard may be given in the last part of the name alone"
+        )
+    namespace = _namespace_for(ctx, pattern, ydid_type)
+    return _matching_ids(ctx, pattern, ydid_type, namespace, live_only)
 
 
 def _matching_ids(

@@ -26,8 +26,13 @@ from yellowdog_client.model import TaskStatus, WorkRequirementStatus
 import yellowdog_cli.cancel as yd_cancel
 from yellowdog_cli.utils import action_runner, entity_utils
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
-from yellowdog_cli.utils.ydid_utils import get_ydid_type
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    NotFoundError,
+    ReportedFailure,
+    classify,
+)
+from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 WR_A = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 WR_B = "ydid:workreq:000000:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -413,3 +418,101 @@ class TestMixed:
             (WR_B, "would cancel"),
             (WR_A, "would cancel"),
         ]
+
+
+# ---------------------------------------------------------------------------
+# yd task cancel: Tasks alone, by ID or as 'wr/tg/task'
+# ---------------------------------------------------------------------------
+
+
+def _run_tasks(platform, targets: list[str], abort: bool = False):
+    yd_cancel.cancel(
+        RunContext(
+            args=SimpleNamespace(
+                abort=abort,
+                follow=False,
+                dry_run=False,
+                json_output=False,
+                named_target_type=YDIDType.TASK,
+            ),
+            config=platform.config,
+            client=platform.client,
+        ),
+        targets,
+    )
+
+
+class TestTaskVerb:
+    def test_a_name_is_found_as_wr_tg_task(self, platform, monkeypatch):
+        looked_up = []
+
+        def target_id(ctx, target, ydid_type):
+            looked_up.append((target, ydid_type))
+            return TASK
+
+        monkeypatch.setattr(yd_cancel, "target_id", target_id)
+        _run_tasks(platform, ["wr-a/tg/t1"], abort=True)
+        assert looked_up == [("wr-a/tg/t1", YDIDType.TASK)]
+        assert platform.calls == [("cancel_task_by_id", TASK, True)]
+
+    def test_a_name_not_found_fails_as_a_task(self, platform, monkeypatch):
+        def target_id(ctx, target, ydid_type):
+            raise NotFoundError("Cannot find Task 'nope' in Task Group 'wr-a/tg'")
+
+        monkeypatch.setattr(yd_cancel, "target_id", target_id)
+        _run_tasks(platform, ["wr-a/tg/nope"])
+        assert platform.calls == []
+        assert platform.outcomes() == [(None, "tasks", "failed")]
+
+    def test_a_pattern_cancels_the_unfinished_tasks_it_matches(
+        self, platform, monkeypatch
+    ):
+        searched = []
+
+        def pattern_ids(ctx, pattern, ydid_type, live_only):
+            searched.append((pattern, ydid_type, live_only))
+            return [TASK]
+
+        monkeypatch.setattr(yd_cancel, "pattern_ids", pattern_ids)
+        _run_tasks(platform, ["wr-a/tg/t*", TASK])
+        assert searched == [("wr-a/tg/t*", YDIDType.TASK, True)]
+        # Matched and named: cancelled once
+        assert platform.calls == [("cancel_task_by_id", TASK, False)]
+
+    def test_a_pattern_matching_nothing_says_so(self, platform, monkeypatch):
+        said = []
+        monkeypatch.setattr(action_runner, "print_info", said.append)
+        monkeypatch.setattr(yd_cancel, "pattern_ids", lambda *a, **k: [])
+        _run_tasks(platform, ["wr-a/tg/zz*"])
+        assert said == ["No unfinished Tasks match 'wr-a/tg/zz*'"]
+        assert platform.calls == []
+
+    def test_no_work_requirement_is_listed_by_tag(self, platform, monkeypatch):
+        # A pattern is never read as a Work Requirement glob
+        monkeypatch.setattr(yd_cancel, "pattern_ids", lambda *a, **k: [])
+        _run_tasks(platform, ["wr-*"])
+        assert platform.calls == []
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            [],  # nothing given would cancel by namespace and tag
+            [WR_A],  # a Work Requirement's ID
+            ["wr-a/tg/t1", "--tag", "x"],
+            ["wr-a/tg/t1", "--follow"],
+        ],
+    )
+    def test_the_command_line_refuses(self, argv):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser(command="yd task cancel", argv=argv)
+        assert raised.value.code == 2
+
+    def test_the_command_line_takes_names_patterns_and_ids(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        args = CLIParser(
+            command="yd task cancel", argv=["wr/tg/t1", "wr/tg/f*", TASK, "--abort"]
+        )
+        assert args.named_target_type == YDIDType.TASK

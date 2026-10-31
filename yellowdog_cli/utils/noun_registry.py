@@ -547,6 +547,36 @@ NOUNS: tuple[Noun, ...] = (
                 "Abort running Tasks",
                 "aborting Tasks individually, or in Work Requirements or Task Groups",
             ),
+            # yd-cancel for Tasks alone, by ID or as 'wr/tg/task', never the
+            # Work Requirements its namespace and tag would select; a Task
+            # cancelled is not followed, so '--follow' does not apply
+            Verb(
+                "cancel",
+                "yd-cancel",
+                "Cancel Tasks",
+                "cancelling Tasks",
+                hidden=(
+                    *(flag for flag in _SELECTION_OPTIONS if flag != "--namespace"),
+                    "--follow",
+                ),
+                overrides={
+                    "work_requirements": {
+                        "nargs": "+",
+                        "metavar": "<wr/tg/task-name-or-ID>",
+                        "help": (
+                            "the Task(s) to cancel: a Task's YellowDog ID, or its"
+                            " name as 'wr/tg/task', which may be a glob pattern in"
+                            " its last part (e.g. 'wr/tg/frame-*')"
+                        ),
+                    }
+                },
+                targets=Targets(
+                    "work_requirements",
+                    _named(YDIDType.TASK),
+                    "wr/tg/task-name-or-ID",
+                    YDIDType.TASK,
+                ),
+            ),
             _list(ET_TASKS, "Tasks"),
             # A Task's name is its Task Group's and its own: 'wr/tg/task'
             _show(

@@ -18,6 +18,8 @@
       * [yd taskgroup compare](#yd-taskgroup-compare)
    * [yd task](#yd-task)
       * [yd task abort](#yd-task-abort)
+      * [yd task cancel](#yd-task-cancel)
+         * [Details](#details)
    * [yd workerpool](#yd-workerpool)
       * [yd workerpool provision](#yd-workerpool-provision)
       * [yd workerpool resize](#yd-workerpool-resize)
@@ -82,7 +84,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 30 15:40:59 GMT 2026 -->
+<!-- Added by: pwt, at: Sat Oct 31 09:22:24 GMT 2026 -->
 
 <!--te-->
 
@@ -223,6 +225,7 @@ How each command takes its targets:
 | `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workrequirement priority`, `yd taskgroup priority` | refused | yes, mixed with names and IDs as wished |
 | `yd task abort` | the namespace and tag | yes, mixed with names and IDs as wished |
+| `yd task cancel` | refused | yes, in a Task's last part (`wr/tg/frame-*`), mixed with names and IDs as wished |
 | `yd workerpool shutdown` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workerpool token` | refused | yes, mixed with names and IDs as wished |
 | `yd workerpool resize`, `yd computerequirement resize` | refused (one target) | no |
@@ -308,7 +311,7 @@ The `yd workrequirement cancel` command cancels any active Work Requirements, in
 yd workrequirement cancel [options] [<work-requirement-name-or-ID> ...]
 ```
 
-The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/`-t`) are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
+The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/`-t`) are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments; [`yd task cancel`](#yd-task-cancel) cancels Tasks by name too.
 
 Names, IDs and glob patterns are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a reused name meaning the Work Requirement of that name that can still be cancelled.
 
@@ -512,6 +515,7 @@ Tasks.
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`abort`](#yd-task-abort) | Abort running Tasks | `yd-abort` |
+| [`cancel`](#yd-task-cancel) | Cancel Tasks | `yd-cancel` |
 | `list` | `yd list tasks` |  |
 | `show` | `yd show`, for Task IDs, or names as `wr/tg/task` |  |
 
@@ -548,6 +552,30 @@ Key options:
 ```shell
 yd task abort my-analysis-run/task-group-1
 ```
+
+### yd task cancel
+
+The `yd task cancel` command cancels individual Tasks, leaving the rest of their Work Requirement to run.
+
+```shell
+yd task cancel [options] <wr/tg/task-name-or-ID> [<wr/tg/task-name-or-ID> ...]
+```
+
+Each target is a Task YDID, a Task's name as `<wr-name>/<tg-name>/<task-name>` (or `<namespace>/<wr-name>/<tg-name>/<task-name>`), or a name pattern with a wildcard in its last part (`'nightly-run/render/frame-0*'`), standing for every unfinished Task in that Task Group it matches. Names, IDs and patterns can be mixed, and at least one target is required: unlike `yd workrequirement cancel`, the command never selects by namespace and tag.
+
+```shell
+yd task cancel nightly-run/render/frame-0042
+yd task cancel 'nightly-run/render/frame-01*' --abort
+```
+
+Key options:
+- `--abort`/`-a` — abort the Tasks that are executing, rather than letting them finish
+- `--dry-run`/`-D` — report what would be cancelled, without cancelling anything
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+
+#### Details
+
+The Tasks are confirmed together before any is cancelled, unless `--yes`/`-y` is given; a Task named twice, by name and ID or by a pattern, is cancelled once. A Task that has finished is skipped, and a name that finds no Task fails (exit 6 if every failure is one); a pattern matching no unfinished Task says so and is no failure, and one with a wildcard before its last part is reported as failed. A Work Requirement name is looked up as for `yd workrequirement cancel`, an unfinished Work Requirement of that name being chosen. Cancelling a Task does not cancel its Work Requirement, and the Task is not followed.
 
 ## yd workerpool
 
@@ -2082,7 +2110,7 @@ Where a command acts on more than one kind of object, each kind has a verb of it
 | `yd-abort` | `yd task abort` |
 | `yd-application` | `yd application` |
 | `yd-boost` | `yd allowance boost` |
-| `yd-cancel` | `yd workrequirement cancel` |
+| `yd-cancel` | `yd workrequirement cancel`, `yd task cancel` |
 | `yd-cloud-info` | `yd cloudinfo regions`, `yd cloudinfo sub-regions`, `yd cloudinfo instance-types`, `yd cloudinfo prices` |
 | `yd-cloudwizard` | `yd cloudwizard` |
 | `yd-commander` | `yd commander` |

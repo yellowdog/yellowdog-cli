@@ -6,7 +6,9 @@ executing Tasks.
 
 Work Requirements are selected by the namespace and tag, by glob patterns
 matched against their names, or explicitly by name or ID, with Task IDs
-and patterns alongside (each pattern replaced by the IDs it matches). A Work Requirement that is already CANCELLING is a target only
+and patterns alongside (each pattern replaced by the IDs it matches). As
+'yd task cancel' (named_target_type TASK), the targets are Tasks alone, by
+ID or as 'wr/tg/task', a pattern in the last part matching the unfinished. A Work Requirement that is already CANCELLING is a target only
 with '--abort', which cancels it again to abort its executing Tasks; without
 it, it is left out of a listing and skipped when named. Explicit targets are
 resolved first, in the order given, then confirmed once and acted on, under
@@ -50,6 +52,7 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
+from yellowdog_cli.utils.named_targets import pattern_ids, target_id
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.wrapper import main_wrapper
@@ -110,6 +113,22 @@ def cancel(ctx: RunContext, names: list[str]):
     namespace whose tags include the tag.
     """
     globs = [n for n in names if contains_glob_chars(n)]
+
+    if _tasks_only(ctx):
+        # Tasks, each pattern replaced by the unfinished Tasks it matches
+        _cancel_by_name_or_id(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: pattern_ids(
+                    ctx, pattern, YDIDType.TASK, live_only=True
+                ),
+                describe=lambda target: (target, ET_TASKS),
+                record=_recorder,
+                none_match=lambda pattern: f"No unfinished Tasks match '{pattern}'",
+            ),
+        )
+        return
 
     if names and len(globs) < len(names):
         # Names or IDs, with any patterns among them replaced by their matches
@@ -190,6 +209,13 @@ def _matching(ctx: RunContext, globs: list[str]) -> list[WorkRequirementSummary]
     )
 
 
+def _tasks_only(ctx: RunContext) -> bool:
+    """
+    Whether this is 'yd task cancel', whose targets are Tasks alone.
+    """
+    return getattr(ctx.args, "named_target_type", None) == YDIDType.TASK
+
+
 def _is_task(target: str) -> bool:
     return get_ydid_type(target) == YDIDType.TASK
 
@@ -218,7 +244,9 @@ def _cancel_by_name_or_id(ctx: RunContext, names_or_ids: list[str]):
     items = resolve_targets(
         names_or_ids,
         resolve=lambda target: _resolve(ctx, target),
-        describe=_describe,
+        describe=(
+            (lambda target: (target, ET_TASKS)) if _tasks_only(ctx) else _describe
+        ),
         record=_recorder,
         verb="cancel",
         order=by_type(ET_WORK_REQUIREMENTS, ET_TASKS),
@@ -254,6 +282,14 @@ def _resolve(ctx: RunContext, target: str) -> Item:
     cannot be cancelled. Anything else raised is a failure of the lookup.
     """
     ydid_type = get_ydid_type(target)
+
+    if ydid_type is None and _tasks_only(ctx):
+        # A Task's name, 'wr/tg/task'
+        try:
+            target = target_id(ctx, target, YDIDType.TASK)
+        except (NotFoundError, AmbiguousNameError, ValueError) as e:
+            raise Unresolved(str(e)) from e
+        ydid_type = YDIDType.TASK
 
     if ydid_type == YDIDType.TASK:
         try:
