@@ -843,8 +843,8 @@ class TestWithin:
     @pytest.mark.parametrize(
         "with_errors, announced",
         [
-            (False, f"Listing tasks within '{TG1}'"),
-            (True, f"Listing tasks with errors within '{TG1}'"),
+            (False, f"Listing Tasks within '{TG1}'"),
+            (True, f"Listing Tasks with errors within '{TG1}'"),
         ],
     )
     def test_the_announcement_says_with_errors(

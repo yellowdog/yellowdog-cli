@@ -335,6 +335,13 @@ def _pool_kind(ctx: RunContext) -> str | None:
     return None
 
 
+def _active_phrase(ctx: RunContext) -> str:
+    """
+    'active ' for the listing's message under '--active-only'.
+    """
+    return "active " if ctx.args.active_only else ""
+
+
 def _pool_kind_phrase(ctx: RunContext) -> str:
     """
     'Configured ' or 'Provisioned ' for the listing's message, when one kind
@@ -531,8 +538,6 @@ def list_work_requirements(ctx: RunContext):
         _list_within(ctx)
         return
 
-    if ctx.args.active_only:
-        print_info("Listing active Work Requirements only")
     if ctx.args.entity_type == ET_TASKS and ctx.args.with_errors:
         print_info("Listing Tasks with errors only")
 
@@ -549,8 +554,8 @@ def list_work_requirements(ctx: RunContext):
     if ctx.args.name_glob and ctx.args.entity_type == ET_WORK_REQUIREMENTS:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Work Requirements {namespace_scope(ctx.client, namespace)} "
-            f"matching name pattern '{name}'"
+            f"Listing {_active_phrase(ctx)}Work Requirements"
+            f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
         )
         work_requirement_summaries = filter_summaries_by_name_glob(
             get_filtered_work_requirement_summaries(
@@ -563,7 +568,8 @@ def list_work_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            f"Listing Work Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Listing {_active_phrase(ctx)}Work Requirements"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with '{}' in tag", ctx.config.name_tag),
         )
         work_requirement_summaries = get_filtered_work_requirement_summaries(
@@ -782,6 +788,16 @@ def _within_each(ctx: RunContext, find: Callable[[str], _Fetched]) -> list[_Fetc
     )
 
 
+# The types listed '--within' a parent, as a message names them
+_WITHIN_NAMES = {
+    ET_TASK_GROUPS: "Task Groups",
+    ET_TASKS: "Tasks",
+    ET_INSTANCES: "Instances",
+    ET_NODES: "Nodes",
+    ET_WORKERS: "Workers",
+}
+
+
 def _within_phrase(ctx: RunContext) -> str:
     """
     The '--within' targets as a message names them: 'a', 'b'.
@@ -871,7 +887,10 @@ def _list_within(ctx: RunContext) -> None:
     Groups named, in the order named, listed without asking which.
     """
     errors = " with errors" if ctx.args.with_errors else ""
-    print_info(f"Listing {ctx.args.entity_type}{errors} within {_within_phrase(ctx)}")
+    print_info(
+        f"Listing {_WITHIN_NAMES[cast(str, ctx.args.entity_type)]}{errors}"
+        f" within {_within_phrase(ctx)}"
+    )
     task_groups = list(
         _unique(
             chain.from_iterable(
@@ -1038,7 +1057,9 @@ def _list_nodes_within(ctx: RunContext) -> None:
     or for Workers those of the Worker Pools and Nodes named, in the order
     named, listed without searching for Worker Pools or asking which.
     """
-    print_info(f"Listing {ctx.args.entity_type} within {_within_phrase(ctx)}")
+    print_info(
+        f"Listing {_WITHIN_NAMES[cast(str, ctx.args.entity_type)]} within {_within_phrase(ctx)}"
+    )
     found = _within_each(ctx, lambda target: _nodes_within(ctx, target))
     if ctx.args.entity_type == ET_NODES:
         # Worker Pools alone, as parsed: list_nodes() searches them itself
@@ -1058,7 +1079,7 @@ def list_worker_pools(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Displaying {_pool_kind_phrase(ctx)}Worker Pools"
+            f"Listing {_active_phrase(ctx)}{_pool_kind_phrase(ctx)}Worker Pools"
             f" {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
@@ -1075,7 +1096,7 @@ def list_worker_pools(ctx: RunContext):
         )
     else:
         print_info(
-            f"Displaying {_pool_kind_phrase(ctx)}Worker Pools"
+            f"Listing {_active_phrase(ctx)}{_pool_kind_phrase(ctx)}Worker Pools"
             f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with '{}' in name", ctx.config.name_tag)
         )
@@ -1093,9 +1114,6 @@ def list_worker_pools(ctx: RunContext):
         if ctx.args.active_only
         else []
     )
-
-    if ctx.args.active_only:
-        print_info("Displaying active Worker Pools only")
 
     # Only the namespace searched, matched exactly: a substring match let
     # 'dev' take in 'dev-team'
@@ -1204,7 +1222,7 @@ def _list_instances_within(ctx: RunContext) -> None:
     the order named, listed without searching for Compute Requirements or
     asking which.
     """
-    print_info(f"Listing instances within {_within_phrase(ctx)}")
+    print_info(f"Listing {_WITHIN_NAMES[ET_INSTANCES]} within {_within_phrase(ctx)}")
     compute_requirements = list(
         dict.fromkeys(
             _within_each(ctx, lambda target: _compute_requirement_within(ctx, target))
@@ -1245,7 +1263,6 @@ def list_compute_requirements(ctx: RunContext):
         return
 
     if ctx.args.active_only:
-        print_info("Listing active Compute Requirements only")
         included_statuses: list[ComputeRequirementStatus] | None = list(
             _ACTIVE_CR_STATUSES
         )
@@ -1256,8 +1273,8 @@ def list_compute_requirements(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Compute Requirements {namespace_scope(ctx.client, namespace)} "
-            f"matching name pattern '{name}'"
+            f"Listing {_active_phrase(ctx)}Compute Requirements"
+            f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
         )
         compute_requirement_summaries = filter_summaries_by_name_glob(
             get_compute_requirement_summaries(
@@ -1271,7 +1288,8 @@ def list_compute_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            f"Listing Compute Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Listing {_active_phrase(ctx)}Compute Requirements"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with tags including '{}'", ctx.config.name_tag)
         )
         compute_requirement_summaries = get_compute_requirement_summaries(

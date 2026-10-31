@@ -105,6 +105,18 @@ def print_table_core(table: str):
         CONSOLE_TABLE.print(escape(table), soft_wrap=True)
 
 
+def counted(type_name: str, count: int) -> str:
+    """
+    A type's name for a count of them: 'Worker Pool', 'Worker Pools',
+    'Namespace Policies'; a name already plural as it is.
+    """
+    if count == 1 or type_name.endswith("s"):
+        return type_name
+    if type_name.endswith("y") and type_name[-2:-1] not in ("a", "e", "o", "u"):
+        return f"{type_name[:-1]}ies"
+    return f"{type_name}s"
+
+
 def get_type_name(obj: Item) -> str:
     """
     Get the display name of an object's type.
@@ -1035,10 +1047,13 @@ def print_numbered_object_list(
     if OUTPUT.auto_select_all and OUTPUT.details and OUTPUT.quiet:
         return
 
+    # The line above told what was searched for: this one, how much was found
+    type_name = (
+        object_type_name if object_type_name is not None else get_type_name(objects[0])  # type: ignore[arg-type]
+    )
     print_info(
-        "Displaying"
-        f" {'all' if showing_all else 'matching'}"
-        f" {(object_type_name if object_type_name is not None else get_type_name(objects[0]))}(s):",  # type: ignore
+        f"{'All ' if showing_all else ''}{len(objects)}"
+        f"{'' if showing_all else ' matching'} {counted(type_name, len(objects))}:",
         override_quiet=override_quiet,
     )
     print()

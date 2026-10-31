@@ -186,3 +186,46 @@ def test_a_task_group_status_reads_the_same_listed_and_followed(monkeypatch):
     event = {"name": "wr", "status": "RUNNING", "taskGroups": [task_group]}
     event_printing.print_event("data:" + json.dumps(event), YDIDType.WORK_REQUIREMENT)
     assert "[RUNNING/STARVED/WAITING]" in "".join(printed)
+
+
+@pytest.mark.parametrize(
+    "type_name, count, expected",
+    [
+        ("Worker Pool", 1, "Worker Pool"),
+        ("Worker Pool", 3, "Worker Pools"),
+        ("Namespace Policy", 2, "Namespace Policies"),
+        ("Machine Image Family", 2, "Machine Image Families"),
+        ("Key", 2, "Keys"),
+        ("AWS Availability Zones", 2, "AWS Availability Zones"),
+    ],
+)
+def test_a_type_is_named_for_its_count(type_name, count, expected):
+    from yellowdog_cli.utils.tables import counted
+
+    assert counted(type_name, count) == expected
+
+
+@pytest.mark.parametrize(
+    "showing_all, count, expected",
+    [
+        (False, 2, "2 matching Groups:"),
+        (False, 1, "1 matching Group:"),
+        (True, 2, "All 2 Groups:"),
+    ],
+)
+def test_the_heading_counts_what_was_found(showing_all, count, expected):
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from yellowdog_cli.utils import tables
+
+    groups = [SimpleNamespace(name=f"g{n}") for n in range(count)]
+    with (
+        patch.object(tables, "print_info") as info,
+        patch.object(tables, "print_table_core"),
+        patch.object(tables, "_table_builder", return_value=None),
+    ):
+        tables.print_numbered_object_list(
+            None, groups, object_type_name="Group", showing_all=showing_all
+        )
+    assert info.call_args.args[0] == expected
