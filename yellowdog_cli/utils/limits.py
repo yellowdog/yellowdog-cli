@@ -78,6 +78,9 @@ DOCTOR_DEFAULT_TIMEOUT = 10  # yd-doctor: seconds, per network call
 # kept on disk for the Tabs that follow
 LOOKUP_TIMEOUT_SECONDS = 2.0
 LOOKUP_MAX_ITEMS = 200
+# Instances and Nodes are searched one Compute Requirement or Worker Pool at
+# a time: at most this many of the newest are read, within the Tab's time
+LOOKUP_MAX_PARENTS = 10
 COMPLETION_CACHE_SECONDS = 30
 
 # The most in-situ substitution passes a specification is given to settle; a

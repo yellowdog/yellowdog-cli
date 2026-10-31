@@ -566,6 +566,106 @@ def test_a_task_lookup_before_a_slash_offers_task_groups(monkeypatch):
     assert [c.value for c in offered] == ["my-wr/render", "my-wr/encode"]
 
 
+INSTANCE_STOP = LOOKUPS[("yd instance stop", "compute_reqs_instances_or_nodes")]
+NODE_SHUTDOWN = LOOKUPS[("yd node shutdown", "worker_pool_nodes_list")]
+
+
+def _with_children(client, children_of, searched):
+    """
+    Each Compute Requirement's Instances and each Worker Pool's Nodes, as
+    'children_of' gives them by the parent's ID, the searches recorded.
+    """
+
+    def instances(search):
+        searched.append(("instances", search.computeRequirementId, search.statuses))
+        return SimpleNamespace(
+            iterate=lambda: iter(
+                SimpleNamespace(
+                    id=SimpleNamespace(instanceId=instance_id),
+                    status=SimpleNamespace(name=status),
+                )
+                for instance_id, status in children_of.get(
+                    search.computeRequirementId, []
+                )
+            )
+        )
+
+    def nodes(search):
+        searched.append(("nodes", search.workerPoolId, search.statuses))
+        return SimpleNamespace(
+            iterate=lambda: iter(
+                SimpleNamespace(id=node_id, status=SimpleNamespace(name=status))
+                for node_id, status in children_of.get(search.workerPoolId, [])
+            )
+        )
+
+    client.compute_client.get_instances.side_effect = instances
+    client.worker_pool_client.get_nodes.side_effect = nodes
+
+
+def test_instances_are_offered_as_cr_dot_instance_by_their_crs_name(monkeypatch):
+    crs = [_summary("cr-a", "RUNNING", id_="ydid:compreq:000000:a")]
+    client = _client(crs)
+    searched = []
+    _with_children(client, {"ydid:compreq:000000:a": [("i-1", "RUNNING")]}, searched)
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
+    offered = completion_lookups.candidates(_request(INSTANCE_STOP))
+    assert [(c.value, c.description) for c in offered] == [
+        ("ydid:compreq:000000:a.i-1", "cr-a (RUNNING)")
+    ]
+    # The verb's Instance statuses are searched for
+    assert [status.name for status in searched[0][2]] == ["RUNNING"]
+
+
+def test_only_the_newest_parents_are_searched(monkeypatch):
+    from yellowdog_cli.utils.limits import LOOKUP_MAX_PARENTS
+
+    crs = [
+        _summary(f"cr-{n}", "RUNNING", id_=f"ydid:compreq:000000:{n}")
+        for n in range(LOOKUP_MAX_PARENTS + 3)
+    ]
+    client = _client(crs)
+    searched = []
+    _with_children(client, {}, searched)
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
+    completion_lookups.candidates(_request(INSTANCE_STOP))
+    # Newest first: the last created
+    assert [cr_id for _, cr_id, _ in searched] == [
+        crs[-1 - n].id for n in range(LOOKUP_MAX_PARENTS)
+    ]
+
+
+def test_a_typed_compute_requirement_narrows_the_instances(monkeypatch):
+    cr_id = "ydid:compreq:000000:11111111-1111-1111-1111-111111111111"
+    client = _client([])
+    client.compute_client.get_compute_requirement_by_id.return_value = SimpleNamespace(
+        name="cr-a"
+    )
+    searched = []
+    _with_children(client, {cr_id: [("i-1", "RUNNING"), ("i-2", "RUNNING")]}, searched)
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
+    offered = completion_lookups.candidates(_request(INSTANCE_STOP, f"{cr_id}.i-2"))
+    assert [c.value for c in offered] == [f"{cr_id}.i-2"]
+    assert [parent for _, parent, _ in searched] == [cr_id]
+    client.compute_client.get_compute_requirement_summaries.assert_not_called()
+
+
+def test_nodes_are_offered_by_id_described_by_their_pools_name(monkeypatch):
+    pools = [_summary("pwt-pool", "RUNNING", id_="ydid:wrkrpool:000000:p")]
+    client = _client(pools)
+    searched = []
+    _with_children(
+        client,
+        {"ydid:wrkrpool:000000:p": [("ydid:node:000000:p:1", "RUNNING")]},
+        searched,
+    )
+    monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
+    offered = completion_lookups.candidates(_request(NODE_SHUTDOWN))
+    assert [(c.value, c.description) for c in offered] == [
+        ("ydid:node:000000:p:1", "pwt-pool (RUNNING)")
+    ]
+
+
 # Resources, after 'yd resource remove/show --type <type>'
 
 

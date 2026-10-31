@@ -34,7 +34,10 @@ from yellowdog_cli.utils.entity_names import (
 
 @dataclass(frozen=True)
 class Lookup:
-    entity: str  # ET_WORK_REQUIREMENTS, ET_WORKER_POOLS or ET_COMPUTE_REQUIREMENTS
+    # ET_WORK_REQUIREMENTS, ET_WORKER_POOLS or ET_COMPUTE_REQUIREMENTS, or
+    # ET_INSTANCES or ET_NODES, found within their Compute Requirements or
+    # Worker Pools
+    entity: str
     ids: bool  # offer IDs, described by name, rather than names
     statuses: frozenset[str] | None  # the statuses offered; None for any
     configured_only: bool = False  # Configured Worker Pools alone
@@ -47,6 +50,9 @@ class Lookup:
     # statuses (TaskStatus member names; None for any)
     tasks: bool = False
     task_statuses: frozenset[str] | None = None
+    # For Instances or Nodes, the statuses of the Compute Requirements or
+    # Worker Pools they are found in (None for any)
+    parent_statuses: frozenset[str] | None = None
     # A resource type ('Keyring'): its names, as 'yd resource remove' and
     # 'show' take them after '--type' (a Credential's after 'keyring/')
     resource: str | None = None
@@ -91,6 +97,50 @@ def _tasks(
         task_groups=True,
         tasks=True,
         task_statuses=task_statuses,
+    )
+
+
+# The Instance statuses each Instance verb acts on (compute_action_common's
+# valid_instance_statuses), and the Nodes not yet terminated, which the Node
+# verbs act on (their Instance's status decides the rest)
+_INSTANCE_STATUSES = {
+    "stop": frozenset({"RUNNING"}),
+    "start": frozenset({"STOPPED"}),
+    "restart": frozenset({"RUNNING"}),
+    "deprovision": frozenset(
+        {"PENDING", "RUNNING", "STOPPING", "STOPPED", "UNAVAILABLE", "UNKNOWN"}
+    ),
+    "terminate": frozenset(
+        {"PENDING", "RUNNING", "STOPPING", "STOPPED", "UNAVAILABLE", "UNKNOWN"}
+    ),
+}
+_NODE_LIVE = frozenset({"RUNNING", "LATE", "LOST", "DEREGISTERED"})
+
+
+def _instances(statuses: frozenset[str] | None) -> Lookup:
+    """
+    Instances as 'cr_id.instance_id', described by their Compute
+    Requirement's name and their status: within the unterminated Compute
+    Requirements for an action, any for 'show'.
+    """
+    return Lookup(
+        ET_INSTANCES,
+        ids=True,
+        statuses=statuses,
+        parent_statuses=None if statuses is None else _CR_UNTERMINATED,
+    )
+
+
+def _nodes(statuses: frozenset[str] | None) -> Lookup:
+    """
+    Node IDs, described by their Worker Pool's name and their status: within
+    the unfinished Worker Pools for an action, any for 'show'.
+    """
+    return Lookup(
+        ET_NODES,
+        ids=True,
+        statuses=statuses,
+        parent_statuses=None if statuses is None else _WP_UNFINISHED,
     )
 
 
@@ -211,6 +261,18 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     # description, as after 'yd resource show --type allowance'
     ("yd allowance boost", "allowances"): RESOURCE_LOOKUPS[RN_ALLOWANCE],
     ("yd allowance show", _SHOWN): RESOURCE_LOOKUPS[RN_ALLOWANCE],
+    # Instances and Nodes, by ID
+    **{
+        (f"yd instance {verb}", "compute_reqs_instances_or_nodes"): _instances(statuses)
+        for verb, statuses in _INSTANCE_STATUSES.items()
+    },
+    ("yd instance show", _SHOWN): _instances(None),
+    **{
+        (f"yd node {verb}", "compute_reqs_instances_or_nodes"): _nodes(_NODE_LIVE)
+        for verb in _INSTANCE_STATUSES
+    },
+    ("yd node shutdown", "worker_pool_nodes_list"): _nodes(_NODE_LIVE),
+    ("yd node show", _SHOWN): _nodes(None),
     # The listings within a parent
     ("yd taskgroup list", "--within"): WITHIN_LOOKUPS[ET_TASK_GROUPS],
     ("yd task list", "--within"): WITHIN_LOOKUPS[ET_TASKS],

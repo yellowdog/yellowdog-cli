@@ -10,6 +10,8 @@ import pytest
 from yellowdog_client.model import (
     AutoShutdown,
     ComputeRequirementStatus,
+    InstanceStatus,
+    NodeStatus,
     WorkerPoolStatus,
     WorkRequirementStatus,
 )
@@ -24,6 +26,8 @@ from yellowdog_cli.utils.completion_targets import (
 )
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
+    ET_INSTANCES,
+    ET_NODES,
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
 )
@@ -33,7 +37,11 @@ _STATUSES = {
     ET_WORK_REQUIREMENTS: WorkRequirementStatus,
     ET_COMPUTE_REQUIREMENTS: ComputeRequirementStatus,
     ET_WORKER_POOLS: WorkerPoolStatus,
+    ET_INSTANCES: InstanceStatus,
+    ET_NODES: NodeStatus,
 }
+# The type an Instance's or Node's parent is
+_PARENTS = {ET_INSTANCES: ET_COMPUTE_REQUIREMENTS, ET_NODES: ET_WORKER_POOLS}
 
 
 def _names(statuses) -> frozenset[str]:
@@ -79,6 +87,9 @@ def test_the_statuses_are_the_entitys(key):
     assert lookup.entity in _STATUSES
     if lookup.statuses is not None:
         assert lookup.statuses <= _names(_STATUSES[lookup.entity])
+    if lookup.parent_statuses is not None:
+        parent = _STATUSES[_PARENTS[lookup.entity]]
+        assert lookup.parent_statuses <= _names(parent)
 
 
 @pytest.mark.parametrize(
@@ -121,7 +132,7 @@ def test_every_verb_offers_names():
     # Each takes names, as well as IDs: the actions, the listings' '--within',
     # and show, follow, wait and compare, whose noun gives a name its type
     for (verb, _), lookup in LOOKUPS.items():
-        if lookup.resource is None:
+        if lookup.resource is None and lookup.entity not in _PARENTS:
             assert lookup.ids is False, verb
 
 
@@ -180,3 +191,33 @@ def test_the_task_verbs_offer_wr_tg_and_tasks():
     assert LOOKUPS[("yd task cancel", "work_requirements")].task_statuses == (
         TASK_UNFINISHED
     )
+
+
+@pytest.mark.parametrize(
+    "verb, action",
+    [
+        ("stop", compute_action_common.COMPUTE_STOP),
+        ("start", compute_action_common.COMPUTE_START),
+        ("restart", compute_action_common.COMPUTE_RESTART),
+        ("deprovision", compute_action_common.COMPUTE_DEPROVISION),
+        ("terminate", compute_action_common.COMPUTE_TERMINATE),
+    ],
+)
+def test_an_instance_verb_offers_the_instances_it_acts_on(verb, action):
+    lookup = LOOKUPS[(f"yd instance {verb}", "compute_reqs_instances_or_nodes")]
+    assert lookup.entity == ET_INSTANCES and lookup.ids
+    assert lookup.statuses == _names(action.valid_instance_statuses)
+
+
+def test_instances_and_nodes_are_offered_by_id_for_every_verb():
+    for noun, entity in (("instance", ET_INSTANCES), ("node", ET_NODES)):
+        for name, command in NOUN_COMMANDS.items():
+            if not name.startswith(f"yd {noun} ") or name.endswith(
+                (" list", " action")
+            ):
+                continue
+            (lookup,) = [lookup for (v, _), lookup in LOOKUPS.items() if v == name]
+            assert lookup.entity == entity and lookup.ids, name
+    # 'show' offers any, of any parent
+    assert LOOKUPS[("yd node show", "yellowdog_ids")].statuses is None
+    assert LOOKUPS[("yd node show", "yellowdog_ids")].parent_statuses is None
