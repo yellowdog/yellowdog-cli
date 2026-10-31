@@ -13,7 +13,9 @@ A name pattern (a name holding '*', '?' or '[', which no name can) stands
 for every object of the type whose name it matches, exactly as 'yd list
 --name' matches: in the last part alone ('wr/tg-*', never 'wr-*/tg'), and
 for yd-follow and yd-wait only among the unfinished ('live_only'). A pattern
-matching nothing is reported as a name finding nothing is.
+matching nothing is reported as a name finding nothing is; one whose matches
+have all finished stands for none, said in a line, there being nothing left
+to follow or wait for.
 
 Every name is looked up before anything else is done, and those that find
 nothing are reported together; a failure every later lookup would repeat
@@ -44,7 +46,7 @@ from yellowdog_cli.utils.entity_utils import (
 from yellowdog_cli.utils.exit_codes import NotFoundError, ReportedFailure, classify
 from yellowdog_cli.utils.glob_utils import contains_glob_chars, glob_search_prefix
 from yellowdog_cli.utils.limits import PATTERN_MATCH_WARNING
-from yellowdog_cli.utils.printing import print_error, print_warning
+from yellowdog_cli.utils.printing import print_error, print_info, print_warning
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.work_targets import resolve_named_target
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -169,8 +171,9 @@ def _ids_of(
 ) -> list[str]:
     """
     The ID a target gives, or for a pattern the IDs of the objects it
-    matches (warned of when there are many). Raises as target_id() does,
-    and NotFoundError for a pattern matching nothing.
+    matches (warned of when there are many): none, said in a line, when
+    'live_only' and all have finished. Raises as target_id() does, and
+    NotFoundError for a pattern matching nothing in any state.
     """
     if not is_pattern(target):
         return [_id_or_lookup(ctx, target, ydid_type)]
@@ -182,10 +185,14 @@ def _ids_of(
         )
     ids = _matching_ids(ctx, target, ydid_type, namespace, live_only)
     if not ids:
-        unfinished = "unfinished " if live_only else ""
+        if live_only and _matching_ids(ctx, target, ydid_type, namespace, False):
+            print_info(
+                f"Every {ydid_type.value} matching '{target}'"
+                f"{_in(target, namespace)} has finished"
+            )
+            return []
         raise NotFoundError(
-            f"No {unfinished}{ydid_type.value} matches '{target}'"
-            f"{_in(target, namespace)}"
+            f"No {ydid_type.value} matches '{target}'{_in(target, namespace)}"
         )
     _LOG.debug("'%s' matches %s", target, ", ".join(ids))
     if len(ids) > PATTERN_MATCH_WARNING:

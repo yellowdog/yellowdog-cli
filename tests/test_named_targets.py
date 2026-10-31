@@ -335,10 +335,26 @@ class TestPatterns:
             )
         assert classify(raised.value) == ExitCode.NOT_FOUND
         err = " ".join(capsys.readouterr().err.split())
-        assert (
-            "No unfinished Work Requirement matches 'nothing-*' in namespace 'ns'"
-            in err
+        assert "No Work Requirement matches 'nothing-*' in namespace 'ns'" in err
+
+    def test_a_pattern_whose_matches_have_all_finished_gives_none(self, monkeypatch):
+        from yellowdog_client.model import WorkerPoolStatus
+
+        pools = [
+            _summary("pool-a", 1, WorkerPoolStatus.TERMINATED),
+            _summary("other", 2, WorkerPoolStatus.RUNNING),
+        ]
+        monkeypatch.setattr(
+            named_targets, "get_worker_pool_summaries", lambda *a, **k: pools
         )
+        said = []
+        monkeypatch.setattr(named_targets, "print_info", said.append)
+        assert named_targets.resolve_targets(
+            _ctx(), ["pool-*", "oth*"], YDIDType.WORKER_POOL, live_only=True
+        ) == [pools[1].id]
+        assert said == [
+            "Every Worker Pool matching 'pool-*' in namespace 'ns' has finished"
+        ]
 
     def test_a_wildcard_only_in_the_last_part(self, monkeypatch, capsys):
         with pytest.raises(ReportedFailure):

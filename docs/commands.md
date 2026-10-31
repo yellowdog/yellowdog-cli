@@ -233,7 +233,7 @@ How each command takes its targets:
 | `follow` and `wait` verbs (Work Requirement, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching unfinished objects alone |
 | `compare` verbs | refused | no |
 
-The `show`, `follow` and `wait` verbs change nothing, so a pattern's matches are used without being confirmed. A Task Group's or Task's pattern is in its last part alone (`my-wr/render-*`, `my-wr/render/frame-0?`), its Work Requirement and Task Group named exactly. A pattern matching nothing exits 6, as a name finding nothing does, and one matching more than 50 objects is warned of.
+The `show`, `follow` and `wait` verbs change nothing, so a pattern's matches are used without being confirmed. A Task Group's or Task's pattern is in its last part alone (`my-wr/render-*`, `my-wr/render/frame-0?`), its Work Requirement and Task Group named exactly. A pattern matching nothing exits 6, as a name finding nothing does, and one matching more than 50 objects is warned of. For `follow` and `wait`, a pattern whose matches have all finished says so and stands for none, there being nothing left to follow or wait for: given alone, the command exits 0 at once (`wait --json` printing `[]`).
 
 ## yd workrequirement
 

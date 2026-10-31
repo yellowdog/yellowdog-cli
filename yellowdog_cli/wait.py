@@ -72,6 +72,9 @@ def main(ctx: RunContext):
     targets = resolve_targets(
         ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type, live_only=True
     )
+    if not targets:
+        # Every pattern's matches have finished, as it has said
+        return
     follow_ids(ctx, targets, timeout=ctx.args.timeout)
 
     # Errors and failure warnings are always printed, including with

@@ -2411,6 +2411,22 @@ class TestWait:
         ]
         assert run.exit_code == 0
 
+    def test_nothing_left_to_wait_for_succeeds(self, run, monkeypatch):
+        """
+        Every match of a pattern has finished: nothing is followed or recorded.
+        """
+        monkeypatch.setattr(yd_wait, "resolve_targets", lambda *a, **k: [])
+
+        def never(*a, **k):
+            raise AssertionError("followed")
+
+        monkeypatch.setattr(yd_wait, "follow_ids", never)
+        out, _, _ = run(
+            yd_wait, client=self._client(), timeout=None, yellowdog_ids=["run-*"]
+        )
+        assert out == []
+        assert run.exit_code == 0
+
     def test_a_failed_work_requirement_did_not_succeed(self, run, monkeypatch):
         self._follow(monkeypatch)
         out, err, _ = run(
@@ -2610,6 +2626,26 @@ class TestFollow:
         with pytest.raises(SystemExit):
             yd_follow.main()
         assert capsys.readouterr().out == ""
+
+    def test_nothing_left_to_follow_succeeds(self, monkeypatch):
+        """
+        Every match of a pattern has finished: nothing is followed.
+        """
+        from yellowdog_cli.utils.args import CLIParser
+
+        args = CLIParser(command="yd-follow", argv=["--nf", WR_ID_1])
+        monkeypatch.setattr(wrapper_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        monkeypatch.setattr(yd_follow, "resolve_targets", lambda *a, **k: [])
+
+        def never(*a, **k):
+            raise AssertionError("followed")
+
+        monkeypatch.setattr(yd_follow, "follow_ids", never)
+        with pytest.raises(SystemExit) as exit_info:
+            yd_follow.main()
+        assert exit_info.value.code == 0
 
     def test_only_yd_follow_streams_events_as_json(self):
         from yellowdog_cli.utils.args import CLIParser

@@ -26,6 +26,9 @@ def main(ctx: RunContext):
     targets = resolve_targets(
         ctx, ctx.args.yellowdog_ids, ctx.args.named_target_type, live_only=True
     )
+    if not targets:
+        # Every pattern's matches have finished, as it has said
+        return
     follow_ids(ctx, targets, ctx.args.auto_cr)
 
     # If any stream could not be followed (entity not found, credentials
