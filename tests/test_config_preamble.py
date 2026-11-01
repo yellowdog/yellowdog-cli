@@ -191,8 +191,8 @@ def test_the_messages_themselves_are_unchanged(config_dir):
     )
     for message in [
         "Loading environment variables from",
-        "Adding 'YD' environment variable(s):",
-        "Adding environment-defined variable substitution(s) for:",
+        "Adding 'YD' environment variable",
+        "Adding environment-defined variable substitution",
         "Loading configuration data from:",
         "Loading imported common configuration data from:",
         "Using 'tag' 't' from the command line (--tag)",

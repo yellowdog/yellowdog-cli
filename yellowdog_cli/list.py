@@ -123,6 +123,7 @@ from yellowdog_cli.utils.named_targets import resolved_each
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     counted,
+    plural,
     print_info,
     print_json,
     print_objects_as_json,
@@ -523,7 +524,8 @@ def _warn_of_unknown_statuses(ctx: RunContext) -> None:
     unknown = [s for s in ctx.args.status_filter if s.upper() not in known]
     if unknown:
         print_warning(
-            f"Unrecognised status value(s): {', '.join(repr(s) for s in unknown)}. "
+            f"Unrecognised status {plural('value', len(unknown))}:"
+            f" {', '.join(repr(s) for s in unknown)}. "
             f"Known values: {', '.join(sorted(known))}"
         )
 

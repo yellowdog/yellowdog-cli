@@ -19,6 +19,7 @@ from typing import Any
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     json_document_printed,
+    plural,
     print_error,
     print_json,
     print_objects_as_json,
@@ -240,7 +241,8 @@ def rows_as_objects(headers: list[str], rows: list[list[Any]]) -> list[dict]:
     if len(named) != len(set(named)):
         duplicated = sorted({key for key in named if named.count(key) > 1})
         raise ValueError(
-            f"Table headings {headers} give the key(s) {duplicated} more than once"
+            f"Table headings {headers} give the {plural('key', len(duplicated))}"
+            f" {duplicated} more than once"
         )
     return [{key: value for key, value in zip(keys, row) if key} for row in rows]
 

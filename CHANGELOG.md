@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Listing and actions
+
+- **Lists in messages are counted too**: `Unknown key ['x']`, `Node n1 is not in Worker Pool …` and `Unrecognised status values: …` rather than `key(s)` and `Node(s)`.
+
 ### Variables and configuration
 
 - **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.

@@ -63,6 +63,7 @@ from yellowdog_cli.utils.paths import relative_if_possible
 from yellowdog_cli.utils.printing import (
     WorkRequirementSnapshot,
     counted,
+    plural,
     print_dry_run,
     print_error,
     print_info,
@@ -578,7 +579,7 @@ def _refuse_duplicate_names(task_groups: list[TaskGroup]) -> None:
     duplicates = sorted({name for name in names if names.count(name) > 1})
     if duplicates:
         raise ValueError(
-            "The name(s) "
+            f"The {plural('name', len(duplicates))} "
             + ", ".join(f"'{name}'" for name in duplicates)
             + " would be given to more than one Task Group: Task Group names"
             " must be unique (with 'taskGroupCount', include"
@@ -708,7 +709,9 @@ def _plan_extension(
         if missing_types:
             raise ValueError(
                 f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
-                f" their task type(s) {sorted(missing_types)} are not in the"
+                f" their {plural('task type', len(missing_types))}"
+                f" {sorted(missing_types)} {'is' if len(missing_types) == 1 else 'are'}"
+                " not in the"
                 f" Task Group's taskTypes allowlist {sorted(existing_types)}."
                 " A Task Group's taskTypes cannot be modified after creation;"
                 " either change the Tasks to use a supported task type, or"

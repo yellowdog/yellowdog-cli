@@ -353,7 +353,9 @@ def _resolve_targets(ctx: RunContext) -> tuple[_Pool, list[str] | None, list[str
         strangers = [node.id for node in nodes if node.workerPoolId != pool.id]
         if strangers:
             raise ValueError(
-                f"Node(s) {', '.join(cast(list[str], strangers))} are not in"
+                f"{plural('Node', len(strangers))}"
+                f" {', '.join(cast(list[str], strangers))}"
+                f" {'is' if len(strangers) == 1 else 'are'} not in"
                 f" Worker Pool {_pool_label(pool)}"
             )
     elif len(pool_ids) > 1:

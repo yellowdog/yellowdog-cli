@@ -56,7 +56,7 @@ class TestGenerateSelection:
             _generate_selection("hello", _to_str, field_name="x")  # type: ignore[arg-type]
 
     def test_unknown_key_rejected(self):
-        with pytest.raises(ValueError, match=r"Unknown key\(s\)"):
+        with pytest.raises(ValueError, match=r"Unknown keys? \["):
             _generate_selection(
                 {"includes": ["a"], "junk": []}, _to_str, field_name="x"
             )
@@ -111,7 +111,7 @@ class TestGenerateTaskErrorSelector:
         assert sel.processExitCodes == Selection(includes=[137], excludes=None)
 
     def test_unknown_field_rejected(self):
-        with pytest.raises(ValueError, match=r"Unknown key\(s\)"):
+        with pytest.raises(ValueError, match=r"Unknown keys? \["):
             _generate_task_error_selector({"junk": {"includes": [1]}})
 
     def test_invalid_status_rejected(self):
@@ -173,7 +173,7 @@ class TestGenerateRetryPolicy:
             generate_retry_policy(_config(), {}, {"retryPolicy": {"maxRetries": -1}})
 
     def test_unknown_key_rejected(self):
-        with pytest.raises(ValueError, match=r"Unknown key\(s\)"):
+        with pytest.raises(ValueError, match=r"Unknown keys? \["):
             generate_retry_policy(
                 _config(), {}, {"retryPolicy": {"maxRetries": 1, "junk": "x"}}
             )
@@ -267,7 +267,7 @@ class TestGenerateFailurePolicy:
             )
 
     def test_destination_with_unknown_key_rejected(self):
-        with pytest.raises(ValueError, match=r"Unknown key\(s\)"):
+        with pytest.raises(ValueError, match=r"Unknown keys? \["):
             generate_failure_policy(
                 _config(),
                 {},

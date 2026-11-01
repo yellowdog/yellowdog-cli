@@ -34,6 +34,7 @@ from yellowdog_cli.utils.misc_utils import (
     split_delimited_string,
 )
 from yellowdog_cli.utils.printing import (
+    plural,
     print_debug,
     print_error,
     print_warning,
@@ -370,8 +371,8 @@ def register_user_variables(
 
     if registered:
         print_debug(
-            "Adding environment-defined variable substitution(s) for: "
-            f"{', '.join(registered)}"
+            "Adding environment-defined variable"
+            f" {plural('substitution', len(registered))} for: {', '.join(registered)}"
         )
 
     registered = []
@@ -397,8 +398,8 @@ def register_user_variables(
 
     if registered:
         print_debug(
-            "Adding command-line-defined variable substitution(s) for: "
-            f"{', '.join(registered)}"
+            "Adding command-line-defined variable"
+            f" {plural('substitution', len(registered))} for: {', '.join(registered)}"
         )
 
 

@@ -23,7 +23,7 @@ from yellowdog_cli.utils.paths import (
     is_user_config_file,
     relative_if_possible,
 )
-from yellowdog_cli.utils.printing import print_debug, print_warning
+from yellowdog_cli.utils.printing import plural, print_debug, print_warning
 from yellowdog_cli.utils.settings import (
     ENV_OFF_VALUES,
     NAME_START_PREFIX,
@@ -522,7 +522,9 @@ def load_dotenv_file(config_file: str | None, env_override: bool = False):
 
     if dotenv_yd_substitutions:
         print_debug(
-            f"Adding 'YD' environment variable(s): {', '.join(dotenv_yd_substitutions)}"
+            f"Adding 'YD' environment"
+            f" {plural('variable', len(dotenv_yd_substitutions))}:"
+            f" {', '.join(dotenv_yd_substitutions)}"
         )
 
     # Actually load the variables (including non-'YD' variables)
