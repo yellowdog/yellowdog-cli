@@ -11,11 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd workerpool list --provisioned` and `--configured`** list only Worker Pools of that kind, combining with the other filters, `--json` and `--count`: `yd wp list --configured` lists the on-premise pools.
 - **`yd task list` can list the Tasks of several Task Groups at once**: at the Task Group prompt, answer with a list, a range or `*` (`1,3`, `1-4`), and their Tasks are listed in one table, each row naming its Task Group. Only one Task Group could be chosen before.
 - **`yd task abort` and the `priority` verbs take name patterns**, mixed with names and IDs: `yd task abort 'nightly-*'`, `yd wr priority 20 'my-wr/render-*'`. A pattern stands for every unfinished Work Requirement or Task Group it matches, and the matches are confirmed with the other targets; one matching nothing says so.
-- **Tab completes Instances and Nodes** for the `yd instance` and `yd node` verbs (with `yd completion <shell> --names`): Instances as `cr_id.instance_id` and Node IDs, each shown with its Compute Requirement's or Worker Pool's name and status, in the statuses the verb acts on.
-- **Tab completes `yd node action`'s `--worker-pool` and `--node`**: Worker Pool names, then the running Nodes of the `--worker-pool` typed (or of the newest Worker Pools when none is).
-- **Tab completes the `yd task` verbs** (with `yd completion <shell> --names`): `yd task abort` offers Work Requirements and then `wr/tg`, and `yd task cancel` and `yd task show` go on to the Task Group's Tasks as `wr/tg/task`, unfinished ones alone for `cancel`.
 - **`yd task cancel`** cancels individual Tasks, by ID, by name as `wr/tg/task`, or by a pattern in the name's last part (`yd task cancel 'nightly-run/render/frame-01*'`), with `--abort` for those executing. `yd workrequirement cancel` still takes Task IDs as before.
-- **Tab completes Allowance IDs** for `yd allowance boost` and `yd allowance show` (with `yd completion <shell> --names`), each described by the Allowance's description where the shell shows descriptions.
 - **Glob patterns mix with names and IDs on every action verb**: `yd wr cancel 'nightly-*' adhoc-run`, `yd wp shutdown 'gpu-*' ydid:wrkrpool:...` and `yd cr terminate 'ci-*' build-cr` act on every match and the targets named, confirmed together, where they were refused (exit 2). A pattern matching nothing says so; patterns given alone are a selection as before, `--interactive` included.
 - **`yd allowance boost` takes description patterns** beside Allowance IDs: `yd allowance boost 10 '*gpu*'` boosts every Allowance whose description matches, as `yd allowance list --description` matches it, confirmed with the other targets; one matching nothing says so.
 - **The `show`, `follow` and `wait` verbs take name patterns**: `yd wr show 'nightly-20261030*'`, `yd wp wait 'render-*'`, `yd tg show 'my-wr/render-*'`. A pattern stands for every object of the noun's type whose name it matches, in any state for `show` and among the unfinished for `follow` and `wait`; one matching nothing exits 6, while for `follow` and `wait` one whose matches have all finished says so and exits 0, there being nothing left to wait for. With `--json`, `show` prints an array for a pattern even when it matched one object. An object named twice (by name and ID, or by two patterns) is shown, followed or waited for once.
@@ -23,6 +19,17 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd task list` and `yd taskgroup list` can start from several Work Requirements**: at the Work Requirement prompt, answer with a list, a range or `*`, and their Task Groups are offered (or listed) together, grouped by Work Requirement. Of several Work Requirements, the Task Group and Task tables have a Work Requirement column, since Task Group names repeat across them.
 - **`yd instance list` can list the Instances of several Compute Requirements at once**: at the Compute Requirement prompt, answer with a list, a range or `*`, and their Instances are listed in one table. The Instances table has a Compute Requirement column naming each row's.
 - **An empty listing says so the same way for every type**: `No matching <Type>` (`No matching Instances`, `No matching Keyrings`), in place of the mix of `No Nodes to display`, `No instances to list` and `... found`; a listing of Task Groups, Attribute Definitions or Permissions that found none now says so rather than printing nothing.
+
+### Variables and configuration
+
+- **A `__{{variable}}__` where only `{{variable}}` is taken is warned of**: in a Work Requirement or resource specification, or the configuration file, outside User Data and Node Actions, it is substituted to `__value__`, underscores kept, and the warning says to write `{{variable}}`.
+
+### Tab completion
+
+- **Tab completes Instances and Nodes** for the `yd instance` and `yd node` verbs (with `yd completion <shell> --names`): Instances as `cr_id.instance_id` and Node IDs, each shown with its Compute Requirement's or Worker Pool's name and status, in the statuses the verb acts on.
+- **Tab completes `yd node action`'s `--worker-pool` and `--node`**: Worker Pool names, then the running Nodes of the `--worker-pool` typed (or of the newest Worker Pools when none is).
+- **Tab completes the `yd task` verbs** (with `yd completion <shell> --names`): `yd task abort` offers Work Requirements and then `wr/tg`, and `yd task cancel` and `yd task show` go on to the Task Group's Tasks as `wr/tg/task`, unfinished ones alone for `cancel`.
+- **Tab completes Allowance IDs** for `yd allowance boost` and `yd allowance show` (with `yd completion <shell> --names`), each described by the Allowance's description where the shell shows descriptions.
 
 ## 15.6.0 — 2026-10-30
 

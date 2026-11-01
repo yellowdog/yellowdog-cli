@@ -305,3 +305,47 @@ class TestCommands:
         document = _yd(tmp_path, "cr", "instantiate", "cr.json")
 
         assert {key: document[key] for key in EXPECTED_USAGE} == EXPECTED_USAGE
+
+
+class TestTheWorkerPoolFormElsewhere:
+    """
+    A plain pass (a Work Requirement, a resource, the configuration) substitutes
+    the '{{x}}' inside a '__{{x}}__' and keeps the underscores, so outside User
+    Data and Node Actions the form is warned of, when it is substituted.
+    """
+
+    def test_it_keeps_its_underscores_and_is_warned_of(self, warnings):
+        data = {"name": "__{{site}}__", "tag": "{{site}}"}
+        resolve_variables_insitu(data)
+        assert data == {"name": "__lon__", "tag": "lon"}
+        (message,) = _messages(warnings)
+        assert "'__{{site}}__' keeps its underscores in 'name'" in message
+        assert "write '{{site}}' here" in message
+
+    @pytest.mark.parametrize(
+        "value", ["__{{site:=x}}__", "__{{nope:=x}}__", "__{{site::}}__"]
+    )
+    def test_a_default_or_unset_suffix_is_warned_of_when_substituted(
+        self, warnings, value
+    ):
+        resolve_variables_insitu({"name": value})
+        assert len(_messages(warnings)) == 1
+
+    @pytest.mark.parametrize("value", ["__{{nope}}__", "__{{.ID}}__"])
+    def test_one_left_unsubstituted_is_not(self, warnings, value):
+        resolve_variables_insitu({"name": value})
+        assert not any("underscores" in m for m in _messages(warnings))
+
+    def test_user_data_and_node_actions_take_it(self, warnings):
+        data = {
+            "userData": "echo __{{site}}__",
+            "nodeEvents": {"E": [{"arguments": ["__{{site}}__"]}]},
+        }
+        resolve_variables_insitu(data)
+        assert data["userData"] == "echo lon"
+        assert data["nodeEvents"]["E"][0]["arguments"] == ["lon"]
+        assert _messages(warnings) == []
+
+    def test_a_worker_pool_specification_takes_it(self, warnings):
+        assert _loaded({"name": "__{{site}}__"}) == {"name": "lon"}
+        assert _messages(warnings) == []

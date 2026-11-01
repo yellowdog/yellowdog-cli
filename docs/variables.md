@@ -418,6 +418,8 @@ Everything else about a substitution — [type tags](#substituting-numbers-boole
 
 **Order.** In a Worker Pool or Compute Requirement specification, the `__{{variable}}__` form is substituted first, then the plain one.
 
+**The `__` form where the plain one is taken.** Where only `{{variable}}` is taken (the last plain-form row of the table), `__{{variable}}__` is not an error, but only the `{{variable}}` inside it is substituted, so the value keeps the underscores: `__london__`. A warning names each property where that happens, written in its own form (`write '{{site}}' here`).
+
 **Jsonnet files.** A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name. It is made in the file's own form only, since the text says nothing of which property it is in: `__{{variable}}__` in a Worker Pool or Compute Requirement specification, and the plain `{{variable}}` in any other file, where a `__{{variable}}__` is left for the second. The second makes the rest, as the table says. See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files).
 
 **Plain substitutions in a Worker Pool or Compute Requirement Jsonnet file** come out substituted in a string, but the code cannot compute with them.
