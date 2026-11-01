@@ -74,13 +74,13 @@ local frames = std.parseInt("{{frames:=3}}");
 
 `yd workrequirement submit --jsonnet-dry-run -v frames=2 frames.jsonnet` shows the two Tasks it generates.
 
-In **Worker Pool** and **Compute Requirement** specifications, a substitution the Jsonnet code computes with must be written with double underscores before and after it: `std.parseInt("__{{count}}__")`. One that is simply part of a string can take either form (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
+In **Worker Pool** and **Compute Requirement** specifications, a substitution the Jsonnet code computes with must be written with double underscores before and after it: `std.parseInt("__{{count}}__")`. One that is simply part of a string can take either form, except in User Data and Node Actions, which take only the `__` form and leave a plain `{{...}}` for the Platform (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 ### Details
 
 **Why Worker Pool and Compute Requirement specifications differ.** There, the plain `{{variable}}` form is substituted only after evaluation, so the code cannot compute with it. The `__{{variable}}__` form is substituted before.
 
-**Chains are resolved first.** Variables are fully resolved before evaluation, including those whose values themselves contain variable references, so the code works with the final value, e.g. `local count = std.parseInt('{{count}}');`.
+**Chains are resolved first.** Variables are fully resolved before evaluation, including those whose values themselves contain variable references, so the code works with the final value, e.g. `local count = std.parseInt('{{count}}');` (`'__{{count}}__'` in a Worker Pool or Compute Requirement specification).
 
 **A substitution can be placed anywhere in the text.** The substitution before evaluation is made in the Jsonnet text itself, so, unlike in a JSON file, it is not confined to strings:
 
