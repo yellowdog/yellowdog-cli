@@ -85,6 +85,37 @@ class TestConfigValues:
         lc_module.warn_of_undefined_config_variables()
         assert _messages(warnings) == []
 
+    def test_the_worker_pool_form_found_as_the_file_was_read(
+        self, warnings, monkeypatch, tmp_path
+    ):
+        """
+        A '__{{x}}__' outside User Data, which the file's own plain pass
+        substituted keeping its underscores, is warned of under the section
+        it was written in; User Data takes the form.
+        """
+        from yellowdog_cli.utils.file_substitution import (
+            load_toml_file_with_variable_substitutions,
+        )
+
+        monkeypatch.setitem(var_module.VARIABLE_SUBSTITUTIONS, "site", "lon")
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[workRequirement]\nname = "__{{site}}__-run"\n'
+            '[workerPool]\nuserData = "echo __{{site}}__"\n',
+            encoding="utf-8",
+        )
+        found: list = []
+        loaded = load_toml_file_with_variable_substitutions(
+            str(config), worker_pool_form=found
+        )
+        assert loaded["workRequirement"]["name"] == "__lon__-run"
+        monkeypatch.setattr(lc_module, "_CONFIG_WORKER_POOL_FORM", found)
+        lc_module.warn_of_undefined_config_variables()
+        [message] = _messages(warnings)
+        assert "'__{{site}}__' keeps its underscores in 'workRequirement.name'" in (
+            message
+        )
+
 
 class TestWrappersCheckConfigValues:
     """

@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Variables and configuration
+
+- **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
+
 ## 15.7.0 — 2026-11-01
 
 ### Listing and actions

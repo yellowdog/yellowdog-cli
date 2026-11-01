@@ -810,7 +810,7 @@ def _substitute_insitu_pass(
                 del data[index]
 
     _walk_data(data, "", False)
-    _warn_of_worker_pool_form(worker_pool_form)
+    warn_of_worker_pool_form(worker_pool_form)
     return changed
 
 
@@ -823,7 +823,38 @@ _WORKER_POOL_FORM = re.compile(
 )
 
 
-def _warn_of_worker_pool_form(found: list[tuple[str, str, str]]) -> None:
+def worker_pool_form_in(data: dict | list) -> list[tuple[str, str, str]]:
+    """
+    Each '__{{x}}__' in 'data' outside User Data and Node Actions, as
+    (expression, what is inside its braces, path), substituting nothing:
+    found in the configuration file as it is read, before its plain pass, for
+    warn_of_worker_pool_form() once the warnings are on.
+    """
+    found: list[tuple[str, str, str]] = []
+
+    def _walk(value: object, path: str, mustache: bool) -> None:
+        if isinstance(value, str):
+            if not mustache:
+                found.extend(
+                    (match.group(0), match.group(1), path)
+                    for match in _WORKER_POOL_FORM.finditer(value)
+                )
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                _walk(
+                    item,
+                    f"{path}.{key}" if path else str(key),
+                    mustache or key in _PLATFORM_MUSTACHE_PROPERTIES,
+                )
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                _walk(item, f"{path}[{index}]", mustache)
+
+    _walk(data, "", False)
+    return found
+
+
+def warn_of_worker_pool_form(found: list[tuple[str, str, str]]) -> None:
     """
     Warn of each '__{{x}}__' a plain pass substitutes outside User Data and
     Node Actions: only the '{{x}}' inside is substituted there, so the value

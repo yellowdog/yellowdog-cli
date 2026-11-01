@@ -49,6 +49,7 @@ from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions,
     resolve_variables_insitu,
     typed_value_as_text,
+    worker_pool_form_in,
 )
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
@@ -292,15 +293,23 @@ def _jsonnet_error(message: str) -> str:
 
 
 def load_toml_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = "", selected_file: bool = False
+    filename: str,
+    prefix: str = "",
+    postfix: str = "",
+    selected_file: bool = False,
+    worker_pool_form: list | None = None,
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
     substitutions processed. 'selected_file' says it is the configuration
     file itself, whose variables no file read after it replaces (see
-    add_substitutions_from_config_file()).
+    add_substitutions_from_config_file()). 'worker_pool_form', where given,
+    collects each '__{{x}}__' the file has outside User Data, found before
+    the pass that would keep its underscores (worker_pool_form_in()).
     """
     config = toml_loads(_read_text(filename))
+    if worker_pool_form is not None:
+        worker_pool_form.extend(worker_pool_form_in(config))
 
     # Add any variable substitutions in the TOML file before processing the
     # file as a whole
