@@ -171,7 +171,7 @@ These options are accepted by many commands, but not by all. The command section
 | `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it. [When `--follow` and `--wait` Return](#when---follow-and---wait-return) gives the end for each command. |
 | `--sort <name\|created\|status\|namespace>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
 | `--reverse` | Reverse (descending) the whole order `--sort` gives |
-| `--jsonnet-dry-run`, `-J` | Dry-run Jsonnet processing into JSON — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
+| `--jsonnet-dry-run`, `-J` | Print the Jsonnet specification as evaluated, its variables substituted, and stop — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
 
 All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
 
@@ -736,7 +736,7 @@ Key options:
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--follow`/`-f` — follow the Compute Requirement's events after it is created, until it is terminated or Ctrl-C is pressed (its stream stays open while it lives)
-- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification converted to JSON, and stop; it and `--validate` are refused when the Compute Requirement comes from the configuration alone, with no specification file
+- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification as evaluated, its variables substituted, and stop; it and `--validate` are refused when the Compute Requirement comes from the configuration alone, with no specification file
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -1067,7 +1067,7 @@ Key options:
 - `--status` — show the Node Action queue for the selected node(s), or with `--all-nodes` for every running node in the pool; with `--follow`, poll the queues until each is done. `--details`/`-d` shows the full JSON (refused without `--status`)
 - `--content-path`/`-F <directory>` — the directory in which files for upload are found
 - `--validate` — check the `--actions` file against its schema and stop, reporting every violation, rather than submitting it; refused with `--status` (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
-- `--jsonnet-dry-run`/`-J` — print the `--actions` Jsonnet file converted to JSON, and stop; refused with `--status`
+- `--jsonnet-dry-run`/`-J` — print the `--actions` Jsonnet file as evaluated, its variables substituted, and stop; refused with `--status`
 - `--json` — emit the submissions, or with `--status` the node action queues, as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -1221,7 +1221,7 @@ Key options:
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
 - `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
-- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON
+- `--jsonnet-dry-run`/`-J` — print each Jsonnet resource file as evaluated, its variables substituted, creating nothing
 - `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
 
@@ -1245,7 +1245,7 @@ Key options:
 - `--type <resource-type>` — with arguments, they are the names or YellowDog IDs of resources of that type to remove, such as `--type Keyring team-keys` (`namespace/name` for a namespaced type, `keyring/credential` for a Credential; see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line) for which types take names and which IDs); with `--set <property=value>` instead, a resource given on the command line, as for `yd resource create`
 - `--ids` — optional: says every argument is a YellowDog ID, refusing anything else; cannot be combined with `--match-allowances-by-description`, `--jsonnet-dry-run`, `--type` or `--set`
 - `--match-allowances-by-description`/`-M` — match using the `description` property when removing Allowances
-- `--jsonnet-dry-run`/`-J` — dry-run Jsonnet processing into JSON, removing nothing (refused when every argument is an ID)
+- `--jsonnet-dry-run`/`-J` — print each Jsonnet resource file as evaluated, its variables substituted, removing nothing (refused when every argument is an ID)
 - `--no-resequence` — remove the resources strictly in the order supplied, files' resources and IDs alike, rather than in dependency order
 - `--json` — emit the resources removed or skipped as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
 

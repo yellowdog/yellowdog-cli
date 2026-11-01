@@ -1072,7 +1072,10 @@ JSONNET_DRY_RUN = option(
     "-J",
     action="store_true",
     required=False,
-    help="dry-run Jsonnet processing into JSON",
+    help=(
+        "print the Jsonnet specification as evaluated, its variables"
+        " substituted, and stop"
+    ),
 )
 VALIDATE = option(
     "--validate",

@@ -289,7 +289,7 @@ generate-keyrings | yd resource create -
 
 ## Preprocessing Resource Specifications
 
-To see the processed JSON without creating or updating anything, use `--dry-run`/`-D` with `yd resource create`, or `--jsonnet-dry-run`/`-J` to see a Jsonnet file's conversion into JSON:
+To see the processed JSON without creating or updating anything, use `--dry-run`/`-D` with `yd resource create`, or `--jsonnet-dry-run`/`-J` to see a Jsonnet file as evaluated, its variables substituted:
 
 ```shell
 yd resource create --dry-run templates.json

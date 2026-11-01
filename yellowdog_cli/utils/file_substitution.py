@@ -259,7 +259,7 @@ def load_jsonnet_file_with_variable_substitutions(
         resolve_plain_variables_too(dict_data)
 
     if dry_run:
-        print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
+        print_dry_run(f"Printing '{filename}' as evaluated, its variables substituted")
         if OUTPUT.json_output and not exit_on_dry_run:
             # A caller converting several files (yd-create, yd-remove): each
             # is one element of the '--json' document, printed at exit; a
