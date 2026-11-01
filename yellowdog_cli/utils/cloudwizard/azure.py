@@ -14,7 +14,7 @@ from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_erro
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
 
 RESOURCE_PREFIX = "yellowdog-cloudwizard"
@@ -261,7 +261,7 @@ class AzureConfig(CommonCloudConfig):
         if count == 0:
             print_info("No Azure resource groups deleted")
         else:
-            print_info(f"{count} Azure resource group(s) deleted")
+            print_info(f"{counted(count, 'Azure resource group')} deleted")
 
     def _remove_resource_group_by_name(self, rg_name: str):
         """

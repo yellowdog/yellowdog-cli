@@ -4,6 +4,10 @@ resource types yd-create and yd-remove report) and entity type names (the
 CLI's arguments for yd-list and the action commands).
 """
 
+# The package of the Platform's model types, as an object's 'type' names it
+# ('co.yellowdog.platform.model.ConfiguredWorkerPool')
+PLATFORM_MODEL_PACKAGE = "co.yellowdog.platform.model"
+
 # Resource type names for create/remove
 RESOURCE_PROPERTY_NAME = "resource"
 RN_ADD_APPLICATION_REQUEST = "AddApplicationRequest"
@@ -21,6 +25,9 @@ RN_KEYRING = "Keyring"
 RN_NAMESPACE = "Namespace"
 RN_NAMESPACE_POLICY = "NamespacePolicy"
 RN_NUMERIC_ATTRIBUTE_DEFINITION = "NumericAttributeDefinition"
+# A Worker Pool that is not a Configured one: its type, never a
+# specification resource (a Provisioned Worker Pool is provisioned)
+RN_PROVISIONED_POOL = "ProvisionedWorkerPool"
 RN_REQUIREMENT_TEMPLATE = "ComputeRequirementTemplate"
 RN_ROLE = "Role"
 RN_SOURCE_TEMPLATE = "ComputeSourceTemplate"

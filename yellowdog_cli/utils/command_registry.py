@@ -487,6 +487,9 @@ LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
 LIST_DESCRIPTION_TYPES = frozenset({ET_ALLOWANCES})
 # Those that record errors of their own
 LIST_WITH_ERRORS_TYPES = frozenset({ET_TASKS})
+# Those of two kinds, provisioned and configured ('--provisioned',
+# '--configured')
+LIST_POOL_KIND_TYPES = frozenset({ET_WORKER_POOLS})
 # Those listed from within one parent, with the kinds of parent '--within'
 # takes for each (YDIDType values: ydid_utils.py is imported only to check)
 LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
@@ -1540,27 +1543,6 @@ REMOTE_PATHS = option(
 # --- Validators: run after parsing ---------------------------------------
 
 
-def check_glob_and_literal_names(args: Namespace, parser: ArgumentParser) -> None:
-    """
-    Positional names/IDs on the destructive commands. A name may be a glob
-    pattern, but must not be mixed with literal names/IDs. Either may be
-    given with --dry-run.
-    """
-    explicit_names: list[str] = []
-    for attr in (
-        "work_requirements",
-        "worker_pool_nodes_list",
-        "compute_reqs_instances_or_nodes",
-    ):
-        value = getattr(args, attr, None)
-        if isinstance(value, list):
-            explicit_names.extend(value)
-    globs = [n for n in explicit_names if contains_glob_chars(n)]
-    literals = [n for n in explicit_names if not contains_glob_chars(n)]
-    if globs and literals:
-        parser.error("cannot mix name glob patterns with explicit names/IDs")
-
-
 def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
     """
     yd-compute-restart and yd-compute-deprovision act on Instances alone: a
@@ -1669,7 +1651,8 @@ TASK_ID_LIST = option(
         " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
         " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
         " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
-        " group. Without arguments, the executing tasks of the work"
+        " group; the last part of a name may be a glob pattern ('wr-*',"
+        " 'wr/tg-*'), matching unfinished ones. Without arguments, the executing tasks of the work"
         " requirements matching the namespace and tag, selected interactively"
         " unless --yes is given."
     ),
@@ -1709,24 +1692,35 @@ BOOST_HOURS = option(
 )
 ALLOWANCES = option(
     "allowances",
-    metavar="<allowance-ID>",
+    metavar="<allowance-ID-or-pattern>",
     nargs="+",
     type=str,
-    help="the YellowDog ID(s) of the allowance(s) to boost",
+    help=(
+        "the YellowDog ID(s) of the allowance(s) to boost, or a pattern"
+        " ('*gpu*') for those whose descriptions match it"
+    ),
 )
 
 
 def check_allowance_ids(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-boost's Allowance IDs, before anything is fetched or boosted. The
-    YDID parser is imported here, so this module still imports nothing at
-    load beyond the constants modules and glob_utils.py.
+    yd-boost's Allowance IDs, before anything is fetched or boosted: each an
+    Allowance's ID, or a description pattern (holding a wildcard), an
+    Allowance having no name. The YDID parser is imported here, so this
+    module still imports nothing at load beyond the constants modules and
+    glob_utils.py.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
     for allowance_id in args.allowances:
-        if get_ydid_type(allowance_id) != YDIDType.ALLOWANCE:
-            parser.error(f"not a YellowDog Allowance ID: '{allowance_id}'")
+        ydid_type = get_ydid_type(allowance_id)
+        if ydid_type == YDIDType.ALLOWANCE or (
+            ydid_type is None and contains_glob_chars(allowance_id)
+        ):
+            continue
+        parser.error(
+            f"not a YellowDog Allowance ID or a description pattern: '{allowance_id}'"
+        )
 
 
 COMMANDS["yd-boost"] = Command(
@@ -1768,7 +1762,6 @@ COMMANDS["yd-cancel"] = Command(
         YES,
         WORK_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2108,7 +2101,7 @@ COMMANDS["yd-compute-reprovision"] = Command(
         WAIT_FOR_CAPACITY,
         WAIT_TIMEOUT,
     ),
-    validators=(check_glob_and_literal_names, check_wait_options),
+    validators=(check_wait_options,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2151,7 +2144,6 @@ COMMANDS["yd-auto-shutdown"] = Command(
         ),
         AUTO_SHUTDOWN_MINUTES,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
     script=False,
@@ -2162,7 +2154,6 @@ COMMANDS["yd-compute-start"] = Command(
     summary="Start stopped Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2172,7 +2163,6 @@ COMMANDS["yd-compute-stop"] = Command(
     summary="Stop Compute Requirements and Instances",
     kind=CommandKind.API,
     options=_compute_action_options(COMPUTE_REQS_INSTANCES_OR_NODES),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2609,7 +2599,6 @@ COMMANDS["yd-finish"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2626,7 +2615,6 @@ COMMANDS["yd-hold"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -2644,7 +2632,6 @@ COMMANDS["yd-start"] = Command(
             )
         )
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -3117,6 +3104,18 @@ UNHEALTHY = option(
         " requirements, worker pools and compute requirements"
     ),
 )
+PROVISIONED = option(
+    "--provisioned",
+    action="store_true",
+    required=False,
+    help="list only provisioned worker pools",
+)
+CONFIGURED = option(
+    "--configured",
+    action="store_true",
+    required=False,
+    help="list only configured (on-premise) worker pools",
+)
 PROVIDER = option(
     "--provider",
     choices=LIST_PROVIDERS,
@@ -3147,16 +3146,17 @@ WITH_ERRORS = option(
 )
 WITHIN = option(
     "--within",
-    dest="within_target",
+    dest="within_targets",
+    action="append",
     metavar="<target>",
     required=False,
     help=(
-        "list the items of one parent without asking which: the task groups or"
+        "list the items of a parent without asking which: the task groups or"
         " tasks of a work requirement or task group ('wr', 'wr/tg',"
         " 'namespace/wr', 'namespace/wr/tg' or its ID), the instances of a"
         " compute requirement, the nodes of a worker pool, or the workers of a"
         " worker pool or node (its name, 'namespace/name' or its ID; a node by"
-        " its ID)"
+        " its ID); repeat it for several parents, listed in one table"
     ),
 )
 LIST_LIMIT = option(
@@ -3192,6 +3192,8 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
     unfiltered listing for a filtered one.
     """
     entity_type = args.entity_type
+    if getattr(args, "provisioned", False) and getattr(args, "configured", False):
+        parser.error("--provisioned and --configured cannot be given together")
     for dest, flag, types in (
         ("name_glob", "--name", LIST_NAME_TYPES),
         ("status_filter", "--status", LIST_STATUS_TYPES),
@@ -3201,10 +3203,12 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
         ("public_ips_only", "--public-ips-only", frozenset({ET_INSTANCES})),
         ("deletable", "--deletable", LIST_DELETABLE_TYPES),
         ("unhealthy", "--unhealthy", LIST_UNHEALTHY_TYPES),
+        ("provisioned", "--provisioned", LIST_POOL_KIND_TYPES),
+        ("configured", "--configured", LIST_POOL_KIND_TYPES),
         ("provider", "--provider", LIST_PROVIDER_TYPES),
         ("description_glob", "--description", LIST_DESCRIPTION_TYPES),
         ("with_errors", "--with-errors", LIST_WITH_ERRORS_TYPES),
-        ("within_target", "--within", LIST_WITHIN_TYPES),
+        ("within_targets", "--within", LIST_WITHIN_TYPES),
         ("list_limit", "--limit", LIST_LIMIT_TYPES),
     ):
         # Given at all ('--limit 0' and '--name ""' as much as any other;
@@ -3225,16 +3229,19 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
     # '--count' is exact, read from the Task Groups' own counts where it can
     if getattr(args, "list_limit", None) is not None and getattr(args, "count", False):
         parser.error("--limit cannot be used with --count, which is never limited")
-    within = getattr(args, "within_target", None)
+    within = getattr(args, "within_targets", None) or []
     if within and entity_type in LIST_WITHIN_KINDS:
         from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
         kinds = LIST_WITHIN_KINDS[entity_type]
-        ydid_type = get_ydid_type(within)
-        if ydid_type is not None and ydid_type.value not in kinds:
-            parser.error(
-                f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
-            )
+        for target in within:
+            if not target:
+                parser.error("--within needs a target")
+            ydid_type = get_ydid_type(target)
+            if ydid_type is not None and ydid_type.value not in kinds:
+                parser.error(
+                    f"--within takes a {' or '.join(kinds)}, not a {ydid_type.value}"
+                )
     if args.public_ips_only:
         for dest, flag in (
             ("json", "--json"),
@@ -3264,6 +3271,10 @@ COMMANDS["yd-list"] = Command(
         NAME,
         STATUS,
         UNHEALTHY,
+        # Not an argparse group: every list verb but Worker Pools' hides
+        # them, and Python 3.10's usage line fails on a group all hidden
+        PROVISIONED,
+        CONFIGURED,
         PROVIDER,
         DESCRIPTION,
         WITH_ERRORS,
@@ -3907,7 +3918,7 @@ COMMANDS["yd-shutdown"] = Command(
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
-    validators=(check_glob_and_literal_names, check_auto_follow_needs_follow),
+    validators=(check_auto_follow_needs_follow,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -4201,7 +4212,6 @@ COMMANDS["yd-terminate"] = Command(
         COMPUTE_REQS_INSTANCES_OR_NODES,
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
-    validators=(check_glob_and_literal_names,),
     requires_namespace_and_tag=True,
     tool=ToolKind.DESTRUCTIVE,
 )
@@ -4223,7 +4233,8 @@ PRIORITY_TARGETS = option(
     type=str,
     help=(
         "the work requirement(s) or task group(s): IDs, or names as 'wr',"
-        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg'"
+        " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg', the last part of which"
+        " may be a glob pattern ('wr-*', 'wr/tg-*'), matching unfinished ones"
     ),
 )
 

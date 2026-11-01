@@ -19,6 +19,7 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.misc_utils import format_yd_name
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -184,7 +185,7 @@ def _submit_json_raw_tasks(
             ),
         )
         print_info(
-            f"Added a total of {num_submitted_tasks} Task(s) to Task Group '{task_group_name}'"
+            f"Added a total of {counted(num_submitted_tasks, 'Task')} to Task Group '{task_group_name}'"
         )
 
 
@@ -223,7 +224,7 @@ def submit_json_task_batch(
 
     def report_success() -> None:
         print_info(
-            f"Added {len(task_batch)} Task(s) to Task Group "
+            f"Added {counted(len(task_batch), 'Task')} to Task Group "
             f"'{task_group_name}' (Batch {batch_number_str} of {num_batches})"
         )
 

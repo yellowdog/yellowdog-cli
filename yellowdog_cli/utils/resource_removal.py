@@ -64,7 +64,7 @@ from yellowdog_cli.utils.load_resources import (
     resource_display_name,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_error, print_info, print_warning
 from yellowdog_cli.utils.property_names import (
     PROP_CREDENTIAL,
     PROP_DESCRIPTION,
@@ -575,7 +575,7 @@ def remove_allowance(ctx: RunContext, resource: dict):
     if not removed_ids:
         record_resource(RN_ALLOWANCE, description, None, "skipped")
         return
-    print_info(f"Removed {len(removed_ids)} Allowance(s)")
+    print_info(f"Removed {counted(len(removed_ids), 'Allowance')}")
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
 from yellowdog_cli.utils.lazy import lazy
 from yellowdog_cli.utils.load_config import load_config_data_client
-from yellowdog_cli.utils.printing import print_dry_run, print_error, print_info
+from yellowdog_cli.utils.printing import counted, print_dry_run, print_error, print_info
 
 CONFIG_DATA_CLIENT: ConfigDataClient = lazy(load_config_data_client)
 
@@ -66,7 +66,7 @@ def main(ctx: DataClientContext):
             failed += 1
 
     if failed:
-        print_error(f"{failed} item(s) failed to delete")
+        print_error(f"{counted(failed, 'item')} failed to delete")
         raise SystemExit(ExitCode.FAILURE)
     print_info("Deletion complete")
 
@@ -126,9 +126,9 @@ def _delete(remote_path: str, recursive: bool, dry_run: bool) -> int:
             ]
         )
         print_info(
-            f"Wildcard '{remote_path}' matches {len(targets):,d} item(s): {names}"
+            f"Wildcard '{remote_path}' matches {counted(len(targets), 'item')}: {names}"
         )
-        question = f"{action} {len(targets)} matched item(s)?"
+        question = f"{action} {counted(len(targets), 'matched item')}?"
     else:
         question = f"{action} '{remote_path}'?"
     if not confirmed(question):

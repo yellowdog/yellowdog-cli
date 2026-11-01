@@ -17,7 +17,7 @@ from yellowdog_cli.utils.check_imports import check_cloudwizard_imports
 from yellowdog_cli.utils.command_registry import cloud_provider_of
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure
-from yellowdog_cli.utils.printing import print_error, print_info
+from yellowdog_cli.utils.printing import counted, print_error, print_info
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 if TYPE_CHECKING:
@@ -106,7 +106,7 @@ def run_operation(
     # Each step carries on past a failure, so a teardown removes what it can;
     # a run that reported one is not a success
     if (errors := errors_reported()) > 0:
-        print_error(f"Cloud Wizard finished with {errors} error(s)")
+        print_error(f"Cloud Wizard finished with {counted(errors, 'error')}")
         sys.exit(ExitCode.FAILURE)
 
 

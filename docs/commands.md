@@ -18,6 +18,8 @@
       * [yd taskgroup compare](#yd-taskgroup-compare)
    * [yd task](#yd-task)
       * [yd task abort](#yd-task-abort)
+      * [yd task cancel](#yd-task-cancel)
+         * [Details](#details)
    * [yd workerpool](#yd-workerpool)
       * [yd workerpool provision](#yd-workerpool-provision)
       * [yd workerpool resize](#yd-workerpool-resize)
@@ -82,7 +84,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 12:01:50 GMT 2026 -->
+<!-- Added by: pwt, at: Sat Oct 31 09:22:24 GMT 2026 -->
 
 <!--te-->
 
@@ -113,7 +115,7 @@ For example, `yd workrequirement submit wr.json` submits a Work Requirement, and
 
 The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requirement, Worker Pool and Compute Requirement nouns, are [`yd list`](#yd-list), [`yd show`](#yd-show), [`yd follow`](#yd-follow) and [`yd wait`](#yd-wait) restricted to the noun's objects: `yd workrequirement list` is `yd list work-requirements`, and `yd workrequirement show` takes Work Requirement IDs.
 
-Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished: a Work Requirement's or Compute Requirement's name can be reused once it has finished, so a live one is found if there is one, else the newest. Every name is looked up before anything else is done; a name that finds nothing is reported and exits 6, and a name two live objects share is ambiguous, reported and exits 1, its ID being needed instead. [Naming What a Command Acts On](#naming-what-a-command-acts-on) gives the rules the action commands share.
+Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished: a Work Requirement's or Compute Requirement's name can be reused once it has finished, so a live one is found if there is one, else the newest. Every name is looked up before anything else is done; a name that finds nothing is reported and exits 6, and a name two live objects share is ambiguous, reported and exits 1, its ID being needed instead. A name pattern stands for every object whose name it matches: `yd wr show 'nightly-20261030*'`, `yd wp wait 'render-*'`, `yd tg show 'my-wr/render-*'` (see the Glob patterns table below). [Naming What a Command Acts On](#naming-what-a-command-acts-on) gives the rules the action commands share.
 
 `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
@@ -211,7 +213,7 @@ The commands that act on Work Requirements, Task Groups, Tasks, Worker Pools and
 - **A YellowDog ID** (YDID) names its object in whatever namespace it is in.
 - **A name** is looked up in the configured namespace (or `--namespace`), unless it is given with its own: `namespace/name`. A Task Group is named `wr/tg`, or `namespace/wr/tg`, and a Task `wr/tg/task`.
 - **A reused name.** A Work Requirement's or Compute Requirement's name can be used again once the first has finished, so a name is matched to the object of that name in the state the action applies to: the `HELD` Work Requirement for `start`, the `RUNNING` one for `hold`, an unfinished one for `cancel`. If two objects of the name are in that state, the name is ambiguous, reported, and exits 1; give the ID instead. The `show`, `follow`, `wait` and `compare` verbs take the live object of the name if there is one, else the newest.
-- **A glob pattern** (`*`, `?` or `[...]`) is matched against the names in the namespace, by the CLI, and selects every object it matches that is in the state the action applies to; a name without a wildcard matches exactly, so `'proj-*'` rather than `proj-`. The matches are confirmed as a selection by namespace and tag is, and `--interactive` offers them to choose from. `yd list <type> --name '<pattern>'` shows what a pattern matches before acting on it.
+- **A glob pattern** (`*`, `?` or `[...]`, quoted so that the shell leaves it alone) is matched against the names in the namespace, by the CLI, and selects every object it matches that is in the state the action applies to; a name without a wildcard matches exactly, so `'proj-*'` rather than `proj-`. Patterns given alone are a selection, confirmed as one by namespace and tag is, and `--interactive` offers their matches to choose from; given with names or IDs, each pattern stands for the objects it matches, resolved, confirmed and acted on with the rest, and one matching nothing says so. `yd list <type> --name '<pattern>'` shows what a pattern matches before acting on it.
 - **No targets** at all, on the commands that allow it, selects by the namespace and tag: Work Requirements and Compute Requirements carrying the tag, and Worker Pools whose names include it.
 - **The order.** Targets are resolved in the order given, each once (an object named twice, by name and by ID, is acted on once), and confirmed together, `--yes` skipping the confirmation. Each command then acts on them in the order its section gives (`yd workrequirement cancel` the Work Requirements before the Tasks, the Compute Requirement verbs the Compute Requirements before the Instances).
 - **What cannot be acted on** is reported and the rest go ahead: a target that does not exist is a failure (exit 6 if every failure is one), one in a state the action does not apply to is skipped with a warning. A failure every later request would repeat (the credentials refused, the Platform unreachable) stops the command, the targets not yet attempted being reported as skipped, and it exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
@@ -220,15 +222,21 @@ How each command takes its targets:
 
 | Command | No targets | Glob patterns |
 |:---|:---|:---|
-| `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, not mixed with names or IDs |
-| `yd workrequirement priority`, `yd taskgroup priority` | refused | no |
-| `yd task abort` | the namespace and tag | no |
-| `yd workerpool shutdown` | the namespace and tag | yes, not mixed with names or IDs |
+| `yd workrequirement cancel`, `start`, `hold`, `finish` | the namespace and tag | yes, mixed with names and IDs as wished |
+| `yd workrequirement priority`, `yd taskgroup priority` | refused | yes, mixed with names and IDs as wished |
+| `yd task abort` | the namespace and tag | yes, mixed with names and IDs as wished |
+| `yd task cancel` | refused | yes, in a Task's last part (`wr/tg/frame-*`), mixed with names and IDs as wished |
+| `yd workerpool shutdown` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd workerpool token` | refused | yes, mixed with names and IDs as wished |
 | `yd workerpool resize`, `yd computerequirement resize` | refused (one target) | no |
-| `yd computerequirement stop`, `start`, `reprovision`, `terminate`, `autoshutdown` | the namespace and tag | yes, not mixed with names or IDs |
+| `yd computerequirement stop`, `start`, `reprovision`, `terminate`, `autoshutdown` | the namespace and tag | yes, mixed with names and IDs as wished |
 | `yd instance` verbs, `yd node` verbs | refused: Instances (`cr_id.instance_id`) or Node IDs only | no |
-| `yd allowance boost` | refused: Allowance IDs only | no |
+| `yd allowance boost` | refused | yes, matching descriptions, mixed with IDs as wished |
+| `show` verbs (Work Requirement, Task Group, Task, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching objects in any state; `--json` prints an array for a pattern however many it matched |
+| `follow` and `wait` verbs (Work Requirement, Worker Pool, Compute Requirement) | refused | yes, mixed with names and IDs as wished, matching unfinished objects alone |
+| `compare` verbs | refused | no |
+
+The `show`, `follow` and `wait` verbs change nothing, so a pattern's matches are used without being confirmed. A Task Group's or Task's pattern is in its last part alone (`my-wr/render-*`, `my-wr/render/frame-0?`), its Work Requirement and Task Group named exactly. A pattern matching nothing exits 6, as a name finding nothing does, and one matching more than 50 objects is warned of. For `follow` and `wait`, a pattern whose matches have all finished says so and stands for none, there being nothing left to follow or wait for: given alone, the command exits 0 at once (`wait --json` printing `[]`).
 
 ## yd workrequirement
 
@@ -303,7 +311,7 @@ The `yd workrequirement cancel` command cancels any active Work Requirements, in
 yd workrequirement cancel [options] [<work-requirement-name-or-ID> ...]
 ```
 
-The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/`-t`) are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments.
+The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/`-t`) are used to identify which Work Requirements to cancel. Alternatively, specific Work Requirement names or YDIDs (or individual Task YDIDs) can be supplied as positional arguments; [`yd task cancel`](#yd-task-cancel) cancels Tasks by name too.
 
 Names, IDs and glob patterns are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a reused name meaning the Work Requirement of that name that can still be cancelled.
 
@@ -351,7 +359,7 @@ yd workrequirement start [options] [<work-requirement-name-or-ID> ...]
 
 It can optionally be supplied with a list of the names and/or YDIDs of the specific Work Requirements to start, otherwise the `namespace` and `tag` are used to generate a list of candidate requirements.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, in the `HELD` state: a reused name means the `HELD` Work Requirement of that name, and a glob pattern selects every `HELD` Work Requirement it matches.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, in the `HELD` state: a reused name means the `HELD` Work Requirement of that name, and a glob pattern selects every `HELD` Work Requirement it matches.
 
 Explicit names and IDs are handled in the order given, and are confirmed together. One that is not `HELD` is skipped with a warning naming its state. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -394,6 +402,7 @@ The new priority, any finite number (negative ones included), comes first, follo
 
 - a Work Requirement name, `<namespace>/<wr-name>` or YDID
 - a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`
+- a name pattern, a wildcard in its last part (`'nightly-*'`, `'my-wr/render-*'`), standing for every unfinished Work Requirement or Task Group it matches
 
 Targets are handled in the order given, each once, and confirmed together, the confirmation showing each one's current and new priority. A target that does not exist, or whose name is ambiguous, is reported as failed; one in a Work Requirement that has finished (`COMPLETED`, `CANCELLED` or `FAILED`), or already at the priority, is skipped with a warning. The Platform takes a Work Requirement whole, so the targets in one Work Requirement are changed together, in one update to a copy fetched just before it is sent: a change made to the Work Requirement since the targets were found is kept. An authentication or connection failure stops the command, with that failure's [exit code](json-output.md), and the targets not yet attempted are reported as skipped.
 
@@ -405,6 +414,7 @@ Key options:
 yd workrequirement priority 10 my-analysis-run
 yd workrequirement priority 5 my-analysis-run/render my-analysis-run/encode
 yd workrequirement priority -1 ydid:workreq:000000:...
+yd workrequirement priority 20 'nightly-20261030*'
 ```
 
 ### yd workrequirement compare
@@ -505,6 +515,7 @@ Tasks.
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`abort`](#yd-task-abort) | Abort running Tasks | `yd-abort` |
+| [`cancel`](#yd-task-cancel) | Cancel Tasks | `yd-cancel` |
 | `list` | `yd list tasks` |  |
 | `show` | `yd show`, for Task IDs, or names as `wr/tg/task` |  |
 
@@ -525,10 +536,11 @@ The namespace and tag (configured, or given with `--namespace`/`-n` and `--tag`/
 - a Task YDID, to abort that Task, whatever its state
 - a Work Requirement name, `<namespace>/<wr-name>` or YDID, to abort all running Tasks within it (a YDID is found in whatever namespace it belongs to)
 - a Task Group YDID, `<wr-name>/<tg-name>` or `<namespace>/<wr-name>/<tg-name>`, to abort running Tasks in a specific Task Group
+- a name pattern, a wildcard in its last part (`'nightly-*'`, `'my-wr/render-*'`), standing for every unfinished Work Requirement or Task Group it matches
 
 A running Task is one that is `DOWNLOADING`, `EXECUTING` or `UPLOADING`; a Task that has yet to start, or has finished, is left alone.
 
-`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`. A Work Requirement name is looked up as for `yd workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
+`<a>/<b>` is read as a Task Group `<b>` in Work Requirement `<a>` if there is one, and otherwise as Work Requirement `<b>` in namespace `<a>`; a pattern `<a>/<b*>` likewise matches the Task Groups of Work Requirement `<a>` if any match, and otherwise the Work Requirements in namespace `<a>`. A pattern matching nothing says so and is no failure, as a namespace and tag selecting nothing is; one with a wildcard before its last part is reported as failed. A Work Requirement name is looked up as for `yd workrequirement cancel`: since a name can be reused, an unfinished Work Requirement of that name is chosen, and if there are two or more, the name is ambiguous and its YDID must be given instead (for `<a>/<b>`, the namespace reading is still tried).
 
 Targets are handled in the order given, except that the Task YDIDs are confirmed together, where the first of them appears. A repeated target is ignored, and a Task included by more than one target is aborted once. If an attempt fails because the credentials are rejected or the platform cannot be reached, nothing further is attempted, the remaining Tasks and targets are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -540,6 +552,30 @@ Key options:
 ```shell
 yd task abort my-analysis-run/task-group-1
 ```
+
+### yd task cancel
+
+The `yd task cancel` command cancels individual Tasks, leaving the rest of their Work Requirement to run.
+
+```shell
+yd task cancel [options] <wr/tg/task-name-or-ID> [<wr/tg/task-name-or-ID> ...]
+```
+
+Each target is a Task YDID, a Task's name as `<wr-name>/<tg-name>/<task-name>` (or `<namespace>/<wr-name>/<tg-name>/<task-name>`), or a name pattern with a wildcard in its last part (`'nightly-run/render/frame-0*'`), standing for every unfinished Task in that Task Group it matches. Names, IDs and patterns can be mixed, and at least one target is required: unlike `yd workrequirement cancel`, the command never selects by namespace and tag.
+
+```shell
+yd task cancel nightly-run/render/frame-0042
+yd task cancel 'nightly-run/render/frame-01*' --abort
+```
+
+Key options:
+- `--abort`/`-a` — abort the Tasks that are executing, rather than letting them finish
+- `--dry-run`/`-D` — report what would be cancelled, without cancelling anything
+- `--json` — emit the actions taken as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+
+#### Details
+
+The Tasks are confirmed together before any is cancelled, unless `--yes`/`-y` is given; a Task named twice, by name and ID or by a pattern, is cancelled once. A Task that has finished is skipped, and a name that finds no Task fails (exit 6 if every failure is one); a pattern matching no unfinished Task says so and is no failure, and one with a wildcard before its last part is reported as failed. A Work Requirement name is looked up as for `yd workrequirement cancel`, an unfinished Work Requirement of that name being chosen. Cancelling a Task does not cancel its Work Requirement, and the Task is not followed.
 
 ## yd workerpool
 
@@ -623,7 +659,7 @@ Specific Worker Pool names or YDIDs can optionally be supplied as positional arg
 
 They are handled in the order given and confirmed together; one that does not exist is reported as failed, and a Worker Pool that has already finished is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `yd list worker-pools --name 'wp-*'` to preview what a pattern matches first.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `yd list worker-pools --name 'wp-*'` to preview what a pattern matches first.
 
 Key options:
 - `--terminate`/`-T` — immediately terminate each Provisioned Worker Pool's Compute Requirement, straight after the pool is shut down, rather than waiting for executing Tasks to complete; a Configured Worker Pool has no Compute Requirement
@@ -794,7 +830,7 @@ yd computerequirement stop [options] [<compute-requirement-name-or-ID> ...]
 
 If no arguments are supplied, Compute Requirements that match the `namespace` and `tag` found in the configuration file are candidates for stopping. Alternatively, the command accepts a list of Compute Requirement names or YDIDs.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a glob pattern selecting every `RUNNING` Compute Requirement it matches.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes, a glob pattern selecting every `RUNNING` Compute Requirement it matches.
 
 Explicit names and IDs are resolved in the order given, and are confirmed together; the Compute Requirements are then acted on before the Instances. A Compute Requirement that is not `RUNNING` is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
@@ -877,7 +913,7 @@ yd computerequirement terminate [options] [<compute-requirement-name-or-ID> ...]
 
 Specific Compute Requirement names or YDIDs can optionally be supplied as positional arguments instead of using the `namespace`/`tag` selection.
 
-Names, IDs and glob patterns (not mixed with names or IDs) are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview what a pattern matches first.
+Names, IDs and glob patterns, mixed as wished, are taken as [Naming What a Command Acts On](#naming-what-a-command-acts-on) describes. Use `--dry-run`, or `yd list compute-requirements --name 'ci-*'`, to preview what a pattern matches first.
 
 Explicit names and IDs are handled as [`yd computerequirement stop`](#yd-computerequirement-stop) handles them: in the order given, and confirmed together. A Compute Requirement that is already terminating or terminated is skipped with a warning, and a failure of the Application's credentials or of the connection stops the command, the remaining items being reported as skipped.
 
@@ -1237,10 +1273,10 @@ Allowances.
 The `yd allowance boost` command adds hours to a YellowDog Allowance. Allowances are time-based compute budgets that limit how many CPU- or GPU-hours can be consumed by a namespace or application. Boosting is useful when a running job is approaching its limit and needs additional headroom.
 
 ```shell
-yd allowance boost [options] <boost-hours> <allowance-ID> [<allowance-ID> ...]
+yd allowance boost [options] <boost-hours> <allowance-ID-or-pattern> [<allowance-ID-or-pattern> ...]
 ```
 
-The number of hours to add is supplied first, and must be at least 1, followed by the YDID(s) of one or more Allowances to boost. Allowance names are not accepted, and anything that is not an Allowance YDID is a usage error, before anything is boosted; an Allowance ID given more than once is boosted once.
+The number of hours to add is supplied first, and must be at least 1, followed by one or more Allowances to boost, each its YDID or a pattern matched against Allowances' descriptions (`'*gpu*'`), since an Allowance has no name. A pattern holds a wildcard (`*`, `?` or `[...]`), is matched case-sensitively against the whole description, as `yd allowance list --description` matches it, and never matches an Allowance without a description; one matching nothing says so and is not a failure. Anything that is neither an Allowance YDID nor a pattern is a usage error, before anything is boosted; an Allowance named more than once, by ID or by pattern, is boosted once.
 
 Each Allowance is looked up first, so one that does not exist is reported as failed before any is boosted, and the rest are confirmed together, each shown with its description (an Allowance has no name); each one's remaining hours are reported once it has been boosted. An authentication or connection failure stops the command, with that failure's [exit code](json-output.md): the Allowances not yet attempted are reported as skipped rather than each failing in the same way.
 
@@ -1250,6 +1286,7 @@ Key options:
 ```shell
 yd allowance boost 10 ydid:allow:D9C548:...
 yd allowance boost 10 ydid:allow:D9C548:... ydid:allow:D9C548:...
+yd allowance boost 10 '*gpu*'
 ```
 
 See [Allowances](resources.md#allowances) for how Allowances are defined.
@@ -1559,7 +1596,7 @@ Valid entity types are:
 
 A Task Group's status in the listing is followed by `/STARVED` when it can't claim any Workers, and `/WAITING` when it is waiting for a dependency, as in `PENDING/STARVED`. These show the Task Group's `starved` and `waitingOnDependency` flags: `--status` matches the status alone, and `--json` gives the two flags as fields (see [Task Group Statuses](work-requirements.md#task-group-statuses)).
 
-The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the items of one parent directly — the Task Groups or Tasks of a Work Requirement, the Instances of a Compute Requirement, the Nodes or Workers of a Worker Pool — name it with `--within` (below).
+The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the items of a parent directly — the Task Groups or Tasks of a Work Requirement, the Instances of a Compute Requirement, the Nodes or Workers of a Worker Pool — name it with `--within` (below), repeated for several.
 
 Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
 
@@ -1578,10 +1615,12 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 | `--reverse` | List items in reverse (descending) order: the whole order `--sort` gives, every key's included |
 | `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
 | `--unhealthy` | List only the Work Requirements, Worker Pools or Compute Requirements the Platform marks unhealthy |
+| `--provisioned` | List only Provisioned Worker Pools |
+| `--configured` | List only Configured (on-premise) Worker Pools; not with `--provisioned` |
 | `--provider <aws\|azure\|google\|oci\|on-premise>` | List only the Instances, Nodes or Compute Source Templates of that cloud provider, e.g. `yd list instances --provider google` |
 | `--description <glob>` | List only the Allowances whose description matches the glob (they have no name), e.g. `yd list allowances --description 'gpu-*'`; a value without wildcards matches the description exactly |
 | `--with-errors` | List only the Tasks that recorded an error, whatever their status: not the same as `--status FAILED`, since a Task can complete after an error (on a retry), e.g. `yd list tasks --with-errors --status COMPLETED` |
-| `--within <target>` | List the items of one parent, without asking which. For Task Groups and Tasks, a Work Requirement or Task Group: its YellowDog ID, or its name as `wr`, `wr/tg`, `namespace/wr` or `namespace/wr/tg` (as `yd workrequirement abort` takes it), e.g. `yd list tasks --within my-wr/tg-1 --status failed`; Tasks are listed Task Group by Task Group. For Instances, a Compute Requirement; for Nodes, a Worker Pool; for Workers, a Worker Pool or a Node: its YellowDog ID, or (a Node excepted) its name or `namespace/name`, e.g. `yd list instances --within my-cr --public-ips-only`. A name without a namespace is looked for in the configured one. It combines with the other filters and with `--json`, `--count` and `--ids-only`; a target that does not exist exits 6, and the ID of anything else is refused (exit 2) |
+| `--within <target>` | List the items of a parent, without asking which; repeat it to list several parents' items in one table, in the order given (`yd task list --within render --within encode`), an item two of them share listed once. For Task Groups and Tasks, a Work Requirement or Task Group: its YellowDog ID, or its name as `wr`, `wr/tg`, `namespace/wr` or `namespace/wr/tg` (as `yd workrequirement abort` takes it), e.g. `yd list tasks --within my-wr/tg-1 --status failed`; Tasks are listed Task Group by Task Group. For Instances, a Compute Requirement; for Nodes, a Worker Pool; for Workers, a Worker Pool or a Node: its YellowDog ID, or (a Node excepted) its name or `namespace/name`, e.g. `yd list instances --within my-cr --public-ips-only`. A name without a namespace is looked for in the configured one. It combines with the other filters and with `--json`, `--count` and `--ids-only`; every target that does not exist is reported, and the command exits 6 having listed nothing, and the ID of anything else is refused (exit 2) |
 | `--limit <n>` | With `tasks`, `instances`, `nodes` or `workers`, which can number in the millions or the tens of thousands, list at most this many (default 1000; `0` lists them all), across every Work Requirement, Task Group, Compute Requirement, Worker Pool or Node listed. The search stops one item past the limit, and when more match a warning on stderr says so, `--quiet` or not, the output (`--json` included) holding the first N. The first N are as the Platform returns them, parent by parent, and `--sort` orders those; the limit counts only the items the filters keep, and Workers' Nodes are read only as far as the Workers listed need. It cannot be combined with `--count`, which is never limited |
 | `--deletable` | With `namespaces`, list only the namespaces the Platform can delete: those never populated, e.g. `yd list namespaces --name 'yd-*' --deletable` |
 | `--hide-user-data` | With `--details` or `--json`, show each `userData` value (in Compute Source Templates, Compute Requirement Templates and Compute Requirements) as a summary of its size, e.g. `<user data: 4,812 characters, 131 lines>`, rather than the script in full. It applies to `--output-file` too, whose JSON can then no longer be used with `yd resource create` as it is |
@@ -1594,7 +1633,7 @@ For Instances and Nodes, `--status`, `--provider` and `--active-only` are passed
 
 `--count` fetches no Tasks at all where it can: each Task Group's own summary gives its count, or with `--status` the count of each status, so only `--name` and `--with-errors` need the Tasks themselves. A Task Group's counts are the Platform's, which catch up a few seconds after Tasks are added, so `--count` taken straight after submitting a Work Requirement can be short of the Tasks it holds; a listing of the Tasks themselves is always current.
 
-An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
+An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provisioned`, `--configured`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
 Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` asks before replacing an existing file, which `--yes`/`-y` skips. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 
@@ -1995,7 +2034,7 @@ The `yd completion` command prints a shell completion script for `yd`, for bash,
 - The keys `--sort` takes, each after a comma too.
 - The entity types `yd list` takes.
 - Local files and directories, for the options and arguments that name one, such as a specification file or `--config`.
-- With `--names`, Work Requirements, Worker Pools and Compute Requirements from the YellowDog Platform, as [described below](#names-and-ids-from-the-platform).
+- With `--names`, Work Requirements, Task Groups, Tasks, Worker Pools, Compute Requirements, Instances, Nodes and Allowances from the YellowDog Platform, as [described below](#names-and-ids-from-the-platform).
 
 Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help.
 
@@ -2035,7 +2074,7 @@ yd completion powershell --names | Out-String | Invoke-Expression    # in $PROFI
 
 [`yd doctor`](#yd-doctor) says whether the start-up file's line has `--names`.
 
-Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show`, `compare` and `priority` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`, and `yd taskgroup compare` offers Worker Pools too. An ID is still taken wherever a name is.
+Where a verb takes Work Requirements, Worker Pools or Compute Requirements, Tab then offers them from the Platform. Every such verb offers their names: `yd workrequirement cancel`, `hold`, `start`, `finish` and `priority`, `yd workerpool resize`, `shutdown` and `token`, `yd computerequirement resize`, `stop`, `start`, `reprovision`, `autoshutdown` and `terminate`, and `show`, `follow` and `wait` on each of the three, with `yd workrequirement compare` (its Worker Pools too). `yd taskgroup show`, `compare` and `priority` and `yd task abort` offer Work Requirement names, then after `wr/` that Work Requirement's Task Groups, as `wr/tg`, and `yd taskgroup compare` offers Worker Pools too. `yd task cancel` and `show` go one step further: after `wr/tg/`, the Task Group's Tasks, as `wr/tg/task`, those whose names contain what is typed of the Task's being searched for. An ID is still taken wherever a name is. `yd allowance boost` and `yd allowance show` offer Allowance IDs, each shown with its description where the shell shows descriptions, an Allowance having no name. The `yd instance` verbs offer Instances as `cr_id.instance_id`, and the `yd node` verbs Node IDs, each shown with its Compute Requirement's or Worker Pool's name and its own status; they are those of the newest 10 Compute Requirements or Worker Pools, or, once a Compute Requirement's ID and `.` are typed, that Compute Requirement's alone. `yd node action` offers Worker Pool names after `--worker-pool`, and running Nodes after `--node`: those of the `--worker-pool` typed earlier on the line, if one is.
 
 What is offered is what the command would act on. The namespace and tag are the command's own, from the configuration file, the environment and any `--config`, `--namespace` or `--tag` (and the other configuration options) typed earlier on the same line; Work Requirements and Compute Requirements are selected by tag, and Worker Pools by the tag in their name, as [`yd list`](#yd-list) lists them; type `--tag ''` (or `-n` and `--tag` with other values) before the Tab to widen or move what is offered, for example to reach a Configured (on-premise) Worker Pool, whose name was given by hand. A verb that takes no `--tag`, such as `show`, uses the configuration's tag.
 
@@ -2051,7 +2090,7 @@ export YD_COMPLETION_LOOKUPS=off
 
 Proxy auto-configuration (`--pac`, `usePAC`) is not used for a Tab, since fetching the proxy configuration on every Tab would be too slow; a proxy set in `HTTPS_PROXY` is used. Tasks, Instances, Nodes and Workers are not completed from the Platform, nor are option values naming an entity other than `--within`'s, nor the IDs given to the generic `yd show`, `yd follow` and `yd wait`.
 
-The value of [`yd list`](#yd-list)'s `--within` is completed too, with the names of what it lists within: Work Requirements for `yd task list` and `yd taskgroup list` (or `yd list tasks` and `yd list task-groups`), then, once `wr/` is typed, that Work Requirement's Task Groups as `wr/tg`; Compute Requirements for `yd instance list`; and Worker Pools for `yd node list` and `yd worker list`. Since `--within` finds a name in the namespace whatever its tag, these are offered in any status and whatever the tag, at most the 200 newest.
+The value of [`yd list`](#yd-list)'s `--within` is completed too, with the names of what it lists within: Work Requirements for `yd task list` and `yd taskgroup list` (or `yd list tasks` and `yd list task-groups`), then, once `wr/` is typed, that Work Requirement's Task Groups as `wr/tg`; Compute Requirements for `yd instance list`; and Worker Pools for `yd node list` and `yd worker list`. Since `--within` finds a name in the namespace whatever its tag, these are offered in any status and whatever the tag, at most the 200 newest, less any already given to an earlier `--within`.
 
 After `--type`, the names or IDs [`yd resource remove`](#yd-resource-remove), `yd resource show` and `yd show` take are completed too, for that resource type:
 
@@ -2073,7 +2112,7 @@ Where a command acts on more than one kind of object, each kind has a verb of it
 | `yd-abort` | `yd task abort` |
 | `yd-application` | `yd application` |
 | `yd-boost` | `yd allowance boost` |
-| `yd-cancel` | `yd workrequirement cancel` |
+| `yd-cancel` | `yd workrequirement cancel`, `yd task cancel` |
 | `yd-cloud-info` | `yd cloudinfo regions`, `yd cloudinfo sub-regions`, `yd cloudinfo instance-types`, `yd cloudinfo prices` |
 | `yd-cloudwizard` | `yd cloudwizard` |
 | `yd-commander` | `yd commander` |

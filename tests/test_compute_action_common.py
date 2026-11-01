@@ -347,6 +347,38 @@ class TestListing:
         cac_module.follow_ids.assert_called_once_with(ANY, [CR_ID], settled=ANY)
 
 
+class TestMixed:
+    """
+    Glob patterns mixed with names or IDs: each replaced by the IDs of the
+    Compute Requirements it matches in the action's states.
+    """
+
+    def test_a_pattern_and_an_id_are_acted_on_together(self, platform, monkeypatch):
+        prompts = []
+        monkeypatch.setattr(
+            action_runner, "confirmed", lambda message: prompts.append(message) or True
+        )
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "other")
+        platform.crs[CR_ID_OLD] = _cr(CR_ID_OLD, "cr-old", STOPPED)
+        _run(platform, COMPUTE_STOP, ["cr-*", CR_ID_2, CR_ID])
+        assert sorted(platform.calls) == sorted(
+            [
+                ("stop_compute_requirement_by_id", CR_ID),
+                ("stop_compute_requirement_by_id", CR_ID_2),
+            ]
+        )
+        # One confirmation for them all
+        assert len(prompts) == 1
+
+    def test_a_pattern_matching_nothing_says_so(self, platform, monkeypatch):
+        said = []
+        monkeypatch.setattr(action_runner, "print_info", said.append)
+        platform.crs[CR_ID_2] = _cr(CR_ID_2, "other", STOPPED)
+        _run(platform, COMPUTE_START, ["cr-*", CR_ID_2])
+        assert said == ["No Compute Requirements to start match 'cr-*'"]
+        assert platform.calls == [("start_compute_requirement_by_id", CR_ID_2)]
+
+
 # ---------------------------------------------------------------------------
 # Explicit Compute Requirements
 # ---------------------------------------------------------------------------
@@ -461,7 +493,7 @@ class TestInstances:
             ("stop_instances", CR_ID, [INSTANCE_ID, INSTANCE_ID_2])
         ]
         assert len(prompts) == 1
-        assert "2 Instance(s)" in prompts[0]
+        assert "2 Instances" in prompts[0]
 
     def test_instances_in_one_cr_fetch_it_once(self, platform, monkeypatch):
         platform.instances[(CR_ID, INSTANCE_ID_2)] = _instance(INSTANCE_ID_2)
@@ -481,8 +513,8 @@ class TestInstances:
         platform.crs[CR_ID_2] = _cr(CR_ID_2, "cr-b")
         _run(platform, COMPUTE_STOP, [f"{CR_ID}.{INSTANCE_ID}", CR_ID_2])
         assert prompts == [
-            "Stop 1 Compute Requirement(s) ('cr-b') and"
-            f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
+            "Stop 1 Compute Requirement ('cr-b') and"
+            f" 1 Instance ({CR_ID}.{INSTANCE_ID})?"
         ]
 
     def test_targets_are_handled_in_the_order_given_without_duplicates(
@@ -523,7 +555,7 @@ class TestInstances:
         _run(platform, COMPUTE_DEPROVISION, [f"{CR_ID}.{INSTANCE_ID}"])
         assert prompts == [
             "Deprovision (terminate, reducing the target count of)"
-            f" 1 Instance(s) ({CR_ID}.{INSTANCE_ID})?"
+            f" 1 Instance ({CR_ID}.{INSTANCE_ID})?"
         ]
 
     def test_an_unknown_instance_fails(self, platform, monkeypatch):
@@ -806,7 +838,7 @@ class TestReprovision:
         _run(platform, COMPUTE_REPROVISION, [CR_ID])
         assert prompts == [
             "Reprovision (restore to their target instance counts)"
-            " 1 Compute Requirement(s) ('cr-a')?"
+            " 1 Compute Requirement ('cr-a')?"
         ]
 
     @pytest.mark.parametrize("targets", [[CR_ID], []])
@@ -872,12 +904,12 @@ class TestAutoShutdown:
     @pytest.mark.parametrize(
         "shutdown, prompt",
         [
-            (TWO_HOURS, "Terminate, 120 minute(s) from now, 1 Compute Requirement(s)"),
+            (TWO_HOURS, "Terminate, 120 minutes from now, 1 Compute Requirement"),
             (
                 AutoShutdown(enabled=True, timeout=timedelta(seconds=90)),
-                "Terminate, 1.5 minute(s) from now, 1 Compute Requirement(s)",
+                "Terminate, 1.5 minutes from now, 1 Compute Requirement",
             ),
-            (NEVER, "Disable the auto shutdown of 1 Compute Requirement(s)"),
+            (NEVER, "Disable the auto shutdown of 1 Compute Requirement"),
         ],
     )
     def test_the_confirmation_says_what_it_does(
@@ -951,7 +983,7 @@ class TestAutoShutdown:
         platform.client.compute_client.update_compute_requirement_auto_shutdown.side_effect = without_time
         _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
         assert platform.records[0]["autoShutdownTime"] is None
-        assert "Updated [cr-a]: it will be terminated in 120 minute(s)" in printed
+        assert "Updated [cr-a]: it will be terminated in 120 minutes" in printed
 
     def test_the_command_is_the_action_built_from_minutes(self, monkeypatch):
         import yellowdog_cli.auto_shutdown as yd_auto_shutdown
@@ -1009,10 +1041,12 @@ class TestCommandLine:
             "yd-auto-shutdown",
         ],
     )
-    def test_globs_and_explicit_names_do_not_mix(self, command):
-        from yellowdog_cli.utils.command_registry import check_glob_and_literal_names
-
-        assert check_glob_and_literal_names in COMMANDS[command].validators
+    def test_globs_and_explicit_names_mix(self, command):
+        CLIParser(
+            command,
+            ["cr-*", "some-cr"]
+            + (["--minutes", "10"] if command == "yd-auto-shutdown" else []),
+        )
 
     def test_auto_shutdown_requires_minutes(self, capsys):
         with pytest.raises(SystemExit) as raised:

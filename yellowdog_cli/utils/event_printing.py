@@ -16,7 +16,7 @@ from typing import Any
 
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import task_group_status_text
-from yellowdog_cli.utils.printing import prefix_width, print_info, print_json
+from yellowdog_cli.utils.printing import counted, prefix_width, print_info, print_json
 from yellowdog_cli.utils.ydid_utils import YDIDType
 
 
@@ -213,8 +213,12 @@ def print_event(event: str, id_type: YDIDType):
             )
             msg += (
                 f"{event_indent}[{status}] Task Group '{task_group.get('name')}':"
-                f" {event_count(event_field(task_group, 'taskSummary', 'taskCount')):,d}"
-                f" Task(s){event_indent_2}"
+                " "
+                + counted(
+                    event_count(event_field(task_group, "taskSummary", "taskCount")),
+                    "Task",
+                )
+                + event_indent_2
             )
             msg += status_counts_msg(
                 status_counts_tasks(),

@@ -558,10 +558,10 @@ class WindowDialogs(CommandRunning):
         and run over the whole scope.
 
         The Name pattern narrows the *enumeration* only. It must not reach a run
-        that passes YDIDs, because the CLI rejects mixing glob patterns with
-        literal names/IDs ('cannot mix name glob patterns with explicit
-        names/IDs'); by then the pattern's job is done, the selection having
-        been resolved from the entities it enumerated.
+        that passes YDIDs, because the CLI would act on every entity the
+        pattern matches as well as the IDs, undoing the selection; by then the
+        pattern's job is done, the selection having been resolved from the
+        entities it enumerated.
 
         The '-y' / per-action-skip bypasses run the command over the whole scope
         without enumerating, logging that they have done so. 'gerund'/'plural'

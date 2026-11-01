@@ -6,7 +6,7 @@ Command to list YellowDog entities.
 
 import fnmatch
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from itertools import chain, islice
 from os.path import exists
 from typing import Any, TypeVar, cast
@@ -76,11 +76,13 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORKERS,
     RN_ALLOWANCE,
     RN_APPLICATION,
+    RN_CONFIGURED_POOL,
     RN_GROUP,
     RN_IMAGE_FAMILY,
     RN_KEYRING,
     RN_NAMESPACE,
     RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    RN_PROVISIONED_POOL,
     RN_REQUIREMENT_TEMPLATE,
     RN_ROLE,
     RN_SOURCE_TEMPLATE,
@@ -117,8 +119,10 @@ from yellowdog_cli.utils.exit_codes import NotFoundError
 from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.named_targets import resolved_each
 from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
+    counted,
     print_info,
     print_json,
     print_objects_as_json,
@@ -151,7 +155,8 @@ def _filter_by_name_glob_with_warning(
     unnamed = sum(1 for obj in objects if getattr(obj, "name", None) is None)
     if unnamed:
         print_warning(
-            f"{unnamed} {entity_label}(s) have no name and are excluded from "
+            f"{counted(unnamed, entity_label)} {'has' if unnamed == 1 else 'have'}"
+            " no name and are excluded from "
             "'--name' pattern matching"
         )
     return filter_summaries_by_name_glob(objects, pattern)
@@ -318,6 +323,49 @@ def _apply_health_filter(ctx: RunContext, objects: list) -> list:
     if not ctx.args.unhealthy:
         return objects
     return [obj for obj in objects if getattr(obj, "healthy", None) is False]
+
+
+def _pool_kind(ctx: RunContext) -> str | None:
+    """
+    The type of Worker Pool '--provisioned' or '--configured' asks for, if
+    either: the search's, which the Platform filters by.
+    """
+    if ctx.args.configured:
+        return RN_CONFIGURED_POOL
+    if ctx.args.provisioned:
+        return RN_PROVISIONED_POOL
+    return None
+
+
+def _active_phrase(ctx: RunContext) -> str:
+    """
+    'active ' for the listing's message under '--active-only'.
+    """
+    return "active " if ctx.args.active_only else ""
+
+
+def _pool_kind_phrase(ctx: RunContext) -> str:
+    """
+    'Configured ' or 'Provisioned ' for the listing's message, when one kind
+    is asked for.
+    """
+    if ctx.args.configured:
+        return "Configured "
+    if ctx.args.provisioned:
+        return "Provisioned "
+    return ""
+
+
+def _apply_pool_kind_filter(ctx: RunContext, worker_pools: list) -> list:
+    """
+    '--provisioned' or '--configured': only the Worker Pools of that kind,
+    as the summary's type names it. The search has asked for that kind
+    alone; what it returns is held to it all the same.
+    """
+    kind = _pool_kind(ctx)
+    if kind is None:
+        return worker_pools
+    return [pool for pool in worker_pools if (pool.type or "").split(".")[-1] == kind]
 
 
 def _apply_provider_filter(
@@ -488,12 +536,10 @@ def list_work_requirements(ctx: RunContext):
     This function falls through from WRs to TGs to Tasks, depending on the
     options chosen.
     """
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_within(ctx)
         return
 
-    if ctx.args.active_only:
-        print_info("Listing active Work Requirements only")
     if ctx.args.entity_type == ET_TASKS and ctx.args.with_errors:
         print_info("Listing Tasks with errors only")
 
@@ -510,8 +556,8 @@ def list_work_requirements(ctx: RunContext):
     if ctx.args.name_glob and ctx.args.entity_type == ET_WORK_REQUIREMENTS:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Work Requirements {namespace_scope(ctx.client, namespace)} "
-            f"matching name pattern '{name}'"
+            f"Listing {_active_phrase(ctx)}Work Requirements"
+            f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
         )
         work_requirement_summaries = filter_summaries_by_name_glob(
             get_filtered_work_requirement_summaries(
@@ -524,7 +570,8 @@ def list_work_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            f"Listing Work Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Listing {_active_phrase(ctx)}Work Requirements"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with '{}' in tag", ctx.config.name_tag),
         )
         work_requirement_summaries = get_filtered_work_requirement_summaries(
@@ -599,12 +646,12 @@ def list_work_requirements(ctx: RunContext):
             _print_all(ctx, all_objects)
         limit.warn()
     else:
-        selected_work_summaries = select(
-            ctx.client, work_requirement_summaries, single_result=True
-        )
-        for work_summary in selected_work_summaries:
-            print_info(f"Work Requirement '{work_summary.name}'")
-            list_task_groups(ctx, work_summary)
+        # Several Work Requirements may be chosen; none (the choice
+        # cancelled) lists nothing
+        if chosen := select(ctx.client, work_requirement_summaries):
+            names = ", ".join(f"'{wr.name}'" for wr in chosen)
+            print_info(f"Work Requirement{'s' if len(chosen) > 1 else ''} {names}")
+            list_task_groups(ctx, chosen)
 
 
 def _filtered_task_groups(ctx: RunContext, task_groups: list) -> list:
@@ -729,14 +776,80 @@ def _fetched_within(kind: str, target: str, fetch: Callable[[], _Fetched]) -> _F
         raise NotFoundError(f"{kind} '{target}' not found") from error
 
 
-def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
+def _within_each(ctx: RunContext, find: Callable[[str], _Fetched]) -> list[_Fetched]:
     """
-    The Task Groups '--within' names: a Work Requirement's, or one Task
-    Group, given by YDID or by name as yd-abort takes it ('wr', 'wr/tg',
+    What find() finds for each '--within' target, in the order given: every
+    target that finds nothing is reported, and then ReportedFailure raised
+    (named_targets.resolved_each()).
+    """
+    return resolved_each(
+        [
+            (lambda target=target: find(target))
+            for target in ctx.args.within_targets or []
+        ]
+    )
+
+
+# The types listed '--within' a parent, as a message names them
+_WITHIN_NAMES = {
+    ET_TASK_GROUPS: "Task Groups",
+    ET_TASKS: "Tasks",
+    ET_INSTANCES: "Instances",
+    ET_NODES: "Nodes",
+    ET_WORKERS: "Workers",
+}
+
+
+def _within_phrase(ctx: RunContext) -> str:
+    """
+    The '--within' targets as a message names them: 'a', 'b'.
+    """
+    return ", ".join(f"'{target}'" for target in ctx.args.within_targets or [])
+
+
+def _unique(items: Iterable[_Item]) -> Iterator[_Item]:
+    """
+    The items in order, each once by its ID, read as they are wanted (so
+    that '--limit' reads a search no further): two '--within' targets may
+    overlap ('wr' and 'wr/tg', a Worker Pool and one of its Nodes).
+    """
+    seen: set = set()
+    for item in items:
+        if (key := getattr(item, "id", None)) not in seen:
+            seen.add(key)
+            yield item
+
+
+def _name_work_requirements(ctx: RunContext, task_groups: list[TaskGroup]) -> None:
+    """
+    Of Task Groups of several Work Requirements, each tagged with its Work
+    Requirement's name for the tables (as list_task_groups() tags them), a
+    Task Group's name being no guide to which it belongs.
+    """
+    ids = list(
+        dict.fromkeys(
+            work_requirement_id_of_task_group(cast(str, tg.id)) for tg in task_groups
+        )
+    )
+    if len(ids) < 2:
+        return
+    names = {
+        wr_id: ctx.client.work_client.get_work_requirement_by_id(wr_id).name
+        for wr_id in ids
+    }
+    for task_group in task_groups:
+        task_group.workRequirementName = names[  # type: ignore[attr-defined]
+            work_requirement_id_of_task_group(cast(str, task_group.id))
+        ]
+
+
+def _task_groups_within(ctx: RunContext, target: str) -> list[TaskGroup]:
+    """
+    The Task Groups a '--within' target names: a Work Requirement's, or one
+    Task Group, given by YDID or by name as yd-abort takes it ('wr', 'wr/tg',
     'namespace/wr', 'namespace/wr/tg'). A target that names nothing raises
     NotFoundError.
     """
-    target = cast(str, ctx.args.within_target)
     match get_ydid_type(target):
         case YDIDType.WORK_REQUIREMENT:
             return _fetched_within(
@@ -772,14 +885,25 @@ def _task_groups_within(ctx: RunContext) -> list[TaskGroup]:
 
 def _list_within(ctx: RunContext) -> None:
     """
-    '--within': the Task Groups or Tasks of one Work Requirement or Task
-    Group, listed without asking which Work Requirement or Task Group.
+    '--within': the Task Groups or Tasks of the Work Requirements and Task
+    Groups named, in the order named, listed without asking which.
     """
     errors = " with errors" if ctx.args.with_errors else ""
     print_info(
-        f"Listing {ctx.args.entity_type}{errors} within '{ctx.args.within_target}'"
+        f"Listing {_WITHIN_NAMES[cast(str, ctx.args.entity_type)]}{errors}"
+        f" within {_within_phrase(ctx)}"
     )
-    task_groups = sorted_objects(_task_groups_within(ctx))
+    task_groups = list(
+        _unique(
+            chain.from_iterable(
+                _within_each(
+                    ctx,
+                    lambda target: sorted_objects(_task_groups_within(ctx, target)),
+                )
+            )
+        )
+    )
+    _name_work_requirements(ctx, task_groups)
     summarised = 0
     limit = _ListLimit(ctx)
     if ctx.args.entity_type == ET_TASK_GROUPS:
@@ -791,13 +915,16 @@ def _list_within(ctx: RunContext) -> None:
         for task_group in task_groups:
             counted, tasks = _tasks_of(ctx, [task_group], limit)
             summarised += counted
-            objects.extend(sorted_objects(tasks))
+            objects.extend(_named_as_their_group(task_group, sorted_objects(tasks)))
     if ctx.args.count_only:
         print(summarised + len(objects))
     elif _listing_all(ctx):
         _print_all(ctx, objects)
     elif not objects:
-        print_info(f"No matching {ctx.args.entity_type}")
+        _print_empty(
+            ctx,
+            f"No matching {'Task Groups' if ctx.args.entity_type == ET_TASK_GROUPS else 'Tasks'}",
+        )
     elif ctx.args.details:
         print_yd_object_list([(obj, None) for obj in select(ctx.client, objects)])
     else:
@@ -805,37 +932,82 @@ def _list_within(ctx: RunContext) -> None:
     limit.warn()
 
 
-def list_task_groups(ctx: RunContext, work_summary: WorkRequirementSummary):
-    task_groups: list[TaskGroup] = get_task_groups_from_wr_by_id(
-        ctx.client, cast(str, work_summary.id)
-    )
-    task_groups = sorted_objects(task_groups)
+def list_task_groups(ctx: RunContext, work_summaries: list[WorkRequirementSummary]):
+    """
+    The Task Groups of the chosen Work Requirements, grouped by Work
+    Requirement in their order, each in order: listed, or, when listing
+    Tasks, chosen from. Of several Work Requirements, each Task Group (and
+    each of its Tasks) names its own for the table.
+    """
+    several = len(work_summaries) > 1
+    task_groups: list[TaskGroup] = []
+    for work_summary in work_summaries:
+        of_one = sorted_objects(
+            get_task_groups_from_wr_by_id(ctx.client, cast(str, work_summary.id))
+        )
+        if several:
+            for task_group in of_one:
+                task_group.workRequirementName = work_summary.name  # type: ignore[attr-defined]
+        task_groups.extend(of_one)
     # '--status' and '--name' are the Tasks' when listing Tasks, so are no
     # test of the Task Groups walked to reach them
     if ctx.args.entity_type == ET_TASK_GROUPS:
         task_groups = _filtered_task_groups(ctx, task_groups)
-    if ctx.args.entity_type != ET_TASKS:
+    if not task_groups:
+        _print_empty(ctx, "No matching Task Groups")
+    elif ctx.args.entity_type != ET_TASKS:
         # Interactive alone: '--ids-only' lists everything, with no choosing
         if ctx.args.details:
             print_yd_object_list(
-                [(task_group, None) for task_group in select(ctx.client, task_groups)]
+                [
+                    (task_group, None)
+                    for task_group in select(
+                        ctx.client, task_groups, sort_objects=False
+                    )
+                ]
             )
         else:
             print_numbered_object_list(ctx.client, task_groups)
-    else:
-        task_groups = select(ctx.client, task_groups, single_result=True)
-        for task_group in task_groups:
-            list_tasks(ctx, task_group, work_summary)
+    # Several Task Groups may be chosen; none (the choice cancelled) lists nothing
+    elif chosen := select(ctx.client, task_groups, sort_objects=False):
+        list_tasks(ctx, chosen)
 
 
-def list_tasks(
-    ctx: RunContext, task_group: TaskGroup, _work_summary: WorkRequirementSummary
-):
+def _named_as_their_group(task_group: TaskGroup, tasks: list[Task]) -> list[Task]:
+    """
+    The Tasks, each tagged with the Work Requirement's name its Task Group
+    was tagged with, if any, for the table.
+    """
+    if (name := getattr(task_group, "workRequirementName", None)) is not None:
+        for task in tasks:
+            task.workRequirementName = name  # type: ignore[attr-defined]
+    return tasks
+
+
+def list_tasks(ctx: RunContext, task_groups: list[TaskGroup]):
+    """
+    The Tasks of the chosen Task Groups, in one table: grouped by Task Group,
+    in the Task Groups' order, each group's Tasks in order (the table names
+    each Task's Task Group), as many as '--limit' allows.
+    """
     limit = _ListLimit(ctx)
-    tasks = sorted_objects(limit.take(_matching_tasks(ctx, task_group)))
+    tasks: list[Task] = []
+    for task_group in task_groups:
+        if limit.more:
+            break
+        tasks.extend(
+            _named_as_their_group(
+                task_group,
+                sorted_objects(limit.take(_matching_tasks(ctx, task_group))),
+            )
+        )
+    if not tasks:
+        _print_empty(ctx, "No matching Tasks")
     # Interactive alone, as list_task_groups() is
-    if ctx.args.details:
-        print_yd_object_list([(task, None) for task in select(ctx.client, tasks)])
+    elif ctx.args.details:
+        print_yd_object_list(
+            [(task, None) for task in select(ctx.client, tasks, sort_objects=False)]
+        )
     else:
         print_numbered_object_list(ctx.client, tasks)
     limit.warn()
@@ -859,30 +1031,49 @@ def _worker_pool_within(ctx: RunContext, target: str) -> WorkerPool:
     )
 
 
+def _nodes_within(
+    ctx: RunContext, target: str
+) -> tuple[WorkerPool | None, Callable[[], Iterable[Node]]]:
+    """
+    What a '--within' target for Nodes or Workers names: a Worker Pool, with
+    its Nodes searched when they are wanted, or a Node by its ID (no
+    Worker Pool), with its Worker Pool's name for the table.
+    """
+    if get_ydid_type(target) != YDIDType.NODE:
+        pool = _worker_pool_within(ctx, target)
+        return pool, lambda: _matching_nodes(ctx, pool)
+    node: Node = _fetched_within(
+        "Node",
+        target,
+        lambda: ctx.client.worker_pool_client.get_node_by_id(target),
+    )
+    node.workerPoolName = get_worker_pool_by_id(  # type: ignore[attr-defined]
+        ctx.client, cast(str, node.workerPoolId)
+    ).name
+    return None, lambda: [node]
+
+
 def _list_nodes_within(ctx: RunContext) -> None:
     """
-    '--within' for Nodes and Workers: the Nodes of a Worker Pool, or for
-    Workers those of a Worker Pool or of one Node, listed without searching
-    for Worker Pools or asking which.
+    '--within' for Nodes and Workers: the Nodes of the Worker Pools named,
+    or for Workers those of the Worker Pools and Nodes named, in the order
+    named, listed without searching for Worker Pools or asking which.
     """
-    target = cast(str, ctx.args.within_target)
-    print_info(f"Listing {ctx.args.entity_type} within '{target}'")
-    if get_ydid_type(target) == YDIDType.NODE:
-        node: Node = _fetched_within(
-            "Node",
-            target,
-            lambda: ctx.client.worker_pool_client.get_node_by_id(target),
-        )
-        node.workerPoolName = get_worker_pool_by_id(  # type: ignore[attr-defined]
-            ctx.client, cast(str, node.workerPoolId)
-        ).name
-        list_workers(ctx, [node])
+    print_info(
+        f"Listing {_WITHIN_NAMES[cast(str, ctx.args.entity_type)]} within {_within_phrase(ctx)}"
+    )
+    found = _within_each(ctx, lambda target: _nodes_within(ctx, target))
+    if ctx.args.entity_type == ET_NODES:
+        # Worker Pools alone, as parsed: list_nodes() searches them itself
+        pools = [pool for pool, _ in found if pool is not None]
+        list_nodes(ctx, list(_unique(pools)))  # type: ignore[arg-type]
         return
-    list_nodes(ctx, [_worker_pool_within(ctx, target)])  # type: ignore[list-item]
+    # Each in turn; a Node named twice, or in a Worker Pool named too, listed once
+    list_workers(ctx, _unique(chain.from_iterable(nodes() for _, nodes in found)))
 
 
 def list_worker_pools(ctx: RunContext):
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_nodes_within(ctx)
         return
 
@@ -890,7 +1081,8 @@ def list_worker_pools(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Displaying Worker Pools {namespace_scope(ctx.client, namespace)} "
+            f"Listing {_active_phrase(ctx)}{_pool_kind_phrase(ctx)}Worker Pools"
+            f" {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
         )
         searched_namespace = namespace
@@ -900,12 +1092,14 @@ def list_worker_pools(ctx: RunContext):
                 namespace,
                 glob_search_prefix(name) or None,
                 partial_name_matches=True,
+                pool_type=_pool_kind(ctx),
             ),
             name,
         )
     else:
         print_info(
-            f"Displaying Worker Pools {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Listing {_active_phrase(ctx)}{_pool_kind_phrase(ctx)}Worker Pools"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with '{}' in name", ctx.config.name_tag)
         )
         worker_pool_summaries = get_worker_pool_summaries(
@@ -913,6 +1107,7 @@ def list_worker_pools(ctx: RunContext):
             ctx.config.namespace,
             ctx.config.name_tag,
             partial_name_matches=True,
+            pool_type=_pool_kind(ctx),
         )
         searched_namespace = ctx.config.namespace
 
@@ -921,9 +1116,6 @@ def list_worker_pools(ctx: RunContext):
         if ctx.args.active_only
         else []
     )
-
-    if ctx.args.active_only:
-        print_info("Displaying active Worker Pools only")
 
     # Only the namespace searched, matched exactly: a substring match let
     # 'dev' take in 'dev-team'
@@ -938,11 +1130,13 @@ def list_worker_pools(ctx: RunContext):
     worker_pool_summaries = (
         worker_pools
         if ctx.args.entity_type in (ET_NODES, ET_WORKERS)
-        else _apply_health_filter(ctx, _apply_status_filter(ctx, worker_pools))
+        else _apply_pool_kind_filter(
+            ctx, _apply_health_filter(ctx, _apply_status_filter(ctx, worker_pools))
+        )
     )
 
     if not worker_pool_summaries:
-        _print_empty(ctx, "No Worker Pools to display")
+        _print_empty(ctx, "No matching Worker Pools")
         return
 
     if ctx.args.entity_type in (ET_NODES, ET_WORKERS):
@@ -1001,38 +1195,45 @@ _ACTIVE_CR_STATUSES: tuple[ComputeRequirementStatus, ...] = (
 )
 
 
-def _list_instances_within(ctx: RunContext) -> None:
+def _compute_requirement_within(ctx: RunContext, target: str) -> tuple[str, str | None]:
     """
-    '--within' for Instances: those of one Compute Requirement, by its ID or
-    by its name (found as the actions find one, in the configured namespace
-    unless given as 'namespace/name'), listed without searching for Compute
-    Requirements or asking which.
+    The Compute Requirement a '--within' target names, as its ID and name:
+    by its ID, or by its name (found as the actions find one, in the
+    configured namespace unless given as 'namespace/name').
     """
-    target = cast(str, ctx.args.within_target)
-    print_info(f"Listing instances within '{target}'")
     if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
         # Fetched, since an Instance search for an ID that names nothing
         # finds nothing rather than failing
-        _fetched_within(
+        return target, _fetched_within(
             "Compute Requirement",
             target,
             lambda: ctx.client.compute_client.get_compute_requirement_by_id(target),
+        ).name
+    found = find_compute_requirement_by_name(
+        ctx.client,
+        target,
+        ctx.config.namespace,
+        _ACTIVE_CR_STATUSES,
+    )
+    return cast(str, found.id), found.name
+
+
+def _list_instances_within(ctx: RunContext) -> None:
+    """
+    '--within' for Instances: those of the Compute Requirements named, in
+    the order named, listed without searching for Compute Requirements or
+    asking which.
+    """
+    print_info(f"Listing {_WITHIN_NAMES[ET_INSTANCES]} within {_within_phrase(ctx)}")
+    compute_requirements = list(
+        dict.fromkeys(
+            _within_each(ctx, lambda target: _compute_requirement_within(ctx, target))
         )
-        compute_requirement_id = target
-    else:
-        compute_requirement_id = cast(
-            str,
-            find_compute_requirement_by_name(
-                ctx.client,
-                target,
-                ctx.config.namespace,
-                _ACTIVE_CR_STATUSES,
-            ).id,
-        )
+    )
     if _listing_all(ctx):
-        _print_all_instances(ctx, [compute_requirement_id])
+        _print_all_instances(ctx, [cr_id for cr_id, _ in compute_requirements])
     else:
-        list_instances(ctx, compute_requirement_id)
+        list_instances(ctx, compute_requirements)
 
 
 def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) -> None:
@@ -1059,12 +1260,11 @@ def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) ->
 
 
 def list_compute_requirements(ctx: RunContext):
-    if ctx.args.within_target:
+    if ctx.args.within_targets:
         _list_instances_within(ctx)
         return
 
     if ctx.args.active_only:
-        print_info("Listing active Compute Requirements only")
         included_statuses: list[ComputeRequirementStatus] | None = list(
             _ACTIVE_CR_STATUSES
         )
@@ -1075,8 +1275,8 @@ def list_compute_requirements(ctx: RunContext):
     if ctx.args.name_glob:
         namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
         print_info(
-            f"Listing Compute Requirements {namespace_scope(ctx.client, namespace)} "
-            f"matching name pattern '{name}'"
+            f"Listing {_active_phrase(ctx)}Compute Requirements"
+            f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
         )
         compute_requirement_summaries = filter_summaries_by_name_glob(
             get_compute_requirement_summaries(
@@ -1090,7 +1290,8 @@ def list_compute_requirements(ctx: RunContext):
         )
     else:
         print_info(
-            f"Listing Compute Requirements {namespace_scope(ctx.client, ctx.config.namespace)}"
+            f"Listing {_active_phrase(ctx)}Compute Requirements"
+            f" {namespace_scope(ctx.client, ctx.config.namespace)}"
             + filter_phrase("with tags including '{}'", ctx.config.name_tag)
         )
         compute_requirement_summaries = get_compute_requirement_summaries(
@@ -1118,10 +1319,10 @@ def list_compute_requirements(ctx: RunContext):
                 ctx, [cast(str, cr.id) for cr in compute_requirement_summaries]
             )
             return
-        for compute_requirement_summary in select(
-            ctx.client, compute_requirement_summaries, single_result=True
-        ):
-            list_instances(ctx, compute_requirement_summary.id)  # type: ignore[arg-type]
+        # Several Compute Requirements may be chosen; none (the choice
+        # cancelled) lists nothing
+        if chosen := select(ctx.client, compute_requirement_summaries):
+            list_instances(ctx, [(cast(str, cr.id), cr.name) for cr in chosen])
         return
 
     if ctx.args.json_output or ctx.args.count_only:
@@ -1237,14 +1438,27 @@ def _status_name(entity: Any) -> str | None:
     return getattr(status, "value", status)
 
 
-def list_instances(ctx: RunContext, compute_requirement_id: str):
+def list_instances(
+    ctx: RunContext,
+    compute_requirements: Sequence[tuple[str, str | None]],
+):
     """
-    List the instances within a Compute Requirement.
+    The Instances of the Compute Requirements, in one table: grouped by
+    Compute Requirement, in the order given, each row naming its Compute
+    Requirement, as many as '--limit' allows. Each is given as its ID and
+    its name.
     """
     limit = _ListLimit(ctx)
-    instances = limit.take(_matching_instances(ctx, compute_requirement_id))
+    instances: list[Instance] = []
+    for compute_requirement_id, name in compute_requirements:
+        if limit.more:
+            break
+        for instance in limit.take(_matching_instances(ctx, compute_requirement_id)):
+            # For the table: an Instance does not name its Compute Requirement
+            instance.computeRequirementName = name  # type: ignore[attr-defined]
+            instances.append(instance)
     if not instances:
-        print_info("No instances to list")
+        _print_empty(ctx, "No matching Instances")
         return
 
     if ctx.args.public_ips_only:
@@ -1282,7 +1496,7 @@ def list_nodes(ctx: RunContext, worker_pool_summaries: list[WorkerPoolSummary]):
             break
         nodes_all += limit.take(_matching_nodes(ctx, worker_pool_summary))
     if not nodes_all:
-        _print_empty(ctx, "No Nodes to display")
+        _print_empty(ctx, "No matching Nodes")
         return
 
     if _listing_all(ctx):
@@ -1363,7 +1577,7 @@ def list_workers(ctx: RunContext, nodes: Iterable[Node]):
     limit = _ListLimit(ctx)
     workers_all = limit.take(_matching_workers(ctx, nodes))
     if not workers_all:
-        _print_empty(ctx, "No Workers to display")
+        _print_empty(ctx, "No matching Workers")
         return
 
     if _listing_all(ctx):
@@ -1423,7 +1637,7 @@ def list_compute_requirement_templates(ctx: RunContext):
         )
 
     if not cr_templates:
-        _print_empty(ctx, "No matching Compute Requirement Templates found")
+        _print_empty(ctx, "No matching Compute Requirement Templates")
         return
 
     _emit(
@@ -1475,7 +1689,7 @@ def list_compute_source_templates(ctx: RunContext):
         ctx, cs_templates, lambda template: template.provider
     )
     if not cs_templates:
-        _print_empty(ctx, "No matching Compute Source Templates found")
+        _print_empty(ctx, "No matching Compute Source Templates")
         return
 
     _emit(
@@ -1509,7 +1723,7 @@ def list_keyrings(ctx: RunContext):
             keyrings, ctx.args.name_glob, "Keyring"
         )
     if not keyrings:
-        _print_empty(ctx, "No Keyrings found")
+        _print_empty(ctx, "No matching Keyrings")
         return
 
     _emit(ctx, keyrings, extra=lambda _: {PROP_RESOURCE: RN_KEYRING})
@@ -1540,7 +1754,7 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                "No matching Machine Image Families found "
+                "No matching Machine Image Families "
                 f"{namespace_scope(ctx.client, namespace)} matching name pattern '{name}'",
             )
             return
@@ -1557,7 +1771,7 @@ def list_image_families(ctx: RunContext):
         if not image_family_summaries:
             _print_empty(
                 ctx,
-                "No matching Machine Image Families found "
+                "No matching Machine Image Families "
                 f"{namespace_scope(ctx.client, ctx.config.namespace)}"
                 + filter_phrase("with names including '{}'", _shared_tag(ctx)),
             )
@@ -1585,7 +1799,7 @@ def list_allowances(ctx: RunContext):
         ctx, sorted_objects(search_client.list_all())
     )
     if not allowances:
-        _print_empty(ctx, "No Allowances to display")
+        _print_empty(ctx, "No matching Allowances")
         return
 
     _emit(
@@ -1611,6 +1825,10 @@ def list_attribute_definitions(ctx: RunContext):
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, attribute_definition_list)
+        return
+
+    if not attribute_definition_list:
+        _print_empty(ctx, "No matching Attribute Definitions")
         return
 
     if not ctx.args.details:
@@ -1667,7 +1885,7 @@ def list_namespaces(ctx: RunContext):
         ]
 
     if not namespaces:
-        _print_empty(ctx, "No Namespaces found")
+        _print_empty(ctx, "No matching Namespaces")
         return
     _emit(ctx, namespaces, extra=lambda _: {PROP_RESOURCE: RN_NAMESPACE})
 
@@ -1683,7 +1901,7 @@ def list_namespace_policies(ctx: RunContext):
     )
     namespace_policies: list[NamespacePolicy] = search_client.list_all()
     if not namespace_policies:
-        _print_empty(ctx, "No Namespace Policies to display")
+        _print_empty(ctx, "No matching Namespace Policies")
         return
     namespace_policies = sorted_objects(namespace_policies)
 
@@ -1718,7 +1936,7 @@ def list_users(ctx: RunContext):
         users = _filter_by_name_glob_with_warning(users, ctx.args.name_glob, "User")
 
     if not users:
-        _print_empty(ctx, "No Users to display")
+        _print_empty(ctx, "No matching Users")
         return
 
     # With '--details', each User's Groups by name, as yd-create takes them
@@ -1748,7 +1966,7 @@ def list_applications(ctx: RunContext):
         )
 
     if not applications:
-        _print_empty(ctx, "No Applications to display")
+        _print_empty(ctx, "No matching Applications")
         return
 
     # With '--details', each Application's Groups by name
@@ -1778,7 +1996,7 @@ def list_groups(ctx: RunContext):
         )
 
     if not group_summaries:
-        _print_empty(ctx, "No Groups to display")
+        _print_empty(ctx, "No matching Groups")
         return
 
     group_summaries = sorted_objects(group_summaries)
@@ -1825,7 +2043,7 @@ def list_roles(ctx: RunContext):
         )
 
     if not role_summaries:
-        _print_empty(ctx, "No Roles to display")
+        _print_empty(ctx, "No matching Roles")
         return
 
     role_summaries = sorted_objects(role_summaries)
@@ -1878,6 +2096,10 @@ def list_permissions(ctx: RunContext):
 
     if ctx.args.json_output or ctx.args.count_only:
         _print_json_or_count(ctx, permissions)
+        return
+
+    if not permissions:
+        _print_empty(ctx, "No matching Permissions")
         return
 
     if not ctx.args.details:

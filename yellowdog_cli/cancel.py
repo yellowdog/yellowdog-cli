@@ -6,7 +6,9 @@ executing Tasks.
 
 Work Requirements are selected by the namespace and tag, by glob patterns
 matched against their names, or explicitly by name or ID, with Task IDs
-alongside. A Work Requirement that is already CANCELLING is a target only
+and patterns alongside (each pattern replaced by the IDs it matches). As
+'yd task cancel' (named_target_type TASK), the targets are Tasks alone, by
+ID or as 'wr/tg/task', a pattern in the last part matching the unfinished. A Work Requirement that is already CANCELLING is a target only
 with '--abort', which cancels it again to abort its executing Tasks; without
 it, it is left out of a listing and skipped when named. Explicit targets are
 resolved first, in the order given, then confirmed once and acted on, under
@@ -30,6 +32,7 @@ from yellowdog_cli.utils.action_runner import (
     by_type,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -49,7 +52,8 @@ from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.named_targets import pattern_ids, target_id
+from yellowdog_cli.utils.printing import counted, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.wrapper import main_wrapper
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
@@ -110,9 +114,38 @@ def cancel(ctx: RunContext, names: list[str]):
     """
     globs = [n for n in names if contains_glob_chars(n)]
 
-    if names and not globs:
-        # All literal names/IDs: exact path (mixing is rejected at parse time)
-        _cancel_by_name_or_id(ctx, names)
+    if _tasks_only(ctx):
+        # Tasks, each pattern replaced by the unfinished Tasks it matches
+        _cancel_by_name_or_id(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: pattern_ids(
+                    ctx, pattern, YDIDType.TASK, live_only=True
+                ),
+                describe=lambda target: (target, ET_TASKS),
+                record=_recorder,
+                none_match=lambda pattern: f"No unfinished Tasks match '{pattern}'",
+            ),
+        )
+        return
+
+    if names and len(globs) < len(names):
+        # Names or IDs, with any patterns among them replaced by their matches
+        _cancel_by_name_or_id(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: [
+                    cast(str, summary.id) for summary in _matching(ctx, [pattern])
+                ],
+                describe=_describe,
+                record=_recorder,
+                none_match=lambda pattern: (
+                    f"No cancellable Work Requirements match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
@@ -120,16 +153,7 @@ def cancel(ctx: RunContext, names: list[str]):
             f"Cancelling Work Requirements "
             f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
-        summaries: list[WorkRequirementSummary] = expand_name_globs(
-            globs,
-            ctx.config.namespace,
-            fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
-                ctx.client,
-                name=prefix or None,
-                namespace=namespace,
-                include_filter=_cancellable_statuses(ctx),
-            ),
-        )
+        summaries: list[WorkRequirementSummary] = _matching(ctx, globs)
     else:
         print_info(
             "Cancelling Work Requirements "
@@ -160,13 +184,36 @@ def cancel(ctx: RunContext, names: list[str]):
     )
     items = [_wr_item(summary) for summary in selected]
     if items and not confirm_items(
-        f"Cancel {len(items)} Work Requirement(s){_abort_phrase(ctx)}?",
+        f"Cancel {counted(len(items), 'Work Requirement')}{_abort_phrase(ctx)}?",
         items,
         _recorder,
     ):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _matching(ctx: RunContext, globs: list[str]) -> list[WorkRequirementSummary]:
+    """
+    The cancellable Work Requirements whose names match the glob patterns.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
+            ctx.client,
+            name=prefix or None,
+            namespace=namespace,
+            include_filter=_cancellable_statuses(ctx),
+        ),
+    )
+
+
+def _tasks_only(ctx: RunContext) -> bool:
+    """
+    Whether this is 'yd task cancel', whose targets are Tasks alone.
+    """
+    return getattr(ctx.args, "named_target_type", None) == YDIDType.TASK
 
 
 def _is_task(target: str) -> bool:
@@ -197,7 +244,9 @@ def _cancel_by_name_or_id(ctx: RunContext, names_or_ids: list[str]):
     items = resolve_targets(
         names_or_ids,
         resolve=lambda target: _resolve(ctx, target),
-        describe=_describe,
+        describe=(
+            (lambda target: (target, ET_TASKS)) if _tasks_only(ctx) else _describe
+        ),
         record=_recorder,
         verb="cancel",
         order=by_type(ET_WORK_REQUIREMENTS, ET_TASKS),
@@ -233,6 +282,14 @@ def _resolve(ctx: RunContext, target: str) -> Item:
     cannot be cancelled. Anything else raised is a failure of the lookup.
     """
     ydid_type = get_ydid_type(target)
+
+    if ydid_type is None and _tasks_only(ctx):
+        # A Task's name, 'wr/tg/task'
+        try:
+            target = target_id(ctx, target, YDIDType.TASK)
+        except (NotFoundError, AmbiguousNameError, ValueError) as e:
+            raise Unresolved(str(e)) from e
+        ydid_type = YDIDType.TASK
 
     if ydid_type == YDIDType.TASK:
         try:
@@ -297,13 +354,15 @@ def _confirmation(ctx: RunContext, items: list[Item]) -> str:
     parts = []
     if work_requirements:
         parts.append(
-            f"{len(work_requirements)} Work Requirement(s) ("
+            f"{counted(len(work_requirements), 'Work Requirement')} ("
             + ", ".join(_label(wr) for wr in work_requirements)
             + ")"
         )
     if tasks:
         parts.append(
-            f"{len(tasks)} Task(s) (" + ", ".join(_task_label(t) for t in tasks) + ")"
+            f"{counted(len(tasks), 'Task')} ("
+            + ", ".join(_task_label(t) for t in tasks)
+            + ")"
         )
     return f"Cancel {' and '.join(parts)}{_abort_phrase(ctx)}?"
 
@@ -345,9 +404,9 @@ def _carry_out(ctx: RunContext, items: list[Item]):
 
     if cancelled_ids or tasks_cancelled:
         if cancelled_ids:
-            print_info(f"Cancelled {len(cancelled_ids)} Work Requirement(s)")
+            print_info(f"Cancelled {counted(len(cancelled_ids), 'Work Requirement')}")
         if tasks_cancelled:
-            print_info(f"Cancelled {tasks_cancelled} Task(s)")
+            print_info(f"Cancelled {counted(tasks_cancelled, 'Task')}")
         if ctx.args.follow and cancelled_ids:
             follow_ids(ctx, cancelled_ids)
     else:

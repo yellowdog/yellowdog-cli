@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import CAPACITY_POLL_INTERVAL
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, print_info
 
 if TYPE_CHECKING:
     from yellowdog_client.model import ComputeRequirement, Instance
@@ -87,9 +87,11 @@ class Capacity:
 
     def describe(self) -> str:
         """
-        E.g. "1 of 2 Instance(s) running, 1 pending (PROVISIONING)".
+        E.g. "1 of 2 Instances running, 1 pending (PROVISIONING)".
         """
-        parts = [f"{self.count('RUNNING'):,d} of {self.target:,d} Instance(s) running"]
+        parts = [
+            f"{self.count('RUNNING'):,d} of {counted(self.target, 'Instance')} running"
+        ]
         parts += [
             f"{self.count(status):,d} {status.lower()}"
             for status in _TRANSITIONAL_INSTANCE_STATUSES
@@ -149,7 +151,7 @@ def wait_for_capacity(ctx: RunContext, cr_ids: list[str], timeout: int | None):
     pending = list(dict.fromkeys(cr_ids))
     last: dict[str, Capacity] = {}
     print_info(
-        f"Waiting for {len(pending)} Compute Requirement(s) to reach their"
+        f"Waiting for {counted(len(pending), 'Compute Requirement')} to reach their"
         " target instance counts"
     )
 

@@ -555,6 +555,15 @@ class TestAnOptionsValueTypedWithIt:
         assert joined.lookup == spaced.lookup
         assert (joined.current, joined.prefix) == ("", "--within=")
 
+    def test_a_repeated_within_leaves_out_what_is_given(self):
+        from yellowdog_cli.utils.completion import complete
+
+        words = ["yd", "task", "list", "--within", "wr1", "--within=wr2"]
+        spaced = complete([*words, "--within"], "").lookup
+        joined = complete(words, "--within=").lookup
+        assert spaced is not None and joined is not None
+        assert spaced.given == joined.given == ("wr1", "wr2")
+
     def test_what_it_finds_keeps_the_option(self, monkeypatch):
         from yellowdog_cli.utils.completion import Candidate
 
@@ -566,6 +575,26 @@ class TestAnOptionsValueTypedWithIt:
             "zsh", 3, ["yd", "task", "list", "--within="], names=True
         )
         assert lines == ["values", "--within=nightly"]
+
+    def test_a_node_actions_nodes_are_those_of_the_pool_typed(self):
+        words = ["yd", "node", "action", "--worker-pool", "gpu", "--node"]
+        request = complete(words, "").lookup
+        assert request is not None and request.scope == "gpu"
+        joined = complete(["yd", "node", "action", "--worker-pool=gpu"], "--node=")
+        assert joined.lookup is not None and joined.lookup.scope == "gpu"
+        # No pool typed: every pool's
+        alone = complete(["yd", "node", "action", "--node"], "").lookup
+        assert alone is not None and alone.scope is None
+        pools = complete(["yd", "node", "action", "--worker-pool"], "").lookup
+        assert pools is not None and pools.lookup.entity == "worker-pools"
+
+    def test_an_allowances_ids_follow_the_hours(self):
+        words = ["yd", "allowance", "boost"]
+        assert complete(words, "").lookup is None  # the hours
+        request = complete([*words, "10"], "").lookup
+        assert request is not None and request.lookup.resource == "Allowance"
+        shown = complete(["yd", "allowance", "show"], "").lookup
+        assert shown is not None and shown.lookup.resource == "Allowance"
 
     def test_a_task_groups_priority_completes_its_names(self):
         from yellowdog_cli.utils.completion_targets import LOOKUPS

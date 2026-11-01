@@ -31,6 +31,7 @@ from yellowdog_cli.utils.command_registry import (
     LIST_ID_TYPES,
     LIST_LIMIT_TYPES,
     LIST_NAME_TYPES,
+    LIST_POOL_KIND_TYPES,
     LIST_PROVIDER_TYPES,
     LIST_STATUS_TYPES,
     LIST_SUBSTITUTE_TYPES,
@@ -233,6 +234,8 @@ def _list_filters_hidden(entity_types: frozenset[str]) -> tuple[str, ...]:
             ("--public-ips-only", frozenset({ET_INSTANCES})),
             ("--deletable", LIST_DELETABLE_TYPES),
             ("--unhealthy", LIST_UNHEALTHY_TYPES),
+            ("--provisioned", LIST_POOL_KIND_TYPES),
+            ("--configured", LIST_POOL_KIND_TYPES),
             ("--provider", LIST_PROVIDER_TYPES),
             ("--description", LIST_DESCRIPTION_TYPES),
             ("--with-errors", LIST_WITH_ERRORS_TYPES),
@@ -546,6 +549,36 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-abort",
                 "Abort running Tasks",
                 "aborting Tasks individually, or in Work Requirements or Task Groups",
+            ),
+            # yd-cancel for Tasks alone, by ID or as 'wr/tg/task', never the
+            # Work Requirements its namespace and tag would select; a Task
+            # cancelled is not followed, so '--follow' does not apply
+            Verb(
+                "cancel",
+                "yd-cancel",
+                "Cancel Tasks",
+                "cancelling Tasks",
+                hidden=(
+                    *(flag for flag in _SELECTION_OPTIONS if flag != "--namespace"),
+                    "--follow",
+                ),
+                overrides={
+                    "work_requirements": {
+                        "nargs": "+",
+                        "metavar": "<wr/tg/task-name-or-ID>",
+                        "help": (
+                            "the Task(s) to cancel: a Task's YellowDog ID, or its"
+                            " name as 'wr/tg/task', which may be a glob pattern in"
+                            " its last part (e.g. 'wr/tg/frame-*')"
+                        ),
+                    }
+                },
+                targets=Targets(
+                    "work_requirements",
+                    _named(YDIDType.TASK),
+                    "wr/tg/task-name-or-ID",
+                    YDIDType.TASK,
+                ),
             ),
             _list(ET_TASKS, "Tasks"),
             # A Task's name is its Task Group's and its own: 'wr/tg/task'

@@ -829,7 +829,7 @@ class TestAbort:
             ),
         ]
         assert client.work_client.cancel_task.call_count == 1
-        assert "Not attempting the remaining 2 item(s)" in err
+        assert "Not attempting the remaining 2 items" in err
         # The session's failure, not a per-item one: its own exit code, and
         # reported once, by the command, not again by the wrapper
         assert run.exit_code == ExitCode.AUTHENTICATION
@@ -879,7 +879,39 @@ class TestAbort:
         )
         assert out == [_action(TASK_ID, "t1", "tasks", "abort", "aborted")]
         assert client.work_client.cancel_task.call_count == 1
-        assert "Ignoring 1 duplicate target(s)" in err
+        assert "Ignoring 1 duplicate target" in err
+
+    def test_a_pattern_aborts_in_each_work_requirement_it_matches(
+        self, run, wrs, monkeypatch
+    ):
+        summaries = [_wr(WR_ID_1, "wr-a"), _wr(WR_ID_2, "wr-b")]
+        monkeypatch.setattr(
+            work_targets,
+            "get_filtered_work_requirement_summaries",
+            lambda client, name=None, namespace=None, **_: summaries,
+        )
+        client = self._client([])
+        client.work_client.get_work_requirement_by_id.side_effect = {
+            WR_ID_1: summaries[0],
+            WR_ID_2: summaries[1],
+        }.get
+        run(yd_abort, client=client, task_id_list=["wr-*", WR_ID_1])
+        searched = [
+            call.args[0].workRequirementId
+            for call in client.work_client.get_tasks.call_args_list
+        ]
+        # The ID named again after the pattern is not searched twice
+        assert searched == [WR_ID_1, WR_ID_2]
+
+    def test_a_pattern_matching_nothing_says_so(self, run, wrs, monkeypatch):
+        monkeypatch.setattr(
+            work_targets,
+            "get_filtered_work_requirement_summaries",
+            lambda client, **_: [],
+        )
+        out, _, _ = run(yd_abort, client=self._client(), task_id_list=["zz-*"])
+        assert out == []
+        assert run.exit_code in (None, 0)
 
     def test_targets_are_handled_in_the_order_given(self, run, wrs):
         client = self._client([_task()], by_id={TASK_ID_2: _task(TASK_ID_2, "t2")})
@@ -1275,11 +1307,64 @@ class TestBoost:
         )
 
         parser = build_parser(COMMANDS["yd-boost"], prog="yd-boost")
-        args = parser.parse_args(["2", ALLOWANCE_ID, "not-an-id"])
+        args = parser.parse_args(["2", ALLOWANCE_ID, "*gpu*", "not-an-id"])
         with pytest.raises(SystemExit) as exit_info:
             check_allowance_ids(args, parser)
         assert exit_info.value.code == 2
-        assert "not a YellowDog Allowance ID: 'not-an-id'" in capsys.readouterr().err
+        assert (
+            "not a YellowDog Allowance ID or a description pattern: 'not-an-id'"
+            in capsys.readouterr().err
+        )
+
+    @staticmethod
+    def _listing(client: MagicMock, descriptions: dict) -> None:
+        """
+        The Allowances a search finds: their IDs and descriptions.
+        """
+        client.allowances_client.get_allowances.return_value.list_all.return_value = [
+            SimpleNamespace(id=allowance_id, description=description)
+            for allowance_id, description in descriptions.items()
+        ]
+
+    def test_a_pattern_boosts_each_allowance_whose_description_matches(self, run):
+        client = self._client()
+        self._listing(
+            client,
+            {ALLOWANCE_ID: "gpu budget", ALLOWANCE_ID_2: "cpu", ALLOWANCE_ID_3: None},
+        )
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=["*gpu*", ALLOWANCE_ID],
+        )
+        assert [(r["id"], r["outcome"]) for r in out] == [(ALLOWANCE_ID, "boosted")]
+        # Found by the search, so not fetched again
+        client.allowances_client.get_allowance_by_id.assert_not_called()
+
+    def test_a_pattern_is_matched_case_sensitively(self, run):
+        client = self._client()
+        self._listing(client, {ALLOWANCE_ID: "GPU budget"})
+        out, _, _ = run(
+            yd_boost, client=client, boost_hours=2, allowance_list=["*gpu*"]
+        )
+        assert out == []
+        client.allowances_client.boost_allowance_by_id.assert_not_called()
+
+    def test_a_pattern_matching_nothing_says_so(self, run, monkeypatch):
+        said: list[str] = []
+        monkeypatch.setattr(action_runner_module, "print_info", said.append)
+        client = self._client()
+        self._listing(client, {ALLOWANCE_ID: "cpu"})
+        out, _, _ = run(
+            yd_boost,
+            client=client,
+            boost_hours=2,
+            allowance_list=["*gpu*", ALLOWANCE_ID_2],
+        )
+        assert said == ["No Allowances have a description matching '*gpu*'"]
+        assert [(r["id"], r["outcome"]) for r in out] == [(ALLOWANCE_ID_2, "boosted")]
+        assert run.exit_code in (None, 0)
 
     def test_a_missing_one_fails_before_anything_is_boosted(self, run):
         client = self._client({ALLOWANCE_ID: "a"})
@@ -1326,7 +1411,7 @@ class TestBoost:
             allowance_list=[ALLOWANCE_ID, ALLOWANCE_ID_2],
         )
         assert asked == [
-            f"Boost 2 Allowance(s) by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
+            f"Boost 2 Allowances by 2 hours ({ALLOWANCE_ID} ('gpu budget'),"
             f" {ALLOWANCE_ID_2})?"
         ]
 
@@ -2326,6 +2411,22 @@ class TestWait:
         ]
         assert run.exit_code == 0
 
+    def test_nothing_left_to_wait_for_succeeds(self, run, monkeypatch):
+        """
+        Every match of a pattern has finished: nothing is followed or recorded.
+        """
+        monkeypatch.setattr(yd_wait, "resolve_targets", lambda *a, **k: [])
+
+        def never(*a, **k):
+            raise AssertionError("followed")
+
+        monkeypatch.setattr(yd_wait, "follow_ids", never)
+        out, _, _ = run(
+            yd_wait, client=self._client(), timeout=None, yellowdog_ids=["run-*"]
+        )
+        assert out == []
+        assert run.exit_code == 0
+
     def test_a_failed_work_requirement_did_not_succeed(self, run, monkeypatch):
         self._follow(monkeypatch)
         out, err, _ = run(
@@ -2526,6 +2627,26 @@ class TestFollow:
             yd_follow.main()
         assert capsys.readouterr().out == ""
 
+    def test_nothing_left_to_follow_succeeds(self, monkeypatch):
+        """
+        Every match of a pattern has finished: nothing is followed.
+        """
+        from yellowdog_cli.utils.args import CLIParser
+
+        args = CLIParser(command="yd-follow", argv=["--nf", WR_ID_1])
+        monkeypatch.setattr(wrapper_module, "ARGS_PARSER", args)
+        output_settings.configure_output(args)
+        monkeypatch.setattr(wrapper_module, "CLIENT", MagicMock())
+        monkeypatch.setattr(yd_follow, "resolve_targets", lambda *a, **k: [])
+
+        def never(*a, **k):
+            raise AssertionError("followed")
+
+        monkeypatch.setattr(yd_follow, "follow_ids", never)
+        with pytest.raises(SystemExit) as exit_info:
+            yd_follow.main()
+        assert exit_info.value.code == 0
+
     def test_only_yd_follow_streams_events_as_json(self):
         from yellowdog_cli.utils.args import CLIParser
 
@@ -2672,7 +2793,7 @@ class TestLs:
         assert code == 1
         text = " ".join(err.split())
         assert "'loc:remote/nope' does not exist" in text
-        assert "1 path(s) could not be listed" in text
+        assert "1 path could not be listed" in text
         if json_output:
             assert [e["Path"] for e in out] == ["b.txt"]
         else:
@@ -2856,7 +2977,7 @@ class TestUpload:
             ("two.txt", "uploaded"),
         ]
         assert code == 1
-        assert "1 item(s) failed to upload" in " ".join(err.split())
+        assert "1 item failed to upload" in " ".join(err.split())
         assert (remote / "remote" / "two.txt").exists()
 
     def test_several_directories_to_one_destination_keep_their_names(
@@ -2925,7 +3046,7 @@ class TestUpload:
         (remote / "d" / "link.txt").symlink_to(remote / "d" / "real.txt")
         out, err, _ = run_dc(yd_upload, local_paths=["d"], recursive=True)
         assert [r["destination"] for r in out] == ["loc:remote/d/real.txt"]
-        assert "1 symbolic link(s)" in " ".join(err.split())
+        assert "1 symbolic link" in " ".join(err.split())
 
     def test_an_empty_flattened_directory_is_recorded(self, remote, run_dc):
         (remote / "empty").mkdir()
@@ -3107,7 +3228,7 @@ class TestDownload:
             ("loc:remote/a.txt", "downloaded"),
         ]
         assert code == 1
-        assert "1 item(s) failed to download" in " ".join(err.split())
+        assert "1 item failed to download" in " ".join(err.split())
         assert (remote / "a.txt").exists()
 
     def test_a_mid_path_wildcard_fails_only_its_argument(self, remote, run_dc):
@@ -3466,7 +3587,7 @@ class TestDelete:
         )
         assert [r["action"] for r in out] == ["failed", "deleted"]
         assert code == 1
-        assert "1 item(s) failed to delete" in " ".join(err.split())
+        assert "1 item failed to delete" in " ".join(err.split())
 
     @pytest.mark.parametrize(
         "paths", [["loc:"], ["loc:remote"], ["loc:remote/"], ["loc:*"]]

@@ -22,7 +22,7 @@ from yellowdog_cli.utils.output_style import (
     MAX_TABLE_DESCRIPTION,
     task_group_status_text,
 )
-from yellowdog_cli.utils.printing import CONSOLE_TABLE, indent, print_info
+from yellowdog_cli.utils.printing import CONSOLE_TABLE, counted, indent, print_info
 from yellowdog_cli.utils.settings import CLOUD_INFO_NO_SUB_REGION, MIB_PER_GIB
 
 if TYPE_CHECKING:
@@ -181,18 +181,33 @@ def work_requirement_table(
     return headers, table
 
 
+def _work_requirement_column(items: Sequence[Any]) -> bool:
+    """
+    Whether a table names each row's Work Requirement: when the lister has
+    added it ('workRequirementName', for rows of several Work Requirements).
+    """
+    return any(getattr(i, "workRequirementName", None) is not None for i in items)
+
+
 def task_group_table(
     task_group_list: list[TaskGroup],
 ) -> tuple[list[str], list[list]]:
-    headers = ["#", "Task Group Name", "Status", "Tasks", "Task Group ID"]
+    show_wr_name = _work_requirement_column(task_group_list)
+    headers = ["#"]
+    if show_wr_name:
+        headers.append("Work Requirement")
+    headers += ["Task Group Name", "Status", "Tasks", "Task Group ID"]
     table = []
     for index, task_group in enumerate(task_group_list):
         status_msg = task_group_status_text(
             task_group.status, task_group.starved, task_group.waitingOnDependency
         )
+        row: list = [index + 1]
+        if show_wr_name:
+            row.append(getattr(task_group, "workRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 task_group.name,
                 status_msg,
                 _task_counts(task_group.taskSummary),
@@ -222,15 +237,23 @@ def task_table(
 ) -> tuple[list[str], list[list]]:
     """
     The Tasks' table, each with its Task Group's name, from 'task_group_names'
-    (by Task Group ID; a Task Group not in it is left blank).
+    (by Task Group ID; a Task Group not in it is left blank), and its Work
+    Requirement's where the lister has added it.
     """
     names = task_group_names or {}
-    headers = ["#", "Task Group", "Task Name", "Status", "Task ID"]
+    show_wr_name = _work_requirement_column(task_list)
+    headers = ["#"]
+    if show_wr_name:
+        headers.append("Work Requirement")
+    headers += ["Task Group", "Task Name", "Status", "Task ID"]
     table = []
     for index, task in enumerate(task_list):
+        row: list = [index + 1]
+        if show_wr_name:
+            row.append(getattr(task, "workRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 names.get(task.taskGroupId or "", ""),
                 task.name,
                 _cell(task.status),
@@ -417,8 +440,18 @@ def image_family_table(
 def instances_table(
     instances: list[Instance],
 ) -> tuple[list[str], list[str]]:
-    headers = [
-        "#",
+    """
+    The Instances' table, each with its Compute Requirement's name where the
+    lister has added it ('computeRequirementName': an Instance does not name
+    its Compute Requirement).
+    """
+    show_cr_name = any(
+        getattr(i, "computeRequirementName", None) is not None for i in instances
+    )
+    headers = ["#"]
+    if show_cr_name:
+        headers.append("Compute Requirement")
+    headers += [
         "Provider",
         "Instance Type",
         "Spot",
@@ -431,9 +464,12 @@ def instances_table(
     ]
     table = []
     for index, instance in enumerate(instances):
+        row: list = [index + 1]
+        if show_cr_name:
+            row.append(getattr(instance, "computeRequirementName", None))
         table.append(
             [
-                index + 1,
+                *row,
                 instance.provider,
                 instance.instanceType,
                 _yes_or_no(instance.spot),
@@ -988,9 +1024,11 @@ def print_numbered_object_list(
     object_type_name: str | None = None,
     override_quiet: bool = False,
     showing_all: bool = False,
+    heading: bool = True,
 ) -> None:
     """
-    Print a numbered list of objects.
+    Print a numbered list of objects, headed by how many there are unless
+    the caller has said so ('heading' false).
     Assume that the list supplied is already sorted.
     """
     if not objects:
@@ -999,12 +1037,17 @@ def print_numbered_object_list(
     if OUTPUT.auto_select_all and OUTPUT.details and OUTPUT.quiet:
         return
 
-    print_info(
-        "Displaying"
-        f" {'all' if showing_all else 'matching'}"
-        f" {(object_type_name if object_type_name is not None else get_type_name(objects[0]))}(s):",  # type: ignore
-        override_quiet=override_quiet,
+    # The line above told what was searched for: this one, how much was found
+    type_name = (
+        object_type_name if object_type_name is not None else get_type_name(objects[0])  # type: ignore[arg-type]
     )
+    if heading:
+        print_info(
+            f"{'All ' if showing_all else ''}"
+            + counted(len(objects), f"{'' if showing_all else 'matching '}{type_name}")
+            + ":",
+            override_quiet=override_quiet,
+        )
     print()
 
     table_builder = _table_builder(objects[0], object_type_name)

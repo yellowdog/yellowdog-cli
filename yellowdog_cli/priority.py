@@ -25,6 +25,7 @@ from yellowdog_cli.utils.action_runner import (
     Unresolved,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -32,11 +33,12 @@ from yellowdog_cli.utils.entity_names import ET_TASK_GROUPS, ET_WORK_REQUIREMENT
 from yellowdog_cli.utils.entity_utils import FINISHED_WORK_REQUIREMENT_STATUSES
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import print_dry_run, print_info
+from yellowdog_cli.utils.printing import counted, plural, print_dry_run, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.work_targets import (
     MalformedTarget,
     TargetNotFound,
+    matching_work_ids,
     named_target_entity_type,
     resolve_named_target,
 )
@@ -99,7 +101,17 @@ def set_priorities(ctx: RunContext, priority: float, targets: list[str]):
     Set the priority of each Work Requirement and Task Group named.
     """
     items = resolve_targets(
-        targets,
+        expand_patterns(
+            targets,
+            expand=lambda pattern: matching_work_ids(
+                ctx.client, pattern, ctx.config.namespace
+            ),
+            describe=_describe,
+            record=_record,
+            none_match=lambda pattern: (
+                f"No unfinished Work Requirements or Task Groups match '{pattern}'"
+            ),
+        ),
         resolve=lambda target: _resolve(ctx, target, priority),
         describe=_describe,
         record=_record,
@@ -264,8 +276,8 @@ def _target(work_requirement: WorkRequirement, task_group: TaskGroup | None) -> 
 
 def _confirmation(priority: float, items: list[Item]) -> str:
     return (
-        f"Change the priority of {len(items)} Work Requirement(s) or Task"
-        " Group(s) ("
+        f"Change the priority of {counted(len(items), 'Work Requirement')} or"
+        f" {plural('Task Group', len(items))} ("
         + ", ".join(
             f"{item.value.label()} {item.value.priority} -> {priority}"
             for item in items

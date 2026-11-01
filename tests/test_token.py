@@ -190,11 +190,11 @@ class TestActing:
     @pytest.mark.parametrize(
         "regenerate, ttl_hours, words",
         [
-            (False, None, "Refresh the tokens of 1 Configured Worker Pool(s)"),
+            (False, None, "Refresh the tokens of 1 Configured Worker Pool"),
             (False, None, "setting them never to expire?"),
-            (False, 1000, "setting them to expire in 1,000 hour(s)?"),
+            (False, 1000, "setting them to expire in 1,000 hours?"),
             (True, None, "invalidating their current tokens, the new ones never"),
-            (True, 24, "the new ones to expire in 24 hour(s)?"),
+            (True, 24, "the new ones to expire in 24 hours?"),
         ],
     )
     def test_the_confirmation_says_what_the_expiry_will_be(

@@ -18,7 +18,7 @@ from yellowdog_cli.utils.file_substitution import (
     parse_json_file,
 )
 from yellowdog_cli.utils.paths import relative_if_possible
-from yellowdog_cli.utils.printing import print_info, print_json, print_warning
+from yellowdog_cli.utils.printing import counted, print_info, print_json, print_warning
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.variable_substitution import (
     TYPE_TAGS,
@@ -315,7 +315,9 @@ def perform_csv_task_expansion(
                 )
             )
         task_group[TASKS] = generated_task_list
-        print_info(f"Generated {len(generated_task_list)} Task(s) from CSV data")
+        print_info(
+            f"Generated {counted(len(generated_task_list), 'Task')} from CSV data"
+        )
 
     if csv_only:  # '--process-csv-only'
         print_info("Displaying CSV substitutions only:")

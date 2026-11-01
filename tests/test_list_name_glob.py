@@ -59,11 +59,13 @@ def _args(**overrides):
         output_file=None,
         # The listing filters, unset as parsed: a MagicMock's would be truthy
         unhealthy=False,
+        provisioned=False,
+        configured=False,
         provider=None,
         description_glob=None,
         deletable=False,
         with_errors=False,
-        within_target=None,
+        within_targets=None,
         list_limit=0,
     )
     defaults.update(overrides)
@@ -677,10 +679,10 @@ def test_name_glob_roles_warns_on_unnamed(capsys):
         (
             "default",
             "pwt",
-            "Displaying Worker Pools in namespace 'default' with 'pwt' in name",
+            "Listing Worker Pools in namespace 'default' with 'pwt' in name",
         ),
-        ("", "pwt", "Displaying Worker Pools in all namespaces with 'pwt' in name"),
-        ("", "", "Displaying Worker Pools in all namespaces"),
+        ("", "pwt", "Listing Worker Pools in all namespaces with 'pwt' in name"),
+        ("", "", "Listing Worker Pools in all namespaces"),
     ],
 )
 def test_an_empty_namespace_or_tag_is_not_quoted(namespace, name_tag, expected):
@@ -701,6 +703,40 @@ def test_an_empty_namespace_or_tag_is_not_quoted(namespace, name_tag, expected):
             wrapper_module,
             "ARGS_PARSER",
             _args(entity_type=ET_WORKER_POOLS, name_glob=None),
+        ),
+        patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        yd_list.list_worker_pools(_ctx())
+
+    assert _info_texts(mock_print_info)[0] == expected
+
+
+@pytest.mark.parametrize(
+    "flag, name_glob, expected",
+    [
+        ("configured", None, "Listing Configured Worker Pools in all namespaces"),
+        (
+            "provisioned",
+            "gpu-*",
+            "Listing Provisioned Worker Pools in all namespaces matching name"
+            " pattern 'gpu-*'",
+        ),
+    ],
+)
+def test_the_message_names_the_kind_of_worker_pool(flag, name_glob, expected):
+    import yellowdog_cli.list as yd_list
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="", name_tag="")
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=ET_WORKER_POOLS, name_glob=name_glob, **{flag: True}),
         ),
         patch.object(yd_list, "get_worker_pool_summaries", return_value=[]),
         patch.object(yd_list, "print_info") as mock_print_info,
@@ -740,7 +776,7 @@ def test_an_empty_namespace_names_those_the_application_can_read():
         yd_list.list_worker_pools(_ctx())
 
     assert _info_texts(mock_print_info)[0] == (
-        "Displaying Worker Pools in namespaces 'a', 'b'"
+        "Listing Worker Pools in namespaces 'a', 'b'"
     )
 
 
@@ -843,3 +879,53 @@ def test_image_families_are_listed_whatever_the_configured_tag():
 
     ((search,), _) = client.images_client.get_image_families.call_args
     assert not search.familyName
+
+
+@pytest.mark.parametrize(
+    "entity_type, lister, search, expected",
+    [
+        (
+            ET_WORK_REQUIREMENTS,
+            "list_work_requirements",
+            "get_filtered_work_requirement_summaries",
+            "Listing active Work Requirements in namespace 'ns' with 'pwt' in tag",
+        ),
+        (
+            "compute-requirements",
+            "list_compute_requirements",
+            "get_compute_requirement_summaries",
+            "Listing active Compute Requirements in namespace 'ns' with tags"
+            " including 'pwt'",
+        ),
+        (
+            ET_WORKER_POOLS,
+            "list_worker_pools",
+            "get_worker_pool_summaries",
+            "Listing active Worker Pools in namespace 'ns' with 'pwt' in name",
+        ),
+    ],
+)
+def test_active_only_is_said_in_the_one_line(entity_type, lister, search, expected):
+    """
+    '--active-only' is part of the line saying what is listed, never a line
+    of its own.
+    """
+    import yellowdog_cli.list as yd_list
+
+    with (
+        patch.object(wrapper_module, "CLIENT", MagicMock()),
+        patch.object(
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="ns", name_tag="pwt")
+        ),
+        patch.object(
+            wrapper_module,
+            "ARGS_PARSER",
+            _args(entity_type=entity_type, name_glob=None, active_only=True),
+        ),
+        patch.object(yd_list, search, return_value=[]),
+        patch.object(yd_list, "print_info") as mock_print_info,
+        patch.object(yd_list, "_print_empty"),
+    ):
+        getattr(yd_list, lister)(_ctx())
+
+    assert _info_texts(mock_print_info) == [expected]

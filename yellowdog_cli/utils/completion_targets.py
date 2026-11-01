@@ -10,7 +10,8 @@ is. The statuses are the SDK enums' member
 names, written out so that the table, and completion.py with it, stay
 SDK-free: tests/test_completion_targets.py holds them to the enums and to
 the commands' own sets. A verb that takes names takes IDs too, but a name is
-what a user types; an ID-only verb offers IDs, each described by its name.
+what a user types; an ID-only verb offers IDs, each described by its name
+(an Allowance's verbs by its description, through the resource lookups).
 """
 
 from __future__ import annotations
@@ -33,7 +34,10 @@ from yellowdog_cli.utils.entity_names import (
 
 @dataclass(frozen=True)
 class Lookup:
-    entity: str  # ET_WORK_REQUIREMENTS, ET_WORKER_POOLS or ET_COMPUTE_REQUIREMENTS
+    # ET_WORK_REQUIREMENTS, ET_WORKER_POOLS or ET_COMPUTE_REQUIREMENTS, or
+    # ET_INSTANCES or ET_NODES, found within their Compute Requirements or
+    # Worker Pools
+    entity: str
     ids: bool  # offer IDs, described by name, rather than names
     statuses: frozenset[str] | None  # the statuses offered; None for any
     configured_only: bool = False  # Configured Worker Pools alone
@@ -42,6 +46,16 @@ class Lookup:
     tagged: bool = True
     # After 'wr/', the Work Requirement's Task Groups, as 'wr/tg'
     task_groups: bool = False
+    # After 'wr/tg/', the Task Group's Tasks, as 'wr/tg/task', in these
+    # statuses (TaskStatus member names; None for any)
+    tasks: bool = False
+    task_statuses: frozenset[str] | None = None
+    # For Instances or Nodes, the statuses of the Compute Requirements or
+    # Worker Pools they are found in (None for any)
+    parent_statuses: frozenset[str] | None = None
+    # The option (its long flag) whose value, typed earlier on the line,
+    # names the one Worker Pool whose Nodes are offered
+    scoped_by: str | None = None
     # A resource type ('Keyring'): its names, as 'yd resource remove' and
     # 'show' take them after '--type' (a Credential's after 'keyring/')
     resource: str | None = None
@@ -64,6 +78,73 @@ def _task_groups(statuses: frozenset[str] | None) -> Lookup:
     Work Requirements by name, then after 'wr/' their Task Groups.
     """
     return Lookup(ET_WORK_REQUIREMENTS, ids=False, statuses=statuses, task_groups=True)
+
+
+# Not finished: the Tasks a cancellation still applies to
+TASK_UNFINISHED = frozenset(
+    {"PENDING", "READY", "ALLOCATED", "DOWNLOADING", "EXECUTING", "UPLOADING"}
+)
+
+
+def _tasks(
+    statuses: frozenset[str] | None, task_statuses: frozenset[str] | None
+) -> Lookup:
+    """
+    Work Requirements by name, then after 'wr/' their Task Groups, then
+    after 'wr/tg/' the Task Group's Tasks.
+    """
+    return Lookup(
+        ET_WORK_REQUIREMENTS,
+        ids=False,
+        statuses=statuses,
+        task_groups=True,
+        tasks=True,
+        task_statuses=task_statuses,
+    )
+
+
+# The Instance statuses each Instance verb acts on (compute_action_common's
+# valid_instance_statuses), and the Nodes not yet terminated, which the Node
+# verbs act on (their Instance's status decides the rest)
+_INSTANCE_STATUSES = {
+    "stop": frozenset({"RUNNING"}),
+    "start": frozenset({"STOPPED"}),
+    "restart": frozenset({"RUNNING"}),
+    "deprovision": frozenset(
+        {"PENDING", "RUNNING", "STOPPING", "STOPPED", "UNAVAILABLE", "UNKNOWN"}
+    ),
+    "terminate": frozenset(
+        {"PENDING", "RUNNING", "STOPPING", "STOPPED", "UNAVAILABLE", "UNKNOWN"}
+    ),
+}
+_NODE_LIVE = frozenset({"RUNNING", "LATE", "LOST", "DEREGISTERED"})
+
+
+def _instances(statuses: frozenset[str] | None) -> Lookup:
+    """
+    Instances as 'cr_id.instance_id', described by their Compute
+    Requirement's name and their status: within the unterminated Compute
+    Requirements for an action, any for 'show'.
+    """
+    return Lookup(
+        ET_INSTANCES,
+        ids=True,
+        statuses=statuses,
+        parent_statuses=None if statuses is None else _CR_UNTERMINATED,
+    )
+
+
+def _nodes(statuses: frozenset[str] | None) -> Lookup:
+    """
+    Node IDs, described by their Worker Pool's name and their status: within
+    the unfinished Worker Pools for an action, any for 'show'.
+    """
+    return Lookup(
+        ET_NODES,
+        ids=True,
+        statuses=statuses,
+        parent_statuses=None if statuses is None else _WP_UNFINISHED,
+    )
 
 
 # '--within' for each type 'yd list' lists within a parent: the parent's
@@ -141,6 +222,11 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_TG} compare", "wr_or_tg_id"): _task_groups(_WR_UNFINISHED),
     (f"{_TG} priority", "priority_targets"): _task_groups(_WR_UNFINISHED),
     (f"{_TG} compare", "worker_pool_ids"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    # Tasks: a Work Requirement's name, then 'wr/tg', then for a Task's own
+    # verbs 'wr/tg/task'
+    ("yd task abort", "task_id_list"): _task_groups(_WR_UNFINISHED),
+    ("yd task cancel", "work_requirements"): _tasks(_WR_UNFINISHED, TASK_UNFINISHED),
+    ("yd task show", _SHOWN): _tasks(None, None),
     # Worker Pools
     (f"{_WP} resize", "worker_pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
     (f"{_WP} shutdown", "worker_pool_nodes_list"): _names(
@@ -174,6 +260,32 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_CR} show", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, None),
     (f"{_CR} follow", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
     (f"{_CR} wait", _SHOWN): _names(ET_COMPUTE_REQUIREMENTS, _CR_UNTERMINATED),
+    # Allowances, which have no names: their IDs, each described by its
+    # description, as after 'yd resource show --type allowance'
+    ("yd allowance boost", "allowances"): RESOURCE_LOOKUPS[RN_ALLOWANCE],
+    ("yd allowance show", _SHOWN): RESOURCE_LOOKUPS[RN_ALLOWANCE],
+    # Instances and Nodes, by ID
+    **{
+        (f"yd instance {verb}", "compute_reqs_instances_or_nodes"): _instances(statuses)
+        for verb, statuses in _INSTANCE_STATUSES.items()
+    },
+    ("yd instance show", _SHOWN): _instances(None),
+    **{
+        (f"yd node {verb}", "compute_reqs_instances_or_nodes"): _nodes(_NODE_LIVE)
+        for verb in _INSTANCE_STATUSES
+    },
+    ("yd node shutdown", "worker_pool_nodes_list"): _nodes(_NODE_LIVE),
+    ("yd node show", _SHOWN): _nodes(None),
+    # A Node Action's Worker Pool by name, then its running Nodes, those of
+    # the '--worker-pool' typed if one is
+    ("yd node action", "--worker-pool"): _names(ET_WORKER_POOLS, _WP_UNFINISHED),
+    ("yd node action", "--node"): Lookup(
+        ET_NODES,
+        ids=True,
+        statuses=frozenset({"RUNNING"}),
+        parent_statuses=_WP_UNFINISHED,
+        scoped_by="--worker-pool",
+    ),
     # The listings within a parent
     ("yd taskgroup list", "--within"): WITHIN_LOOKUPS[ET_TASK_GROUPS],
     ("yd task list", "--within"): WITHIN_LOOKUPS[ET_TASKS],

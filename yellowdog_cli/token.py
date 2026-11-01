@@ -46,6 +46,7 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.misc_utils import is_http_not_found, shown_expiry
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_info,
     print_quiet_result,
@@ -222,14 +223,16 @@ def _label(worker_pool: WorkerPool) -> str:
 def _confirmation(ctx: RunContext, items: list[Item]) -> str:
     pools = ", ".join(_label(item.value) for item in items)
     hours = ctx.args.ttl_hours
-    expiry = "never to expire" if hours is None else f"to expire in {hours:,d} hour(s)"
+    expiry = (
+        "never to expire" if hours is None else f"to expire in {counted(hours, 'hour')}"
+    )
     if ctx.args.regenerate:
         return (
-            f"Regenerate the tokens of {len(items)} Configured Worker Pool(s)"
+            f"Regenerate the tokens of {counted(len(items), 'Configured Worker Pool')}"
             f" ({pools}), invalidating their current tokens, the new ones {expiry}?"
         )
     return (
-        f"Refresh the tokens of {len(items)} Configured Worker Pool(s) ({pools}),"
+        f"Refresh the tokens of {counted(len(items), 'Configured Worker Pool')} ({pools}),"
         f" setting them {expiry}?"
     )
 

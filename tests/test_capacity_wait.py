@@ -164,7 +164,7 @@ class TestSettled:
             _instances(InstanceStatus.RUNNING, InstanceStatus.PENDING),
         )
         assert capacity.describe() == (
-            "1 of 2 Instance(s) running, 1 pending (PROVISIONING)"
+            "1 of 2 Instances running, 1 pending (PROVISIONING)"
         )
 
 
@@ -198,10 +198,10 @@ class TestWaiting:
         assert platform.reads[CR_ID] == 4
         # One line per change, none for the unchanged third poll
         assert printed[1:] == [
-            "Compute Requirement 'ns/cr-a': 1 of 2 Instance(s) running (PROVISIONING)",
-            "Compute Requirement 'ns/cr-a': 1 of 2 Instance(s) running, 1 pending"
+            "Compute Requirement 'ns/cr-a': 1 of 2 Instances running (PROVISIONING)",
+            "Compute Requirement 'ns/cr-a': 1 of 2 Instances running, 1 pending"
             " (PROVISIONING)",
-            "Compute Requirement 'ns/cr-a': 2 of 2 Instance(s) running",
+            "Compute Requirement 'ns/cr-a': 2 of 2 Instances running",
         ]
 
     def test_scaling_down_waits_for_the_surplus_to_go(self, clock, printed):
@@ -227,9 +227,7 @@ class TestWaiting:
         platform = FakePlatform({CR_ID: [(_cr(), _instances(InstanceStatus.RUNNING))]})
         _wait(platform, [CR_ID])
         assert clock.sleeps == []
-        assert (
-            printed[-1] == "Compute Requirement 'ns/cr-a': 1 of 1 Instance(s) running"
-        )
+        assert printed[-1] == "Compute Requirement 'ns/cr-a': 1 of 1 Instance running"
 
     def test_several_are_waited_for_together(self, clock, printed):
         platform = FakePlatform(
@@ -244,7 +242,7 @@ class TestWaiting:
         _wait(platform, [CR_ID, CR_ID_2, CR_ID])
         # The settled one is not read again; a repeated ID is waited for once
         assert platform.reads == {CR_ID: 1, CR_ID_2: 2}
-        assert "2 Compute Requirement(s)" in printed[0]
+        assert "2 Compute Requirements" in printed[0]
 
     def test_no_limit_by_default(self, clock, printed):
         script = [(_cr(target=2), _instances(InstanceStatus.RUNNING))] * 100 + [
@@ -262,7 +260,7 @@ class TestWaiting:
             _wait(platform, [CR_ID], timeout=12)
         assert str(raised.value) == (
             "Timed out after 12s waiting for Compute Requirement(s) to reach their"
-            " target instance counts: 'ns/cr-a' 1 of 2 Instance(s) running"
+            " target instance counts: 'ns/cr-a' 1 of 2 Instances running"
         )
         assert clock.t == 12  # the last sleep cut short to the deadline
 

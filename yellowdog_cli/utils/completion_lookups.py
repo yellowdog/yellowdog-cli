@@ -10,7 +10,13 @@ Compute Requirements by tag, Worker Pools by the tag in their name, '-t'
 and '-n' typed on the line taking precedence; for '--within', which resolves
 a name in the namespace, whatever their tag -- in the statuses the verb acts
 on, newest first and at most LOOKUP_MAX_ITEMS of them. After 'wr/', a
-'--within' Work Requirement's Task Groups are offered, as 'wr/tg'. The
+Work Requirement's Task Groups are offered, as 'wr/tg', and after 'wr/tg/'
+for a Task's verbs, the Task Group's Tasks, as 'wr/tg/task' (or, where no
+such Task Group is found, 'namespace/wr/' read as a Work Requirement's).
+Instances and Nodes, which the Platform searches for one Compute
+Requirement or Worker Pool at a time, are those of the newest
+LOOKUP_MAX_PARENTS of them the verb's command would select, or for an
+Instance after 'cr_id.', that Compute Requirement's alone. The
 answer is kept for the Tabs that follow (utils/completion_cache.py), unless
 nothing was found.
 
@@ -34,6 +40,8 @@ from yellowdog_cli.utils.completion_targets import Lookup
 from yellowdog_cli.utils.config_types import ConfigCommon
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
+    ET_INSTANCES,
+    ET_NODES,
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     RN_ALLOWANCE,
@@ -52,7 +60,11 @@ from yellowdog_cli.utils.entity_names import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
-from yellowdog_cli.utils.limits import LOOKUP_MAX_ITEMS, LOOKUP_TIMEOUT_SECONDS
+from yellowdog_cli.utils.limits import (
+    LOOKUP_MAX_ITEMS,
+    LOOKUP_MAX_PARENTS,
+    LOOKUP_TIMEOUT_SECONDS,
+)
 
 if TYPE_CHECKING:
     from yellowdog_client import PlatformClient
@@ -67,6 +79,17 @@ def candidates(request: LookupRequest) -> tuple[Candidate, ...]:
         common = _load_common(request.settings)
         if common is None:
             return ()
+        if request.lookup.entity == ET_NODES and request.scope:
+            return _offered(
+                _pool_node_items(common, request.scope, request.lookup), request
+            )
+        if request.lookup.entity == ET_INSTANCES and "." in request.current:
+            cr_id = request.current.partition(".")[0]
+            return _offered(_cr_instance_items(common, cr_id, request.lookup), request)
+        if request.lookup.tasks and request.current.count("/") >= 2:
+            parent, _, typed = request.current.rpartition("/")
+            items = _task_items(common, parent, typed, request.lookup)
+            return _offered(items or _task_group_items(common, parent), request)
         if request.lookup.task_groups and "/" in request.current:
             parent = request.current.rpartition("/")[0]
             return _offered(_task_group_items(common, parent), request)
@@ -134,6 +157,7 @@ def _items(common: ConfigCommon, lookup: Lookup) -> list[dict[str, Any]]:
         ",".join(sorted(lookup.statuses or ())) if lookup.statuses else "*",
         str(lookup.configured_only),
         str(lookup.tagged),
+        ",".join(sorted(lookup.parent_statuses or ())) or "*",
     )
     cached = completion_cache.read(key)
     if cached is not None:
@@ -341,6 +365,86 @@ def _task_group_items(common: ConfigCommon, parent: str) -> list[dict[str, Any]]
     return items
 
 
+def _task_items(
+    common: ConfigCommon, parent: str, typed: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The Tasks of the Task Group named 'parent' ('wr/tg' or 'namespace/wr/tg')
+    whose names contain what is typed of the Task's ('typed', the Platform
+    filtering), in the lookup's Task statuses, each named 'parent/task': at
+    most LOOKUP_MAX_ITEMS, from the cache or else the Platform. None where
+    there is no such Task Group.
+    """
+    key = completion_cache.cache_key(
+        common.url,
+        common.key or "",
+        common.namespace,
+        "tasks",
+        parent,
+        typed,
+        ",".join(sorted(lookup.task_statuses or ())) or "*",
+    )
+    cached = completion_cache.read(key)
+    if cached is not None:
+        return cached
+    from yellowdog_cli.utils.entity_utils import (
+        AmbiguousNameError,
+        find_work_requirement_by_name,
+        get_task_groups_from_wr_by_id,
+        iterate_tasks_in_task_group,
+    )
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    work_requirement_name, _, task_group_name = parent.rpartition("/")
+    if not work_requirement_name:
+        return []
+    client = _client(common)
+    try:
+        try:
+            work_requirement = find_work_requirement_by_name(
+                client, work_requirement_name, common.namespace, statuses=()
+            )
+        except (NotFoundError, AmbiguousNameError):
+            # 'namespace/wr/' perhaps, for the caller to read as that
+            return []
+        task_group = next(
+            (
+                task_group
+                for task_group in get_task_groups_from_wr_by_id(
+                    client, work_requirement.id
+                )
+                if task_group.name == task_group_name
+            ),
+            None,
+        )
+        if task_group is None:
+            return []
+        found = iterate_tasks_in_task_group(
+            client,
+            cast(str, task_group.id),
+            statuses=(
+                tuple(sorted(lookup.task_statuses))
+                if lookup.task_statuses is not None
+                else None
+            ),
+            name_contains=typed or None,
+        )
+        items = [
+            {
+                "id": task.id,
+                "name": f"{parent}/{task.name}",
+                "status": getattr(task.status, "name", None),
+            }
+            for task in _capped(found)
+            if task.name
+        ]
+    finally:
+        client.close()
+    if items:
+        completion_cache.write(key, items)
+    return items
+
+
 def _fetch(
     client: PlatformClient, lookup: Lookup, namespace: str, tag: str
 ) -> list[dict[str, Any]]:
@@ -348,6 +452,8 @@ def _fetch(
     Search for the entities, as the command selects them, newest first:
     one page of LOOKUP_MAX_ITEMS.
     """
+    if lookup.entity in (ET_INSTANCES, ET_NODES):
+        return _children(client, lookup, namespace, tag)
     from yellowdog_client.model import (
         ComputeRequirementStatus,
         ComputeRequirementSummarySearch,
@@ -411,6 +517,132 @@ def _fetch(
         }
         for summary in summaries
     ]
+
+
+def _children(
+    client: PlatformClient, lookup: Lookup, namespace: str, tag: str
+) -> list[dict[str, Any]]:
+    """
+    The Instances or Nodes of the newest LOOKUP_MAX_PARENTS Compute
+    Requirements or Worker Pools the command would select, in the lookup's
+    statuses, each described by its parent's name: at most
+    LOOKUP_MAX_ITEMS of them.
+    """
+    parent = Lookup(
+        ET_COMPUTE_REQUIREMENTS if lookup.entity == ET_INSTANCES else ET_WORKER_POOLS,
+        ids=False,
+        statuses=lookup.parent_statuses,
+        tagged=lookup.tagged,
+    )
+    items: list[dict[str, Any]] = []
+    for found in _fetch(client, parent, namespace, tag)[:LOOKUP_MAX_PARENTS]:
+        children = (
+            _instance_items(client, found["id"], found["name"], lookup)
+            if lookup.entity == ET_INSTANCES
+            else _node_items(client, found["id"], found["name"], lookup)
+        )
+        items.extend(children[: LOOKUP_MAX_ITEMS - len(items)])
+        if len(items) >= LOOKUP_MAX_ITEMS:
+            break
+    return items
+
+
+def _instance_items(
+    client: PlatformClient, cr_id: str, cr_name: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    A Compute Requirement's Instances in the lookup's statuses, as
+    'cr_id.instance_id', described by the Compute Requirement's name.
+    """
+    from yellowdog_client.model import InstanceSearch, InstanceStatus
+
+    statuses = sorted(lookup.statuses) if lookup.statuses is not None else None
+    found = client.compute_client.get_instances(
+        InstanceSearch(
+            computeRequirementId=cr_id,
+            statuses=_enums(InstanceStatus, statuses),
+        )
+    ).iterate()
+    return [
+        {
+            "id": f"{cr_id}.{instance.id.instanceId}",
+            "name": cr_name,
+            "status": getattr(instance.status, "name", None),
+        }
+        for instance in _capped(found)
+        if instance.id is not None and instance.id.instanceId
+    ]
+
+
+def _node_items(
+    client: PlatformClient, pool_id: str, pool_name: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    A Worker Pool's Nodes in the lookup's statuses, by ID, described by the
+    Worker Pool's name.
+    """
+    from yellowdog_client.model import NodeSearch, NodeStatus
+
+    statuses = sorted(lookup.statuses) if lookup.statuses is not None else None
+    found = client.worker_pool_client.get_nodes(
+        NodeSearch(pool_id, statuses=_enums(NodeStatus, statuses))
+    ).iterate()
+    return [
+        {
+            "id": node.id,
+            "name": pool_name,
+            "status": getattr(node.status, "name", None),
+        }
+        for node in _capped(found)
+        if node.id
+    ]
+
+
+def _pool_node_items(
+    common: ConfigCommon, pool_name: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The Nodes of the Worker Pool named 'pool_name' ('--worker-pool', a name
+    or 'namespace/name'), from the cache or else the Platform; none for a
+    name that finds no Worker Pool.
+    """
+
+    def fetch(client: PlatformClient) -> list[dict[str, Any]]:
+        from yellowdog_cli.utils.entity_utils import get_worker_pool_id_by_name
+
+        pool_id = get_worker_pool_id_by_name(client, pool_name, common.namespace)
+        if pool_id is None:
+            return []
+        return _node_items(client, pool_id, pool_name, lookup)
+
+    return _cached(
+        common,
+        ("pool-nodes", pool_name, ",".join(sorted(lookup.statuses or ())) or "*"),
+        fetch,
+    )
+
+
+def _cr_instance_items(
+    common: ConfigCommon, cr_id: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The Instances of the Compute Requirement whose ID is typed ahead of
+    '.', from the cache or else the Platform; none for anything else.
+    """
+    from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+    if get_ydid_type(cr_id) != YDIDType.COMPUTE_REQUIREMENT:
+        return []
+
+    def fetch(client: PlatformClient) -> list[dict[str, Any]]:
+        compute_requirement = client.compute_client.get_compute_requirement_by_id(cr_id)
+        return _instance_items(client, cr_id, compute_requirement.name or "", lookup)
+
+    return _cached(
+        common,
+        ("instances", cr_id, ",".join(sorted(lookup.statuses or ())) or "*"),
+        fetch,
+    )
 
 
 def _enums(enum: Any, names: list[str] | None) -> list[Any] | None:

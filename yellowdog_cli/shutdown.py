@@ -32,6 +32,7 @@ from yellowdog_cli.utils.action_runner import (
     by_type,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -57,6 +58,7 @@ from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
 from yellowdog_cli.utils.printing import (
+    counted,
     print_dry_run,
     print_error,
     print_info,
@@ -128,20 +130,31 @@ def shut_down(ctx: RunContext, names: list[str]):
     """
     globs = [n for n in names if contains_glob_chars(n)]
 
-    if names and not globs:
-        shutdown_by_names_or_ids(ctx, names)
+    if names and len(globs) < len(names):
+        # Names or IDs, with any patterns among them replaced by the IDs of
+        # the unfinished Worker Pools they match
+        shutdown_by_names_or_ids(
+            ctx,
+            expand_patterns(
+                names,
+                expand=lambda pattern: [
+                    cast(str, summary.id)
+                    for summary in _matching(ctx, [pattern])
+                    if not _is_finished(summary)
+                ],
+                describe=_describe,
+                record=_recorder,
+                none_match=lambda pattern: (
+                    f"No unfinished Worker Pools match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
         scope = describe_glob_scope(ctx.client, globs, ctx.config.namespace)
         print_info(f"Shutting down Worker Pools {scope}")
-        worker_pool_summaries: list[WorkerPoolSummary] = expand_name_globs(
-            globs,
-            ctx.config.namespace,
-            fetch=lambda namespace, prefix: get_worker_pool_summaries(
-                ctx.client, namespace, prefix or None, partial_name_matches=True
-            ),
-        )
+        worker_pool_summaries: list[WorkerPoolSummary] = _matching(ctx, globs)
     else:
         scope = namespace_scope(ctx.client, ctx.config.namespace) + filter_phrase(
             "with names including '{}'", ctx.config.name_tag
@@ -196,6 +209,19 @@ def shut_down(ctx: RunContext, names: list[str]):
         items = []
 
     _carry_out(ctx, items)
+
+
+def _matching(ctx: RunContext, globs: list[str]) -> list[WorkerPoolSummary]:
+    """
+    The Worker Pools whose names match the glob patterns, in any state.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_worker_pool_summaries(
+            ctx.client, namespace, prefix or None, partial_name_matches=True
+        ),
+    )
 
 
 def _nothing_to_shut_down(scope: str, finished: list[WorkerPoolSummary]) -> str:
@@ -359,13 +385,13 @@ def _confirmation(ctx: RunContext, items: list[Item]) -> str:
     parts = []
     if pools:
         parts.append(
-            f"{len(pools)} Worker Pool(s) ("
+            f"{counted(len(pools), 'Worker Pool')} ("
             + ", ".join(f"'{pool.name}'" if pool.name else pool.id for pool in pools)
             + ")"
         )
     if nodes:
         parts.append(
-            f"{len(nodes)} Node(s) ({', '.join(cast(str, n.id) for n in nodes)})"
+            f"{counted(len(nodes), 'Node')} ({', '.join(cast(str, n.id) for n in nodes)})"
         )
     terminating = (
         ", immediately terminating their Compute Requirements"
@@ -411,9 +437,9 @@ def _carry_out(ctx: RunContext, items: list[Item]):
 
     if shut_down_pool_ids or shut_down_node_ids:
         if shut_down_pool_ids:
-            print_info(f"Shut down {len(shut_down_pool_ids)} Worker Pool(s)")
+            print_info(f"Shut down {counted(len(shut_down_pool_ids), 'Worker Pool')}")
         if shut_down_node_ids:
-            print_info(f"Shut down {len(shut_down_node_ids)} Node(s)")
+            print_info(f"Shut down {counted(len(shut_down_node_ids), 'Node')}")
         if ctx.args.follow and shut_down_pool_ids:
             follow_ids(ctx, shut_down_pool_ids, auto_cr=ctx.args.auto_cr)
     else:

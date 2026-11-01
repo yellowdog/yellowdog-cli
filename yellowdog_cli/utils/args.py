@@ -440,6 +440,16 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def provisioned(self) -> bool | None:
+        return self.args.provisioned
+
+    @property
+    @allow_missing_attribute
+    def configured(self) -> bool | None:
+        return self.args.configured
+
+    @property
+    @allow_missing_attribute
     def provider(self) -> str | None:
         return self.args.provider
 
@@ -465,8 +475,8 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
-    def within_target(self) -> str | None:
-        return self.args.within_target
+    def within_targets(self) -> list[str] | None:
+        return self.args.within_targets
 
     @property
     @allow_missing_attribute

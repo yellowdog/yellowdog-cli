@@ -38,6 +38,7 @@ from yellowdog_cli.utils.tables import (
     _truncate_text,
     _yes_or_no,
     get_type_name,
+    instances_table,
     keyring_table,
     task_group_names,
     task_group_table,
@@ -668,6 +669,67 @@ class TestWorkersTableNodeAndClaim:
         assert dict(zip(headers, rows[0]))["Claimed By"] == ""
 
 
+class TestInstancesTableComputeRequirement:
+    def _instance(self, **extra):
+        return SimpleNamespace(
+            provider="AWS",
+            instanceType="t3.micro",
+            spot=False,
+            hostname="h",
+            status="RUNNING",
+            privateIpAddress="10.0.0.1",
+            publicIpAddress=None,
+            id=SimpleNamespace(sourceId="src", instanceId="i-1"),
+            **extra,
+        )
+
+    def test_the_compute_requirement_the_lister_names_is_shown(self):
+        headers, rows = instances_table([self._instance(computeRequirementName="cr")])  # type: ignore[list-item]
+        assert headers[:2] == ["#", "Compute Requirement"]
+        assert dict(zip(headers, rows[0]))["Compute Requirement"] == "cr"
+
+    def test_no_column_when_none_is_named(self):
+        headers, rows = instances_table([self._instance()])  # type: ignore[list-item]
+        assert "Compute Requirement" not in headers
+        assert len(rows[0]) == len(headers)
+
+
+class TestWorkRequirementColumn:
+    """
+    The Task Group and Task tables name each row's Work Requirement when
+    the lister has added it, and have no such column otherwise.
+    """
+
+    def _task_group(self, **extra):
+        return SimpleNamespace(
+            name="tg",
+            status=None,
+            starved=False,
+            waitingOnDependency=False,
+            taskSummary=None,
+            id="ydid:taskgrp:1",
+            **extra,
+        )
+
+    def _task(self, **extra):
+        return SimpleNamespace(
+            name="t", status="READY", taskGroupId="tg1", id="ydid:task:1", **extra
+        )
+
+    @pytest.mark.parametrize(
+        ("builder", "item"),
+        [(task_group_table, "_task_group"), (task_table, "_task")],
+    )
+    def test_named_where_the_lister_adds_it(self, builder, item):
+        make = getattr(self, item)
+        headers, rows = builder([make(workRequirementName="wr")])
+        assert headers[:2] == ["#", "Work Requirement"]
+        assert rows[0][1] == "wr"
+        headers, rows = builder([make()])
+        assert "Work Requirement" not in headers
+        assert len(rows[0]) == len(headers)
+
+
 class TestTaskGroupNames:
     """
     task_group_names(): each Task Group looked up once, from its Work
@@ -922,7 +984,7 @@ class TestPrintEventWithNullFields:
             },
             YDIDType.WORK_REQUIREMENT,
         )
-        assert "Task Group 'tg': 0 Task(s)" in printed[0]
+        assert "Task Group 'tg': 0 Tasks" in printed[0]
 
     def test_a_worker_pool_with_no_summaries(self, monkeypatch):
         from yellowdog_cli.utils.ydid_utils import YDIDType

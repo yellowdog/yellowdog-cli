@@ -1036,11 +1036,11 @@ The Task variables work wherever a property a Task takes is set. A property such
 
 ```text
 Work Requirement 'nightly-render' is RUNNING
---> [RUNNING] Task Group 'render': 20 Task(s)
+--> [RUNNING] Task Group 'render': 20 Tasks
     16 READY, 4 EXECUTING
---> [PENDING/STARVED] Task Group 'encode': 1 Task(s)
+--> [PENDING/STARVED] Task Group 'encode': 1 Task
     1 READY
---> [PENDING/WAITING] Task Group 'publish': 1 Task(s)
+--> [PENDING/WAITING] Task Group 'publish': 1 Task
     1 PENDING
 ```
 

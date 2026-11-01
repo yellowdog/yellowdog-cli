@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from json import loads as json_loads
 from threading import Event, Lock, Thread
 from time import monotonic, sleep, time
-from typing import Any
+from typing import Any, cast
 
 import requests
 from rich.progress import (
@@ -53,7 +53,14 @@ from yellowdog_cli.utils.limits import (
     EVENT_STREAM_RETRY_INTERVAL,
 )
 from yellowdog_cli.utils.misc_utils import is_http_not_found
-from yellowdog_cli.utils.printing import CONSOLE, print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import (
+    CONSOLE,
+    counted,
+    plural,
+    print_error,
+    print_info,
+    print_warning,
+)
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
 _LOG = logging.getLogger(__name__)
@@ -357,6 +364,7 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
         follow_events(ctx, ydid, YDIDType.WORK_REQUIREMENT, on_event=on_event)
 
     if (failures := counts.failures()) is not None:
+        # A breakdown ('1 failed · 1 aborted'), not one count
         print_warning(f"Work Requirement finished with {failures} task(s)")
 
 
@@ -433,7 +441,7 @@ def follow_ids(
     unique_ydids = list(dict.fromkeys(ydids))
     num_duplicates = len(ydids) - len(unique_ydids)
     if num_duplicates > 0:
-        print_warning(f"Ignoring {num_duplicates} duplicate YellowDog ID(s)")
+        print_warning(f"Ignoring {counted(num_duplicates, 'duplicate YellowDog ID')}")
 
     # Capture valid original IDs before auto-CR expansion
     valid_original = [
@@ -453,7 +461,10 @@ def follow_ids(
                     )
                     to_follow.append(cr_ydid)
 
-    print_info(f"Following the event stream(s) for {len(to_follow)} YellowDog ID(s)")
+    print_info(
+        f"Following the {plural('event stream', len(to_follow))} for"
+        f" {counted(len(to_follow), 'YellowDog ID')}"
+    )
 
     # Rich only supports one live display at a time, so the progress bar can
     # only be used when following a single Work Requirement
@@ -523,7 +534,9 @@ def _wait_for_streams(threads: list[Thread], timeout: float | None) -> None:
     while any(t.is_alive() for t in threads):
         if deadline is not None and monotonic() >= deadline:
             _STOP_FOLLOWING.set()
-            print_warning(f"Stopped following after {timeout:,g} second(s)")
+            print_warning(
+                f"Stopped following after {counted(cast(float, timeout), 'second')}"
+            )
             return
         sleep(0.1)
 

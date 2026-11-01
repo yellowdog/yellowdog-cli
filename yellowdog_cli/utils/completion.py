@@ -143,6 +143,8 @@ class LookupRequest:
     # Put ahead of each name or ID found: the '--flag=' of a value typed
     # in the one word with its option
     prefix: str = ""
+    # The value typed for the lookup's 'scoped_by' option, if any
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +266,8 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
     given: set[str] = set()
     settings = _unset_settings()
     typed_values: dict[str, str] = {}  # each option's value as typed, by name
+    # Every value of each option, for a repeated one's lookup to leave out
+    all_values: dict[str, list[str]] = {}
     filled = 0
     typed: list[str] = []  # the positional words, for a lookup to leave out
     awaiting: Option | None = None  # an option whose value comes next
@@ -275,6 +279,7 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
             if not (optional_value and word.startswith("-")):
                 _set(settings, value_of, word)
                 typed_values[value_of.name] = word
+                all_values.setdefault(value_of.name, []).append(word)
                 continue
             # Given no value: its 'const', as argparse sets it ('-n' is '')
             _set(settings, value_of, value_of.kwargs.get("const"))
@@ -290,6 +295,7 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
                 elif equals:
                     _set(settings, found, value)
                     typed_values[found.name] = value
+                    all_values.setdefault(found.name, []).append(value)
                 else:
                     awaiting = found
                     optional_value = found.kwargs.get("nargs") == "?"
@@ -300,7 +306,15 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
     if awaiting is not None and not (optional_value and current.startswith("-")):
         lookup = _option_lookup(command, awaiting, typed)
         if lookup is not None:
-            return Completions(lookup=LookupRequest(lookup, current, settings))
+            return Completions(
+                lookup=LookupRequest(
+                    lookup,
+                    current,
+                    settings,
+                    tuple(all_values.get(awaiting.name, ())),
+                    scope=_scope(lookup, typed_values),
+                )
+            )
         return _values(command, awaiting, current)
     if not options_ended and _is_long(current) and "=" in current:
         flag, _, value = current.partition("=")
@@ -311,7 +325,14 @@ def _arguments(command: Command, words: list[str], current: str) -> Completions:
         lookup = _option_lookup(command, found, typed)
         if lookup is not None:
             return Completions(
-                lookup=LookupRequest(lookup, value, settings, prefix=f"{flag}=")
+                lookup=LookupRequest(
+                    lookup,
+                    value,
+                    settings,
+                    tuple(all_values.get(found.name, ())),
+                    prefix=f"{flag}=",
+                    scope=_scope(lookup, typed_values),
+                )
             )
         values = _values(command, found, value)
         return Completions(
@@ -356,6 +377,13 @@ def _resource_lookup(
         return RESOURCE_LOOKUPS.get(resolve_resource_type(typed))
     except ArgumentTypeError:
         return None
+
+
+def _scope(lookup: Lookup, typed_values: dict[str, str]) -> str | None:
+    """
+    The value typed for the option a lookup is scoped by, if any.
+    """
+    return None if lookup.scoped_by is None else typed_values.get(lookup.scoped_by)
 
 
 def _option_lookup(command: Command, option: Option, typed: list[str]) -> Lookup | None:

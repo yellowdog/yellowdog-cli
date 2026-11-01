@@ -40,6 +40,7 @@ from yellowdog_cli.utils.action_runner import (
     Unresolved,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.capacity_wait import (
@@ -77,7 +78,7 @@ from yellowdog_cli.utils.misc_utils import (
     link_entity,
     shown_expiry,
 )
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, plural, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -269,7 +270,7 @@ def compute_auto_shutdown(shutdown: AutoShutdown) -> ComputeAction:
         confirmation_verb=(
             "Disable the auto shutdown of"
             if minutes is None
-            else f"Terminate, {minutes:g} minute(s) from now,"
+            else f"Terminate, {counted(minutes, 'minute')} from now,"
         ),
         record_name="autoshutdown",
         cr_arguments=(shutdown,),
@@ -291,7 +292,7 @@ def _auto_shutdown_reported(
         return f": it will be terminated at {shown_expiry(when)}", fields
     if shutdown.timeout is not None:
         minutes = shutdown.timeout.total_seconds() / 60
-        return f": it will be terminated in {minutes:g} minute(s)", fields
+        return f": it will be terminated in {counted(minutes, 'minute')}", fields
     return ": it will be terminated automatically", fields
 
 
@@ -372,14 +373,31 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
     """
     Entry point for the yd-compute-stop/start/restart/deprovision/reprovision
     commands and yd-terminate. The command registry ensures that yd-compute-restart
-    and yd-compute-deprovision have explicit targets, and that glob patterns
-    are not mixed with explicit names or IDs.
+    and yd-compute-deprovision have explicit targets, and no glob patterns.
+    Glob patterns alone are a listing; mixed with names or IDs, each pattern
+    is replaced by the IDs it matches, and they are resolved with the rest.
     """
     names_or_ids: list[str] = ctx.args.compute_requirements_instances_or_nodes or []
     globs = [name for name in names_or_ids if contains_glob_chars(name)]
 
-    if names_or_ids and not globs:
-        _apply_action_by_name_or_id(ctx, action, names_or_ids)
+    if names_or_ids and len(globs) < len(names_or_ids):
+        _apply_action_by_name_or_id(
+            ctx,
+            action,
+            expand_patterns(
+                names_or_ids,
+                expand=lambda pattern: [
+                    cast(str, summary.id)
+                    for summary in _matching(ctx, action, [pattern])
+                ],
+                describe=_target_entity,
+                record=action.recorder(),
+                none_match=lambda pattern: (
+                    f"No Compute Requirements to {action.name.lower()}"
+                    f" match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
@@ -387,18 +405,8 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
             f"{action.gerund} Compute Requirements "
             f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
-        compute_requirement_summaries: list[ComputeRequirementSummary] = (
-            expand_name_globs(
-                globs,
-                ctx.config.namespace,
-                fetch=lambda namespace, prefix: get_compute_requirement_summaries(
-                    ctx.client,
-                    namespace,
-                    tag=None,
-                    statuses=action.valid_cr_statuses,
-                    name=prefix or None,
-                ),
-            )
+        compute_requirement_summaries: list[ComputeRequirementSummary] = _matching(
+            ctx, action, globs
         )
     else:
         print_info(
@@ -428,6 +436,26 @@ def apply_compute_action(ctx: RunContext, action: ComputeAction):
     _apply_action_to_summaries(ctx, action, compute_requirement_summaries)
 
 
+def _matching(
+    ctx: RunContext, action: ComputeAction, globs: list[str]
+) -> list[ComputeRequirementSummary]:
+    """
+    The Compute Requirements the action applies to whose names match the glob
+    patterns.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_compute_requirement_summaries(
+            ctx.client,
+            namespace,
+            tag=None,
+            statuses=action.valid_cr_statuses,
+            name=prefix or None,
+        ),
+    )
+
+
 def _apply_action_to_summaries(
     ctx: RunContext, action: ComputeAction, summaries: list[ComputeRequirementSummary]
 ):
@@ -439,7 +467,7 @@ def _apply_action_to_summaries(
     items = [_cr_item(summary) for summary in selected]
 
     if items and not confirm_items(
-        f"{action.prompt} {len(items)} Compute Requirement(s)?",
+        f"{action.prompt} {counted(len(items), 'Compute Requirement')}?",
         items,
         action.recorder(),
     ):
@@ -449,7 +477,9 @@ def _apply_action_to_summaries(
     actioned_ids = [cast(str, unit.items[0].value.id) for unit in done]
 
     if actioned_ids:
-        print_info(f"{action.past_tense} {len(actioned_ids)} Compute Requirement(s)")
+        print_info(
+            f"{action.past_tense} {counted(len(actioned_ids), 'Compute Requirement')}"
+        )
         _after(ctx, action, actioned_ids)
     else:
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
@@ -551,13 +581,13 @@ def _confirmation(action: ComputeAction, items: list[Item]) -> str:
     parts = []
     if crs:
         parts.append(
-            f"{len(crs)} Compute Requirement(s) ("
+            f"{counted(len(crs), 'Compute Requirement')} ("
             + ", ".join(f"'{cr.name}'" if cr.name else cast(str, cr.id) for cr in crs)
             + ")"
         )
     if instances:
         parts.append(
-            f"{len(instances)} Instance(s) ("
+            f"{counted(len(instances), 'Instance')} ("
             + ", ".join(instance.label() for instance in instances)
             + ")"
         )
@@ -626,11 +656,11 @@ def _instances_failure(action: ComputeAction, group: list[_Instance], e: Excepti
     labels = ", ".join(instance.label() for instance in group)
     if "InvalidComputeRequirementStatusException" in str(e):
         return (
-            f"Unable to {action.name.lower()} Instance(s) {labels}: Compute"
+            f"Unable to {action.name.lower()} {plural('Instance', len(group))} {labels}: Compute"
             f" Requirement {group[0].cr_id} is in invalid status"
             f" '{group[0].compute_requirement.status}'"
         )
-    return f"Failed to {action.name.lower()} Instance(s) {labels}: {e}"
+    return f"Failed to {action.name.lower()} {plural('Instance', len(group))} {labels}: {e}"
 
 
 def _act_on_instances(ctx: RunContext, action: ComputeAction, group: list[_Instance]):

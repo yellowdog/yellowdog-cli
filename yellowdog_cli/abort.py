@@ -15,7 +15,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
-from yellowdog_cli.utils.action_runner import warn_not_attempted
+from yellowdog_cli.utils.action_runner import expand_patterns, warn_not_attempted
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_TASK_GROUPS,
@@ -38,7 +38,7 @@ from yellowdog_cli.utils.failure_advice import advise
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.output_settings import configure_output
-from yellowdog_cli.utils.printing import print_error, print_info, print_warning
+from yellowdog_cli.utils.printing import counted, print_error, print_info, print_warning
 from yellowdog_cli.utils.results import (
     json_requested,
     record_action,
@@ -47,6 +47,7 @@ from yellowdog_cli.utils.results import (
 from yellowdog_cli.utils.work_targets import (
     MalformedTarget,
     TargetNotFound,
+    matching_work_ids,
     named_target_entity_type,
     resolve_named_target,
 )
@@ -135,7 +136,8 @@ def _label(entity: object) -> str:
 def main(ctx: RunContext) -> None:
     run = _Run(ctx)
     if ctx.args.task_id_list:
-        _run_units(_target_units(_without_duplicates(ctx.args.task_id_list), run), run)
+        targets = _expanded(run, _without_duplicates(ctx.args.task_id_list))
+        _run_units(_target_units(targets, run), run)
     else:
         _run_units(_interactive_units(run), run)
 
@@ -148,6 +150,32 @@ def main(ctx: RunContext) -> None:
         print_info("No Tasks aborted")
 
 
+def _expanded(run: _Run, targets: list[str]) -> list[str]:
+    """
+    The targets, each name pattern replaced by the IDs of the unfinished
+    Work Requirements or Task Groups it matches, each once (a pattern may
+    match what another target names).
+    """
+    return list(
+        dict.fromkeys(
+            expand_patterns(
+                targets,
+                expand=lambda pattern: matching_work_ids(
+                    run.ctx.client, pattern, run.ctx.config.namespace
+                ),
+                describe=lambda target: (target, named_target_entity_type(target)),
+                # The cause is recorded by expand_patterns()
+                record=lambda entity, entity_type, outcome, error: record_action(
+                    entity, entity_type, "abort", outcome, error
+                ),
+                none_match=lambda pattern: (
+                    f"No unfinished Work Requirements or Task Groups match '{pattern}'"
+                ),
+            )
+        )
+    )
+
+
 def _without_duplicates(targets: list[str]) -> list[str]:
     """
     The targets in the order given, each once: a repeated target would
@@ -155,7 +183,9 @@ def _without_duplicates(targets: list[str]) -> list[str]:
     """
     unique = list(dict.fromkeys(targets))
     if len(unique) < len(targets):
-        print_warning(f"Ignoring {len(targets) - len(unique)} duplicate target(s)")
+        print_warning(
+            f"Ignoring {counted(len(targets) - len(unique), 'duplicate target')}"
+        )
     return unique
 
 
@@ -503,7 +533,7 @@ def _abort_tasks(
     """
     already_handled = [task for task in tasks if task.id in run.handled]
     if already_handled:
-        print_info(f"Ignoring {len(already_handled)} Task(s) already handled")
+        print_info(f"Ignoring {counted(len(already_handled), 'Task')} already handled")
     tasks = [task for task in tasks if task.id not in run.handled]
     if not tasks:
         return
@@ -518,7 +548,7 @@ def _abort_tasks(
                 run.handled.add(task.id)
         if not selected:
             return
-        if not confirmed(f"Abort {len(selected)} Task(s)?"):
+        if not confirmed(f"Abort {counted(len(selected), 'Task')}?"):
             for task in selected:
                 _record(task, "skipped", "declined")
                 run.skipped += 1

@@ -33,6 +33,7 @@ from yellowdog_cli.utils.action_runner import (
     by_type,
     carry_out,
     confirm_items,
+    expand_patterns,
     resolve_targets,
 )
 from yellowdog_cli.utils.context import RunContext
@@ -51,7 +52,7 @@ from yellowdog_cli.utils.follow_utils import Settled, follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
 from yellowdog_cli.utils.misc_utils import is_http_not_found, link_entity
-from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.printing import counted, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -149,14 +150,30 @@ def finish_work_requirements(ctx: RunContext):
 
 def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction):
     """
-    Entry point for yd-start, yd-hold and yd-finish. The command registry
-    ensures that glob patterns are not mixed with explicit names or IDs.
+    Entry point for yd-start, yd-hold and yd-finish: glob patterns alone are
+    a listing, selected from; mixed with names or IDs, each pattern is
+    replaced by the IDs it matches, and they are resolved with the rest.
     """
     names_or_ids: list[str] = ctx.args.work_requirement_names or []
     globs = [name for name in names_or_ids if contains_glob_chars(name)]
 
-    if names_or_ids and not globs:
-        _apply_by_name_or_id(ctx, action, names_or_ids)
+    if names_or_ids and len(globs) < len(names_or_ids):
+        _apply_by_name_or_id(
+            ctx,
+            action,
+            expand_patterns(
+                names_or_ids,
+                expand=lambda pattern: [
+                    cast(str, summary.id)
+                    for summary in _matching(ctx, action, [pattern])
+                ],
+                describe=lambda pattern: (pattern, ET_WORK_REQUIREMENTS),
+                record=action.recorder(),
+                none_match=lambda pattern: (
+                    f"No {action.statuses_phrase} Work Requirements match '{pattern}'"
+                ),
+            ),
+        )
         return
 
     if globs:
@@ -164,16 +181,7 @@ def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction
             f"{action.gerund} Work Requirements "
             f"{describe_glob_scope(ctx.client, globs, ctx.config.namespace)}"
         )
-        summaries: list[WorkRequirementSummary] = expand_name_globs(
-            globs,
-            ctx.config.namespace,
-            fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
-                ctx.client,
-                name=prefix or None,
-                namespace=namespace,
-                include_filter=list(action.statuses),
-            ),
-        )
+        summaries: list[WorkRequirementSummary] = _matching(ctx, action, globs)
     else:
         print_info(
             f"{action.gerund} Work Requirements "
@@ -192,11 +200,32 @@ def apply_work_requirement_action(ctx: RunContext, action: WorkRequirementAction
     )
     items = [_item(summary) for summary in selected]
     if items and not confirm_items(
-        f"{action.name} {len(items)} Work Requirement(s)?", items, action.recorder()
+        f"{action.name} {counted(len(items), 'Work Requirement')}?",
+        items,
+        action.recorder(),
     ):
         items = []
 
     _carry_out(ctx, action, items)
+
+
+def _matching(
+    ctx: RunContext, action: WorkRequirementAction, globs: list[str]
+) -> list[WorkRequirementSummary]:
+    """
+    The Work Requirements in the action's states whose names match the glob
+    patterns.
+    """
+    return expand_name_globs(
+        globs,
+        ctx.config.namespace,
+        fetch=lambda namespace, prefix: get_filtered_work_requirement_summaries(
+            ctx.client,
+            name=prefix or None,
+            namespace=namespace,
+            include_filter=list(action.statuses),
+        ),
+    )
 
 
 def _item(work_requirement: _Target) -> Item:
@@ -222,7 +251,7 @@ def _apply_by_name_or_id(
         return
 
     question = (
-        f"{action.name} {len(items)} Work Requirement(s) ("
+        f"{action.name} {counted(len(items), 'Work Requirement')} ("
         + ", ".join(_label(item.value) for item in items)
         + ")?"
     )
@@ -307,7 +336,9 @@ def _carry_out(ctx: RunContext, action: WorkRequirementAction, items: list[Item]
     actioned_ids = [cast(str, unit.items[0].key) for unit in done]
 
     if actioned_ids:
-        print_info(f"{action.past_tense} {len(actioned_ids)} Work Requirement(s)")
+        print_info(
+            f"{action.past_tense} {counted(len(actioned_ids), 'Work Requirement')}"
+        )
         if ctx.args.follow:
             follow_ids(ctx, actioned_ids, settled=action.settled())
     else:
