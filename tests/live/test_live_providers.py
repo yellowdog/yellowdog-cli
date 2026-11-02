@@ -264,7 +264,7 @@ def test_instantiate_standalone(chain, live_run):
             "--property",
             f"workerPool.name={run.standalone_name(chain.provider)}",
             "--property",
-            f"workerPool.autoShutdown={_STANDALONE_LIFETIME_MINUTES}",
+            f"workerPool.autoShutdownTimeout={_STANDALONE_LIFETIME_MINUTES}",
             "--target",
             "1",
             "--json",

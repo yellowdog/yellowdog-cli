@@ -593,7 +593,7 @@ class TestDeferredMinors:
     def test_a_deprecated_key_in_the_file_still_exits_3(self, tmp_path):
         result = _run(
             ["yd-variables", "--nf"],
-            GOOD_COMMON + "[workerPool]\nautoShutdownTimeout = 60\n",
+            GOOD_COMMON + "[workerPool]\nautoShutdown = true\n",
             tmp_path,
         )
         assert result.returncode == 3

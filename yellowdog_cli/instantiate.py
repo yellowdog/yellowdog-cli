@@ -192,8 +192,8 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
                 userData=user_data,
                 autoShutdown=(
                     None
-                    if CONFIG_WP.auto_shutdown is None
-                    else auto_shutdown(CONFIG_WP.auto_shutdown)
+                    if CONFIG_WP.auto_shutdown_timeout is None
+                    else auto_shutdown(CONFIG_WP.auto_shutdown_timeout)
                 ),
             )
             if ctx.args.report:
@@ -373,10 +373,10 @@ def _create_compute_requirement_from_json(
             "autoShutdown",
             (
                 None
-                if CONFIG_WP.auto_shutdown is None
-                else auto_shutdown_json(auto_shutdown(CONFIG_WP.auto_shutdown))
+                if CONFIG_WP.auto_shutdown_timeout is None
+                else auto_shutdown_json(auto_shutdown(CONFIG_WP.auto_shutdown_timeout))
             ),
-            ("autoShutdown",),
+            ("autoShutdownTimeout",),
         ),
     ]:
         if value is not None and (
