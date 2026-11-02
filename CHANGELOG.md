@@ -31,7 +31,7 @@ These changes alter what a script may see:
 
 ### Other
 
-- **`--help` names YellowDog's objects as the messages and documentation do**: `Work Requirement`, `Worker Pool`, `Task`, `Node` and the rest, capitalised throughout, where some options said `work requirement` or `worker pool`.
+- **`--help` and every message name YellowDog's objects as the documentation does**: `Work Requirement`, `Worker Pool`, `Task`, `Node` and the rest, capitalised throughout (`Provisioning 3 Nodes`, `No running Nodes in Worker Pool …`), where some said `work requirement` or `nodes`. `yd workrequirement submit -E` warns `Work Requirement finished with unsuccessful Tasks: 1 failed · 1 aborted`.
 - **A usage error printed `usage: usage:`** in a terminal under Python 3.14, which colours argparse's output; it prints one.
 
 ## 15.7.0 — 2026-11-01
