@@ -4,20 +4,25 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what a script may see:
+
+- **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.
+- **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
+- **`compute-s` and `compute-source` are ambiguous prefixes for `yd list`**, standing for `compute-sources` or `compute-source-templates`, so `yd list compute-source` is refused as ambiguous: the templates need at least `compute-source-`.
+
 ### Listing and actions
 
 - **`yd cr resize --maintain` and `--no-maintain`** set whether the Platform keeps a Compute Requirement's instance count, replacing an Instance that is lost or terminated; with either, the count may be left out (`yd cr resize render-cr --maintain`). Both go in the one update a resize sends, and `--maintain` is refused for a Worker Pool's Compute Requirement.
-- **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
-- **`yd list compute-sources`** lists a Compute Requirement's sources as provisioned: provider, region, instance type, status and Instances alive against expected, with `--within <cr>` (repeatable), `--status`, `--provider`, `--json` and `--details`; with no `--within`, the Compute Requirements are offered to choose from, as for Instances. `compute-s` and `compute-source` are now ambiguous prefixes, so `compute-source-templates` needs at least `compute-source-`.
+- **`yd list compute-sources`** lists a Compute Requirement's sources as provisioned: provider, region, instance type, status and Instances alive against expected, with `--within <cr>` (repeatable), `--status`, `--provider`, `--json` and `--details`; with no `--within`, the Compute Requirements are offered to choose from, as for Instances.
 - **`yd list instances` and `compute-sources` take a Provisioned Worker Pool's ID with `--within`**, standing for its Compute Requirement; a Configured Worker Pool, which has none, is reported. Their tables name each row's Compute Requirement only when the rows are of more than one.
-- **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.
 - **The Compute Requirement actions name what they acted on**: `Updated COMPUTE REQUIREMENT (link) ('yd-demo/render-cr'): it will be terminated at …`, where the name was missing; likewise stop, start, reprovision and terminate.
 - **Lists in messages are counted too**: `Unknown key ['x']`, `Node n1 is not in Worker Pool …` and `Unrecognised status values: …` rather than `key(s)` and `Node(s)`.
 
 ### Variables and configuration
 
 - **`--validate` without a specification file checks the configuration**: `yd cr instantiate --validate`, `yd wp provision --validate` and `yd wr submit --validate` check the `config.toml` sections they would build from, reporting each problem as an error (exit 1) or saying they are valid, where they were refused.
-
 - **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
 
 ### Tab completion
