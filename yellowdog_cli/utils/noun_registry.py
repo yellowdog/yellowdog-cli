@@ -605,8 +605,14 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-resize",
                 "Resize a Worker Pool",
                 "resizing a Worker Pool",
-                # '--wait' is for a Compute Requirement alone
-                hidden=("--compute-requirement", "--wait", "--timeout"),
+                # '--wait' and '--maintain' are for a Compute Requirement alone
+                hidden=(
+                    "--compute-requirement",
+                    "--wait",
+                    "--timeout",
+                    "--maintain",
+                    "--no-maintain",
+                ),
                 overrides={
                     "worker_pool": {
                         "metavar": "<worker-pool-name-or-ID>",

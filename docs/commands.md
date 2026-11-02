@@ -798,7 +798,7 @@ For example:
 The `yd computerequirement resize` command sets a Compute Requirement's target number of Instances, which may be zero but not negative.
 
 ```shell
-yd computerequirement resize [options] <compute-requirement-name-or-ID> <new-instance-count>
+yd computerequirement resize [options] <compute-requirement-name-or-ID> [<new-instance-count>] [--maintain | --no-maintain]
 ```
 
 A YDID is found in whatever namespace it belongs to; a name is looked up in the configured `namespace` unless it is given as `namespace/name`. A Worker Pool and its Compute Requirement share their name: this command resizes the Compute Requirement, and [`yd workerpool resize`](#yd-workerpool-resize) the Worker Pool.
@@ -806,6 +806,8 @@ A YDID is found in whatever namespace it belongs to; a name is looked up in the 
 Only a `RUNNING` Compute Requirement is resized: one in any other state is skipped, as is one whose target is already the number of instances asked for, and a name shared by two `RUNNING` Compute Requirements is ambiguous, so the YDID must be given instead. One that does not exist exits with code 6. The confirmation shows the current and new sizes.
 
 Key options:
+- `--maintain` — keep the Compute Requirement's instance count, the Platform replacing an Instance that is lost or terminated; with it, the count may be left out (`yd cr resize render-cr --maintain`); refused for a Worker Pool's Compute Requirement, whose pool replaces its Instances itself
+- `--no-maintain` — stop keeping it; likewise the count may be left out
 - `--dry-run`/`-D` — report what would be resized, without resizing
 - `--follow`/`-f` — follow the Compute Requirement's events after resizing it, until it has settled at its new target
 - `--wait`/`-w` — wait until the Compute Requirement has its new target of Instances running (see below); refused with `--follow`
@@ -818,6 +820,7 @@ With `--wait`, the command returns only once the resized Compute Requirement has
 yd computerequirement resize render-cr 5
 yd computerequirement resize ydid:compreq:D9C548:600bef1f-7ccd-431c-afcc-b56208565aac 5
 yd computerequirement resize render-cr 5 --wait --timeout 600
+yd computerequirement resize render-cr --maintain
 ```
 
 ### yd computerequirement stop

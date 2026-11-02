@@ -957,6 +957,7 @@ class TestResize:
             "worker_pool_name": WP_ID,
             "worker_pool_size": 4,
             "auto_cr": False,
+            "maintain_instance_count": None,
             **values,
         }
 
@@ -1118,6 +1119,126 @@ class TestResize:
         )
         assert out[0]["outcome"] == "resized"
         client.compute_client.get_compute_requirement_summaries.assert_not_called()
+
+    @staticmethod
+    def _by_id(maintain=False, target=2) -> MagicMock:
+        client = MagicMock()
+        client.compute_client.get_compute_requirement_by_id.side_effect = lambda cr_id: (
+            SimpleNamespace(
+                id=CR_ID,
+                name="cr-a",
+                namespace="ns",
+                status=ComputeRequirementStatus.RUNNING,
+                targetInstanceCount=target,
+                expectedInstanceCount=target,
+                maintainInstanceCount=maintain,
+            )
+        )
+        return client
+
+    @pytest.mark.parametrize(
+        "size, maintain, target, kept",
+        [
+            (None, True, 2, True),  # '--maintain' alone: the count kept
+            (3, True, 3, True),  # both, in the one update
+            (None, False, 2, False),  # '--no-maintain' on one maintained
+        ],
+    )
+    def test_maintain_is_set_with_or_without_the_count(
+        self, run, monkeypatch, size, maintain, target, kept
+    ):
+        monkeypatch.setattr(yd_resize, "owning_worker_pool", lambda ctx, cr: None)
+        client = self._by_id(maintain=not maintain)
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(
+                compute_req_resize=True,
+                worker_pool_name=CR_ID,
+                worker_pool_size=size,
+                maintain_instance_count=maintain,
+            ),
+        )
+        ((sent,), _) = client.compute_client.update_compute_requirement.call_args
+        assert sent.maintainInstanceCount is kept
+        assert sent.targetInstanceCount == target
+        assert out[0]["outcome"] == "resized"
+        assert out[0]["maintainInstanceCount"] is maintain
+
+    def test_nothing_to_change_is_skipped(self, run, monkeypatch):
+        monkeypatch.setattr(yd_resize, "owning_worker_pool", lambda ctx, cr: None)
+        client = self._by_id(maintain=True)
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(
+                compute_req_resize=True,
+                worker_pool_name=CR_ID,
+                worker_pool_size=None,
+                maintain_instance_count=True,
+            ),
+        )
+        client.compute_client.update_compute_requirement.assert_not_called()
+        assert out[0]["outcome"] == "skipped"
+        assert "its instance count maintained" in out[0]["error"]
+
+    def test_maintain_on_a_worker_pools_compute_requirement_is_refused(
+        self, run, monkeypatch
+    ):
+        monkeypatch.setattr(
+            yd_resize,
+            "owning_worker_pool",
+            lambda ctx, cr: SimpleNamespace(name="pool-a"),
+        )
+        client = self._by_id()
+        out, _, _ = run(
+            yd_resize,
+            client=client,
+            **self._args(
+                compute_req_resize=True,
+                worker_pool_name=CR_ID,
+                maintain_instance_count=True,
+            ),
+        )
+        client.compute_client.update_compute_requirement.assert_not_called()
+        assert out[0]["outcome"] == "failed"
+        assert "belongs to Worker Pool 'pool-a'" in out[0]["error"]
+        assert run.exit_code == 1
+
+    @pytest.mark.parametrize(
+        "command, argv, message",
+        [
+            (
+                "yd computerequirement resize",
+                ["cr-a", "--maintain", "--no-maintain"],
+                "not be given together",
+            ),
+            ("yd computerequirement resize", ["cr-a"], "the new count is required"),
+            (
+                "yd workerpool resize",
+                ["wp-a", "3", "--maintain"],
+                "--maintain does not apply",
+            ),
+            ("yd-resize", ["wp-a", "3", "--maintain"], "a Compute Requirement alone"),
+        ],
+    )
+    def test_the_command_line_refuses(self, command, argv, message, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit):
+            CLIParser(command=command, argv=argv)
+        assert message in capsys.readouterr().err
+
+    def test_the_command_line_takes_maintain_without_a_count(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        # '--compute-requirement' as the verb supplies it
+        args = CLIParser(
+            command="yd computerequirement resize",
+            argv=["--compute-requirement", "cr-a", "--maintain"],
+        )
+        assert args.maintain_instance_count is True
+        assert args.worker_pool_size is None
 
     def test_two_running_compute_requirements_of_a_name_are_ambiguous(
         self, run, monkeypatch

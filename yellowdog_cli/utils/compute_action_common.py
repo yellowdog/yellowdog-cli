@@ -486,7 +486,7 @@ def _worker_pool_rule(
     for item in items:
         compute_requirement = item.value
         pool = (
-            _owning_worker_pool(ctx, compute_requirement)
+            owning_worker_pool(ctx, compute_requirement)
             if item.entity_type == ET_COMPUTE_REQUIREMENTS
             else None
         )
@@ -505,7 +505,7 @@ def _worker_pool_rule(
     return kept
 
 
-def _owning_worker_pool(
+def owning_worker_pool(
     ctx: RunContext, compute_requirement: _ComputeRequirementTarget
 ) -> ProvisionedWorkerPool | None:
     """

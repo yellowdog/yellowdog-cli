@@ -3772,7 +3772,30 @@ WORKER_POOL_SIZE = option(
     "worker_pool_size",
     metavar="<new-node/instance-count>",
     type=non_negative_int,
+    # Optional to argparse, so that '--maintain' or '--no-maintain' can be
+    # given alone; required otherwise (check_resize_target)
+    nargs="?",
     help="the desired number of (total) nodes in the worker pool",
+)
+# Two flags rather than a BooleanOptionalAction, which the registry and
+# completion know as one flag; check_resize_target refuses both together
+MAINTAIN = option(
+    "--maintain",
+    action="store_true",
+    required=False,
+    help=(
+        "keep the compute requirement's instance count, replacing instances"
+        " that are lost or terminated; the count may then be left out"
+    ),
+)
+NO_MAINTAIN = option(
+    "--no-maintain",
+    action="store_true",
+    required=False,
+    help=(
+        "stop keeping the compute requirement's instance count; the count may"
+        " then be left out"
+    ),
 )
 # Not a variant of COMPUTE_REQUIREMENT: this one is a flag, with no type.
 RESIZE_COMPUTE_REQUIREMENT = option(
@@ -3802,7 +3825,9 @@ def resize_targets_compute_requirement(args: Namespace) -> bool:
 
 def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
     """
-    '--compute-requirement' with a Worker Pool's ID contradicts itself.
+    '--compute-requirement' with a Worker Pool's ID contradicts itself;
+    '--maintain' and '--no-maintain' are a Compute Requirement's, and not
+    together; and the count is needed unless one of them is given.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -3812,6 +3837,20 @@ def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
         parser.error(
             f"--compute-requirement/-C cannot be used with a Worker Pool ID"
             f" ({args.worker_pool})"
+        )
+    maintain, no_maintain = (
+        getattr(args, "maintain", False),
+        getattr(args, "no_maintain", False),
+    )
+    if maintain and no_maintain:
+        parser.error("--maintain and --no-maintain cannot be given together")
+    if (maintain or no_maintain) and not resize_targets_compute_requirement(args):
+        parser.error(
+            "--maintain and --no-maintain apply to a Compute Requirement alone"
+        )
+    if args.worker_pool_size is None and not (maintain or no_maintain):
+        parser.error(
+            "the new count is required, unless --maintain or --no-maintain is given"
         )
 
 
@@ -3830,6 +3869,8 @@ COMMANDS["yd-resize"] = Command(
         WORKER_POOL_POSITIONAL,
         WORKER_POOL_SIZE,
         RESIZE_COMPUTE_REQUIREMENT,
+        MAINTAIN,
+        NO_MAINTAIN,
         FOLLOW.variant(help="follow progress after resizing"),
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         WAIT_FOR_CAPACITY,

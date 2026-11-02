@@ -31,6 +31,7 @@ from yellowdog_cli.utils.capacity_wait import (
     until_settled_again,
     wait_for_capacity,
 )
+from yellowdog_cli.utils.compute_action_common import owning_worker_pool
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_COMPUTE_REQUIREMENTS, ET_WORKER_POOLS
 from yellowdog_cli.utils.entity_utils import (
@@ -63,6 +64,7 @@ def _record(
     outcome: str,
     error: str | None = None,
 ) -> None:
+    maintain = ctx.args.maintain_instance_count
     record_action(
         entity,
         entity_type,
@@ -70,6 +72,8 @@ def _record(
         outcome,
         error,
         targetInstanceCount=ctx.args.worker_pool_size,
+        # Only where '--maintain' or '--no-maintain' asked to change it
+        **({} if maintain is None else {"maintainInstanceCount": maintain}),
     )
 
 
@@ -242,7 +246,10 @@ def _find_worker_pool(ctx: RunContext, target: str) -> WorkerPool:
 
 
 def _resize_compute_requirement(ctx: RunContext, target: str):
-    size: int = cast(int, ctx.args.worker_pool_size)
+    # Either may be left as it is: the count without one ('--maintain'
+    # alone), the setting without '--maintain' or '--no-maintain'
+    size: int | None = ctx.args.worker_pool_size
+    maintain: bool | None = ctx.args.maintain_instance_count
     compute_requirement = _found(
         ctx,
         target,
@@ -260,27 +267,61 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
             f" a {ComputeRequirementStatus.RUNNING} one can be resized",
         )
         return
+    if maintain and (pool := owning_worker_pool(ctx, compute_requirement)):
+        # A pool replaces its own nodes' Instances: its Compute Requirement's
+        # is always false
+        _cannot(
+            ctx,
+            compute_requirement,
+            ET_COMPUTE_REQUIREMENTS,
+            f"Compute Requirement {label} belongs to Worker Pool '{pool.name}',"
+            " which replaces its Instances itself: '--maintain' cannot be set"
+            " on it",
+        )
+        return
     current = compute_requirement.targetInstanceCount
     print_info(
         f"Current target/expected instance counts = {_count(current)}/"
         f"{_count(compute_requirement.expectedInstanceCount)}"
     )
-    if current == size:
+    changes = []
+    if size is not None and size != current:
+        changes.append(f"from {_count(current)} to {counted(size, 'instance')}")
+    if maintain is not None and maintain != _maintained(ctx, compute_requirement):
+        changes.append(
+            "maintaining its instance count"
+            if maintain
+            else "no longer maintaining its instance count"
+        )
+    if not changes:
         _skip(
             ctx,
             compute_requirement,
             ET_COMPUTE_REQUIREMENTS,
-            f"Compute Requirement {label} already has a target of"
-            f" {counted(size, 'instance')}",
+            f"Compute Requirement {label} already has"
+            + (f" a target of {counted(size, 'instance')}" if size is not None else "")
+            + (" and" if size is not None and maintain is not None else "")
+            + (
+                f" its instance count {'' if maintain else 'not '}maintained"
+                if maintain is not None
+                else ""
+            ),
         )
         return
 
-    change = f"from {_count(current)} to {counted(size, 'instance')}"
+    # 'Resize ... from 1 to 3 instances', or the setting alone 'Update ...,
+    # maintaining its instance count'
+    resizing = size is not None and size != current
+    verb, past, change = (
+        ("resize", "Resized", " " + ", ".join(changes))
+        if resizing
+        else ("update", "Updated", ", " + ", ".join(changes))
+    )
     if ctx.args.dry_run:
-        print_dry_run(f"Would resize Compute Requirement {label} {change}")
+        print_dry_run(f"Would {verb} Compute Requirement {label}{change}")
         _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "would resize")
         return
-    if not confirmed(f"Resize Compute Requirement {label} {change}?"):
+    if not confirmed(f"{verb.capitalize()} Compute Requirement {label}{change}?"):
         _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "skipped")
         return
 
@@ -291,13 +332,16 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
                 cast(str, compute_requirement.id)
             )
         )
-        cr.targetInstanceCount = size  # type: ignore[misc]
+        if size is not None:
+            cr.targetInstanceCount = size  # type: ignore[misc]
+        if maintain is not None:
+            cr.maintainInstanceCount = maintain  # type: ignore[misc]
         ctx.client.compute_client.update_compute_requirement(cr, reprovision=False)
     except Exception as e:
         _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "failed", str(e))
         raise
     _record(ctx, compute_requirement, ET_COMPUTE_REQUIREMENTS, "resized")
-    print_info(f"Resized Compute Requirement {label} {change}")
+    print_info(f"{past} Compute Requirement {label}{change}")
 
     if ctx.args.wait:
         wait_for_capacity(ctx, [cast(str, compute_requirement.id)], ctx.args.timeout)
@@ -317,6 +361,20 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
             YDIDType.COMPUTE_REQUIREMENT,
             settled=capacity_reached(ctx, until_settled)(cr_id),
         )
+
+
+def _maintained(
+    ctx: RunContext, compute_requirement: ComputeRequirement | ComputeRequirementSummary
+) -> bool | None:
+    """
+    Whether the Compute Requirement keeps its instance count: a summary does
+    not say, so the Compute Requirement is fetched for it.
+    """
+    if isinstance(compute_requirement, ComputeRequirement):
+        return compute_requirement.maintainInstanceCount
+    return ctx.client.compute_client.get_compute_requirement_by_id(
+        cast(str, compute_requirement.id)
+    ).maintainInstanceCount
 
 
 def _find_compute_requirement(
