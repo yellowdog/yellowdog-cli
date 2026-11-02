@@ -530,7 +530,7 @@ class TestAddToPartitioning:
         # Existing TG has taskTypes=["bash"]; spec adds "docker".
         # Mutating taskTypes post-creation is not supported by the platform,
         # so the CLI must fail fast with a clear error.
-        with pytest.raises(ValueError, match=r"task type \['docker'\] is not in"):
+        with pytest.raises(ValueError, match=r"Task Type \['docker'\] is not in"):
             self._run(
                 existing_tg_names=["grp"],
                 spec_tg_names=["grp"],

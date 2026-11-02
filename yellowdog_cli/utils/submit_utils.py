@@ -278,7 +278,7 @@ def generate_dependencies(task_group_data: dict) -> list[str] | None:
     if dependent_on is not None and dependencies is not None:
         raise ValueError(
             "Only one of 'dependencies' or 'dependentOn' (deprecated) can "
-            "be specified in a task group"
+            "be specified in a Task Group"
         )
 
     if dependent_on is None and dependencies is None:
@@ -289,7 +289,7 @@ def generate_dependencies(task_group_data: dict) -> list[str] | None:
 
     if dependent_on is not None:
         print_warning(
-            "The 'dependentOn' task group property is deprecated; "
+            "The 'dependentOn' Task Group property is deprecated; "
             "please use 'dependencies' instead"
         )
         return [dependent_on]
@@ -339,7 +339,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
 
     except Exception as e:
         raise RuntimeError(
-            f"Unable to process task retry error matcher data '{task_error_matcher_data}': {e}"
+            f"Unable to process Task retry error matcher data '{task_error_matcher_data}': {e}"
         ) from e
 
 
@@ -435,7 +435,7 @@ def _generate_task_error_selector(d: dict) -> TaskErrorSelector:
     extra = set(d) - {ERROR_TYPES, STATUSES_AT_FAILURE, PROCESS_EXIT_CODES}
     if extra:
         raise ValueError(
-            f"Unknown {plural('key', len(extra))} {sorted(extra)} in task error selector; "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in Task error selector; "
             f"expected any of '{ERROR_TYPES}', '{STATUSES_AT_FAILURE}', "
             f"'{PROCESS_EXIT_CODES}'"
         )

@@ -172,8 +172,8 @@ def _queues_not_fetched(failures: list[tuple[str, Exception]]) -> ReportedFailur
             record({**row, "error": _queue_error(e)})
     causes = [e for _, e in failures]
     message = (
-        f"The {plural('node action queue', len(causes))} of"
-        f" {counted(len(causes), 'node')} could not be fetched"
+        f"The {plural('Node Action queue', len(causes))} of"
+        f" {counted(len(causes), 'Node')} could not be fetched"
     )
     return ReportedFailure(
         causes[0] if len({classify(e) for e in causes}) == 1 else RuntimeError(message)
@@ -235,7 +235,7 @@ def _without_duplicates(node_ids: list[str]) -> list[str]:
     unique = list(dict.fromkeys(node_ids))
     if len(unique) < len(node_ids):
         print_warning(
-            f"Ignoring {counted(len(node_ids) - len(unique), 'duplicate node ID')}"
+            f"Ignoring {counted(len(node_ids) - len(unique), 'duplicate Node ID')}"
         )
     return unique
 
@@ -312,7 +312,7 @@ def _choose_nodes(ctx: RunContext, pool: _Pool) -> list[str]:
     """
     live = _get_nodes_for_pool(ctx, cast(str, pool.id))
     if not live:
-        raise ValueError(f"No running nodes in Worker Pool {_pool_label(pool)}")
+        raise ValueError(f"No running Nodes in Worker Pool {_pool_label(pool)}")
     selected = cast(
         list[Node],
         select(
@@ -360,8 +360,8 @@ def _resolve_targets(ctx: RunContext) -> tuple[_Pool, list[str] | None, list[str
             )
     elif len(pool_ids) > 1:
         raise ValueError(
-            f"The nodes given are in {len(pool_ids)} Worker Pools"
-            f" ({', '.join(pool_ids)}); give the nodes of one pool at a time"
+            f"The Nodes given are in {len(pool_ids)} Worker Pools"
+            f" ({', '.join(pool_ids)}); give the Nodes of one pool at a time"
         )
     else:
         pool = _get_worker_pool(ctx, pool_ids[0])
@@ -605,9 +605,9 @@ def _submission_error(
         if node_id:
             return f"Node '{node_id}' is not available (is it running?)"
         if specific_nodes:
-            return "None of the selected nodes are available (are they running?)"
+            return "None of the selected Nodes are available (are they running?)"
         return (
-            "No nodes matched the 'nodeTypes' filter; "
+            "No Nodes matched the 'nodeTypes' filter; "
             "check that node types are correctly defined in the Worker Pool specification"
         )
     return f"Failed to submit: {e}"
@@ -636,7 +636,7 @@ def _after_failure(
     wp_id, _, groups, actions = submission
     if not_attempted:
         print_warning(
-            f"Not attempting the remaining {counted(len(not_attempted), 'node')},"
+            f"Not attempting the remaining {counted(len(not_attempted), 'Node')},"
             " which would fail in the same way"
         )
         _record_submission(
@@ -705,10 +705,10 @@ def _submit_actions(ctx: RunContext):
             "node finished",
         )
     if node_ids is not None and not node_ids:
-        print_info("No nodes to submit Node Actions to")
+        print_info("No Nodes to submit Node Actions to")
         return
 
-    target_desc = "all nodes" if node_ids is None else counted(len(node_ids), "node")
+    target_desc = "all Nodes" if node_ids is None else counted(len(node_ids), "Node")
     if not confirmed(
         f"Submit {parsed.what} to {target_desc} in Worker Pool {_pool_label(pool)}?"
     ):
@@ -828,7 +828,7 @@ def _submit_to_all_nodes(
         _after_failure(e, [], submission)
         return False
     print_info(
-        f"Submitted {parsed.what} to all nodes in Worker Pool {_pool_label(pool)}"
+        f"Submitted {parsed.what} to all Nodes in Worker Pool {_pool_label(pool)}"
     )
     _record_submission(*submission, "submitted")
     return True
@@ -867,7 +867,7 @@ def _submit_to_each_node(
             )
             _after_failure(e, node_ids[index + 1 :], submission)
             continue
-        print_info(f"Submitted {parsed.what} to node {node_id}")
+        print_info(f"Submitted {parsed.what} to Node {node_id}")
         _record_submission(wp_id, [node_id], None, parsed.action_count, "submitted")
         submitted.append(node_id)
     return submitted
@@ -912,8 +912,8 @@ def _follow_node_actions(
     timeout = ctx.args.timeout
     deadline = None if timeout is None else time.monotonic() + timeout
     print_info(
-        f"Following the {plural('node action queue', len(pending))} of"
-        f" {counted(len(pending), 'node')}..."
+        f"Following the {plural('Node Action queue', len(pending))} of"
+        f" {counted(len(pending), 'Node')}..."
     )
     if initial_delay:
         time.sleep(0.5)  # Allow submission to stabilize
@@ -930,7 +930,7 @@ def _follow_node_actions(
                 if classify(e) in SESSION_FAILURES:
                     raise
                 print_error(
-                    f"Failed to get status for node '{node_id}': {_queue_error(e)}"
+                    f"Failed to get status for Node '{node_id}': {_queue_error(e)}"
                 )
                 completed.add(node_id)
                 not_fetched.append((node_id, e))
@@ -957,7 +957,7 @@ def _follow_node_actions(
             print_warning(
                 f"Stopped following after {counted(cast(int, timeout), 'second')}: the"
                 f" {plural('queue', len(pending))} of"
-                f" {counted(len(pending), 'node')} had not finished"
+                f" {counted(len(pending), 'Node')} had not finished"
             )
             rows = {**latest, **done}
             raise _FollowTimedOut(sorted(rows.items(), key=lambda row: row[0]))
@@ -967,7 +967,7 @@ def _follow_node_actions(
     final_rows = sorted(done.items(), key=lambda row: row[0])
     if not_fetched:
         raise _QueuesNotFetched(final_rows, not_fetched)
-    print_info("All node action queues have finished.")
+    print_info("All Node Action queues have finished.")
     return final_rows
 
 
@@ -996,8 +996,8 @@ class _QueuesNotFetched(Exception):
         failures: list[tuple[str, Exception]],
     ):
         super().__init__(
-            f"The {plural('node action queue', len(failures))} of"
-            f" {counted(len(failures), 'node')} could not be fetched"
+            f"The {plural('Node Action queue', len(failures))} of"
+            f" {counted(len(failures), 'Node')} could not be fetched"
         )
         self.rows = rows
         self.failures = failures
@@ -1014,7 +1014,7 @@ def _show_status(ctx: RunContext):
         if ctx.args.all_nodes:
             node_ids = [cast(str, n.id) for n in _get_nodes_for_pool(ctx, wp_id)]
             if not node_ids:
-                print_warning(f"No running nodes in Worker Pool {_pool_label(pool)}")
+                print_warning(f"No running Nodes in Worker Pool {_pool_label(pool)}")
                 return
         else:
             node_ids = _choose_nodes(ctx, pool)
@@ -1045,7 +1045,7 @@ def _show_status(ctx: RunContext):
             if classify(e) in SESSION_FAILURES:
                 raise
             print_error(
-                f"Failed to get the node action queue for '{node_id}':"
+                f"Failed to get the Node Action queue for '{node_id}':"
                 f" {_queue_error(e)}"
             )
             failures.append((node_id, e))
@@ -1053,7 +1053,7 @@ def _show_status(ctx: RunContext):
 
         # Under '--json' the table's rows, '--details' or not
         if ctx.args.details and not json_requested():
-            print_info(f"Node action queue for node '{node_id}':")
+            print_info(f"Node Action queue for Node '{node_id}':")
             print_yd_object(snapshot)
         else:
             rows.append((node_id, snapshot))

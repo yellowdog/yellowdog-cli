@@ -146,7 +146,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
     if not ctx.args.report:
         print_info(
             "Provisioning Compute Requirement with "
-            f"{counted(CONFIG_WP.target_instance_count, 'instance')}"
+            f"{counted(CONFIG_WP.target_instance_count, 'Instance')}"
         )
 
     batches: list[CRBatch] = _allocate_nodes_to_batches(
@@ -172,7 +172,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
             if num_batches > 1:
                 print_info(
                     f"Provisioning Compute Requirement {batch_number + 1} '{ctx.config.namespace}/{id}'"
-                    f" with {counted(batch.target_instances, 'instance')}"
+                    f" with {counted(batch.target_instances, 'Instance')}"
                 )
             else:
                 print_info(
@@ -233,7 +233,7 @@ def _report_on(
         # The Platform tests one Compute Requirement at a time
         print_warning(
             f"The report is for the first of {len(batches)} Compute"
-            f" Requirements, of {counted(batches[0].target_instances, 'instance')}:"
+            f" Requirements, of {counted(batches[0].target_instances, 'Instance')}:"
             " 'computeRequirementBatchSize' divides the"
             f" {CONFIG_WP.target_instance_count:,d} requested"
         )

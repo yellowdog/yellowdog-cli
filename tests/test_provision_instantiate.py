@@ -883,7 +883,7 @@ class TestProvisionReport:
         assert run.exit_code == ExitCode.SUCCESS
         assert client.compute_client.test_compute_requirement_template.call_count == 1
         assert (
-            "The report is for the first of 3 Worker Pools, of 17 nodes"
+            "The report is for the first of 3 Worker Pools, of 17 Nodes"
         ) in out + run.err
 
     def test_a_report_on_a_missing_template_exits_6(self, run):
@@ -1098,7 +1098,7 @@ class TestInstantiateReporting:
         )
         assert run.exit_code == ExitCode.SUCCESS
         assert (
-            "The report is for the first of 3 Compute Requirements, of 17 instances"
+            "The report is for the first of 3 Compute Requirements, of 17 Instances"
         ) in out + run.err
 
 

@@ -712,12 +712,12 @@ def _plan_extension(
         if missing_types:
             raise ValueError(
                 f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
-                f" their {plural('task type', len(missing_types))}"
+                f" their {plural('Task Type', len(missing_types))}"
                 f" {sorted(missing_types)} {'is' if len(missing_types) == 1 else 'are'}"
                 " not in the"
                 f" Task Group's taskTypes allowlist {sorted(existing_types)}."
                 " A Task Group's taskTypes cannot be modified after creation;"
-                " either change the Tasks to use a supported task type, or"
+                " either change the Tasks to use a supported Task Type, or"
                 " add them under a new Task Group name."
             )
 

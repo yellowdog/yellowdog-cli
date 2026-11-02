@@ -150,7 +150,7 @@ def _resize_worker_pool(ctx: RunContext, target: str):
             ctx,
             worker_pool,
             ET_WORKER_POOLS,
-            f"Worker Pool {label} is awaiting nodes, and cannot be resized until"
+            f"Worker Pool {label} is awaiting Nodes, and cannot be resized until"
             " they have registered",
         )
         return
@@ -164,7 +164,7 @@ def _resize_worker_pool(ctx: RunContext, target: str):
             ctx,
             worker_pool,
             ET_WORKER_POOLS,
-            f"{counted(size, 'node')} is outside Worker Pool {label}'s limits"
+            f"{counted(size, 'Node')} is outside Worker Pool {label}'s limits"
             f" ({_count(min_nodes)} to {_count(max_nodes)})",
         )
         return
@@ -174,11 +174,11 @@ def _resize_worker_pool(ctx: RunContext, target: str):
             ctx,
             worker_pool,
             ET_WORKER_POOLS,
-            f"Worker Pool {label} already expects {counted(size, 'node')}",
+            f"Worker Pool {label} already expects {counted(size, 'Node')}",
         )
         return
 
-    change = f"from {_count(current)} to {counted(size, 'node')}"
+    change = f"from {_count(current)} to {counted(size, 'Node')}"
     if ctx.args.dry_run:
         print_dry_run(f"Would resize Worker Pool {label} {change}")
         _record(ctx, worker_pool, ET_WORKER_POOLS, "would resize")
@@ -286,7 +286,7 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
     )
     changes = []
     if size is not None and size != current:
-        changes.append(f"from {_count(current)} to {counted(size, 'instance')}")
+        changes.append(f"from {_count(current)} to {counted(size, 'Instance')}")
     if maintain is not None and maintain != _maintained(ctx, compute_requirement):
         changes.append(
             "maintaining its instance count"
@@ -299,7 +299,7 @@ def _resize_compute_requirement(ctx: RunContext, target: str):
             compute_requirement,
             ET_COMPUTE_REQUIREMENTS,
             f"Compute Requirement {label} already has"
-            + (f" a target of {counted(size, 'instance')}" if size is not None else "")
+            + (f" a target of {counted(size, 'Instance')}" if size is not None else "")
             + (" and" if size is not None and maintain is not None else "")
             + (
                 f" its instance count {'' if maintain else 'not '}maintained"

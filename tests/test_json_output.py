@@ -1059,7 +1059,7 @@ class TestResize:
         [
             ({"configured": True}, "failed", "Configured Worker Pool"),
             ({"status": WorkerPoolStatus.SHUTDOWN}, "skipped", "is SHUTDOWN"),
-            ({"awaiting": True}, "failed", "awaiting nodes"),
+            ({"awaiting": True}, "failed", "awaiting Nodes"),
             ({"max_nodes": 3}, "failed", "outside"),
             ({"min_nodes": 5}, "failed", "outside"),
             ({"expected": 4}, "skipped", "already expects 4"),
