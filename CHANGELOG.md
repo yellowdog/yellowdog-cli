@@ -10,6 +10,7 @@ These changes alter what a script may see:
 
 - **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.
 - **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
+- **`__{{variable}}__` is substituted everywhere**, as a whole, as in a Worker Pool specification: in Work Requirement and resource specifications, Task Data files, the configuration file and Jsonnet code, `a__{{site}}__b` is `alondonb`, where it was `a__london__b`. The plain `{{variable}}` is unchanged, and User Data and Node Actions still take only `__{{variable}}__`. For a value between double underscores, put them in a variable (`{{dunder}}{{site}}{{dunder}}`).
 - **`compute-s` and `compute-source` are ambiguous prefixes for `yd list`**, standing for `compute-sources` or `compute-source-templates`, so `yd list compute-source` is refused as ambiguous: the templates need at least `compute-source-`.
 
 ### Listing and actions
@@ -23,7 +24,6 @@ These changes alter what a script may see:
 ### Variables and configuration
 
 - **`--validate` without a specification file checks the configuration**: `yd cr instantiate --validate`, `yd wp provision --validate` and `yd wr submit --validate` check the `config.toml` sections they would build from, reporting each problem as an error (exit 1) or saying they are valid, where they were refused.
-- **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
 
 ### Tab completion
 

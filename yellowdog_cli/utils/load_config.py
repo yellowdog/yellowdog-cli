@@ -84,7 +84,6 @@ from yellowdog_cli.utils.variable_substitution import (
     resolve_variables_in_string,
     resolve_variables_insitu,
     warn_of_undefined_variables,
-    warn_of_worker_pool_form,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -194,11 +193,9 @@ def warn_of_undefined_config_variables() -> None:
     """
     Warn of undefined variables left in the configuration values resolved one
     string at a time as the configuration loads -- the namespace, tag and
-    URL, and every
-    '{{dataClient.*}}' value, profiles included -- which the substitution
-    passes never walk; and a '__{{x}}__' anywhere in the file outside User
-    Data, which keeps its underscores there. Read from the variables they were registered as, which
-    hold them resolved. The credentials are left out: their text is not for
+    URL, and every '{{dataClient.*}}' value, profiles included -- which the
+    substitution passes never walk. Read from the variables they were
+    registered as, which hold them resolved. The credentials are left out: their text is not for
     a warning, and a wrong one fails on its own. Called by the command
     wrappers as a command starts.
     """
@@ -215,9 +212,6 @@ def warn_of_undefined_config_variables() -> None:
         }
     )
     warn_of_undefined_variables(values)
-    # A '__{{x}}__' outside User Data, found as the file was read: its plain
-    # pass then kept the underscores
-    warn_of_worker_pool_form(_CONFIG_WORKER_POOL_FORM)
 
 
 def _resolve_value(value, source: str | None = None):
@@ -452,10 +446,6 @@ CONFIG_TOML: dict
 # loader -- which warn_of_config_violations() checks as a command starts.
 # None when no file was read.
 _CONFIG_AS_WRITTEN: dict | None = None
-# Each '__{{x}}__' the configuration file has outside User Data, found as it
-# is read (file_substitution.worker_pool_form_in()), for
-# warn_of_undefined_config_variables() to warn of once the warnings are on
-_CONFIG_WORKER_POOL_FORM: list[tuple[str, str, str]] = []
 
 # Why no configuration file was read, when none was: said with a required
 # value that is missing, which otherwise reads as a fault in the file
@@ -589,9 +579,7 @@ def _load_config_file() -> None:
             if _ARGS.property_overrides:
                 _register_variable_overrides(_ARGS.property_overrides)
             CONFIG_TOML = load_toml_file_with_variable_substitutions(
-                CONFIG_FILE,
-                selected_file=True,
-                worker_pool_form=_CONFIG_WORKER_POOL_FORM,
+                CONFIG_FILE, selected_file=True
             )
             try:
                 # Strip profile sub-tables from [dataClient] before validation;

@@ -49,7 +49,6 @@ from yellowdog_cli.utils.variable_substitution import (
     process_variable_substitutions,
     resolve_variables_insitu,
     typed_value_as_text,
-    worker_pool_form_in,
 )
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
@@ -297,19 +296,14 @@ def load_toml_file_with_variable_substitutions(
     prefix: str = "",
     postfix: str = "",
     selected_file: bool = False,
-    worker_pool_form: list | None = None,
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
     substitutions processed. 'selected_file' says it is the configuration
     file itself, whose variables no file read after it replaces (see
-    add_substitutions_from_config_file()). 'worker_pool_form', where given,
-    collects each '__{{x}}__' the file has outside User Data, found before
-    the pass that would keep its underscores (worker_pool_form_in()).
+    add_substitutions_from_config_file()).
     """
     config = toml_loads(_read_text(filename))
-    if worker_pool_form is not None:
-        worker_pool_form.extend(worker_pool_form_in(config))
 
     # Add any variable substitutions in the TOML file before processing the
     # file as a whole
@@ -401,8 +395,15 @@ def _substitute_file_contents_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
     """
-    One substitution pass over the raw contents of a complete file.
+    One substitution pass over the raw contents of a complete file; a plain
+    one substitutes the Worker Pool form ('__{{x}}__') first, as a whole, as
+    process_variable_substitutions() does a value.
     """
+    if not (prefix or postfix) and WP_VARIABLES_PREFIX in file_contents:
+        file_contents = _substitute_file_contents_pass(
+            file_contents, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+        )
+
     # Found one expression at a time: a match running from the first opening
     # delimiter on a line to the last closing one would take every expression
     # on the line as one, which would lose a type-tagged value's type and,
@@ -550,8 +551,8 @@ def _in_worker_pool_delimiters(text: str, span: Substring) -> bool:
 def _without_worker_pool_expressions(text: str) -> str:
     """
     Text with each '__{{x}}__' expression taken out, as the plain Jsonnet pass
-    leaves them for after evaluation: for its circular check, to which one
-    naming a defined variable would otherwise look circular.
+    leaves those it cannot substitute for after evaluation: for its circular
+    check, which would otherwise read the '{{x}}' inside one.
     """
     spans = find_delimited_expression_spans(
         text,
@@ -579,12 +580,16 @@ def _substitute_jsonnet_pass(
     substitute as text, as the text pass leaves one. Outside a string, in the
     code, a value is written as it is, a typed one as its JSON: Jsonnet code.
 
-    In the plain delimiters, an expression in the Worker Pool ones,
-    '__{{x}}__', is left for the in-situ pass after evaluation, which knows
-    the property it is in: in User Data or Node Actions it is substituted
-    there, and elsewhere is '__value__', as a JSON file's is.
+    A plain pass substitutes the Worker Pool form ('__{{x}}__') first, as a
+    whole, as process_variable_substitutions() does a value, so the code can
+    compute with either form; one that pass leaves (an undefined variable's)
+    is left for the in-situ pass after evaluation, not read as '{{x}}'.
     """
     plain = not prefix and not postfix
+    if plain and WP_VARIABLES_PREFIX in file_contents:
+        file_contents = _substitute_jsonnet_pass(
+            file_contents, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+        )
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
     literals = list(_JSONNET_LITERAL.finditer(file_contents))
