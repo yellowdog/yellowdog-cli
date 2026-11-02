@@ -629,7 +629,7 @@ class TestWorkerPoolTableCounts:
             type="co.yellowdog.platform.model.ProvisionedWorkerPool",
             status="RUNNING",
             registeredNodeCount=3,
-            workingWorkerCount=2,
+            claimedWorkerCount=2,
             registeredWorkerCount=6,
             healthy=True,
             id="ydid:wrkrpool:1",
@@ -637,7 +637,7 @@ class TestWorkerPoolTableCounts:
         headers, rows = worker_pool_table([pool])  # type: ignore[list-item]
         row = dict(zip(headers, rows[0]))
         assert row["Nodes"] == 3
-        assert row["Workers (Working/All)"] == "2/6"
+        assert row["Workers (Claimed/All)"] == "2/6"
         assert row["Healthy"] == "Yes"
 
 

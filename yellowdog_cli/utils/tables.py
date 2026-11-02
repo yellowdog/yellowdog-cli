@@ -296,7 +296,7 @@ def worker_pool_table(
         "Type",
         "Status",
         "Nodes",
-        "Workers (Working/All)",
+        "Workers (Claimed/All)",
         "Healthy",
         "Worker Pool ID",
     ]
@@ -313,7 +313,7 @@ def worker_pool_table(
                 _cell(worker_pool_summary.status),
                 worker_pool_summary.registeredNodeCount,
                 _counts(
-                    worker_pool_summary.workingWorkerCount,
+                    worker_pool_summary.claimedWorkerCount,
                     worker_pool_summary.registeredWorkerCount,
                 ),
                 _yes_or_no(worker_pool_summary.healthy),

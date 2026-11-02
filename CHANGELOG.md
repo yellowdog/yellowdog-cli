@@ -4,6 +4,9 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd workerpool list` counts claimed Workers**: its Workers column is `Claimed/All`, the Workers a Task Group has claimed, where it was `Working/All`, which counted the same Workers though a claimed Worker may be idle.
+- **YellowDog SDK 15.9.3 is now the minimum.** Its corrected descriptions are reflected in the CLI's: `maintainInstanceCount` keeps the target number of Instances alive (`PENDING`, `RUNNING`, `STOPPING` or `STOPPED`) while the Compute Requirement is `RUNNING`; `minWorkers` keeps Workers claimed while the Task Group is `RUNNING` and does not delay its start; and `tasksPerWorker` sizes claims only until the Platform has estimated how long the Tasks take.
+
 ## 15.8.0 — 2026-11-02
 
 ### Upgrading

@@ -647,8 +647,9 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         "maintainInstanceCount",
         BOOL,
         description=(
-            "replace Instances to keep the target number RUNNING (yd computerequirement instantiate"
-            " only; a Worker Pool's is always false)"
+            "replace Instances to keep the target number alive (PENDING, RUNNING,"
+            " STOPPING or STOPPED) while the Compute Requirement is RUNNING (yd"
+            " computerequirement instantiate only; a Worker Pool's is always false)"
         ),
     ),
     Property(
