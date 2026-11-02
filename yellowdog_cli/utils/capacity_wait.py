@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import CAPACITY_POLL_INTERVAL
-from yellowdog_cli.utils.printing import counted, print_info
+from yellowdog_cli.utils.printing import counted, plural, print_info
 
 if TYPE_CHECKING:
     from yellowdog_client.model import ComputeRequirement, Instance
@@ -170,8 +170,9 @@ def wait_for_capacity(ctx: RunContext, cr_ids: list[str], timeout: int | None):
             return
         if deadline is not None and time.monotonic() >= deadline:
             raise CapacityWaitTimeout(
-                f"Timed out after {timeout:,d}s waiting for Compute Requirement(s)"
-                " to reach their target instance counts: "
+                f"Timed out after {timeout:,d}s waiting for"
+                f" {plural('Compute Requirement', len(pending))} to reach their"
+                " target instance counts: "
                 + "; ".join(
                     f"{last[cr_id].label} {last[cr_id].describe()}" for cr_id in pending
                 )
