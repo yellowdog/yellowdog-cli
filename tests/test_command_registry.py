@@ -778,3 +778,19 @@ class TestANamespaceOrTagThatIsAFileName:
         from yellowdog_cli.utils.args import CLIParser
 
         CLIParser("yd-submit", argv)
+
+
+def test_the_usage_line_is_built_uncoloured(monkeypatch):
+    """
+    Python 3.14's argparse colours its usage for a terminal: a coloured
+    'usage: ' left inside the command's own usage printed 'usage: usage:'.
+    Colour is forced here, as a terminal would have it.
+    """
+    from yellowdog_cli.utils.command_registry import COMMANDS, _usage
+
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("PYTHON_COLORS", raising=False)
+    usage = _usage(COMMANDS["yd-list"].options, "yd list")
+    assert "\x1b[" not in usage
+    assert not usage.lstrip().startswith("usage")

@@ -14,6 +14,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
 
+### Other
+
+- **A usage error printed `usage: usage:`** in a terminal under Python 3.14, which colours argparse's output; it prints one.
+
 ## 15.7.0 — 2026-11-01
 
 ### Listing and actions

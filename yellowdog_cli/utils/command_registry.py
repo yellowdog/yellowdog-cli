@@ -14,6 +14,7 @@ import math
 import os
 import re
 import shutil
+import sys
 from argparse import (
     SUPPRESS,
     Action,
@@ -398,7 +399,12 @@ def _usage(own: tuple[Option | Exclusive, ...], prog: str | None) -> str:
     wraps them for a parser of those alone, and the common options as one
     '[universal options]' at its end, on the last line if it fits there.
     """
-    alone = ArgumentParser(prog=prog)
+    # Uncoloured: Python 3.14's argparse colours its usage for a terminal,
+    # and a coloured 'usage: ' is neither removed here nor wanted inside the
+    # usage the command's own parser colours (it would print 'usage: usage:')
+    alone = ArgumentParser(
+        prog=prog, **({"color": False} if sys.version_info >= (3, 14) else {})
+    )
     _register(alone, own)
     lines = alone.format_usage().removeprefix("usage: ").rstrip("\n").split("\n")
     indent = " " * (len("usage: ") + len(alone.prog) + 1)
