@@ -66,8 +66,11 @@ schema_descriptions: docs/work-requirement-property-dictionary.md
 test:
 	pytest -v -n 8
 
+# PYRIGHT_PYTHON=X.Y checks the code as that Python's (default: pyproject.toml's
+# pythonVersion, the oldest supported), since a branch for a newer Python is
+# unreachable to a check as the oldest
 pyright:
-	pyright $(SRC)
+	pyright $(if $(PYRIGHT_PYTHON),--pythonversion $(PYRIGHT_PYTHON)) $(SRC)
 
 # The package's code complexity: McCabe complexity worst first, ruff's
 # function-structure counts, and function lengths. A report, never a failure;

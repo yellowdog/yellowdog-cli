@@ -402,9 +402,10 @@ def _usage(own: tuple[Option | Exclusive, ...], prog: str | None) -> str:
     # Uncoloured: Python 3.14's argparse colours its usage for a terminal,
     # and a coloured 'usage: ' is neither removed here nor wanted inside the
     # usage the command's own parser colours (it would print 'usage: usage:')
-    alone = ArgumentParser(
-        prog=prog, **({"color": False} if sys.version_info >= (3, 14) else {})
-    )
+    if sys.version_info >= (3, 14):
+        alone = ArgumentParser(prog=prog, color=False)
+    else:
+        alone = ArgumentParser(prog=prog)
     _register(alone, own)
     lines = alone.format_usage().removeprefix("usage: ").rstrip("\n").split("\n")
     indent = " " * (len("usage: ") + len(alone.prog) + 1)
