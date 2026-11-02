@@ -47,6 +47,7 @@ _DEFAULTS = {
     "dry_run": False,
     "quiet": False,
     "count_only": False,
+    "ids_only": False,
     "follow": False,
     "auto_cr": False,
     "yes": True,

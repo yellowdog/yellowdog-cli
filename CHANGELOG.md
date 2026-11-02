@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Listing and actions
 
+- **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
 - **`yd list compute-sources`** lists a Compute Requirement's sources as provisioned: provider, region, instance type, status and Instances alive against expected, with `--within <cr>` (repeatable), `--status`, `--provider`, `--json` and `--details`; with no `--within`, the Compute Requirements are offered to choose from, as for Instances. `compute-s` and `compute-source` are now ambiguous prefixes, so `compute-source-templates` needs at least `compute-source-`.
 - **`yd list instances` and `compute-sources` take a Provisioned Worker Pool's ID with `--within`**, standing for its Compute Requirement; a Configured Worker Pool, which has none, is reported. Their tables name each row's Compute Requirement only when the rows are of more than one.
 - **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.

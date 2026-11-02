@@ -207,6 +207,7 @@ class TestWarnings:
             json_output=None,
             quiet=False,
             count_only=False,
+            ids_only=False,
             print_pid=False,
             no_format=True,
             debug=False,
@@ -380,6 +381,7 @@ _DEFAULTS = {
     "yes": True,
     "no_format": True,
     "count_only": False,
+    "ids_only": False,
     "print_pid": False,
     "debug": False,
     "validate": False,
@@ -937,6 +939,7 @@ class TestCreate:
             json_output=False,
             quiet=False,
             count_only=False,
+            ids_only=False,
             print_pid=False,
             no_format=True,
         )
