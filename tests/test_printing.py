@@ -683,10 +683,26 @@ class TestInstancesTableComputeRequirement:
             **extra,
         )
 
-    def test_the_compute_requirement_the_lister_names_is_shown(self):
-        headers, rows = instances_table([self._instance(computeRequirementName="cr")])  # type: ignore[list-item]
+    def test_each_rows_compute_requirement_is_shown_when_there_are_several(self):
+        headers, rows = instances_table(
+            [
+                self._instance(computeRequirementName="cr-a"),  # type: ignore[list-item]
+                self._instance(computeRequirementName="cr-b"),  # type: ignore[list-item]
+            ]
+        )
         assert headers[:2] == ["#", "Compute Requirement"]
-        assert dict(zip(headers, rows[0]))["Compute Requirement"] == "cr"
+        assert [dict(zip(headers, row))["Compute Requirement"] for row in rows] == [
+            "cr-a",
+            "cr-b",
+        ]
+
+    def test_no_column_for_one_compute_requirement(self):
+        # The line above the table has named it
+        headers, rows = instances_table(
+            [self._instance(computeRequirementName="cr")] * 2  # type: ignore[list-item]
+        )
+        assert "Compute Requirement" not in headers
+        assert len(rows[0]) == len(headers)
 
     def test_no_column_when_none_is_named(self):
         headers, rows = instances_table([self._instance()])  # type: ignore[list-item]

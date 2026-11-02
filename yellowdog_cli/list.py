@@ -20,6 +20,7 @@ from yellowdog_client.model import (
     ComputeRequirementStatus,
     ComputeRequirementSummary,
     ComputeRequirementTemplateSummary,
+    ComputeSourceStatus,
     Group,
     Instance,
     InstanceSearch,
@@ -59,6 +60,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_SOURCES,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -172,6 +174,7 @@ _KNOWN_STATUSES: dict[str, frozenset[str]] = {
     ET_WORKERS: frozenset(e.value for e in WorkerStatus),
     ET_COMPUTE_REQUIREMENTS: frozenset(e.value for e in ComputeRequirementStatus),
     ET_INSTANCES: frozenset(e.value for e in InstanceStatus),
+    ET_COMPUTE_SOURCES: frozenset(e.value for e in ComputeSourceStatus),
 }
 
 
@@ -797,6 +800,7 @@ _WITHIN_NAMES = {
     ET_TASK_GROUPS: "Task Groups",
     ET_TASKS: "Tasks",
     ET_INSTANCES: "Instances",
+    ET_COMPUTE_SOURCES: "Compute Sources",
     ET_NODES: "Nodes",
     ET_WORKERS: "Workers",
 }
@@ -1200,9 +1204,22 @@ _ACTIVE_CR_STATUSES: tuple[ComputeRequirementStatus, ...] = (
 def _compute_requirement_within(ctx: RunContext, target: str) -> tuple[str, str | None]:
     """
     The Compute Requirement a '--within' target names, as its ID and name:
-    by its ID, or by its name (found as the actions find one, in the
-    configured namespace unless given as 'namespace/name').
+    by its ID, by a Provisioned Worker Pool's ID (its Compute Requirement;
+    a Configured Worker Pool, which has none, refused), or by its name (found
+    as the actions find one, in the configured namespace unless given as
+    'namespace/name').
     """
+    if get_ydid_type(target) == YDIDType.WORKER_POOL:
+        pool = _fetched_within(
+            "Worker Pool", target, lambda: get_worker_pool_by_id(ctx.client, target)
+        )
+        compute_requirement_id = getattr(pool, "computeRequirementId", None)
+        if compute_requirement_id is None:
+            raise ValueError(
+                f"Worker Pool '{pool.name}' ({target}) has no Compute Requirement:"
+                " it is a Configured Worker Pool"
+            )
+        target = compute_requirement_id
     if get_ydid_type(target) == YDIDType.COMPUTE_REQUIREMENT:
         # Fetched, since an Instance search for an ID that names nothing
         # finds nothing rather than failing
@@ -1238,6 +1255,67 @@ def _list_instances_within(ctx: RunContext) -> None:
         list_instances(ctx, compute_requirements)
 
 
+def _list_compute_sources_within(ctx: RunContext) -> None:
+    """
+    '--within' for Compute Sources: those of the Compute Requirements named,
+    in the order named, listed without searching for Compute Requirements or
+    asking which.
+    """
+    print_info(
+        f"Listing {_WITHIN_NAMES[ET_COMPUTE_SOURCES]} within {_within_phrase(ctx)}"
+    )
+    list_compute_sources(
+        ctx,
+        list(
+            dict.fromkeys(
+                _within_each(
+                    ctx, lambda target: _compute_requirement_within(ctx, target)
+                )
+            )
+        ),
+    )
+
+
+def list_compute_sources(
+    ctx: RunContext, compute_requirements: Sequence[tuple[str, str | None]]
+) -> None:
+    """
+    The sources of the Compute Requirements as provisioned, in one table, in
+    the order given and each row naming its Compute Requirement: read from
+    each Compute Requirement's provision strategy (they have no search of
+    their own), then '--status' and '--provider' applied to them.
+    """
+    sources: list = []
+    for compute_requirement_id, name in compute_requirements:
+        compute_requirement = ctx.client.compute_client.get_compute_requirement_by_id(
+            compute_requirement_id
+        )
+        strategy = compute_requirement.provisionStrategy
+        for source in (strategy.sources if strategy is not None else None) or []:
+            # For the table: a source does not name its Compute Requirement
+            source.computeRequirementName = name or compute_requirement.name  # type: ignore[attr-defined]
+            sources.append(source)
+    sources = _apply_provider_filter(
+        ctx,
+        _apply_status_filter(ctx, sources),
+        lambda source: getattr(source, "provider", None),
+    )
+    if not sources:
+        _print_empty(ctx, "No matching Compute Sources")
+        return
+    if ctx.args.json_output or ctx.args.count_only:
+        _print_json_or_count(ctx, sources)
+    elif ctx.args.ids_only:
+        for source in sources:
+            print(source.id)
+    elif ctx.args.details:
+        print_yd_object_list([(source, None) for source in select(ctx.client, sources)])
+    else:
+        print_numbered_object_list(
+            ctx.client, sources, object_type_name="Compute Source"
+        )
+
+
 def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) -> None:
     """
     The Instances of the Compute Requirements, for the non-interactive
@@ -1263,7 +1341,10 @@ def _print_all_instances(ctx: RunContext, compute_requirement_ids: list[str]) ->
 
 def list_compute_requirements(ctx: RunContext):
     if ctx.args.within_targets:
-        _list_instances_within(ctx)
+        if ctx.args.entity_type == ET_COMPUTE_SOURCES:
+            _list_compute_sources_within(ctx)
+        else:
+            _list_instances_within(ctx)
         return
 
     if ctx.args.active_only:
@@ -1306,13 +1387,22 @@ def list_compute_requirements(ctx: RunContext):
 
     compute_requirement_summaries = sorted_objects(compute_requirement_summaries)
     # A Compute Requirement's own status filters Compute Requirements, not
-    # their Instances, which are filtered on theirs
-    if ctx.args.entity_type != ET_INSTANCES:
+    # their Instances or sources, which are filtered on theirs
+    if ctx.args.entity_type not in (ET_INSTANCES, ET_COMPUTE_SOURCES):
         compute_requirement_summaries = _apply_health_filter(
             ctx, _apply_status_filter(ctx, compute_requirement_summaries)
         )
     if not compute_requirement_summaries:
         _print_empty(ctx, "No matching Compute Requirements")
+        return
+
+    if ctx.args.entity_type == ET_COMPUTE_SOURCES:
+        crs = [(cast(str, cr.id), cr.name) for cr in compute_requirement_summaries]
+        if _listing_all(ctx):
+            list_compute_sources(ctx, crs)
+        # Several Compute Requirements may be chosen; none lists nothing
+        elif chosen := select(ctx.client, compute_requirement_summaries):
+            list_compute_sources(ctx, [(cast(str, cr.id), cr.name) for cr in chosen])
         return
 
     if ctx.args.entity_type == ET_INSTANCES:
@@ -2144,6 +2234,7 @@ _LISTERS: dict[str, Callable[[RunContext], None]] = {
     ET_WORKERS: list_worker_pools,
     ET_COMPUTE_REQUIREMENTS: list_compute_requirements,
     ET_INSTANCES: list_compute_requirements,
+    ET_COMPUTE_SOURCES: list_compute_requirements,
     ET_COMPUTE_REQUIREMENT_TEMPLATES: list_compute_requirement_templates,
     ET_COMPUTE_SOURCE_TEMPLATES: list_compute_source_templates,
     ET_KEYRINGS: list_keyrings,

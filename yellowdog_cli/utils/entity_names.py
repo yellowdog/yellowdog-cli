@@ -41,6 +41,9 @@ ET_ATTRIBUTE_DEFINITIONS = "attribute-definitions"
 ET_COMPUTE_REQUIREMENT_TEMPLATES = "compute-requirement-templates"
 ET_COMPUTE_REQUIREMENTS = "compute-requirements"
 ET_COMPUTE_SOURCE_TEMPLATES = "compute-source-templates"
+# A Compute Requirement's sources, as provisioned: no search of their own, but
+# read from the Compute Requirement
+ET_COMPUTE_SOURCES = "compute-sources"
 ET_GROUPS = "groups"
 ET_IMAGE_FAMILIES = "image-families"
 ET_INSTANCES = "instances"

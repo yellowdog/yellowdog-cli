@@ -82,6 +82,11 @@ class TestPrefixMatching:
         assert "worker-pools" in msg
         assert "workers" in msg
 
+    @pytest.mark.parametrize("prefix", ["compute-s", "compute-source"])
+    def test_compute_source_templates_and_compute_sources_share_a_prefix(self, prefix):
+        with pytest.raises(argparse.ArgumentTypeError, match="ambiguous"):
+            resolve_entity_type(prefix)
+
     def test_unknown_value_raises(self):
         with pytest.raises(argparse.ArgumentTypeError, match="unknown entity type"):
             resolve_entity_type("nonexistent")
@@ -112,7 +117,8 @@ class TestPrefixMatching:
                 "compute-requirements",
                 "compute-requirements",
             ),  # full name needed to disambiguate
-            ("compute-s", "compute-source-templates"),
+            ("compute-source-", "compute-source-templates"),
+            ("compute-sources", "compute-sources"),
             ("image", "image-families"),
             ("inst", "instances"),
             ("key", "keyrings"),

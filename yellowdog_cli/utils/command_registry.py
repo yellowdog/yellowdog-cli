@@ -43,6 +43,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_SOURCES,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -418,6 +419,7 @@ ENTITY_TYPES = [
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_SOURCES,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -467,11 +469,13 @@ LIST_STATUS_TYPES = frozenset(
         ET_WORKERS,
         ET_COMPUTE_REQUIREMENTS,
         ET_INSTANCES,
+        ET_COMPUTE_SOURCES,
     }
 )
 # Those listed from active Work Requirements, Worker Pools or Compute
-# Requirements, or themselves active or not
-LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Requirements, or themselves active or not; a Compute Source's status
+# (ACTIVE, INACTIVE, ...) is its own, which '--status' selects by
+LIST_ACTIVE_TYPES = LIST_STATUS_TYPES - {ET_COMPUTE_SOURCES}
 # Those the Platform can say are deletable: a namespace never populated
 LIST_DELETABLE_TYPES = frozenset({ET_NAMESPACES})
 # Those the Platform says are healthy or not
@@ -479,7 +483,9 @@ LIST_UNHEALTHY_TYPES = frozenset(
     {ET_WORK_REQUIREMENTS, ET_WORKER_POOLS, ET_COMPUTE_REQUIREMENTS}
 )
 # Those with a cloud provider of their own
-LIST_PROVIDER_TYPES = frozenset({ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES})
+LIST_PROVIDER_TYPES = frozenset(
+    {ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES, ET_COMPUTE_SOURCES}
+)
 # '--provider''s values: the Platform's CloudProvider names, lower-case and
 # hyphenated
 LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
@@ -495,7 +501,9 @@ LIST_POOL_KIND_TYPES = frozenset({ET_WORKER_POOLS})
 LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
     ET_TASK_GROUPS: ("Work Requirement", "Task Group"),
     ET_TASKS: ("Work Requirement", "Task Group"),
-    ET_INSTANCES: ("Compute Requirement",),
+    # A Provisioned Worker Pool's ID standing for its Compute Requirement
+    ET_INSTANCES: ("Compute Requirement", "Worker Pool"),
+    ET_COMPUTE_SOURCES: ("Compute Requirement", "Worker Pool"),
     ET_NODES: ("Worker Pool",),
     ET_WORKERS: ("Worker Pool", "Node"),
 }
@@ -523,6 +531,7 @@ SYNONYMS: dict[str, str] = {
     "C": ET_COMPUTE_REQUIREMENT_TEMPLATES,
     "R": ET_COMPUTE_REQUIREMENTS,
     "S": ET_COMPUTE_SOURCE_TEMPLATES,
+    "Q": ET_COMPUTE_SOURCES,
     "G": ET_GROUPS,
     "I": ET_IMAGE_FAMILIES,
     "E": ET_INSTANCES,
