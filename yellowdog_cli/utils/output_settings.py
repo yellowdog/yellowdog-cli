@@ -34,6 +34,9 @@ class OutputSettings:
     quiet: bool | None = False
     debug: bool | None = False
     json_output: bool | None = False
+    # yd-list's '--ids-only': stdout is the IDs alone, as '--json' makes it
+    # the document alone
+    ids_only: bool | None = False
     no_format: bool | None = False
     print_pid: bool | None = False
     count_only: bool | None = False

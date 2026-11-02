@@ -150,7 +150,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_instance_stop` | destructive | `yd instance stop` | Stop Instances |
 | `yd_instance_terminate` | destructive | `yd instance terminate` | Terminate Instances |
 | `yd_list` | read-only | `yd list` | List YellowDog items |
-| `yd_node_action` | destructive | `yd node action` | Submit Node Actions to Worker Pool nodes |
+| `yd_node_action` | destructive | `yd node action` | Submit Node Actions to Worker Pool Nodes |
 | `yd_node_deprovision` | destructive | `yd node deprovision` | Deprovision the Instances of Nodes, reducing their Compute Requirements' target counts |
 | `yd_node_restart` | destructive | `yd node restart` | Restart the Instances of Nodes |
 | `yd_node_shutdown` | destructive | `yd node shutdown` | Shut down Nodes |

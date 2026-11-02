@@ -797,7 +797,7 @@ def allowances_to_remove(client: PlatformClient, description: str) -> list:
 
     if len(allowances) > 1:
         print_info(f"Multiple Allowances match the description '{description}'")
-        print_info("Please select which Allowance(s) to remove")
+        print_info("Please select the Allowances to remove")
         allowances = select(
             client=client,
             objects=allowances,

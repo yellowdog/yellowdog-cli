@@ -163,7 +163,7 @@ YellowDog command-line utility for cancelling Work Requirements
 
 positional arguments:
   <work-requirement-name-or-ID>
-                        the name(s) or YellowDog ID(s) of the work requirement(s) to be cancelled; can also supply task IDs; a name may be a glob
+                        the name(s) or YellowDog ID(s) of the Work Requirement(s) to be cancelled; can also supply Task IDs; a name may be a glob
                         pattern (e.g. 'proj-*')
 
 options:
@@ -178,8 +178,8 @@ options:
   --namespace, -n [<namespace>]
                         the namespace to use when specifying entities; this is set to '' if the option is provided without a value
   --tag, -t [<tag>]     the tag to use when naming, tagging, or selecting entities; this is set to '' if the option is provided without a value
-  --abort, -a           abort running tasks with immediate effect
-  --follow, -f          follow progress after cancelling the work requirement(s)
+  --abort, -a           abort running Tasks with immediate effect
+  --follow, -f          follow progress after cancelling the Work Requirement(s)
   --dry-run, -D         list the entities that would be affected, without acting
   --json                emit the actions taken, or with --dry-run what would be taken, as a JSON array
   --interactive, -i     list, and interactively select, the items to act on

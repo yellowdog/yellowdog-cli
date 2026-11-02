@@ -365,7 +365,7 @@ def follow_work_requirement_with_progress(ctx: RunContext, ydid: str) -> None:
 
     if (failures := counts.failures()) is not None:
         # A breakdown ('1 failed · 1 aborted'), not one count
-        print_warning(f"Work Requirement finished with {failures} task(s)")
+        print_warning(f"Work Requirement finished with unsuccessful Tasks: {failures}")
 
 
 def _restore_cursor() -> None:

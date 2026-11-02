@@ -122,7 +122,7 @@ class AzureConfig(CommonCloudConfig):
             " network resources"
         )
         print_info(
-            "*** Note that only the following region(s) contain"
+            "*** Note that only the following regions contain"
             f" YellowDog base VM images: {AZURE_YD_IMAGE_REGIONS} ***"
         )
         self._selected_regions = select(

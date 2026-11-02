@@ -36,6 +36,7 @@ def _args(json_output: bool | None, **overrides) -> MagicMock:
         "quiet": False,
         "no_format": True,
         "count_only": False,
+        "ids_only": False,
         "print_pid": False,
         "output_file": None,
     }

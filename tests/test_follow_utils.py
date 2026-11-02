@@ -186,7 +186,7 @@ class TestProgressCounts:
         ]
         assert not progress.stopped
         warning.assert_called_once_with(
-            "Work Requirement finished with 1 failed · 1 aborted task(s)"
+            "Work Requirement finished with unsuccessful Tasks: 1 failed · 1 aborted"
         )
 
     def test_a_task_group_without_a_summary_counts_nothing(self):
@@ -219,7 +219,7 @@ class TestProgressCounts:
         assert progress.updates[-1]["completed"] == 12
         # The fetched Work Requirement's failures were replaced by the events'
         warning.assert_called_once_with(
-            "Work Requirement finished with 2 cancelled task(s)"
+            "Work Requirement finished with unsuccessful Tasks: 2 cancelled"
         )
 
     def test_an_event_leaving_its_counts_null_counts_nothing(self):

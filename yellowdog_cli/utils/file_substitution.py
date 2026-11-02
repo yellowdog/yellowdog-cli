@@ -258,7 +258,7 @@ def load_jsonnet_file_with_variable_substitutions(
         resolve_plain_variables_too(dict_data)
 
     if dry_run:
-        print_dry_run(f"Printing Jsonnet to JSON conversion for '{filename}'")
+        print_dry_run(f"Printing '{filename}' as evaluated, its variables substituted")
         if OUTPUT.json_output and not exit_on_dry_run:
             # A caller converting several files (yd-create, yd-remove): each
             # is one element of the '--json' document, printed at exit; a
@@ -292,7 +292,10 @@ def _jsonnet_error(message: str) -> str:
 
 
 def load_toml_file_with_variable_substitutions(
-    filename: str, prefix: str = "", postfix: str = "", selected_file: bool = False
+    filename: str,
+    prefix: str = "",
+    postfix: str = "",
+    selected_file: bool = False,
 ) -> dict:
     """
     Takes a TOML filename and returns a dictionary with its variable
@@ -392,8 +395,15 @@ def _substitute_file_contents_pass(
     file_contents: str, prefix: str = "", postfix: str = ""
 ) -> str:
     """
-    One substitution pass over the raw contents of a complete file.
+    One substitution pass over the raw contents of a complete file; a plain
+    one substitutes the Worker Pool form ('__{{x}}__') first, as a whole, as
+    process_variable_substitutions() does a value.
     """
+    if not (prefix or postfix) and WP_VARIABLES_PREFIX in file_contents:
+        file_contents = _substitute_file_contents_pass(
+            file_contents, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+        )
+
     # Found one expression at a time: a match running from the first opening
     # delimiter on a line to the last closing one would take every expression
     # on the line as one, which would lose a type-tagged value's type and,
@@ -541,8 +551,8 @@ def _in_worker_pool_delimiters(text: str, span: Substring) -> bool:
 def _without_worker_pool_expressions(text: str) -> str:
     """
     Text with each '__{{x}}__' expression taken out, as the plain Jsonnet pass
-    leaves them for after evaluation: for its circular check, to which one
-    naming a defined variable would otherwise look circular.
+    leaves those it cannot substitute for after evaluation: for its circular
+    check, which would otherwise read the '{{x}}' inside one.
     """
     spans = find_delimited_expression_spans(
         text,
@@ -570,12 +580,16 @@ def _substitute_jsonnet_pass(
     substitute as text, as the text pass leaves one. Outside a string, in the
     code, a value is written as it is, a typed one as its JSON: Jsonnet code.
 
-    In the plain delimiters, an expression in the Worker Pool ones,
-    '__{{x}}__', is left for the in-situ pass after evaluation, which knows
-    the property it is in: in User Data or Node Actions it is substituted
-    there, and elsewhere is '__value__', as a JSON file's is.
+    A plain pass substitutes the Worker Pool form ('__{{x}}__') first, as a
+    whole, as process_variable_substitutions() does a value, so the code can
+    compute with either form; one that pass leaves (an undefined variable's)
+    is left for the in-situ pass after evaluation, not read as '{{x}}'.
     """
     plain = not prefix and not postfix
+    if plain and WP_VARIABLES_PREFIX in file_contents:
+        file_contents = _substitute_jsonnet_pass(
+            file_contents, WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX
+        )
     opening = prefix + VAR_OPENING_DELIMITER
     closing = VAR_CLOSING_DELIMITER + postfix
     literals = list(_JSONNET_LITERAL.finditer(file_contents))

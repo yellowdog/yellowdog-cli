@@ -4683,7 +4683,7 @@
       "default": null,
       "dest": "worker_pool_size",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "?",
       "option_strings": [],
       "required": null,
       "type": "non_negative_int"
@@ -4698,6 +4698,32 @@
       "option_strings": [
         "--compute-requirement",
         "-C"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--maintain"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-maintain"
       ],
       "required": false,
       "type": null
@@ -20601,7 +20627,7 @@
       "default": null,
       "dest": "worker_pool_size",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "?",
       "option_strings": [],
       "required": null,
       "type": "non_negative_int"
@@ -20616,6 +20642,32 @@
       "option_strings": [
         "--compute-requirement",
         "-C"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--maintain"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-maintain"
       ],
       "required": false,
       "type": null
@@ -35222,7 +35274,7 @@
       "default": null,
       "dest": "worker_pool_size",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "?",
       "option_strings": [],
       "required": null,
       "type": "non_negative_int"
@@ -35237,6 +35289,32 @@
       "option_strings": [
         "--compute-requirement",
         "-C"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--maintain"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_maintain",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-maintain"
       ],
       "required": false,
       "type": null

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from yellowdog_cli.utils.command_registry import RESOURCE_TYPE_CHOICES
 from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
+    ET_COMPUTE_SOURCES,
     ET_INSTANCES,
     ET_NODES,
     ET_TASK_GROUPS,
@@ -157,6 +158,9 @@ WITHIN_LOOKUPS: dict[str, Lookup] = {
     ET_TASK_GROUPS: _WR_WITHIN,
     ET_TASKS: _WR_WITHIN,
     ET_INSTANCES: Lookup(
+        ET_COMPUTE_REQUIREMENTS, ids=False, statuses=None, tagged=False
+    ),
+    ET_COMPUTE_SOURCES: Lookup(
         ET_COMPUTE_REQUIREMENTS, ids=False, statuses=None, tagged=False
     ),
     ET_NODES: Lookup(ET_WORKER_POOLS, ids=False, statuses=None, tagged=False),

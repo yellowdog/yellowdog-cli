@@ -228,7 +228,7 @@ def print_info(
     other colouring.
     """
     if (
-        OUTPUT.quiet or OUTPUT.json_output or OUTPUT.count_only
+        OUTPUT.quiet or OUTPUT.json_output or OUTPUT.ids_only or OUTPUT.count_only
     ) and override_quiet is False:
         return
 
@@ -311,7 +311,7 @@ def print_warning(
 
     # Under '--json' stdout is the result document alone, so a warning goes
     # to stderr rather than being dropped
-    to_stderr = stderr or bool(OUTPUT.json_output)
+    to_stderr = stderr or bool(OUTPUT.json_output or OUTPUT.ids_only)
 
     if OUTPUT.no_format:
         print(

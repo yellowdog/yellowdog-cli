@@ -62,6 +62,7 @@ def _args(json_output: bool) -> MagicMock:
     args.debug = False
     args.quiet = False
     args.count_only = False
+    args.ids_only = False
     args.no_format = True
     args.strip_ids = False
     args.output_file = None

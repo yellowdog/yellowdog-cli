@@ -111,7 +111,7 @@ TASK_DATA_INPUT: dict[str, Any] = {
         "destination": {
             **STR,
             "description": (
-                "where the object is placed on the node, as 'local:<path>',"
+                "where the object is placed on the Node, as 'local:<path>',"
                 " relative to the Task's working directory"
             ),
         },
@@ -138,7 +138,7 @@ TASK_DATA_OUTPUT: dict[str, Any] = {
         "source": {
             **STR,
             "description": (
-                "the file on the node to upload, as 'local:<path>', relative to"
+                "the file on the Node to upload, as 'local:<path>', relative to"
                 " the Task's working directory"
             ),
         },
@@ -600,10 +600,10 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         STR,
         description="a Compute Requirement specification file, relative to this file",
     ),
-    Property("targetInstanceCount", INT_CAST, description="the number of instances"),
+    Property("targetInstanceCount", INT_CAST, description="the number of Instances"),
     Property("minNodes", INT_CAST, description="the pool's minimum node count"),
     Property("maxNodes", INT_CAST, description="the pool's maximum node count"),
-    Property("workersPerNode", INT_CAST, description="Workers started per node"),
+    Property("workersPerNode", INT_CAST, description="Workers started per Node"),
     Property(
         "workersPerVCPU",
         FLOAT_CAST,
@@ -616,7 +616,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property(
         "idleNodeTimeout",
         FLOAT_CAST,
-        description="minutes an idle node waits before shutting down; 0 never",
+        description="minutes an idle Node waits before shutting down; 0 never",
     ),
     Property(
         "idlePoolTimeout",
@@ -624,10 +624,10 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         description="minutes an idle pool waits before shutting down; 0 never",
     ),
     Property(
-        "nodeBootTimeout", FLOAT_CAST, description="minutes a node may take to boot"
+        "nodeBootTimeout", FLOAT_CAST, description="minutes a Node may take to boot"
     ),
     Property("imagesId", STR, description="the image, by ID or Image Family name"),
-    Property("instanceTags", STR_MAP, description="cloud-provider instance tags"),
+    Property("instanceTags", STR_MAP, description="cloud-provider Instance tags"),
     Property("userData", STR, description="the instances' user data"),
     Property(
         "userDataFile", STR, description="a file whose contents become the user data"
@@ -641,13 +641,13 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property(
         "computeRequirementBatchSize",
         INT_CAST,
-        description="instances per Compute Requirement when provisioning in batches",
+        description="Instances per Compute Requirement when provisioning in batches",
     ),
     Property(
         "maintainInstanceCount",
         BOOL,
         description=(
-            "replace instances to keep the target number RUNNING (yd computerequirement instantiate"
+            "replace Instances to keep the target number RUNNING (yd computerequirement instantiate"
             " only; a Worker Pool's is always false)"
         ),
     ),
@@ -666,7 +666,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
 _WORK_REQUIREMENT_WORKER_TAG = Property(
     "workerTag",
     STR,
-    description="a single worker tag, used when 'workerTags' is not set",
+    description="a single Worker Tag, used when 'workerTags' is not set",
 )
 
 CONFIG_SECTIONS: dict[str, tuple[Property, ...]] = {
@@ -679,6 +679,15 @@ CONFIG_SECTIONS: dict[str, tuple[Property, ...]] = {
 ALL_CONFIG_SECTIONS: frozenset[str] = frozenset(CONFIG_SECTIONS)
 # What a data client command reads, and so what it checks
 DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"})
+# What a command builds from with no specification file, and so what its
+# '--validate' checks: yd-submit's Work Requirement, yd-provision's Worker Pool
+# and yd-instantiate's Compute Requirement
+WORK_REQUIREMENT_CONFIG_SECTIONS: frozenset[str] = frozenset(
+    {"common", "workRequirement"}
+)
+WORKER_POOL_CONFIG_SECTIONS: frozenset[str] = frozenset(
+    {"common", "workerPool", "computeRequirement"}
+)
 
 
 def load_descriptions() -> dict[str, str]:

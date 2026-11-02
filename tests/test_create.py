@@ -421,7 +421,7 @@ def test_a_keyring_grant_that_fails_fails_the_application(env, monkeypatch):
         None,
         _http_error(404),
     ]
-    with pytest.raises(RuntimeError, match="Keyring\\(s\\) 'kr2'") as raised:
+    with pytest.raises(RuntimeError, match="Keyring 'kr2'") as raised:
         yd_create.create_application(_ctx(), {"name": "a", "keyrings": ["kr1", "kr2"]})
     assert classify(raised.value) == ExitCode.NOT_FOUND
     assert env.records[0]["action"] == "created"

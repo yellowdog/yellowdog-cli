@@ -2,6 +2,38 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.8.0 — 2026-11-02
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.
+- **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
+- **`__{{variable}}__` is substituted everywhere**, as a whole, as in a Worker Pool specification: in Work Requirement and resource specifications, Task Data files, the configuration file and Jsonnet code, `a__{{site}}__b` is `alondonb`, where it was `a__london__b`. The plain `{{variable}}` is unchanged, and User Data and Node Actions still take only `__{{variable}}__`. For a value between double underscores, put them in a variable (`{{dunder}}{{site}}{{dunder}}`).
+- **`compute-s` and `compute-source` are ambiguous prefixes for `yd list`**, standing for `compute-sources` or `compute-source-templates`, so `yd list compute-source` is refused as ambiguous: the templates need at least `compute-source-`.
+
+### Listing and actions
+
+- **`yd cr resize --maintain` and `--no-maintain`** set whether the Platform keeps a Compute Requirement's instance count, replacing an Instance that is lost or terminated; with either, the count may be left out (`yd cr resize render-cr --maintain`). Both go in the one update a resize sends, and `--maintain` is refused for a Worker Pool's Compute Requirement.
+- **`yd list compute-sources`** lists a Compute Requirement's sources as provisioned: provider, region, instance type, status and Instances alive against expected, with `--within <cr>` (repeatable), `--status`, `--provider`, `--json` and `--details`; with no `--within`, the Compute Requirements are offered to choose from, as for Instances.
+- **`yd list instances` and `compute-sources` take a Provisioned Worker Pool's ID with `--within`**, standing for its Compute Requirement; a Configured Worker Pool, which has none, is reported. Their tables name each row's Compute Requirement only when the rows are of more than one.
+- **The Compute Requirement actions name what they acted on**: `Updated COMPUTE REQUIREMENT (link) ('yd-demo/render-cr'): it will be terminated at …`, where the name was missing; likewise stop, start, reprovision and terminate.
+- **Lists in messages are counted too**: `Unknown key ['x']`, `Node n1 is not in Worker Pool …` and `Unrecognised status values: …` rather than `key(s)` and `Node(s)`.
+
+### Variables and configuration
+
+- **`--validate` without a specification file checks the configuration**: `yd cr instantiate --validate`, `yd wp provision --validate` and `yd wr submit --validate` check the `config.toml` sections they would build from, reporting each problem as an error (exit 1) or saying they are valid, where they were refused.
+
+### Tab completion
+
+- **A name in another namespace completes after `namespace/`**: `yd cr show yd-demo/<Tab>` offers that namespace's Compute Requirements as `yd-demo/name`, whatever their tag; likewise Work Requirements and Worker Pools.
+
+### Other
+
+- **`--help` and every message name YellowDog's objects as the documentation does**: `Work Requirement`, `Worker Pool`, `Task`, `Node` and the rest, capitalised throughout (`Provisioning 3 Nodes`, `No running Nodes in Worker Pool …`), where some said `work requirement` or `nodes`. A Work Requirement followed with `--progress` ends with `Work Requirement finished with unsuccessful Tasks: 1 failed · 1 aborted`.
+- **A usage error printed `usage: usage:`** in a terminal under Python 3.14, which colours argparse's output; it prints one.
+
 ## 15.7.0 — 2026-11-01
 
 ### Listing and actions

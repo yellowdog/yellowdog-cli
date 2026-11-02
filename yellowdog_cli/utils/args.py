@@ -624,6 +624,19 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def maintain_instance_count(self) -> bool | None:
+        """
+        yd-resize's '--maintain' (True) or '--no-maintain' (False), or None to
+        leave a Compute Requirement's as it is.
+        """
+        if self.args.maintain:
+            return True
+        if self.args.no_maintain:
+            return False
+        return None
+
+    @property
+    @allow_missing_attribute
     def compute_req_resize(self) -> bool | None:
         return resize_targets_compute_requirement(self.args)
 

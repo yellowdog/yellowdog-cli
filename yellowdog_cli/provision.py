@@ -73,6 +73,7 @@ from yellowdog_cli.utils.results import (
     record_entity,
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
+from yellowdog_cli.utils.specs.properties import WORKER_POOL_CONFIG_SECTIONS
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.variable_substitution import literal_text
 from yellowdog_cli.utils.variable_syntax import (
@@ -131,6 +132,7 @@ def main(ctx: RunContext) -> None:
         "Worker Pool",
         validate=bool(ctx.args.validate),
         jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        config_sections=WORKER_POOL_CONFIG_SECTIONS,
     )
     if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")
@@ -459,7 +461,7 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
         if num_batches > 1:
             print_info(
                 f"Provisioning Worker Pool {batch_number + 1} '{ctx.config.namespace}/{batch_name}' "
-                f"with {counted(batch.initial_nodes, 'node')} "
+                f"with {counted(batch.initial_nodes, 'Node')} "
                 f"(minNodes: {batch.min_nodes:,d}, "
                 f"maxNodes: {batch.max_nodes:,d})"
             )
@@ -497,16 +499,16 @@ def create_worker_pool_from_toml(ctx: RunContext, name: str) -> None:
 
 def _print_provisioning(node_workers: NodeWorkerTarget) -> None:
     if node_workers.targetType == NodeWorkerTargetType.CUSTOM:
-        workers = "a custom number of workers per node"
+        workers = "a custom number of Workers per Node"
     else:
         count = node_workers.targetCount
         workers = (
-            f"{counted(count, 'worker')} {node_workers.targetType}"
+            f"{counted(count, 'Worker')} {node_workers.targetType}"
             if count is not None
-            else f"workers {node_workers.targetType}"
+            else f"Workers {node_workers.targetType}"
         )
     print_info(
-        f"Provisioning {counted(CONFIG_WP.target_instance_count, 'node')} "
+        f"Provisioning {counted(CONFIG_WP.target_instance_count, 'Node')} "
         f"with {workers} "
         f"(minNodes: {CONFIG_WP.min_nodes:,d}, "
         f"maxNodes: {CONFIG_WP.max_nodes:,d})"
@@ -523,7 +525,7 @@ def _report_on_first_batch(
     if len(batches) > 1:
         print_warning(
             f"The report is for the first of {len(batches)} Worker Pools, of"
-            f" {counted(batches[0].initial_nodes, 'node')}: 'computeRequirementBatchSize'"
+            f" {counted(batches[0].initial_nodes, 'Node')}: 'computeRequirementBatchSize'"
             f" divides the {CONFIG_WP.target_instance_count:,d} requested"
         )
     batch_name = add_batch_number_postfix(

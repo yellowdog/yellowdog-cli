@@ -34,6 +34,7 @@ from yellowdog_cli.utils.misc_utils import (
     split_delimited_string,
 )
 from yellowdog_cli.utils.printing import (
+    plural,
     print_debug,
     print_error,
     print_warning,
@@ -370,8 +371,8 @@ def register_user_variables(
 
     if registered:
         print_debug(
-            "Adding environment-defined variable substitution(s) for: "
-            f"{', '.join(registered)}"
+            "Adding environment-defined variable"
+            f" {plural('substitution', len(registered))} for: {', '.join(registered)}"
         )
 
     registered = []
@@ -397,8 +398,8 @@ def register_user_variables(
 
     if registered:
         print_debug(
-            "Adding command-line-defined variable substitution(s) for: "
-            f"{', '.join(registered)}"
+            "Adding command-line-defined variable"
+            f" {plural('substitution', len(registered))} for: {', '.join(registered)}"
         )
 
 
@@ -753,15 +754,8 @@ def _substitute_insitu_pass(
     _PLATFORM_MUSTACHE_PROPERTIES, the Worker Pool delimiters are used.
     """
     changed: list[str] = []
-    # A plain pass's '__{{x}}__' outside them, which leaves its underscores
-    worker_pool_form: list[tuple[str, str, str]] = []
 
     def _substitute(value_: str, path: str, mustache: bool):
-        if not (mustache or prefix or postfix) and WP_VARIABLES_PREFIX in value_:
-            worker_pool_form.extend(
-                (match.group(0), match.group(1), path)
-                for match in _WORKER_POOL_FORM.finditer(value_)
-            )
         if mustache:
             result = process_variable_substitutions(
                 value_, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
@@ -810,53 +804,7 @@ def _substitute_insitu_pass(
                 del data[index]
 
     _walk_data(data, "", False)
-    _warn_of_worker_pool_form(worker_pool_form)
     return changed
-
-
-# A substitution in the Worker Pool delimiters ('__{{name}}__',
-# '__{{num:name:=3}}__'), not nested: what is inside its braces
-_WORKER_POOL_FORM = re.compile(
-    re.escape(WP_VARIABLES_PREFIX + VAR_OPENING_DELIMITER)
-    + r"([^{}]+)"
-    + re.escape(VAR_CLOSING_DELIMITER + WP_VARIABLES_POSTFIX)
-)
-
-
-def _warn_of_worker_pool_form(found: list[tuple[str, str, str]]) -> None:
-    """
-    Warn of each '__{{x}}__' a plain pass substitutes outside User Data and
-    Node Actions: only the '{{x}}' inside is substituted there, so the value
-    keeps the underscores ('__VAL__'), the form being the Worker Pool
-    specifications' and the Platform's Mustache properties'. One naming no
-    variable is text, as in the undefined-variable warning, and not reported;
-    reported as the undefined variables are: once, and from the same point.
-    """
-    if not _UNDEFINED_VARIABLE_WARNINGS:
-        return
-    paths: dict[str, list[str]] = {}
-    for expression, inner, path in found:
-        match = _VARIABLE_REFERENCE.match(inner)
-        if match is None:
-            continue
-        name, rest = match.group(1), inner[match.end() :]
-        defined = _value_of(name) is not None or name in LAZY_VARIABLE_NAMES
-        # Substituted: a variable defined (a value, or unset only if not), or
-        # one with a default
-        if rest.startswith(VAR_DEFAULT_SEPARATOR) or (
-            defined and rest in ("", VAR_UNSET_SUFFIX)
-        ):
-            paths.setdefault(expression, []).append(path)
-    for expression, expression_paths in paths.items():
-        expression_paths = _unreported(expression, expression_paths, False)
-        if expression_paths:
-            plain = expression[len(WP_VARIABLES_PREFIX) : -len(WP_VARIABLES_POSTFIX)]
-            print_warning(
-                f"'{expression}' keeps its underscores in"
-                f" {_list_paths(expression_paths)}: the '__{{{{...}}}}__' form"
-                " is for Worker Pool and Compute Requirement specifications,"
-                f" User Data and Node Actions; write '{plain}' here"
-            )
 
 
 def resolve_variables_insitu(
@@ -1180,11 +1128,23 @@ def process_variable_substitutions(
     Process type-tagged and non-type-tagged variables, returning the required
     type if there's a type-tagged variable at the start of the input string.
     Non-string, non-None values are returned unchanged.
+
+    A plain pass (no 'prefix' or 'postfix') substitutes the Worker Pool form
+    '__{{x}}__' first, as a whole, underscores and all, so that either form
+    may be written wherever the plain one is substituted; the Platform's
+    Mustache properties are passed the Worker Pool delimiters instead.
     """
     if input_string is None:
         return None
     if not isinstance(input_string, str):
         return input_string
+
+    if not (prefix or postfix) and WP_VARIABLES_PREFIX in input_string:
+        input_string = process_variable_substitutions(
+            input_string, prefix=WP_VARIABLES_PREFIX, postfix=WP_VARIABLES_POSTFIX
+        )
+        if not isinstance(input_string, str) or input_string is _UNSET:
+            return input_string
 
     opening_delimiter = prefix + VAR_OPENING_DELIMITER
     closing_delimiter = VAR_CLOSING_DELIMITER + postfix

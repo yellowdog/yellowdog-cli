@@ -362,7 +362,7 @@ class TestStatus:
             (NODE_1, None),
             (NODE_2, "not found"),
         ]
-        assert f"Failed to get status for node '{NODE_2}': not found" in messages
+        assert f"Failed to get status for Node '{NODE_2}': not found" in messages
         assert "All node action queues have finished." not in messages
 
     def test_following_submitted_actions_fails_on_an_unfetched_queue(

@@ -1233,7 +1233,8 @@ def _add_or_update_roles(
             ns_list_quoted = [f"'{ns}'" for ns in sorted(role_spec.namespaces or [])]
             print_info(
                 f"Added/updated role '{role_spec.name}' scoped to "
-                f"namespace(s): {', '.join(ns_list_quoted)}"
+                f"{plural('namespace', len(ns_list_quoted))}:"
+                f" {', '.join(ns_list_quoted)}"
             )
     return [role_spec.name for role_spec in role_specifications]
 
@@ -1413,7 +1414,8 @@ def _grant_keyrings(
     if failures:
         keyring_names = ", ".join(f"'{k}'" for k, _ in failures)
         raise RuntimeError(
-            f"Application {outcome}, but access to Keyring(s) {keyring_names}"
+            f"Application {outcome}, but access to"
+            f" {plural('Keyring', len(failures))} {keyring_names}"
             f" could not be granted: {failures[0][1]}"
         ) from failures[0][1]
 

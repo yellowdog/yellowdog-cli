@@ -25,7 +25,8 @@
 #   --repo URL        repository to clone (default: the yellowdog-cli GitHub repo)
 #   --python X.Y      Python for the virtual environment (default: 3.14)
 #   --no-test         install everything, but do not run the tests
-#   --pyright         also run 'make pyright' at the end
+#   --pyright         also run 'make pyright' at the end, checking the code as
+#                     the --python version's
 #   --help
 #
 # Idempotent: safe to re-run. Everything it installs is either an apt package, a uv
@@ -57,7 +58,7 @@ setup-ubuntu.sh — an unconfigured Ubuntu/Debian machine to one that runs the t
   --repo URL        repository to clone
   --python X.Y      Python for the virtual environment (default: 3.14)
   --no-test         install everything, but do not run the tests
-  --pyright         also run 'make pyright' at the end
+  --pyright         also run 'make pyright' at the end, as the --python version's code
   --help
 USAGE
 }
@@ -293,8 +294,8 @@ if [ "$RUN_TESTS" -eq 1 ]; then
 fi
 
 if [ "$RUN_PYRIGHT" -eq 1 ]; then
-    log "Type checking"
-    make pyright
+    log "Type checking, as Python $PYTHON_VERSION code"
+    make pyright PYRIGHT_PYTHON="$PYTHON_VERSION"
 fi
 
 log "Done"

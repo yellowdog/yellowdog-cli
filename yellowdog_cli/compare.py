@@ -699,7 +699,7 @@ class WorkerPools:
                     ).list_all()
                 )
             except Exception as e:
-                raise RuntimeError(f"Unable to get details of nodes: {e}") from e
+                raise RuntimeError(f"Unable to get details of Nodes: {e}") from e
             nodes = self._nodes[worker_pool_id]
             _LOG.debug(
                 "Worker Pool %s has %d Node(s) listed, %d RUNNING, %d reporting"

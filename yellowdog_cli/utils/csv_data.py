@@ -18,7 +18,13 @@ from yellowdog_cli.utils.file_substitution import (
     parse_json_file,
 )
 from yellowdog_cli.utils.paths import relative_if_possible
-from yellowdog_cli.utils.printing import counted, print_info, print_json, print_warning
+from yellowdog_cli.utils.printing import (
+    counted,
+    plural,
+    print_info,
+    print_json,
+    print_warning,
+)
 from yellowdog_cli.utils.property_names import *
 from yellowdog_cli.utils.variable_substitution import (
     TYPE_TAGS,
@@ -90,7 +96,8 @@ class CSVTaskData:
         repeated = sorted({h for h in headings if headings.count(h) > 1})
         if repeated:
             raise ValueError(
-                f"CSV file '{csv_filename}' repeats the heading(s)"
+                f"CSV file '{csv_filename}' repeats the"
+                f" {plural('heading', len(repeated))}"
                 f" {', '.join(repr(h) for h in repeated)}: each column needs its"
                 " own name"
             )

@@ -5,7 +5,8 @@ pass, so that the Platform's '{{provider}}' or '{{node.details.nodeSlot}}' is
 left for it: in a Worker Pool or Compute Requirement specification, which
 takes the plain '{{x}}' too everywhere else, and in a resource specification
 (a Configured Worker Pool's 'nodeEvents'), which takes the plain form. A Node
-Action specification keeps to the '__' form throughout.
+Action specification keeps to the '__' form throughout. Everywhere else both
+forms are substituted, '__{{x}}__' as a whole.
 """
 
 import json
@@ -167,9 +168,10 @@ class TestPlatformMustache:
 
 class TestJsonnetResources:
     """
-    A Jsonnet resource file's text pass, before evaluation, is in the plain
-    delimiters and cannot tell which property an expression is in: it leaves
-    '__{{x}}__' for the pass after evaluation, which can.
+    A Jsonnet resource file's text pass, before evaluation, substitutes both
+    forms, '__{{x}}__' first, so the code can compute with either; a plain
+    '{{x}}' it leaves (an undefined one) is for the pass after evaluation,
+    which keeps it in User Data and Node Actions.
     """
 
     @pytest.fixture(autouse=True)
@@ -195,12 +197,22 @@ class TestJsonnetResources:
         }
 
     def test_underscored_elsewhere_as_a_json_file_has_it(self, tmp_path):
-        assert self._load(tmp_path, {"a": "__{{site}}__ {{site}}"}) == {
-            "a": "__lon__ lon"
-        }
+        assert self._load(tmp_path, {"a": "__{{site}}__ {{site}}"}) == {"a": "lon lon"}
 
     def test_a_defined_variable_underscored_is_not_circular(self, tmp_path):
         assert self._load(tmp_path, {"userData": "__{{site}}__"}) == {"userData": "lon"}
+
+    def test_the_underscored_form_feeds_the_code_too(self, tmp_path):
+        spec = tmp_path / "res.jsonnet"
+        spec.write_text(
+            '{ n: std.length("__{{site}}__"), m: 2 * "__{{num:k:=3}}__" }',
+            encoding="utf-8",
+        )
+        data = file_module.load_jsonnet_file_with_variable_substitutions(str(spec))
+        assert data == {"n": 3, "m": 6}
+
+    def test_an_undefined_underscored_one_is_left_for_after(self, tmp_path):
+        assert self._load(tmp_path, {"a": "__{{nope}}__"}) == {"a": "__{{nope}}__"}
 
     def test_the_plain_form_still_feeds_the_code(self, tmp_path):
         spec = tmp_path / "res.jsonnet"
@@ -309,32 +321,66 @@ class TestCommands:
 
 class TestTheWorkerPoolFormElsewhere:
     """
-    A plain pass (a Work Requirement, a resource, the configuration) substitutes
-    the '{{x}}' inside a '__{{x}}__' and keeps the underscores, so outside User
-    Data and Node Actions the form is warned of, when it is substituted.
+    A plain pass (a Work Requirement, a resource, the configuration, a file's
+    text) substitutes '__{{x}}__' as a whole, underscores and all, before the
+    plain '{{x}}', so either form may be written outside User Data and Node
+    Actions.
     """
 
-    def test_it_keeps_its_underscores_and_is_warned_of(self, warnings):
-        data = {"name": "__{{site}}__", "tag": "{{site}}"}
+    def test_it_is_substituted_as_a_whole(self, warnings):
+        data = {"name": "__{{site}}__", "tag": "{{site}}", "both": "a__{{site}}__b"}
         resolve_variables_insitu(data)
-        assert data == {"name": "__lon__", "tag": "lon"}
-        (message,) = _messages(warnings)
-        assert "'__{{site}}__' keeps its underscores in 'name'" in message
-        assert "write '{{site}}' here" in message
+        assert data == {"name": "lon", "tag": "lon", "both": "alonb"}
+        assert _messages(warnings) == []
 
     @pytest.mark.parametrize(
-        "value", ["__{{site:=x}}__", "__{{nope:=x}}__", "__{{site::}}__"]
+        "value, expected",
+        [("__{{site:=x}}__", "lon"), ("__{{nope:=x}}__", "x")],
     )
-    def test_a_default_or_unset_suffix_is_warned_of_when_substituted(
-        self, warnings, value
-    ):
-        resolve_variables_insitu({"name": value})
-        assert len(_messages(warnings)) == 1
+    def test_a_default(self, value, expected):
+        data = {"name": value}
+        resolve_variables_insitu(data)
+        assert data == {"name": expected}
 
-    @pytest.mark.parametrize("value", ["__{{nope}}__", "__{{.ID}}__"])
-    def test_one_left_unsubstituted_is_not(self, warnings, value):
-        resolve_variables_insitu({"name": value})
-        assert not any("underscores" in m for m in _messages(warnings))
+    def test_the_unset_suffix_removes_the_property(self):
+        data = {"name": "__{{nope::}}__", "tag": "t"}
+        resolve_variables_insitu(data)
+        assert data == {"tag": "t"}
+
+    def test_a_typed_whole_value_has_its_type(self, monkeypatch):
+        monkeypatch.setitem(var_module.VARIABLE_SUBSTITUTIONS, "count", "3")
+        data = {"count": "__{{num:count}}__"}
+        resolve_variables_insitu(data)
+        assert data == {"count": 3}
+
+    def test_a_raw_literal_keeps_the_underscores(self):
+        data = {"name": "__{{raw:site}}__"}
+        resolve_variables_insitu(data)
+        assert var_module.literal_text(data) == {"name": "__{{site}}__"}
+
+    def test_an_undefined_one_is_left_and_reported(self, warnings):
+        data = {"name": "__{{nope}}__"}
+        resolve_variables_insitu(data)
+        assert data == {"name": "__{{nope}}__"}
+        (message,) = _messages(warnings)
+        assert "nope" in message
+
+    def test_a_files_text(self):
+        text = file_module.process_variable_substitutions_in_file_contents(
+            "echo __{{site}}__ {{site}} N=__{{num:n:=2}}__"
+        )
+        assert text == "echo lon lon N=2"
+
+    def test_the_configuration_file(self, tmp_path):
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[workRequirement]\nname = "__{{site}}__-run"\n'
+            '[workerPool]\nuserData = "echo __{{site}}__ {{provider}}"\n',
+            encoding="utf-8",
+        )
+        loaded = file_module.load_toml_file_with_variable_substitutions(str(config))
+        assert loaded["workRequirement"]["name"] == "lon-run"
+        assert loaded["workerPool"]["userData"] == "echo lon {{provider}}"
 
     def test_user_data_and_node_actions_take_it(self, warnings):
         data = {

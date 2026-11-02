@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 import fastjsonschema
-from fastjsonschema import RefResolver
+from fastjsonschema.ref_resolver import RefResolver
 
 CACHE_FORMAT = 1  # raised whenever what a cache file holds changes
 CACHE_DIRECTORY_NAME = "yellowdog-cli-schemas"

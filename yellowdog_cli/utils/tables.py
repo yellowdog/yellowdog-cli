@@ -437,17 +437,66 @@ def image_family_table(
     return headers, table
 
 
+def _compute_requirement_column(items: Sequence[Any]) -> bool:
+    """
+    Whether a table names each row's Compute Requirement: when the rows are
+    of more than one ('computeRequirementName', which the lister adds, since
+    an Instance or a source does not name its Compute Requirement); of one,
+    the line above the table has named it.
+    """
+    return len({getattr(i, "computeRequirementName", None) for i in items}) > 1
+
+
+def compute_sources_table(sources: list) -> tuple[list[str], list[list]]:
+    """
+    A Compute Requirement's sources as provisioned, each with its Compute
+    Requirement's name when they are of several. A property a provider's
+    sources lack (an on-premise one's region) is a blank cell.
+    """
+    show_cr_name = _compute_requirement_column(sources)
+    headers = ["#"]
+    if show_cr_name:
+        headers.append("Compute Requirement")
+    headers += [
+        "Source Name",
+        "Provider",
+        "Region",
+        "Instance Type",
+        "Status",
+        "Instances (Alive/Expected)",
+        "Source ID",
+    ]
+    table = []
+    for index, source in enumerate(sources):
+        summary = getattr(source, "instanceSummary", None)
+        row: list = [index + 1]
+        if show_cr_name:
+            row.append(getattr(source, "computeRequirementName", None))
+        table.append(
+            [
+                *row,
+                getattr(source, "name", None),
+                _cell(getattr(source, "provider", None)),
+                getattr(source, "region", None),
+                getattr(source, "instanceType", None),
+                _cell(getattr(source, "status", None)),
+                None
+                if summary is None
+                else f"{summary.aliveCount or 0}/{summary.expectedCount or 0}",
+                source.id,
+            ]
+        )
+    return headers, table
+
+
 def instances_table(
     instances: list[Instance],
 ) -> tuple[list[str], list[str]]:
     """
-    The Instances' table, each with its Compute Requirement's name where the
-    lister has added it ('computeRequirementName': an Instance does not name
-    its Compute Requirement).
+    The Instances' table, each with its Compute Requirement's name when they
+    are of several.
     """
-    show_cr_name = any(
-        getattr(i, "computeRequirementName", None) is not None for i in instances
-    )
+    show_cr_name = _compute_requirement_column(instances)
     headers = ["#"]
     if show_cr_name:
         headers.append("Compute Requirement")
@@ -1121,6 +1170,7 @@ def _model_table_builders() -> tuple[tuple[type, _TableBuilder], ...]:
         Application,
         ComputeRequirementSummary,
         ComputeRequirementTemplateSummary,
+        ComputeSource,
         ComputeSourceTemplateSummary,
         Group,
         Instance,
@@ -1150,6 +1200,7 @@ def _model_table_builders() -> tuple[tuple[type, _TableBuilder], ...]:
         (KeyringSummary, keyring_table),
         (MachineImageFamilySummary, image_family_table),
         (Instance, instances_table),
+        (ComputeSource, compute_sources_table),
         (Allowance, allowances_table),
         (AWSAvailabilityZone, aws_availability_zone_table),
         (NamespacePolicy, namespace_policies_table),

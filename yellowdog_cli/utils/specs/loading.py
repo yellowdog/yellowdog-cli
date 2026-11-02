@@ -14,6 +14,7 @@ loader (load_resources.py).
 from dataclasses import dataclass
 from typing import Any
 
+from yellowdog_cli.utils import load_config
 from yellowdog_cli.utils.csv_data import (
     load_json_file_with_csv_task_expansion,
     load_jsonnet_file_with_csv_task_expansion,
@@ -26,7 +27,10 @@ from yellowdog_cli.utils.file_substitution import (
 )
 from yellowdog_cli.utils.printing import print_info
 from yellowdog_cli.utils.specs.schema import Family
-from yellowdog_cli.utils.specs.validation import check_specification
+from yellowdog_cli.utils.specs.validation import (
+    check_specification,
+    validate_config_and_exit,
+)
 
 JSON_EXTENSION = ".json"
 JSONNET_EXTENSION = ".jsonnet"
@@ -46,15 +50,31 @@ class CsvExpansion:
     csv_only: bool = False
 
 
-def refuse_file_options(what: str, *, validate: bool, jsonnet_dry_run: bool) -> None:
+def refuse_file_options(
+    what: str,
+    *,
+    validate: bool,
+    jsonnet_dry_run: bool,
+    config_sections: frozenset[str],
+) -> None:
     """
-    Refuse '--validate' and '--jsonnet-dry-run' where the command has no
-    '<what>' specification file to apply them to, and is building what it
-    submits from the configuration instead: ignored, either would let the
-    command go on to submit or provision what was only to be checked.
+    Where the command has no '<what>' specification file and builds what it
+    submits from the configuration: '--validate' checks the configuration
+    file's 'config_sections', those it builds from, and exits, and
+    '--jsonnet-dry-run', with no Jsonnet to print, is refused. Ignored,
+    either would let the command go on to submit or provision what was only
+    to be checked.
     """
     if validate:
-        raise ValueError(f"Option '--validate' needs a {what} specification file")
+        document = load_config.config_as_written()
+        if document is None:
+            raise ValueError(
+                f"Option '--validate' needs a {what} specification file, or a"
+                " configuration file to build it from"
+            )
+        validate_config_and_exit(
+            document, config_sections, str(load_config.CONFIG_FILE)
+        )
     if jsonnet_dry_run:
         raise ValueError(
             f"Option '--jsonnet-dry-run' needs a Jsonnet {what} specification file"

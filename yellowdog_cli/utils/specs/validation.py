@@ -518,6 +518,25 @@ def validate_all_and_exit(
     exit(ExitCode.FAILURE if failed else ExitCode.SUCCESS)
 
 
+def validate_config_and_exit(
+    document: dict, sections: frozenset[str], source: str
+) -> NoReturn:
+    """
+    '--validate' with no specification file: the configuration file's
+    'sections', those the command builds from, checked and reported as a
+    file's are -- every violation an error and a record, exit 1, else a line
+    saying they are valid, exit 0.
+    """
+    violations = validate_config(document, sections)
+    for violation in violations:
+        record({"source": source, "path": violation.path, "message": violation.message})
+        print_error(_describe(source, violation))
+    if not violations and not json_requested():
+        shown = ", ".join(f"[{name}]" for name in sorted(sections))
+        print_info(f"'{source}': {shown} valid against the config schema")
+    exit(ExitCode.FAILURE if violations else ExitCode.SUCCESS)
+
+
 def validate_and_exit(family: Family, document: Any, source: str) -> NoReturn:
     """
     '--validate' for a command that loads a single specification.

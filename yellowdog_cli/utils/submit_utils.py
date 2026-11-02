@@ -32,6 +32,7 @@ from yellowdog_cli.utils.file_substitution import (
     process_variable_substitutions_in_file_contents,
 )
 from yellowdog_cli.utils.printing import (
+    plural,
     print_dry_run,
     print_error,
     print_info,
@@ -277,7 +278,7 @@ def generate_dependencies(task_group_data: dict) -> list[str] | None:
     if dependent_on is not None and dependencies is not None:
         raise ValueError(
             "Only one of 'dependencies' or 'dependentOn' (deprecated) can "
-            "be specified in a task group"
+            "be specified in a Task Group"
         )
 
     if dependent_on is None and dependencies is None:
@@ -288,7 +289,7 @@ def generate_dependencies(task_group_data: dict) -> list[str] | None:
 
     if dependent_on is not None:
         print_warning(
-            "The 'dependentOn' task group property is deprecated; "
+            "The 'dependentOn' Task Group property is deprecated; "
             "please use 'dependencies' instead"
         )
         return [dependent_on]
@@ -338,7 +339,7 @@ def _generate_task_error_matcher(task_error_matcher_data: dict) -> TaskErrorMatc
 
     except Exception as e:
         raise RuntimeError(
-            f"Unable to process task retry error matcher data '{task_error_matcher_data}': {e}"
+            f"Unable to process Task retry error matcher data '{task_error_matcher_data}': {e}"
         ) from e
 
 
@@ -382,7 +383,7 @@ def _generate_selection(
     extra = set(value) - {SELECTION_INCLUDES, SELECTION_EXCLUDES}
     if extra:
         raise ValueError(
-            f"Unknown key(s) {sorted(extra)} in '{field_name}'; "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in '{field_name}'; "
             f"expected '{SELECTION_INCLUDES}' and optional '{SELECTION_EXCLUDES}'"
         )
 
@@ -434,7 +435,7 @@ def _generate_task_error_selector(d: dict) -> TaskErrorSelector:
     extra = set(d) - {ERROR_TYPES, STATUSES_AT_FAILURE, PROCESS_EXIT_CODES}
     if extra:
         raise ValueError(
-            f"Unknown key(s) {sorted(extra)} in task error selector; "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in Task error selector; "
             f"expected any of '{ERROR_TYPES}', '{STATUSES_AT_FAILURE}', "
             f"'{PROCESS_EXIT_CODES}'"
         )
@@ -469,7 +470,7 @@ def generate_retry_policy(
     extra = set(policy_data) - {RETRY_MAX_RETRIES, RETRY_ERRORS}
     if extra:
         raise ValueError(
-            f"Unknown key(s) {sorted(extra)} in '{RETRY_POLICY}'; "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in '{RETRY_POLICY}'; "
             f"expected '{RETRY_MAX_RETRIES}' and '{RETRY_ERRORS}'"
         )
 
@@ -505,7 +506,7 @@ def generate_failure_policy(
     extra = set(policy_data) - {RESUBMISSION_DESTINATIONS}
     if extra:
         raise ValueError(
-            f"Unknown key(s) {sorted(extra)} in '{FAILURE_POLICY}'; "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in '{FAILURE_POLICY}'; "
             f"expected '{RESUBMISSION_DESTINATIONS}'"
         )
 
@@ -536,7 +537,7 @@ def _generate_resubmission_destination(d: dict) -> ResubmissionDestination:
     extra = set(d) - {DESTINATION_TASK_GROUP, RESUBMIT_ERRORS}
     if extra:
         raise ValueError(
-            f"Unknown key(s) {sorted(extra)} in '{RESUBMISSION_DESTINATIONS}' "
+            f"Unknown {plural('key', len(extra))} {sorted(extra)} in '{RESUBMISSION_DESTINATIONS}' "
             f"entry; expected '{DESTINATION_TASK_GROUP}' and optional "
             f"'{RESUBMIT_ERRORS}'"
         )

@@ -924,7 +924,7 @@ def build_schema(family: Family) -> dict[str, Any]:
             "additionalProperties": False,
             "properties": {
                 "$schema": SCHEMA_PROPERTY,
-                "actions": {**actions, "description": "actions sent to every node"},
+                "actions": {**actions, "description": "actions sent to every Node"},
                 "actionGroups": {
                     "type": "array",
                     "items": {

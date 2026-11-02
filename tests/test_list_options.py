@@ -148,8 +148,12 @@ def listing(monkeypatch):
             "--within takes a Work Requirement or Task Group, not a Compute Requirement",
         ),
         (
-            ["instances", "--within", CR_ID.replace("compreq", "wrkrpool")],
-            "--within takes a Compute Requirement, not a Worker Pool",
+            [
+                "instances",
+                "--within",
+                "ydid:node:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1",
+            ],
+            "--within takes a Compute Requirement or Worker Pool, not a Node",
         ),
         (
             ["nodes", "--within", CR_ID],
@@ -1418,6 +1422,41 @@ class TestWithinCompute:
                 yd_list, searched, MagicMock(side_effect=AssertionError(searched))
             )
 
+    def test_a_provisioned_worker_pool_stands_for_its_compute_requirement(
+        self, listing, monkeypatch
+    ):
+        pool_id = CR_ID.replace("compreq", "wrkrpool")
+        pool = SimpleNamespace(id=pool_id, name="pool", computeRequirementId=CR_ID)
+        monkeypatch.setattr(yd_list, "get_worker_pool_by_id", lambda c, wp_id: pool)
+        listing.client.compute_client.get_compute_requirement_by_id.return_value = (
+            SimpleNamespace(name="my-cr")
+        )
+        ctx = RunContext(
+            args=_args("compute-sources", within_targets=[pool_id]),
+            config=SimpleNamespace(namespace="ns"),
+            client=listing.client,
+        )
+        assert yd_list._compute_requirement_within(ctx, pool_id) == (CR_ID, "my-cr")
+
+    def test_a_configured_worker_pool_has_none(self, listing, monkeypatch):
+        pool_id = CR_ID.replace("compreq", "wrkrpool")
+        pool = SimpleNamespace(id=pool_id, name="onprem", computeRequirementId=None)
+        monkeypatch.setattr(yd_list, "get_worker_pool_by_id", lambda c, wp_id: pool)
+        ctx = RunContext(
+            args=_args("instances", within_targets=[pool_id]),
+            config=SimpleNamespace(namespace="ns"),
+            client=listing.client,
+        )
+        with pytest.raises(ValueError, match="Configured Worker Pool"):
+            yd_list._compute_requirement_within(ctx, pool_id)
+
+    @pytest.mark.parametrize("entity_type", ["instances", "compute-sources"])
+    def test_the_command_line_takes_a_worker_pool_id(self, entity_type):
+        CLIParser(
+            command="yd-list",
+            argv=[entity_type, "--within", CR_ID.replace("compreq", "wrkrpool")],
+        )
+
     def test_the_instances_within_a_compute_requirement_id(
         self, listing, monkeypatch, capsys
     ):
@@ -2177,3 +2216,175 @@ class TestEmit:
             ("full b", {"resource": "X"}),
         ]
         assert printed["info"] == "substituting"
+
+
+# ---------------------------------------------------------------------------
+# Compute Sources: a Compute Requirement's sources, as provisioned
+# ---------------------------------------------------------------------------
+
+CR_ID_2 = "ydid:compreq:000000:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+
+class TestComputeSources:
+    """
+    'yd list compute-sources': read from each Compute Requirement, since the
+    sources have no search of their own, and filtered by their own status
+    and provider.
+    """
+
+    @staticmethod
+    def _sources(listing, by_cr: dict):
+        from yellowdog_client.model import CloudProvider, ComputeSourceStatus
+
+        def get(cr_id):
+            sources = [
+                SimpleNamespace(
+                    id=f"{cr_id}:{name}",
+                    name=name,
+                    provider=CloudProvider[provider],
+                    status=ComputeSourceStatus[status],
+                )
+                for name, provider, status in by_cr[cr_id]
+            ]
+            return SimpleNamespace(
+                name=f"cr-{cr_id[-1]}",
+                provisionStrategy=SimpleNamespace(sources=sources),
+            )
+
+        listing.client.compute_client.get_compute_requirement_by_id.side_effect = get
+
+    def test_the_sources_within_several_compute_requirements(
+        self, listing, monkeypatch
+    ):
+        monkeypatch.setattr(
+            yd_list,
+            "_compute_requirement_within",
+            lambda ctx, target: (target, f"name-of-{target[-1]}"),
+        )
+        self._sources(
+            listing,
+            {
+                CR_ID: [("aws-1", "AWS", "ACTIVE"), ("aws-2", "AWS", "ERRORED")],
+                CR_ID_2: [("gcp-1", "GOOGLE", "ACTIVE")],
+            },
+        )
+        ctx = RunContext(
+            args=_args(
+                "compute-sources", within_targets=[CR_ID, CR_ID_2], json_output=True
+            ),
+            config=SimpleNamespace(namespace="ns"),
+            client=listing.client,
+        )
+        yd_list.list_compute_requirements(ctx)
+        (sources,) = listing.printed
+        # In the order the Compute Requirements were given, each named
+        assert [(s.name, s.computeRequirementName) for s in sources] == [
+            ("aws-1", "name-of-a"),
+            ("aws-2", "name-of-a"),
+            ("gcp-1", "name-of-b"),
+        ]
+
+    @pytest.mark.parametrize(
+        "filters, kept",
+        [
+            ({"status_filter": ["active"]}, ["aws-1", "gcp-1"]),
+            ({"provider": "google"}, ["gcp-1"]),
+        ],
+    )
+    def test_status_and_provider_are_the_sources_own(self, listing, filters, kept):
+        self._sources(
+            listing,
+            {
+                CR_ID: [
+                    ("aws-1", "AWS", "ACTIVE"),
+                    ("aws-2", "AWS", "ERRORED"),
+                    ("gcp-1", "GOOGLE", "ACTIVE"),
+                ]
+            },
+        )
+        ctx = RunContext(
+            args=_args("compute-sources", json_output=True, **filters),
+            config=SimpleNamespace(namespace="ns"),
+            client=listing.client,
+        )
+        yd_list.list_compute_sources(ctx, [(CR_ID, "cr")])
+        assert [s.name for s in listing.printed[0]] == kept
+
+    def test_none_says_so(self, listing, monkeypatch):
+        said = []
+        monkeypatch.setattr(yd_list, "_print_empty", lambda ctx, m: said.append(m))
+        listing.client.compute_client.get_compute_requirement_by_id.return_value = (
+            SimpleNamespace(name="cr", provisionStrategy=None)
+        )
+        ctx = RunContext(
+            args=_args("compute-sources", json_output=True),
+            config=SimpleNamespace(namespace="ns"),
+            client=listing.client,
+        )
+        yd_list.list_compute_sources(ctx, [(CR_ID, "cr")])
+        assert said == ["No matching Compute Sources"]
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["compute-sources", "--within", CR_ID, "--status", "ACTIVE"],
+            ["compute-sources", "--provider", "aws"],
+            ["Q", "--within", "my-cr"],
+        ],
+    )
+    def test_the_command_line_takes(self, argv):
+        CLIParser(command="yd-list", argv=argv)
+
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            (["compute-sources", "--active-only"], "--active-only does not apply"),
+            (["compute-sources", "--limit", "5"], "--limit does not apply"),
+            (["compute-sources", "--name", "x*"], "--name does not apply"),
+        ],
+    )
+    def test_the_command_line_refuses(self, argv, message, capsys):
+        with pytest.raises(SystemExit):
+            CLIParser(command="yd-list", argv=argv)
+        assert message in capsys.readouterr().err
+
+    def test_the_table_names_each_sources_compute_requirement(self):
+        from yellowdog_client.model import (
+            AwsInstancesComputeSource,
+            CloudProvider,
+            ComputeSourceStatus,
+        )
+
+        from yellowdog_cli.utils import tables
+
+        source = AwsInstancesComputeSource(
+            name="aws-1",
+            credential="kr/cred",
+            region="eu-west-2",
+            securityGroupId="sg",
+            instanceType="t3.small",
+            imageId="ami",
+        )
+        source.id = "src-1"
+        source.provider = CloudProvider.AWS
+        source.status = ComputeSourceStatus.ACTIVE
+        # Server-assigned: set as the Platform's reply would have it
+        source.instanceSummary = SimpleNamespace(aliveCount=2, expectedCount=3)  # type: ignore[assignment]
+        source.computeRequirementName = "cr-a"  # type: ignore[attr-defined]
+        assert tables._table_builder(source, None) is tables.compute_sources_table
+        # Of one Compute Requirement, which the line above the table names
+        headers, _ = tables.compute_sources_table([source])
+        assert "Compute Requirement" not in headers
+        other = SimpleNamespace(**{**vars(source), "computeRequirementName": "cr-b"})
+        headers, rows = tables.compute_sources_table([source, other])
+        assert dict(zip(headers, rows[0])) == {
+            "#": 1,
+            "Compute Requirement": "cr-a",
+            "Source Name": "aws-1",
+            "Provider": "AWS",
+            "Region": "eu-west-2",
+            "Instance Type": "t3.small",
+            "Status": "ACTIVE",
+            "Instances (Alive/Expected)": "2/3",
+            "Source ID": "src-1",
+        }

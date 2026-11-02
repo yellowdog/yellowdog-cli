@@ -14,6 +14,7 @@ import math
 import os
 import re
 import shutil
+import sys
 from argparse import (
     SUPPRESS,
     Action,
@@ -43,6 +44,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_SOURCES,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -397,7 +399,13 @@ def _usage(own: tuple[Option | Exclusive, ...], prog: str | None) -> str:
     wraps them for a parser of those alone, and the common options as one
     '[universal options]' at its end, on the last line if it fits there.
     """
-    alone = ArgumentParser(prog=prog)
+    # Uncoloured: Python 3.14's argparse colours its usage for a terminal,
+    # and a coloured 'usage: ' is neither removed here nor wanted inside the
+    # usage the command's own parser colours (it would print 'usage: usage:')
+    if sys.version_info >= (3, 14):
+        alone = ArgumentParser(prog=prog, color=False)
+    else:
+        alone = ArgumentParser(prog=prog)
     _register(alone, own)
     lines = alone.format_usage().removeprefix("usage: ").rstrip("\n").split("\n")
     indent = " " * (len("usage: ") + len(alone.prog) + 1)
@@ -418,6 +426,7 @@ ENTITY_TYPES = [
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_SOURCES,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -467,11 +476,13 @@ LIST_STATUS_TYPES = frozenset(
         ET_WORKERS,
         ET_COMPUTE_REQUIREMENTS,
         ET_INSTANCES,
+        ET_COMPUTE_SOURCES,
     }
 )
 # Those listed from active Work Requirements, Worker Pools or Compute
-# Requirements, or themselves active or not
-LIST_ACTIVE_TYPES = LIST_STATUS_TYPES
+# Requirements, or themselves active or not; a Compute Source's status
+# (ACTIVE, INACTIVE, ...) is its own, which '--status' selects by
+LIST_ACTIVE_TYPES = LIST_STATUS_TYPES - {ET_COMPUTE_SOURCES}
 # Those the Platform can say are deletable: a namespace never populated
 LIST_DELETABLE_TYPES = frozenset({ET_NAMESPACES})
 # Those the Platform says are healthy or not
@@ -479,7 +490,9 @@ LIST_UNHEALTHY_TYPES = frozenset(
     {ET_WORK_REQUIREMENTS, ET_WORKER_POOLS, ET_COMPUTE_REQUIREMENTS}
 )
 # Those with a cloud provider of their own
-LIST_PROVIDER_TYPES = frozenset({ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES})
+LIST_PROVIDER_TYPES = frozenset(
+    {ET_INSTANCES, ET_NODES, ET_COMPUTE_SOURCE_TEMPLATES, ET_COMPUTE_SOURCES}
+)
 # '--provider''s values: the Platform's CloudProvider names, lower-case and
 # hyphenated
 LIST_PROVIDERS = ("aws", "azure", "google", "oci", "on-premise")
@@ -495,7 +508,9 @@ LIST_POOL_KIND_TYPES = frozenset({ET_WORKER_POOLS})
 LIST_WITHIN_KINDS: dict[str, tuple[str, ...]] = {
     ET_TASK_GROUPS: ("Work Requirement", "Task Group"),
     ET_TASKS: ("Work Requirement", "Task Group"),
-    ET_INSTANCES: ("Compute Requirement",),
+    # A Provisioned Worker Pool's ID standing for its Compute Requirement
+    ET_INSTANCES: ("Compute Requirement", "Worker Pool"),
+    ET_COMPUTE_SOURCES: ("Compute Requirement", "Worker Pool"),
     ET_NODES: ("Worker Pool",),
     ET_WORKERS: ("Worker Pool", "Node"),
 }
@@ -523,6 +538,7 @@ SYNONYMS: dict[str, str] = {
     "C": ET_COMPUTE_REQUIREMENT_TEMPLATES,
     "R": ET_COMPUTE_REQUIREMENTS,
     "S": ET_COMPUTE_SOURCE_TEMPLATES,
+    "Q": ET_COMPUTE_SOURCES,
     "G": ET_GROUPS,
     "I": ET_IMAGE_FAMILIES,
     "E": ET_INSTANCES,
@@ -988,7 +1004,7 @@ FOLLOW = option(
     "-f",
     action="store_true",
     required=False,
-    help="follow the work requirement's progress to completion",
+    help="follow the Work Requirement's progress to completion",
 )
 WORKER_POOL = option(
     "--worker-pool",
@@ -996,7 +1012,7 @@ WORKER_POOL = option(
     type=str,
     required=False,
     help=(
-        "worker pool definition file in JSON or Jsonnet format"
+        "Worker Pool definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
     completes=Completes.FILE,
@@ -1043,7 +1059,7 @@ ENTITY_JSON = ACTIONS_JSON.variant(
     )
 )
 FOLLOW_WORK_REQUIREMENT_EVENTS = FOLLOW.variant(
-    help="follow work requirement events after applying action"
+    help="follow Work Requirement events after applying action"
 )
 INTERACTIVE = option(
     "--interactive",
@@ -1072,7 +1088,10 @@ JSONNET_DRY_RUN = option(
     "-J",
     action="store_true",
     required=False,
-    help="dry-run Jsonnet processing into JSON",
+    help=(
+        "print the Jsonnet specification as evaluated, its variables"
+        " substituted, and stop"
+    ),
 )
 VALIDATE = option(
     "--validate",
@@ -1089,14 +1108,14 @@ COMPUTE_REQS_INSTANCES_OR_NODES = option(
     metavar="<name-or-ID>",
     type=str,
     help=(
-        "the name(s) or YellowDog ID(s) of the compute "
-        "requirement(s), ID(s) of nodes, or instances in "
+        "the name(s) or YellowDog ID(s) of the Compute "
+        "Requirement(s), ID(s) of Nodes, or Instances in "
         "'cr_id.instance_id' format; a name may be a glob pattern"
         " (e.g. 'cr-*')"
     ),
 )
 FOLLOW_COMPUTE_REQUIREMENT_EVENTS = FOLLOW.variant(
-    help="follow compute requirement events after applying action"
+    help="follow Compute Requirement events after applying action"
 )
 WORK_REQUIREMENTS = option(
     "work_requirements",
@@ -1104,8 +1123,8 @@ WORK_REQUIREMENTS = option(
     metavar="<work-requirement-name-or-ID>",
     type=str,
     help=(
-        "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
-        " cancelled; can also supply task IDs; a name may be a glob"
+        "the name(s) or YellowDog ID(s) of the Work Requirement(s) to be"
+        " cancelled; can also supply Task IDs; a name may be a glob"
         " pattern (e.g. 'proj-*')"
     ),
 )
@@ -1230,7 +1249,7 @@ MATCH_ALLOWANCES_BY_DESCRIPTION = option(
     required=False,
     help=(
         "match using the 'description' property when updating "
-        "(using yd resource create) or removing allowances"
+        "(using yd resource create) or removing Allowances"
     ),
 )
 YELLOWDOG_IDS = option(
@@ -1277,8 +1296,8 @@ AUTO_FOLLOW_COMPUTE_REQUIREMENTS = option(
     action="store_true",
     required=False,
     help=(
-        "automatically follow the associated compute requirements when"
-        " following worker pools"
+        "automatically follow the associated Compute Requirements when"
+        " following Worker Pools"
     ),
 )
 SHOW_SECRETS = option(
@@ -1293,10 +1312,10 @@ SUBSTITUTE_IDS = option(
     action="store_true",
     required=False,
     help=(
-        "substitute compute source template IDs and image family IDs "
-        "for names in detailed compute requirement templates, "
-        "image family IDs in compute source templates, "
-        "and template IDs in allowances "
+        "substitute Compute Source Template IDs and Image Family IDs "
+        "for names in detailed Compute Requirement Templates, "
+        "Image Family IDs in Compute Source Templates, "
+        "and template IDs in Allowances "
         "(implies '--details')"
     ),
 )
@@ -1556,7 +1575,7 @@ def check_no_glob_targets(args: Namespace, parser: ArgumentParser) -> None:
     if globs:
         parser.error(
             "glob patterns are not supported, since they select Compute"
-            " Requirements: supply node IDs, or instances in"
+            " Requirements: supply Node IDs, or Instances in"
             f" 'cr_id.instance_id' format ({', '.join(globs)})"
         )
 
@@ -1647,13 +1666,13 @@ TASK_ID_LIST = option(
     metavar="<target>",
     type=str,
     help=(
-        "items to target: executing task YDID(s) to abort directly; Work"
+        "items to target: executing Task YDID(s) to abort directly; Work"
         " Requirement name(s), 'namespace/wr-name' or YDID(s) to abort all"
-        " executing tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
-        " 'namespace/wr-name/tg-name' to abort executing tasks in a specific"
+        " executing Tasks within; Task Group YDID(s), 'wr-name/tg-name' or"
+        " 'namespace/wr-name/tg-name' to abort executing Tasks in a specific"
         " group; the last part of a name may be a glob pattern ('wr-*',"
-        " 'wr/tg-*'), matching unfinished ones. Without arguments, the executing tasks of the work"
-        " requirements matching the namespace and tag, selected interactively"
+        " 'wr/tg-*'), matching unfinished ones. Without arguments, the executing Tasks of the Work"
+        " Requirements matching the namespace and tag, selected interactively"
         " unless --yes is given."
     ),
 )
@@ -1688,7 +1707,7 @@ BOOST_HOURS = option(
     "boost_hours",
     metavar="<boost hours>",
     type=positive_int,
-    help="the number of hours to boost the allowance by (at least 1)",
+    help="the number of hours to boost the Allowance by (at least 1)",
 )
 ALLOWANCES = option(
     "allowances",
@@ -1696,7 +1715,7 @@ ALLOWANCES = option(
     nargs="+",
     type=str,
     help=(
-        "the YellowDog ID(s) of the allowance(s) to boost, or a pattern"
+        "the YellowDog ID(s) of the Allowance(s) to boost, or a pattern"
         " ('*gpu*') for those whose descriptions match it"
     ),
 )
@@ -1740,7 +1759,7 @@ ABORT = option(
     "-a",
     action="store_true",
     required=False,
-    help="abort running tasks with immediate effect",
+    help="abort running Tasks with immediate effect",
 )
 
 COMMANDS["yd-cancel"] = Command(
@@ -1755,7 +1774,7 @@ COMMANDS["yd-cancel"] = Command(
         NAMESPACE,
         TAG,
         ABORT,
-        FOLLOW.variant(help="follow progress after cancelling the work requirement(s)"),
+        FOLLOW.variant(help="follow progress after cancelling the Work Requirement(s)"),
         DRY_RUN,
         DRY_RUN_JSON,
         INTERACTIVE,
@@ -1814,7 +1833,7 @@ INSTANCE_TYPE = option(
     type=str,
     help=(
         "the instance type to use in the automatically generated YellowDog"
-        " compute requirement templates"
+        " Compute Requirement Templates"
     ),
 )
 
@@ -1883,8 +1902,8 @@ WR_OR_TG_ID = option(
     metavar="<work-requirement-or-task-group-name-or-ID>",
     type=str,
     help=(
-        "the name ('wr', or 'wr/tg' for a task group) or YellowDog ID of the"
-        " work requirement or task group to be compared"
+        "the name ('wr', or 'wr/tg' for a Task Group) or YellowDog ID of the"
+        " Work Requirement or Task Group to be compared"
     ),
 )
 WORKER_POOL_IDS = option(
@@ -1892,13 +1911,13 @@ WORKER_POOL_IDS = option(
     metavar="<provisioned-worker-pool-name-or-ID>",
     type=str,
     nargs="+",
-    help="the name(s) or YellowDog ID(s) of the provisioned worker pool(s) to compare",
+    help="the name(s) or YellowDog ID(s) of the Provisioned Worker Pool(s) to compare",
 )
 RUNNING_NODES_ONLY = option(
     "--running-nodes-only",
     action="store_true",
     required=False,
-    help="only compare against nodes in the RUNNING state",
+    help="only compare against Nodes in the RUNNING state",
 )
 
 
@@ -1941,8 +1960,8 @@ def check_compare_ids(args: Namespace, parser: ArgumentParser) -> None:
 COMMANDS["yd-compare"] = Command(
     name="yd-compare",
     purpose=(
-        "comparing whether a work requirement or task group is matched by "
-        "workers in the specified provisioned worker pools"
+        "comparing whether a Work Requirement or Task Group is matched by "
+        "Workers in the specified Provisioned Worker Pools"
     ),
     summary="Compare a Work Requirement or Task Group against Worker Pool(s)",
     kind=CommandKind.API,
@@ -1970,8 +1989,8 @@ WAIT_FOR_CAPACITY = option(
     action="store_true",
     required=False,
     help=(
-        "wait until each compute requirement acted on has its target number of"
-        " instances running, and none starting or terminating"
+        "wait until each Compute Requirement acted on has its target number of"
+        " Instances running, and none starting or terminating"
     ),
 )
 WAIT_TIMEOUT = TIMEOUT.variant(
@@ -2050,7 +2069,7 @@ COMMANDS["yd-compute-restart"] = Command(
         COMPUTE_REQS_INSTANCES_OR_NODES.variant(
             nargs="+",
             metavar="<instance-or-node-ID>",
-            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+            help="the ID(s) of Nodes, or Instances in 'cr_id.instance_id' format",
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
@@ -2073,7 +2092,7 @@ COMMANDS["yd-compute-deprovision"] = Command(
         COMPUTE_REQS_INSTANCES_OR_NODES.variant(
             nargs="+",
             metavar="<instance-or-node-ID>",
-            help="the ID(s) of nodes, or instances in 'cr_id.instance_id' format",
+            help="the ID(s) of Nodes, or Instances in 'cr_id.instance_id' format",
         ),
         FOLLOW_COMPUTE_REQUIREMENT_EVENTS,
     ),
@@ -2093,7 +2112,7 @@ COMMANDS["yd-compute-reprovision"] = Command(
         *_compute_action_options(
             COMPUTE_REQS_INSTANCES_OR_NODES.variant(
                 help=(
-                    "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                    "the name(s) or YellowDog ID(s) of the Compute Requirement(s);"
                     " a name may be a glob pattern (e.g. 'cr-*')"
                 ),
             )
@@ -2112,7 +2131,7 @@ AUTO_SHUTDOWN_MINUTES = option(
     type=non_negative_float,
     metavar="<minutes>",
     help=(
-        "terminate the compute requirement(s) this many minutes from now,"
+        "terminate the Compute Requirement(s) this many minutes from now,"
         " replacing any auto shutdown already set; 0 never terminates them"
         " automatically"
     ),
@@ -2138,7 +2157,7 @@ COMMANDS["yd-auto-shutdown"] = Command(
         ACTIONS_JSON,
         COMPUTE_REQS_INSTANCES_OR_NODES.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the compute requirement(s);"
+                "the name(s) or YellowDog ID(s) of the Compute Requirement(s);"
                 " a name may be a glob pattern (e.g. 'cr-*')"
             ),
         ),
@@ -2557,7 +2576,7 @@ COMMANDS["yd-download"] = Command(
     requires_namespace_and_tag=True,
     tool=ToolKind.ACTING,
     tool_description=(
-        "Download objects (task outputs, results) from the namespace's object"
+        "Download objects (Task outputs, results) from the namespace's object"
         " store to the local machine. remote_paths are object paths relative"
         " to the configured prefix, which defaults to '<namespace>/<tag>' (set"
         " no_prefix to give paths relative to the bucket root instead);"
@@ -2594,7 +2613,7 @@ COMMANDS["yd-finish"] = Command(
     options=_work_requirement_action_options(
         WORK_REQUIREMENTS.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
+                "the name(s) or YellowDog ID(s) of the Work Requirement(s) to be"
                 " finished; a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
@@ -2610,7 +2629,7 @@ COMMANDS["yd-hold"] = Command(
     options=_work_requirement_action_options(
         WORK_REQUIREMENTS.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the work requirement(s) to be"
+                "the name(s) or YellowDog ID(s) of the Work Requirement(s) to be"
                 " held (paused); a name may be a glob pattern (e.g. 'proj-*')"
             )
         )
@@ -2626,8 +2645,8 @@ COMMANDS["yd-start"] = Command(
     options=_work_requirement_action_options(
         WORK_REQUIREMENTS.variant(
             help=(
-                "the name(s) or YellowDog ID(s) of the held (paused) work"
-                " requirement(s) to be started; a name may be a glob pattern"
+                "the name(s) or YellowDog ID(s) of the held (paused) Work"
+                " Requirement(s) to be started; a name may be a glob pattern"
                 " (e.g. 'proj-*')"
             )
         )
@@ -2698,8 +2717,8 @@ SHOW_TOKEN = option(
     action="store_true",
     required=False,
     help=(
-        "display the worker pool token when showing the details of a "
-        "configured worker pool"
+        "display the Worker Pool token when showing the details of a "
+        "Configured Worker Pool"
     ),
 )
 SHOW_SOURCE_REPORT = option(
@@ -2707,8 +2726,8 @@ SHOW_SOURCE_REPORT = option(
     action="store_true",
     required=False,
     help=(
-        "also display the report of how a compute requirement's sources were"
-        " chosen (for a compute requirement, or a provisioned worker pool's,"
+        "also display the report of how a Compute Requirement's sources were"
+        " chosen (for a Compute Requirement, or a Provisioned Worker Pool's,"
         " provisioned from a dynamic template)"
     ),
 )
@@ -2725,8 +2744,8 @@ SHOW_EXHAUSTION = option(
     action="store_true",
     required=False,
     help=(
-        "also display the allowances exhausted for a compute requirement (or"
-        " a provisioned worker pool's)"
+        "also display the Allowances exhausted for a Compute Requirement (or"
+        " a Provisioned Worker Pool's)"
     ),
 )
 
@@ -2898,7 +2917,7 @@ COMPUTE_REQUIREMENT = option(
     type=str,
     required=False,
     help=(
-        "compute requirement definition file in JSON or Jsonnet format"
+        "Compute Requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
     completes=Completes.FILE,
@@ -2910,7 +2929,7 @@ REPORT = option(
     action="store_true",
     required=False,
     help=(
-        "report on a test run of the compute requirement template, provisioning nothing"
+        "report on a test run of the Compute Requirement Template, provisioning nothing"
     ),
 )
 COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
@@ -2920,7 +2939,7 @@ COMPUTE_REQUIREMENT_FILE_POSITIONAL = option(
     type=str,
     nargs="?",
     help=(
-        "the JSON or Jsonnet specification of the compute requirement"
+        "the JSON or Jsonnet specification of the Compute Requirement"
         " to provision; alternative to using the"
         " '--compute-requirement/-C' option"
     ),
@@ -2963,7 +2982,7 @@ WORKER_POOL_FILE_POSITIONAL = option(
     type=str,
     nargs="?",
     help=(
-        "the JSON or Jsonnet specification of the worker pool"
+        "the JSON or Jsonnet specification of the Worker Pool"
         " to provision; alternative to using the '--worker-pool/-p'"
         " option"
     ),
@@ -3053,8 +3072,8 @@ ACTIVE_ONLY = option(
     action="store_true",
     required=False,
     help=(
-        "list only active entities: work requirements, task groups, tasks,"
-        " worker pools, nodes, workers, compute requirements and instances"
+        "list only active entities: Work Requirements, Task Groups, Tasks,"
+        " Worker Pools, Nodes, Workers, Compute Requirements and Instances"
     ),
 )
 NAME = option(
@@ -3064,11 +3083,11 @@ NAME = option(
     required=False,
     help=(
         "list only entities whose name matches the given glob "
-        "pattern (e.g. 'proj-*'); applies to namespaces, work requirements, "
-        "task groups, tasks, "
-        "worker pools, compute requirements, compute requirement/source "
-        "templates, image families, users, applications, groups, "
-        "roles, keyrings and permissions; not supported for other "
+        "pattern (e.g. 'proj-*'); applies to namespaces, Work Requirements, "
+        "Task Groups, Tasks, "
+        "Worker Pools, Compute Requirements, Compute Requirement/Source "
+        "Templates, Image Families, users, applications, groups, "
+        "roles, Keyrings and permissions; not supported for other "
         "entity types; a value without "
         "wildcards matches the name exactly, so use '*' for partial "
         "matches (e.g. 'linux*' or '*linux*')"
@@ -3100,29 +3119,29 @@ UNHEALTHY = option(
     action="store_true",
     required=False,
     help=(
-        "list only the entities the Platform marks unhealthy: work"
-        " requirements, worker pools and compute requirements"
+        "list only the entities the Platform marks unhealthy: Work"
+        " Requirements, Worker Pools and Compute Requirements"
     ),
 )
 PROVISIONED = option(
     "--provisioned",
     action="store_true",
     required=False,
-    help="list only provisioned worker pools",
+    help="list only Provisioned Worker Pools",
 )
 CONFIGURED = option(
     "--configured",
     action="store_true",
     required=False,
-    help="list only configured (on-premise) worker pools",
+    help="list only Configured (on-premise) Worker Pools",
 )
 PROVIDER = option(
     "--provider",
     choices=LIST_PROVIDERS,
     required=False,
     help=(
-        "list only those of the given cloud provider: instances, nodes and"
-        " compute source templates"
+        "list only those of the given cloud provider: Instances, Nodes and"
+        " Compute Source Templates"
     ),
 )
 DESCRIPTION = option(
@@ -3131,7 +3150,7 @@ DESCRIPTION = option(
     metavar="<glob>",
     required=False,
     help=(
-        "list only allowances whose description matches the given glob"
+        "list only Allowances whose description matches the given glob"
         " pattern; a value without wildcards matches the description exactly"
     ),
 )
@@ -3140,8 +3159,8 @@ WITH_ERRORS = option(
     action="store_true",
     required=False,
     help=(
-        "list only the tasks that recorded an error, whatever their status"
-        " (a task can complete after an error, on a retry)"
+        "list only the Tasks that recorded an error, whatever their status"
+        " (a Task can complete after an error, on a retry)"
     ),
 )
 WITHIN = option(
@@ -3151,11 +3170,11 @@ WITHIN = option(
     metavar="<target>",
     required=False,
     help=(
-        "list the items of a parent without asking which: the task groups or"
-        " tasks of a work requirement or task group ('wr', 'wr/tg',"
-        " 'namespace/wr', 'namespace/wr/tg' or its ID), the instances of a"
-        " compute requirement, the nodes of a worker pool, or the workers of a"
-        " worker pool or node (its name, 'namespace/name' or its ID; a node by"
+        "list the items of a parent without asking which: the Task Groups or"
+        " Tasks of a Work Requirement or Task Group ('wr', 'wr/tg',"
+        " 'namespace/wr', 'namespace/wr/tg' or its ID), the Instances of a"
+        " Compute Requirement, the Nodes of a Worker Pool, or the Workers of a"
+        " Worker Pool or Node (its name, 'namespace/name' or its ID; a Node by"
         " its ID); repeat it for several parents, listed in one table"
     ),
 )
@@ -3166,7 +3185,7 @@ LIST_LIMIT = option(
     type=non_negative_int,
     required=False,
     help=(
-        "list at most this many tasks, instances, nodes or workers, warning"
+        "list at most this many Tasks, Instances, Nodes or Workers, warning"
         " when more match (default"
         f" {DEFAULT_LIST_LIMIT}; 0 lists them all)"
     ),
@@ -3622,7 +3641,7 @@ ACTIONS = option(
     "-S",
     type=str,
     required=False,
-    help="node action spec file in JSON or Jsonnet format",
+    help="Node Action spec file in JSON or Jsonnet format",
     completes=Completes.FILE,
     metavar="<node_actions.json>",
 )
@@ -3632,7 +3651,7 @@ NODE = option(
     type=str,
     required=False,
     action="append",
-    help=("target a specific node by ID; can be specified multiple times"),
+    help=("target a specific Node by ID; can be specified multiple times"),
     metavar="<node-id>",
 )
 ALL_NODES = option(
@@ -3640,7 +3659,7 @@ ALL_NODES = option(
     action="store_true",
     required=False,
     help=(
-        "target all current nodes in the worker pool "
+        "target all current Nodes in the Worker Pool "
         "(filtered by nodeTypes if present in the spec)"
     ),
 )
@@ -3649,7 +3668,7 @@ NODE_ACTION_STATUS = option(
     "--status",
     action="store_true",
     required=False,
-    help="show the node action queue for the selected node(s)",
+    help="show the Node Action queue for the selected Node(s)",
 )
 
 
@@ -3692,8 +3711,8 @@ def check_node_action_args(args: Namespace, parser: ArgumentParser) -> None:
 
 COMMANDS["yd-nodeaction"] = Command(
     name="yd-nodeaction",
-    purpose="submitting Node Actions to Worker Pool nodes",
-    summary="Submit Node Actions to Worker Pool nodes",
+    purpose="submitting Node Actions to Worker Pool Nodes",
+    summary="Submit Node Actions to Worker Pool Nodes",
     kind=CommandKind.API,
     options=(
         SORT,
@@ -3705,7 +3724,7 @@ COMMANDS["yd-nodeaction"] = Command(
         CONTENT_PATH,
         FOLLOW.variant(
             help=(
-                "poll node action queues after submission, "
+                "poll Node Action queues after submission, "
                 "reporting progress until all actions complete or fail"
             )
         ),
@@ -3713,7 +3732,7 @@ COMMANDS["yd-nodeaction"] = Command(
         JSONNET_DRY_RUN,
         VALIDATE,
         WORKER_POOL.variant(
-            help="name of the target worker pool",
+            help="name of the target Worker Pool",
             metavar="<worker-pool-name>",
             completes=Completes.NONE,
         ),
@@ -3723,13 +3742,13 @@ COMMANDS["yd-nodeaction"] = Command(
             default=None,
             help=(
                 "with --follow, stop following after this many seconds, and fail"
-                " if any node action queue has not finished (default: no limit)"
+                " if any Node Action queue has not finished (default: no limit)"
             ),
         ),
         DETAILS.variant(help="show the full JSON details for --status output"),
         ACTIONS_JSON.variant(
             help=(
-                "emit the submissions, or with --status the node action queues,"
+                "emit the submissions, or with --status the Node Action queues,"
                 " as a JSON array"
             )
         ),
@@ -3746,14 +3765,37 @@ WORKER_POOL_POSITIONAL = option(
     metavar="<worker-pool-or-compute-requirement-name-or-ID>",
     type=str,
     help=(
-        "the name or YellowDog ID of the worker pool or compute requirement to resize"
+        "the name or YellowDog ID of the Worker Pool or Compute Requirement to resize"
     ),
 )
 WORKER_POOL_SIZE = option(
     "worker_pool_size",
     metavar="<new-node/instance-count>",
     type=non_negative_int,
-    help="the desired number of (total) nodes in the worker pool",
+    # Optional to argparse, so that '--maintain' or '--no-maintain' can be
+    # given alone; required otherwise (check_resize_target)
+    nargs="?",
+    help="the desired number of (total) Nodes in the Worker Pool",
+)
+# Two flags rather than a BooleanOptionalAction, which the registry and
+# completion know as one flag; check_resize_target refuses both together
+MAINTAIN = option(
+    "--maintain",
+    action="store_true",
+    required=False,
+    help=(
+        "keep the Compute Requirement's instance count, replacing Instances"
+        " that are lost or terminated; the count may then be left out"
+    ),
+)
+NO_MAINTAIN = option(
+    "--no-maintain",
+    action="store_true",
+    required=False,
+    help=(
+        "stop keeping the Compute Requirement's instance count; the count may"
+        " then be left out"
+    ),
 )
 # Not a variant of COMPUTE_REQUIREMENT: this one is a flag, with no type.
 RESIZE_COMPUTE_REQUIREMENT = option(
@@ -3762,8 +3804,8 @@ RESIZE_COMPUTE_REQUIREMENT = option(
     action="store_true",
     required=False,
     help=(
-        "resize the compute requirement of this name instead of the worker"
-        " pool; not needed with a compute requirement ID"
+        "resize the Compute Requirement of this name instead of the Worker"
+        " Pool; not needed with a Compute Requirement ID"
     ),
 )
 
@@ -3783,7 +3825,9 @@ def resize_targets_compute_requirement(args: Namespace) -> bool:
 
 def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
     """
-    '--compute-requirement' with a Worker Pool's ID contradicts itself.
+    '--compute-requirement' with a Worker Pool's ID contradicts itself;
+    '--maintain' and '--no-maintain' are a Compute Requirement's, and not
+    together; and the count is needed unless one of them is given.
     """
     from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
 
@@ -3793,6 +3837,20 @@ def check_resize_target(args: Namespace, parser: ArgumentParser) -> None:
         parser.error(
             f"--compute-requirement/-C cannot be used with a Worker Pool ID"
             f" ({args.worker_pool})"
+        )
+    maintain, no_maintain = (
+        getattr(args, "maintain", False),
+        getattr(args, "no_maintain", False),
+    )
+    if maintain and no_maintain:
+        parser.error("--maintain and --no-maintain cannot be given together")
+    if (maintain or no_maintain) and not resize_targets_compute_requirement(args):
+        parser.error(
+            "--maintain and --no-maintain apply to a Compute Requirement alone"
+        )
+    if args.worker_pool_size is None and not (maintain or no_maintain):
+        parser.error(
+            "the new count is required, unless --maintain or --no-maintain is given"
         )
 
 
@@ -3811,6 +3869,8 @@ COMMANDS["yd-resize"] = Command(
         WORKER_POOL_POSITIONAL,
         WORKER_POOL_SIZE,
         RESIZE_COMPUTE_REQUIREMENT,
+        MAINTAIN,
+        NO_MAINTAIN,
         FOLLOW.variant(help="follow progress after resizing"),
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
         WAIT_FOR_CAPACITY,
@@ -3887,15 +3947,15 @@ WORKER_POOL_NODES_LIST = option(
     nargs="*",
     metavar="<worker-pool-name-or-ID/node-id>",
     type=str,
-    help="the name(s) or YellowDog ID(s) of the worker pool(s) and/or ID(s) of"
-    " nodes; a name may be a glob pattern (e.g. 'wp-*')",
+    help="the name(s) or YellowDog ID(s) of the Worker Pool(s) and/or ID(s) of"
+    " Nodes; a name may be a glob pattern (e.g. 'wp-*')",
 )
 TERMINATE = option(
     "--terminate",
     "-T",
     action="store_true",
     required=False,
-    help="also immediately terminate associated compute requirement(s)",
+    help="also immediately terminate associated Compute Requirement(s)",
 )
 
 COMMANDS["yd-shutdown"] = Command(
@@ -3914,7 +3974,7 @@ COMMANDS["yd-shutdown"] = Command(
         INTERACTIVE,
         YES,
         WORKER_POOL_NODES_LIST,
-        FOLLOW.variant(help="follow worker pool shutdown to completion"),
+        FOLLOW.variant(help="follow Worker Pool shutdown to completion"),
         TERMINATE,
         AUTO_FOLLOW_COMPUTE_REQUIREMENTS,
     ),
@@ -3931,7 +3991,7 @@ WORK_REQUIREMENT = option(
     type=str,
     required=False,
     help=(
-        "work requirement definition file in JSON or Jsonnet format"
+        "Work Requirement definition file in JSON or Jsonnet format"
         " (deprecated: please use positional argument instead)"
     ),
     completes=Completes.FILE,
@@ -3942,7 +4002,7 @@ JSON_RAW = option(
     "-j",
     type=str,
     required=False,
-    help="submit a 'raw' JSON work requirement file",
+    help="submit a 'raw' JSON Work Requirement file",
     completes=Completes.FILE,
     metavar="<raw_work_requirement.json>",
 )
@@ -3953,7 +4013,7 @@ EXIT_ON_FAILURE = option(
     required=False,
     help=(
         "when following (--follow/--progress), exit with a non-zero"
-        " code if the work requirement ends in a FAILED or CANCELLED"
+        " code if the Work Requirement ends in a FAILED or CANCELLED"
         " state"
     ),
 )
@@ -3962,7 +4022,7 @@ TASK_TYPE = option(
     "-T",
     type=str,
     required=False,
-    help="the task type to use",
+    help="the Task Type to use",
     metavar="<task_type>",
 )
 TASK_COUNT = option(
@@ -3970,7 +4030,7 @@ TASK_COUNT = option(
     "-C",
     type=positive_int,
     required=False,
-    help="the number of tasks to submit (copies of a single task)",
+    help="the number of Tasks to submit (copies of a single Task)",
     metavar="<task_count>",
 )
 TASK_GROUP_COUNT = option(
@@ -3978,7 +4038,7 @@ TASK_GROUP_COUNT = option(
     "-G",
     type=positive_int,
     required=False,
-    help="the number of task groups to submit (copies of a single task group)",
+    help="the number of Task Groups to submit (copies of a single Task Group)",
     metavar="<task_group_count>",
 )
 TASK_BATCH_SIZE = option(
@@ -3986,7 +4046,7 @@ TASK_BATCH_SIZE = option(
     "-b",
     type=positive_int,
     required=False,
-    help="the batch size for task submission; must be between 1 and 10,000",
+    help="the batch size for Task submission; must be between 1 and 10,000",
     metavar="<batch_size>",
 )
 PAUSE_BETWEEN_BATCHES = option(
@@ -3998,7 +4058,7 @@ PAUSE_BETWEEN_BATCHES = option(
     required=False,
     metavar="<interval_between_batches_in_seconds>",
     help=(
-        "pause for user input between task batch submissions; if no"
+        "pause for user input between Task batch submissions; if no"
         " pause interval is provided, user input is required to advance; "
         "only valid when 'parallel-batches=1'"
     ),
@@ -4028,7 +4088,7 @@ HOLD = option(
     "-H",
     action="store_true",
     required=False,
-    help="set the work requirement status to 'HELD' on submission",
+    help="set the Work Requirement status to 'HELD' on submission",
 )
 PARALLEL_BATCHES = option(
     "--parallel-batches",
@@ -4036,7 +4096,7 @@ PARALLEL_BATCHES = option(
     type=positive_int,
     required=False,
     help=(
-        "the maximum number of parallel task batch "
+        "the maximum number of parallel Task batch "
         f"uploads (default={DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS})"
         "; set this to '1' for sequential batch upload"
     ),
@@ -4068,7 +4128,7 @@ ADD_TO = option(
     type=str,
     required=False,
     help=(
-        "add task groups and/or tasks to an existing work requirement"
+        "add Task Groups and/or Tasks to an existing Work Requirement"
         " specified by name or YellowDog ID"
     ),
     metavar="<work_requirement_name_or_id>",
@@ -4081,7 +4141,7 @@ WORK_REQUIREMENT_FILE_POSITIONAL = option(
     type=str,
     nargs="?",
     help=(
-        "the JSON or Jsonnet specification of the work requirement"
+        "the JSON or Jsonnet specification of the Work Requirement"
         " to submit; alternative to using the '--work-requirement/-r'"
         " option"
     ),
@@ -4173,7 +4233,7 @@ COMMANDS["yd-submit"] = Command(
         WHICH_RCLONE,
         PROGRESS.variant(
             help=(
-                "display a live progress bar showing task completion; "
+                "display a live progress bar showing Task completion; "
                 "implies following the Work Requirement to completion"
             )
         ),
@@ -4223,7 +4283,7 @@ PRIORITY = option(
     metavar="<priority>",
     type=finite_float,
     help=(
-        "the new priority, a number; higher priority acquires workers ahead of lower"
+        "the new priority, a number; higher priority acquires Workers ahead of lower"
     ),
 )
 PRIORITY_TARGETS = option(
@@ -4232,7 +4292,7 @@ PRIORITY_TARGETS = option(
     metavar="<work-requirement-or-task-group>",
     type=str,
     help=(
-        "the work requirement(s) or task group(s): IDs, or names as 'wr',"
+        "the Work Requirement(s) or Task Group(s): IDs, or names as 'wr',"
         " 'wr/tg', 'namespace/wr' or 'namespace/wr/tg', the last part of which"
         " may be a glob pattern ('wr-*', 'wr/tg-*'), matching unfinished ones"
     ),
@@ -4263,7 +4323,7 @@ TOKEN_WORKER_POOLS = option(
     nargs="+",
     metavar="<worker-pool-name-or-ID>",
     type=str,
-    help="the name(s) or YellowDog ID(s) of the configured worker pool(s);"
+    help="the name(s) or YellowDog ID(s) of the Configured Worker Pool(s);"
     " a name may be a glob pattern (e.g. 'wp-*')",
 )
 REGENERATE = option(

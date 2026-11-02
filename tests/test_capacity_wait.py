@@ -259,7 +259,7 @@ class TestWaiting:
         with pytest.raises(CapacityWaitTimeout) as raised:
             _wait(platform, [CR_ID], timeout=12)
         assert str(raised.value) == (
-            "Timed out after 12s waiting for Compute Requirement(s) to reach their"
+            "Timed out after 12s waiting for Compute Requirement to reach their"
             " target instance counts: 'ns/cr-a' 1 of 2 Instances running"
         )
         assert clock.t == 12  # the last sleep cut short to the deadline

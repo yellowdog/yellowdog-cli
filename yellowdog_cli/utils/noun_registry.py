@@ -18,6 +18,7 @@ offered under each noun as well, restricted to its objects.
 
 from __future__ import annotations
 
+import re
 from argparse import SUPPRESS, ArgumentParser, Namespace
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -263,6 +264,24 @@ def _list(entity_type: str, noun_plural: str) -> Verb:
     )
 
 
+# The entity names in a target's described form ('worker-pool-name-or-ID'),
+# the longest first, so that 'worker-pool' is not read as 'worker'
+_DESCRIBED_ENTITY = re.compile(
+    r"(?<![\w-])(compute-requirement|work-requirement|worker-pool|task-group"
+    r"|allowance|worker|node)(?=-)"
+)
+
+
+def _prose(described: str) -> str:
+    """
+    A target's described form as its help names it, the entity capitalised as
+    elsewhere: 'worker-pool-name-or-ID' as 'Worker Pool name or ID'.
+    """
+    return _DESCRIBED_ENTITY.sub(
+        lambda match: match.group(1).replace("-", " ").title(), described
+    ).replace("-", " ")
+
+
 def _show(
     noun_plural: str,
     kinds: frozenset[TargetKind],
@@ -298,7 +317,7 @@ def _show(
         overrides={
             "yellowdog_ids": {
                 "metavar": f"<{described}>",
-                "help": f"the {described.replace('-', ' ')}(s) to show",
+                "help": f"the {_prose(described)}(s) to show",
             }
         },
         targets=Targets("yellowdog_ids", kinds, described, named),
@@ -318,7 +337,7 @@ def _follow(
         overrides={
             "yellowdog_ids": {
                 "metavar": f"<{described}>",
-                "help": f"the {described.replace('-', ' ')}(s) to follow",
+                "help": f"the {_prose(described)}(s) to follow",
             }
         },
         targets=Targets("yellowdog_ids", _named(ydid_type), described, ydid_type),
@@ -334,7 +353,7 @@ def _wait(noun_plural: str, ydid_type: YDIDType, described: str) -> Verb:
         overrides={
             "yellowdog_ids": {
                 "metavar": f"<{described}>",
-                "help": f"the {described.replace('-', ' ')}(s) to wait for",
+                "help": f"the {_prose(described)}(s) to wait for",
             }
         },
         targets=Targets("yellowdog_ids", _named(ydid_type), described, ydid_type),
@@ -373,15 +392,15 @@ def _compute_action(
 _CR_TARGETS = _named(YDIDType.COMPUTE_REQUIREMENT)
 _CR_DESCRIBED = "compute-requirement-name-or-ID"
 _CR_HELP = (
-    "the name(s) or YellowDog ID(s) of the compute requirement(s); a name"
+    "the name(s) or YellowDog ID(s) of the Compute Requirement(s); a name"
     " may be a glob pattern (e.g. 'cr-*')"
 )
 _INSTANCE_TARGETS = frozenset({INSTANCE})
 _INSTANCE_DESCRIBED = "cr-id.instance-id"
-_INSTANCE_HELP = "the instance(s), each as 'cr_id.instance_id'"
+_INSTANCE_HELP = "the Instance(s), each as 'cr_id.instance_id'"
 _NODE_TARGETS = _ids(YDIDType.NODE)
 _NODE_DESCRIBED = "node-ID"
-_NODE_HELP = "the YellowDog ID(s) of the node(s)"
+_NODE_HELP = "the YellowDog ID(s) of the Node(s)"
 
 
 def _cr_action(name: str, command: str, summary: str, purpose: str) -> Verb:
@@ -413,15 +432,12 @@ def _compare(noun_singular: str, ydid_type: YDIDType, described: str) -> Verb:
         "compare",
         "yd-compare",
         f"Compare a {noun_singular} against Worker Pool(s)",
-        f"comparing whether a {noun_singular.lower()} is matched by workers in"
-        " the specified provisioned worker pools",
+        f"comparing whether a {noun_singular} is matched by Workers in"
+        " the specified Provisioned Worker Pools",
         overrides={
             "wr_or_tg_id": {
                 "metavar": f"<{described}>",
-                "help": (
-                    f"the name or YellowDog ID of the {noun_singular.lower()} to"
-                    " compare"
-                ),
+                "help": (f"the name or YellowDog ID of the {noun_singular} to compare"),
             }
         },
         targets=Targets("wr_or_tg_id", _named(ydid_type), described, ydid_type),
@@ -605,12 +621,18 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-resize",
                 "Resize a Worker Pool",
                 "resizing a Worker Pool",
-                # '--wait' is for a Compute Requirement alone
-                hidden=("--compute-requirement", "--wait", "--timeout"),
+                # '--wait' and '--maintain' are for a Compute Requirement alone
+                hidden=(
+                    "--compute-requirement",
+                    "--wait",
+                    "--timeout",
+                    "--maintain",
+                    "--no-maintain",
+                ),
                 overrides={
                     "worker_pool": {
                         "metavar": "<worker-pool-name-or-ID>",
-                        "help": "the name or YellowDog ID of the worker pool to resize",
+                        "help": "the name or YellowDog ID of the Worker Pool to resize",
                     }
                 },
                 targets=Targets(
@@ -628,8 +650,8 @@ NOUNS: tuple[Noun, ...] = (
                     "worker_pool_nodes_list": {
                         "metavar": "<worker-pool-name-or-ID>",
                         "help": (
-                            "the name(s) or YellowDog ID(s) of the worker"
-                            " pool(s); a name may be a glob pattern (e.g. 'wp-*')"
+                            "the name(s) or YellowDog ID(s) of the Worker"
+                            " Pool(s); a name may be a glob pattern (e.g. 'wp-*')"
                         ),
                     }
                 },
@@ -685,12 +707,12 @@ NOUNS: tuple[Noun, ...] = (
                     "worker_pool": {
                         "metavar": f"<{_CR_DESCRIBED}>",
                         "help": (
-                            "the name or YellowDog ID of the compute"
-                            " requirement to resize"
+                            "the name or YellowDog ID of the Compute"
+                            " Requirement to resize"
                         ),
                     },
                     "worker_pool_size": {
-                        "help": "the desired number of (total) instances",
+                        "help": "the desired number of (total) Instances",
                     },
                 },
                 targets=Targets("worker_pool", _CR_TARGETS, _CR_DESCRIBED),
@@ -789,8 +811,8 @@ NOUNS: tuple[Noun, ...] = (
             Verb(
                 "action",
                 "yd-nodeaction",
-                "Submit Node Actions to Worker Pool nodes",
-                "submitting Node Actions to Worker Pool nodes",
+                "Submit Node Actions to Worker Pool Nodes",
+                "submitting Node Actions to Worker Pool Nodes",
             ),
             Verb(
                 "shutdown",
@@ -861,7 +883,7 @@ NOUNS: tuple[Noun, ...] = (
     ),
     Noun(
         "resource",
-        "Create, remove and inspect resources: templates, keyrings, users and the rest",
+        "Create, remove and inspect resources: templates, Keyrings, users and the rest",
         (
             Verb(
                 "create",

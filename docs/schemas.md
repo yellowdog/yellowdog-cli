@@ -43,7 +43,7 @@ With `--json`, the result is the array of violations, `[]` for a valid file:
 ]
 ```
 
-The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. `--validate` is refused where there is no specification file to check: a Work Requirement or Worker Pool built from the configuration file alone, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
+The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. Given no specification file, `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate` build what they submit from the configuration file, so `--validate` checks the sections they build from instead (`[common]` and `[workRequirement]`, or `[common]`, `[workerPool]` and `[computeRequirement]`) against the configuration's schema, reporting and exiting the same way. It is refused where there is nothing to check: no specification file and no configuration file, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
 
 Since it contacts nothing, `--validate` needs no Application key or secret, so it runs on a machine with none configured, such as a CI job.
 

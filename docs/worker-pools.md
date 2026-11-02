@@ -439,7 +439,7 @@ In User Data and in Node Actions, write a substitution with a double underscore 
 
 **Where the `__` form is needed.** User Data takes the `__{{...}}__` form wherever it is given. So do Node Actions (`nodeEvents`), in a Worker Pool specification or a Configured Worker Pool resource.
 
-**Everywhere else.** Every other property of a Worker Pool (or Compute Requirement) JSON or Jsonnet specification takes either `__{{username}}__` or the plain `{{username}}`. The configuration file's `workerPool` and `computeRequirement` sections take the plain form.
+**Everywhere else.** Every other property, of a Worker Pool (or Compute Requirement) JSON or Jsonnet specification or of the configuration file's `workerPool` and `computeRequirement` sections, takes either `__{{username}}__` or the plain `{{username}}`.
 
 The full rule, place by place, is in [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data).
 

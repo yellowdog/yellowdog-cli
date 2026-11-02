@@ -381,7 +381,7 @@ To have the text `{{name}}` itself, unsubstituted, write `raw:` after the openin
 
 **As a default or a variable's value.** A `raw:` substitution can be a default: `{{region:={{raw:region}}}}` gives `{{region}}` where `region` is undefined. A variable can hold one: with `-v template={{raw:date}}`, `{{template}}` becomes `{{date}}`.
 
-**Where it works.** Wherever substitutions do: in the `__{{raw:name}}__` form in Worker Pool and Compute Requirement specifications and User Data (becoming `__{{name}}__`), in a CSV file's cells, and in the files substituted as text. In a Jsonnet file it is written inside a string.
+**Where it works.** Wherever substitutions do: in the `__{{raw:name}}__` form too (becoming `__{{name}}__`), in a CSV file's cells, and in the files substituted as text. In a Jsonnet file it is written inside a string.
 
 ## Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data
 
@@ -399,28 +399,25 @@ The Platform runs Mustache templates of its own in User Data and Node Actions. T
 
 `yd workerpool provision --dry-run` shows the `workerTag` as `london`, and the User Data as `echo 'Provisioned by jane_smith for london on {{provider}}'`, leaving `{{provider}}` for the Platform to fill in on each instance.
 
-User Data templates can use the instance's details (`{{provider}}`, `{{region}}`, `{{#imageOs:linux}}`...). Node Actions' `writeFile` and `runCommand` actions can use the Nodes' (`{{node.details.hostname}}`, `{{nodesByType.type1}}`...). Everywhere else the plain form is used, and Worker Pool and Compute Requirement specifications take either:
+User Data templates can use the instance's details (`{{provider}}`, `{{region}}`, `{{#imageOs:linux}}`...). Node Actions' `writeFile` and `runCommand` actions can use the Nodes' (`{{node.details.hostname}}`, `{{nodesByType.type1}}`...). Everywhere else either form may be used:
 
 | Where | Form |
 |---|---|
 | User Data, wherever it is given: a `userData` property (in the `[workerPool]` or `[computeRequirement]` section of the configuration file, or in any specification, a Compute Requirement Template resource's included), and the files named by `userDataFile` and `userDataFiles` | `__{{variable}}__` |
 | `yd node action` specification files, every property, and the files named by a `writeFile` action's `contentFile` and `contentFiles` | `__{{variable}}__` |
 | Node Actions in a Worker Pool specification or a Configured Worker Pool resource (`nodeEvents`, everything in it) | `__{{variable}}__` |
-| Every other property of a Worker Pool or Compute Requirement specification file (JSON or Jsonnet) | `__{{variable}}__` or `{{variable}}` |
-| Work Requirement specifications, resource specifications (bar their User Data and Node Actions), Task Data files, and the rest of the configuration file, `[workerPool]` and `[computeRequirement]` included | `{{variable}}` |
+| Everything else: Work Requirement, Worker Pool, Compute Requirement and resource specifications (JSON or Jsonnet, bar their User Data and Node Actions), Task Data files, and the rest of the configuration file | `{{variable}}` or `__{{variable}}__` |
 | A CSV file's values in a prototype Task | `<<column>>` (see [CSV Variable Substitutions](work-requirements.md#csv-variable-substitutions)) |
 
-So a Worker Pool's `workerTag` can be `"{{site}}"` in `[workerPool]` and in a Worker Pool specification alike.
+So a Worker Pool's `workerTag` can be `"{{site}}"` or `"__{{site}}__"`, in `[workerPool]` and in a Worker Pool specification alike, and a value written for User Data can be copied anywhere else unchanged.
 
 Everything else about a substitution — [type tags](#substituting-numbers-booleans-arrays-and-tables), [defaults](#providing-default-values-for-user-defined-variables), the [unset suffix](#removing-properties-using-the-unset-suffix), nesting, [writing one literally](#writing-a-substitution-literally) — is the same in both forms, inside the underscores: `__{{num:count:=1}}__`, and `__{{raw:name}}__` for the text `__{{name}}__`.
 
 ### Details
 
-**Order.** In a Worker Pool or Compute Requirement specification, the `__{{variable}}__` form is substituted first, then the plain one.
+**Order.** Wherever both forms are taken, `__{{variable}}__` is substituted first, as a whole, underscores and all, then the plain one: `a__{{site}}__b` is `alondonb`. For a value between double underscores, put them in a variable: with `dunder = "__"`, `{{dunder}}{{site}}{{dunder}}` gives `__london__`.
 
-**The `__` form where the plain one is taken.** Where only `{{variable}}` is taken (the last plain-form row of the table), `__{{variable}}__` is not an error, but only the `{{variable}}` inside it is substituted, so the value keeps the underscores: `__london__`. A warning names each property where that happens, written in its own form (`write '{{site}}' here`).
-
-**Jsonnet files.** A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name. It is made in the file's own form only, since the text says nothing of which property it is in: `__{{variable}}__` in a Worker Pool or Compute Requirement specification, and the plain `{{variable}}` in any other file, where a `__{{variable}}__` is left for the second. The second makes the rest, as the table says. See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files).
+**Jsonnet files.** A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name. It is made in the file's own form, since the text says nothing of which property it is in: `__{{variable}}__` alone in a Worker Pool or Compute Requirement specification, and both forms in any other file, `__{{variable}}__` first. The second makes the rest, as the table says. See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files).
 
 **Plain substitutions in a Worker Pool or Compute Requirement Jsonnet file** come out substituted in a string, but the code cannot compute with them.
 

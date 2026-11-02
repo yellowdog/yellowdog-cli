@@ -56,6 +56,7 @@ from yellowdog_cli.utils.results import (
     record_entity,
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
+from yellowdog_cli.utils.specs.properties import WORKER_POOL_CONFIG_SECTIONS
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.variable_substitution import literal_text
 from yellowdog_cli.utils.variable_syntax import (
@@ -99,6 +100,7 @@ def main(ctx: RunContext):
         "Compute Requirement",
         validate=bool(ctx.args.validate),
         jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        config_sections=WORKER_POOL_CONFIG_SECTIONS,
     )
 
     if CONFIG_WP.template_id is None:
@@ -144,7 +146,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
     if not ctx.args.report:
         print_info(
             "Provisioning Compute Requirement with "
-            f"{counted(CONFIG_WP.target_instance_count, 'instance')}"
+            f"{counted(CONFIG_WP.target_instance_count, 'Instance')}"
         )
 
     batches: list[CRBatch] = _allocate_nodes_to_batches(
@@ -170,7 +172,7 @@ def _create_compute_requirement_from_toml(ctx: RunContext, name: str) -> None:
             if num_batches > 1:
                 print_info(
                     f"Provisioning Compute Requirement {batch_number + 1} '{ctx.config.namespace}/{id}'"
-                    f" with {counted(batch.target_instances, 'instance')}"
+                    f" with {counted(batch.target_instances, 'Instance')}"
                 )
             else:
                 print_info(
@@ -231,7 +233,7 @@ def _report_on(
         # The Platform tests one Compute Requirement at a time
         print_warning(
             f"The report is for the first of {len(batches)} Compute"
-            f" Requirements, of {counted(batches[0].target_instances, 'instance')}:"
+            f" Requirements, of {counted(batches[0].target_instances, 'Instance')}:"
             " 'computeRequirementBatchSize' divides the"
             f" {CONFIG_WP.target_instance_count:,d} requested"
         )

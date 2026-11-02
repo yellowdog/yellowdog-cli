@@ -12,6 +12,7 @@ from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.printing import (
     CONSOLE,
     CONSOLE_ERR,
+    plural,
     print_error,
     print_info,
     print_string,
@@ -168,7 +169,10 @@ def get_selected_list_items(
                 )
             else:
                 display_selections = ", ".join([str(x) for x in selected_list])
-            print_info(f"Selected item number(s): {display_selections}")
+            print_info(
+                f"Selected item {plural('number', len(selected_list))}:"
+                f" {display_selections}"
+            )
     else:
         print_info("No items selected")
 

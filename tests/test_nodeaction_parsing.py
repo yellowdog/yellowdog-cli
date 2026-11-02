@@ -849,7 +849,7 @@ class TestSubmissionError:
 
     def test_no_available_nodes_with_specific_nodes(self):
         msg = _submission_error(Exception("No available nodes"), specific_nodes=True)
-        assert "None of the selected nodes" in msg
+        assert "None of the selected Nodes" in msg
         assert "are they running?" in msg
 
     def test_no_available_nodes_no_context_mentions_node_types(self):

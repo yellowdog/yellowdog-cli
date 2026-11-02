@@ -683,10 +683,26 @@ class TestInstancesTableComputeRequirement:
             **extra,
         )
 
-    def test_the_compute_requirement_the_lister_names_is_shown(self):
-        headers, rows = instances_table([self._instance(computeRequirementName="cr")])  # type: ignore[list-item]
+    def test_each_rows_compute_requirement_is_shown_when_there_are_several(self):
+        headers, rows = instances_table(
+            [
+                self._instance(computeRequirementName="cr-a"),  # type: ignore[list-item]
+                self._instance(computeRequirementName="cr-b"),  # type: ignore[list-item]
+            ]
+        )
         assert headers[:2] == ["#", "Compute Requirement"]
-        assert dict(zip(headers, rows[0]))["Compute Requirement"] == "cr"
+        assert [dict(zip(headers, row))["Compute Requirement"] for row in rows] == [
+            "cr-a",
+            "cr-b",
+        ]
+
+    def test_no_column_for_one_compute_requirement(self):
+        # The line above the table has named it
+        headers, rows = instances_table(
+            [self._instance(computeRequirementName="cr")] * 2  # type: ignore[list-item]
+        )
+        assert "Compute Requirement" not in headers
+        assert len(rows[0]) == len(headers)
 
     def test_no_column_when_none_is_named(self):
         headers, rows = instances_table([self._instance()])  # type: ignore[list-item]
@@ -1257,3 +1273,19 @@ def test_a_message_keeps_its_line_breaks():
     assert lines[0].endswith(" : rebuild it with:")
     assert lines[1].strip() == "pip install -U --no-binary :all: jsonnet"
     assert lines[2].strip() == "Then retry"
+
+
+def test_ids_only_leaves_stdout_to_the_ids(capsys):
+    """
+    yd-list's '--ids-only' is read by scripts ('$(yd list ... --ids-only)'),
+    as '--json' is: an information line is silent, and a warning goes to
+    stderr.
+    """
+    from yellowdog_cli.utils import output_settings, printing
+
+    output_settings.OUTPUT.ids_only = True
+    printing.print_info("Listing Instances within 'cr'")
+    printing.print_warning("careful")
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert "careful" in err

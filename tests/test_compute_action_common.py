@@ -54,7 +54,12 @@ from yellowdog_cli.utils.compute_action_common import (
     compute_auto_shutdown,
 )
 from yellowdog_cli.utils.context import RunContext
-from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ReportedFailure, classify
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    ReportedFailure,
+    classify,
+)
 from yellowdog_cli.utils.ydid_utils import get_ydid_type
 
 CR_ID = "ydid:compreq:d9c548:98879b5a-9192-4a56-ad25-fc1330e49185"
@@ -876,7 +881,89 @@ class TestReprovision:
 class TestAutoShutdown:
     TWO_HOURS = AutoShutdown(enabled=True, timeout=timedelta(minutes=120))
     NEVER = AutoShutdown(enabled=False)
+    THREE_DAYS = AutoShutdown(enabled=True, timeout=timedelta(days=3))
     METHOD = "update_compute_requirement_auto_shutdown"
+
+    @staticmethod
+    def _pools(monkeypatch, pools: dict, fail: Exception | None = None):
+        """
+        The namespace's Provisioned Worker Pools, by ID, each managing the
+        Compute Requirement it names (None for none); the fetches recorded.
+        """
+        from yellowdog_client.model import ProvisionedWorkerPool, WorkerPoolStatus
+
+        fetched = []
+
+        def summaries(
+            client, namespace, name=None, partial_name_matches=True, pool_type=None
+        ):
+            if fail is not None:
+                raise fail
+            assert pool_type == "ProvisionedWorkerPool"
+            return [
+                SimpleNamespace(id=pool_id, name=name_, status=WorkerPoolStatus.RUNNING)
+                for pool_id, (name_, _) in pools.items()
+            ]
+
+        def by_id(client, pool_id):
+            fetched.append(pool_id)
+            pool = ProvisionedWorkerPool()
+            pool.name = pools[pool_id][0]
+            pool.computeRequirementId = pools[pool_id][1]
+            return pool
+
+        monkeypatch.setattr(cac_module, "get_worker_pool_summaries", summaries)
+        monkeypatch.setattr(cac_module, "get_worker_pool_by_id", by_id)
+        return fetched
+
+    @pytest.mark.parametrize("shutdown", ["TWO_HOURS", "NEVER", "THREE_DAYS"])
+    def test_a_worker_pools_compute_requirement_is_refused(
+        self, platform, monkeypatch, shutdown
+    ):
+        errors = []
+        monkeypatch.setattr(cac_module, "print_error", errors.append)
+        fetched = self._pools(
+            monkeypatch, {WP_ID: ("other", None), "wp-2": ("cr-a", CR_ID)}
+        )
+        _run(platform, compute_auto_shutdown(getattr(self, shutdown)), [CR_ID])
+        (message,) = errors
+        assert "'ns/cr-a' belongs to Worker Pool 'cr-a'" in message
+        assert "whose auto shutdown the Platform manages" in message
+        assert "idleNodeShutdown and idlePoolShutdown" in message
+        # The pool named as the Compute Requirement is fetched first
+        assert fetched == ["wp-2"]
+        # Not changed, whatever the setting, and a failure
+        assert platform.calls == []
+        (record,) = platform.records
+        assert record["outcome"] == "failed" and record["error"] == message
+
+    def test_no_refusal_without_a_worker_pool(self, platform, monkeypatch):
+        warned = []
+        monkeypatch.setattr(cac_module, "print_error", warned.append)
+        self._pools(monkeypatch, {WP_ID: ("other", CR_ID_2)})
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert warned == []
+
+    def test_other_actions_do_not_look(self, platform, monkeypatch):
+        def never(*a, **k):
+            raise AssertionError("looked for a Worker Pool")
+
+        monkeypatch.setattr(cac_module, "get_worker_pool_summaries", never)
+        _run(platform, COMPUTE_STOP, [CR_ID])
+
+    def test_a_failure_to_look_is_no_refusal_but_a_session_one_stops(
+        self, platform, monkeypatch
+    ):
+        warned = []
+        monkeypatch.setattr(cac_module, "print_error", warned.append)
+        self._pools(monkeypatch, {}, fail=_http_error(500))
+        _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert warned == []
+        assert platform.calls == [(self.METHOD, CR_ID, self.TWO_HOURS)]
+        self._pools(monkeypatch, {}, fail=_http_error(401))
+        with pytest.raises(Exception) as raised:
+            _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
+        assert classify(raised.value) == ExitCode.AUTHENTICATION
 
     def test_it_sets_the_time_and_records_it(self, platform, monkeypatch):
         printed = []
@@ -888,8 +975,9 @@ class TestAutoShutdown:
         assert record["action"] == "autoshutdown"
         assert record["outcome"] == "updated"
         assert record["autoShutdownTime"] == SHUTDOWN_TIME.isoformat()
-        assert "Updated [cr-a]: it will be terminated at 2026-10-22 16:04:12+00:00" in (
-            printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will be terminated at 2026-10-22 16:04:12+00:00"
+            in (printed)
         )
 
     def test_zero_disables_it(self, platform, monkeypatch):
@@ -899,7 +987,10 @@ class TestAutoShutdown:
         _run(platform, compute_auto_shutdown(self.NEVER), [CR_ID])
         assert platform.calls == [(self.METHOD, CR_ID, self.NEVER)]
         assert platform.records[0]["autoShutdownTime"] is None
-        assert "Updated [cr-a]: it will not be terminated automatically" in printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will not be terminated automatically"
+            in printed
+        )
 
     @pytest.mark.parametrize(
         "shutdown, prompt",
@@ -983,7 +1074,10 @@ class TestAutoShutdown:
         platform.client.compute_client.update_compute_requirement_auto_shutdown.side_effect = without_time
         _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
         assert platform.records[0]["autoShutdownTime"] is None
-        assert "Updated [cr-a]: it will be terminated in 120 minutes" in printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will be terminated in 120 minutes"
+            in printed
+        )
 
     def test_the_command_is_the_action_built_from_minutes(self, monkeypatch):
         import yellowdog_cli.auto_shutdown as yd_auto_shutdown

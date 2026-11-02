@@ -70,7 +70,7 @@ CAPABILITIES: dict[str, dict[str, Unsupported | KnownFault]] = {
         # 0, with the other Instance left RUNNING
         "resize-down": KnownFault(
             issue="https://yellowdog.atlassian.net/browse/YEL-15298",
-            symptom="1 of 0 Instance(s) running",
+            symptom="1 of 0 Instances running",
             wait_seconds=300,
         ),
     },
