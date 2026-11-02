@@ -629,9 +629,35 @@ class TestSubmit:
         assert submit.run.exit_code == 1
         assert [v["path"] for v in out] == ["taskGroups[0].maxWorkers"]
 
-    def test_validate_without_a_file_is_refused(self, submit):
+    def test_validate_without_a_file_or_configuration_is_refused(self, submit):
         _, err, _ = submit(None, validate=True)
         assert submit.run.exit_code == 1 and "'--validate' needs" in err
+
+    @pytest.mark.parametrize(
+        "work_requirement, exit_code",
+        [({"priority": 2.0}, 0), ({"priority": "high"}, 1)],
+    )
+    def test_validate_without_a_file_checks_the_configuration(
+        self, submit, monkeypatch, work_requirement, exit_code
+    ):
+        import yellowdog_cli.utils.load_config as lc_module
+
+        # A Worker Pool section's fault is not the Work Requirement's
+        monkeypatch.setattr(
+            lc_module,
+            "_CONFIG_AS_WRITTEN",
+            {
+                "workRequirement": work_requirement,
+                "workerPool": {"targetInstanceCount": "lots"},
+            },
+        )
+        monkeypatch.setattr(lc_module, "CONFIG_FILE", "config.toml")
+        out, _, client = submit(None, validate=True, json_output=True)
+        assert submit.run.exit_code == exit_code
+        assert [r["path"] for r in out] == (
+            [] if exit_code == 0 else ["workRequirement.priority"]
+        )
+        client.work_client.add_work_requirement.assert_not_called()
 
     def test_jsonnet_dry_run_without_a_file_is_refused(self, submit):
         # It was ignored, and the Work Requirement the configuration
@@ -764,9 +790,31 @@ class TestProvision:
         assert provision.run.exit_code == 0
         assert "$schema" not in out and "WARNING" not in err
 
-    def test_validate_without_a_file_is_refused(self, provision):
+    def test_validate_without_a_file_or_configuration_is_refused(self, provision):
         _, err, _ = provision(None, validate=True)
         assert provision.run.exit_code == 1 and "'--validate' needs" in err
+
+    def test_validate_without_a_file_checks_the_worker_pool_sections(
+        self, provision, monkeypatch
+    ):
+        import yellowdog_cli.utils.load_config as lc_module
+
+        monkeypatch.setattr(
+            lc_module,
+            "_CONFIG_AS_WRITTEN",
+            {
+                "workerPool": {"targetInstanceCount": 2},
+                "computeRequirement": {"maxNodes": "many"},
+                # Not what a Worker Pool is built from
+                "workRequirement": {"priority": "high"},
+            },
+        )
+        monkeypatch.setattr(lc_module, "CONFIG_FILE", "config.toml")
+        out, _, client = provision(None, validate=True, json_output=True)
+        assert provision.run.exit_code == 1
+        assert [r["path"] for r in out] == ["computeRequirement.maxNodes"]
+        assert out[0]["source"] == "config.toml"
+        client.worker_pool_client.provision_worker_pool.assert_not_called()
 
     def test_jsonnet_dry_run_without_a_file_is_refused(self, provision):
         _, err, client = provision(None, jsonnet_dry_run=True)
@@ -811,7 +859,7 @@ class TestInstantiate:
         _run.run = run  # type: ignore[attr-defined]
         return _run
 
-    def test_validate_without_a_file_is_refused(self, instantiate):
+    def test_validate_without_a_file_or_configuration_is_refused(self, instantiate):
         _, err, client = instantiate(None, validate=True)
         assert instantiate.run.exit_code == 1 and "'--validate' needs" in err
         client.compute_client.provision_compute_requirement_template.assert_not_called()

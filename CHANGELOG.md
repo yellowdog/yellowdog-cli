@@ -16,6 +16,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Variables and configuration
 
+- **`--validate` without a specification file checks the configuration**: `yd cr instantiate --validate`, `yd wp provision --validate` and `yd wr submit --validate` check the `config.toml` sections they would build from, reporting each problem as an error (exit 1) or saying they are valid, where they were refused.
+
 - **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
 
 ### Tab completion

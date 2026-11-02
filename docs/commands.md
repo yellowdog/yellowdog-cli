@@ -736,7 +736,7 @@ Key options:
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--follow`/`-f` — follow the Compute Requirement's events after it is created, until it is terminated or Ctrl-C is pressed (its stream stays open while it lives)
-- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification as evaluated, its variables substituted, and stop; it and `--validate` are refused when the Compute Requirement comes from the configuration alone, with no specification file
+- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification as evaluated, its variables substituted, and stop; refused when the Compute Requirement comes from the configuration alone, with no specification file, where `--validate` checks the configuration's `[common]`, `[workerPool]` and `[computeRequirement]` instead
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell

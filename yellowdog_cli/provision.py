@@ -73,6 +73,7 @@ from yellowdog_cli.utils.results import (
     record_entity,
 )
 from yellowdog_cli.utils.specs.loading import load_specification, refuse_file_options
+from yellowdog_cli.utils.specs.properties import WORKER_POOL_CONFIG_SECTIONS
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.variable_substitution import literal_text
 from yellowdog_cli.utils.variable_syntax import (
@@ -131,6 +132,7 @@ def main(ctx: RunContext) -> None:
         "Worker Pool",
         validate=bool(ctx.args.validate),
         jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+        config_sections=WORKER_POOL_CONFIG_SECTIONS,
     )
     if CONFIG_WP.template_id is None:
         raise ValueError("No 'templateId' supplied")

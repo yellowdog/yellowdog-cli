@@ -90,6 +90,7 @@ from yellowdog_cli.utils.specs.loading import (
     load_specification,
     refuse_file_options,
 )
+from yellowdog_cli.utils.specs.properties import WORK_REQUIREMENT_CONFIG_SECTIONS
 from yellowdog_cli.utils.specs.schema import Family
 from yellowdog_cli.utils.submit_utils import (
     RcloneUploadedFiles,
@@ -255,6 +256,7 @@ def main(ctx: RunContext):
             "Work Requirement",
             validate=bool(ctx.args.validate),
             jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+            config_sections=WORK_REQUIREMENT_CONFIG_SECTIONS,
         )
         wr_data = _work_requirement_from_csv(run, csv_files, files_directory)
         _submit_or_add_to(run, files_directory=files_directory, wr_data=wr_data)
@@ -284,6 +286,7 @@ def main(ctx: RunContext):
             "Work Requirement",
             validate=bool(ctx.args.validate),
             jsonnet_dry_run=bool(ctx.args.jsonnet_dry_run),
+            config_sections=WORK_REQUIREMENT_CONFIG_SECTIONS,
         )
         _submit_or_add_to(
             run, files_directory=files_directory, task_count=run.config_wr.task_count

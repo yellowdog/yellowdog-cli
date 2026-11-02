@@ -679,6 +679,15 @@ CONFIG_SECTIONS: dict[str, tuple[Property, ...]] = {
 ALL_CONFIG_SECTIONS: frozenset[str] = frozenset(CONFIG_SECTIONS)
 # What a data client command reads, and so what it checks
 DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"})
+# What a command builds from with no specification file, and so what its
+# '--validate' checks: yd-submit's Work Requirement, yd-provision's Worker Pool
+# and yd-instantiate's Compute Requirement
+WORK_REQUIREMENT_CONFIG_SECTIONS: frozenset[str] = frozenset(
+    {"common", "workRequirement"}
+)
+WORKER_POOL_CONFIG_SECTIONS: frozenset[str] = frozenset(
+    {"common", "workerPool", "computeRequirement"}
+)
 
 
 def load_descriptions() -> dict[str, str]:
