@@ -475,12 +475,44 @@ def test_within_after_a_slash_naming_nothing_offers_nothing(monkeypatch):
     assert completion_lookups.candidates(_request(WITHIN_TASKS, "nope/")) == ()
 
 
-def test_a_slash_is_only_a_task_group_for_a_lookup_that_has_them(monkeypatch):
-    # A Worker Pool's 'namespace/name' is matched on the names found
-    offered, _ = _offered(
-        monkeypatch, WITHIN_NODES, [_summary("pool", "RUNNING")], "ns/po"
+def test_a_namespace_ahead_of_a_name_is_searched(monkeypatch):
+    # 'yd-demo/' searches namespace 'yd-demo', whatever the configured tag,
+    # and offers 'namespace/name', as the commands take it
+    offered, client = _offered(
+        monkeypatch,
+        LOOKUPS[("yd computerequirement show", "yellowdog_ids")],
+        [_summary("render-cr", "RUNNING")],
+        "yd-demo/re",
     )
-    assert offered == ()
+    assert [(c.value, c.description) for c in offered] == [
+        ("yd-demo/render-cr", "RUNNING")
+    ]
+    (search,), _ = client.compute_client.get_compute_requirement_summaries.call_args
+    assert search.namespaces == ["yd-demo"]
+    assert search.tag is None
+
+
+def test_a_worker_pools_namespace_is_searched_too(monkeypatch):
+    offered, client = _offered(
+        monkeypatch, WITHIN_NODES, [_summary("pool", "RUNNING")], "ns2/po"
+    )
+    assert [c.value for c in offered] == ["ns2/pool"]
+    (search,), _ = client.worker_pool_client.get_worker_pools.call_args
+    assert search.namespaces == ["ns2"]
+
+
+def test_a_work_requirements_task_groups_come_before_a_namespace(monkeypatch):
+    from yellowdog_cli.utils.exit_codes import NotFoundError
+
+    # No Work Requirement 'yd-demo': the namespace of that name
+    def find(*args, **kwargs):
+        raise NotFoundError("no")
+
+    monkeypatch.setattr(entity_utils_module, "find_work_requirement_by_name", find)
+    offered, _ = _offered(
+        monkeypatch, WITHIN_TASKS, [_summary("nightly", "RUNNING")], "yd-demo/"
+    )
+    assert [c.value for c in offered] == ["yd-demo/nightly"]
 
 
 TASK_CANCEL = LOOKUPS[("yd task cancel", "work_requirements")]

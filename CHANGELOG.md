@@ -14,6 +14,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **The configuration file's `__{{variable}}__` is warned of too**: outside User Data, in `[workRequirement]`, `[common.variables]` or any other section, it keeps its underscores (`__london__`), as in a Work Requirement specification.
 
+### Tab completion
+
+- **A name in another namespace completes after `namespace/`**: `yd cr show yd-demo/<Tab>` offers that namespace's Compute Requirements as `yd-demo/name`, whatever their tag; likewise Work Requirements and Worker Pools.
+
 ### Other
 
 - **A usage error printed `usage: usage:`** in a terminal under Python 3.14, which colours argparse's output; it prints one.

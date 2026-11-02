@@ -13,6 +13,9 @@ on, newest first and at most LOOKUP_MAX_ITEMS of them. After 'wr/', a
 Work Requirement's Task Groups are offered, as 'wr/tg', and after 'wr/tg/'
 for a Task's verbs, the Task Group's Tasks, as 'wr/tg/task' (or, where no
 such Task Group is found, 'namespace/wr/' read as a Work Requirement's).
+A name after 'namespace/' is searched for in that namespace, whatever its
+tag, and offered as 'namespace/name' (a Work Requirement's Task Groups
+coming first, where 'a/' names one).
 Instances and Nodes, which the Platform searches for one Compute
 Requirement or Worker Pool at a time, are those of the newest
 LOOKUP_MAX_PARENTS of them the verb's command would select, or for an
@@ -29,6 +32,7 @@ importing this module costs nothing until a lookup is made.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Iterable
 from itertools import islice
 from types import SimpleNamespace
@@ -92,7 +96,17 @@ def candidates(request: LookupRequest) -> tuple[Candidate, ...]:
             return _offered(items or _task_group_items(common, parent), request)
         if request.lookup.task_groups and "/" in request.current:
             parent = request.current.rpartition("/")[0]
-            return _offered(_task_group_items(common, parent), request)
+            items = _task_group_items(common, parent)
+            # 'a/' is Work Requirement 'a''s Task Groups, else namespace 'a',
+            # as the commands read it
+            if not items and request.current.count("/") == 1:
+                items = _namespaced_items(common, parent, request.lookup)
+            return _offered(items, request)
+        if _named(request.lookup) and request.current.count("/") == 1:
+            namespace = request.current.partition("/")[0]
+            return _offered(
+                _namespaced_items(common, namespace, request.lookup), request
+            )
         resource_type = request.lookup.resource
         if resource_type == RN_CREDENTIAL and "/" in request.current:
             keyring = request.current.partition("/")[0]
@@ -327,6 +341,42 @@ def _fetch_resources(
     return []
 
 
+def _named(lookup: Lookup) -> bool:
+    """
+    Whether the lookup offers names that a namespace can lead
+    ('namespace/name'): Work Requirements', Compute Requirements' and Worker
+    Pools'.
+    """
+    return (
+        lookup.resource is None
+        and not lookup.ids
+        and lookup.entity
+        in (
+            ET_WORK_REQUIREMENTS,
+            ET_COMPUTE_REQUIREMENTS,
+            ET_WORKER_POOLS,
+        )
+    )
+
+
+def _namespaced_items(
+    common: ConfigCommon, namespace: str, lookup: Lookup
+) -> list[dict[str, Any]]:
+    """
+    The lookup's entities in the namespace typed ahead of '/', each named
+    'namespace/name' as the commands take it: whatever their tag, a
+    namespace given being the user's choice of where to look, not the
+    configured one, whose tag it would not carry.
+    """
+    if not namespace:
+        return []
+    items = _items(
+        dataclasses.replace(common, namespace=namespace),
+        dataclasses.replace(lookup, tagged=False),
+    )
+    return [{**item, "name": f"{namespace}/{item['name']}"} for item in items]
+
+
 def _task_group_items(common: ConfigCommon, parent: str) -> list[dict[str, Any]]:
     """
     The Task Groups of the Work Requirement named 'parent' ('wr' or
@@ -340,15 +390,21 @@ def _task_group_items(common: ConfigCommon, parent: str) -> list[dict[str, Any]]
     if cached is not None:
         return cached
     from yellowdog_cli.utils.entity_utils import (
+        AmbiguousNameError,
         find_work_requirement_by_name,
         get_task_groups_from_wr_by_id,
     )
+    from yellowdog_cli.utils.exit_codes import NotFoundError
 
     client = _client(common)
     try:
-        work_requirement = find_work_requirement_by_name(
-            client, parent, common.namespace, statuses=()
-        )
+        try:
+            work_requirement = find_work_requirement_by_name(
+                client, parent, common.namespace, statuses=()
+            )
+        except (NotFoundError, AmbiguousNameError):
+            # 'namespace/' perhaps, for the caller to read as that
+            return []
         items = [
             {
                 "id": task_group.id,
