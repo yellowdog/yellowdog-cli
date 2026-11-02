@@ -32,6 +32,7 @@ These changes alter what a script may see:
 
 ### Other
 
+- **`--help` names YellowDog's objects as the messages and documentation do**: `Work Requirement`, `Worker Pool`, `Task`, `Node` and the rest, capitalised throughout, where some options said `work requirement` or `worker pool`.
 - **A usage error printed `usage: usage:`** in a terminal under Python 3.14, which colours argparse's output; it prints one.
 
 ## 15.7.0 — 2026-11-01
