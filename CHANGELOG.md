@@ -6,7 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Upgrading
 
-These changes alter what a script may see:
+These changes alter what an existing script or configuration will see:
 
 - **`yd cr autoshutdown` refuses a Worker Pool's Compute Requirement**, as an error (exit 1): the Platform manages its auto shutdown, resetting any change at its next scheduler refresh, though it accepts and reports it. The error says to set the pool's idle timeouts instead; other Compute Requirements given are still set.
 - **`yd list --ids-only` prints only the IDs on stdout**: the `Listing …` and `Done` lines are left out, and a warning goes to stderr, as under `--json`, so `$(yd list instances --within my-cr --ids-only)` gives the IDs alone.
