@@ -8,6 +8,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **`yd list compute-sources`** lists a Compute Requirement's sources as provisioned: provider, region, instance type, status and Instances alive against expected, with `--within <cr>` (repeatable), `--status`, `--provider`, `--json` and `--details`; with no `--within`, the Compute Requirements are offered to choose from, as for Instances. `compute-s` and `compute-source` are now ambiguous prefixes, so `compute-source-templates` needs at least `compute-source-`.
 - **`yd list instances` and `compute-sources` take a Provisioned Worker Pool's ID with `--within`**, standing for its Compute Requirement; a Configured Worker Pool, which has none, is reported. Their tables name each row's Compute Requirement only when the rows are of more than one.
+- **The Compute Requirement actions name what they acted on**: `Updated COMPUTE REQUIREMENT (link) ('yd-demo/render-cr'): it will be terminated at …`, where the name was missing; likewise stop, start, reprovision and terminate.
 - **Lists in messages are counted too**: `Unknown key ['x']`, `Node n1 is not in Worker Pool …` and `Unrecognised status values: …` rather than `key(s)` and `Node(s)`.
 
 ### Variables and configuration

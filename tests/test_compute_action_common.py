@@ -888,8 +888,9 @@ class TestAutoShutdown:
         assert record["action"] == "autoshutdown"
         assert record["outcome"] == "updated"
         assert record["autoShutdownTime"] == SHUTDOWN_TIME.isoformat()
-        assert "Updated [cr-a]: it will be terminated at 2026-10-22 16:04:12+00:00" in (
-            printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will be terminated at 2026-10-22 16:04:12+00:00"
+            in (printed)
         )
 
     def test_zero_disables_it(self, platform, monkeypatch):
@@ -899,7 +900,10 @@ class TestAutoShutdown:
         _run(platform, compute_auto_shutdown(self.NEVER), [CR_ID])
         assert platform.calls == [(self.METHOD, CR_ID, self.NEVER)]
         assert platform.records[0]["autoShutdownTime"] is None
-        assert "Updated [cr-a]: it will not be terminated automatically" in printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will not be terminated automatically"
+            in printed
+        )
 
     @pytest.mark.parametrize(
         "shutdown, prompt",
@@ -983,7 +987,10 @@ class TestAutoShutdown:
         platform.client.compute_client.update_compute_requirement_auto_shutdown.side_effect = without_time
         _run(platform, compute_auto_shutdown(self.TWO_HOURS), [CR_ID])
         assert platform.records[0]["autoShutdownTime"] is None
-        assert "Updated [cr-a]: it will be terminated in 120 minutes" in printed
+        assert (
+            "Updated [cr-a] ('ns/cr-a'): it will be terminated in 120 minutes"
+            in printed
+        )
 
     def test_the_command_is_the_action_built_from_minutes(self, monkeypatch):
         import yellowdog_cli.auto_shutdown as yd_auto_shutdown

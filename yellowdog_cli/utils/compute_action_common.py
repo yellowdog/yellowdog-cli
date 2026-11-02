@@ -518,10 +518,16 @@ def _act_on_compute_requirement(
         else ("", {})
     )
     action.record(compute_requirement, **fields)
+    # Named as the other commands name what they acted on: the Portal link,
+    # whose text is only the type, then the name
+    label = f"'{compute_requirement.namespace}/{compute_requirement.name}'"
     if isinstance(result, ComputeRequirement):
-        print_info(f"{action.past_tense} {link_entity(ctx.config.url, result)}{added}")
+        print_info(
+            f"{action.past_tense} {link_entity(ctx.config.url, result)}"
+            f" ({label}){added}"
+        )
     else:
-        print_info(f"{action.past_tense} '{compute_requirement.name}'{added}")
+        print_info(f"{action.past_tense} {label}{added}")
 
 
 def _target_entity(target: str) -> tuple[object, str]:
