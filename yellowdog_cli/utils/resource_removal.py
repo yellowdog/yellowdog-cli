@@ -564,7 +564,7 @@ def remove_allowance(ctx: RunContext, resource: dict):
         record_resource(RN_ALLOWANCE, None, None, "skipped")
         return
 
-    print_info(f"Removing Allowance(s) matching description '{description}'")
+    print_info(f"Removing the Allowances matching description '{description}'")
     removed_ids = remove_allowances_matching_description(
         ctx.client,
         cast(str, description),

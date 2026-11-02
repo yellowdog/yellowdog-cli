@@ -395,7 +395,7 @@ def _task_types(
         task_types.append(task_template_data.get(TASK_TYPE))  # type: ignore[union-attr]
     if not task_types and not template_provides_type and num_tasks > 0:
         raise ValueError(
-            f"No Task Type(s) specified in Task Group '{task_group_name}': "
+            f"No Task Type specified in Task Group '{task_group_name}': "
             "is a valid Work Requirement defined?"
         )
     return task_types

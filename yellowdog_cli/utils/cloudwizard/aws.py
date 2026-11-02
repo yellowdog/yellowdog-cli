@@ -18,7 +18,7 @@ from yellowdog_cli.utils.cloudwizard.common import CommonCloudConfig, print_erro
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import RN_SOURCE_TEMPLATE
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import counted, plural, print_info, print_warning
 from yellowdog_cli.utils.resource_creation import create_resources
 
 IAM_USER_NAME = "yellowdog-cloudwizard-user"
@@ -585,8 +585,15 @@ class AWSConfig(CommonCloudConfig):
         Create an access key for use in a YellowDog Credential:
         """
         if self._access_keys:
-            print_warning(f"Access key(s) already exist for user '{IAM_USER_NAME}'")
-            if confirmed("Delete existing access key(s) and generate a new key?"):
+            print_warning(
+                f"{counted(len(self._access_keys), 'access key')}"
+                f" already {'exists' if len(self._access_keys) == 1 else 'exist'}"
+                f" for user '{IAM_USER_NAME}'"
+            )
+            if confirmed(
+                f"Delete the existing {plural('access key', len(self._access_keys))}"
+                " and generate a new key?"
+            ):
                 self._delete_access_keys(iam_client)
             if self._access_keys:
                 # Declined, wholly or for one of them: the Credential would
