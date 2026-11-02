@@ -81,6 +81,12 @@ LOOKUP_MAX_ITEMS = 200
 # Instances and Nodes are searched one Compute Requirement or Worker Pool at
 # a time: at most this many of the newest are read, within the Tab's time
 LOOKUP_MAX_PARENTS = 10
+
+# yd-auto-shutdown's check of whether a Compute Requirement is a Worker
+# Pool's: at most this many of its namespace's Provisioned Worker Pools are
+# fetched, one call each, since a pool's summary does not name its Compute
+# Requirement
+AUTO_SHUTDOWN_POOLS_CHECKED = 20
 COMPLETION_CACHE_SECONDS = 30
 
 # The most in-situ substitution passes a specification is given to settle; a

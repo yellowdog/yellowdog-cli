@@ -903,6 +903,10 @@ yd computerequirement autoshutdown my-compute-requirement --minutes 0
 yd computerequirement autoshutdown 'batch-*' --minutes 30
 ```
 
+#### Details
+
+**A Worker Pool's Compute Requirement.** The Platform manages the auto shutdown of a Compute Requirement a Provisioned Worker Pool manages, resetting any change at its next scheduler refresh, though it accepts and reports it. So such a Compute Requirement is refused, as an error naming its pool (exit code 1), and nothing is sent; set the pool's `idleNodeShutdown` and `idlePoolShutdown` instead (see [Worker Pools](worker-pools.md)). The other Compute Requirements given are still set. Finding the pool takes a search of the Compute Requirement's namespace and up to 20 more requests, one per Provisioned Worker Pool, the one named as the Compute Requirement first.
+
 ### yd computerequirement terminate
 
 The `yd computerequirement terminate` command immediately terminates Compute Requirements that match the `namespace` and `tag` found in the configuration file. Any executing Tasks will be terminated immediately, and the Worker Pool will be shut down. A Compute Requirement in any state but `TERMINATING` or `TERMINATED` can be terminated. To terminate individual Instances, use [`yd instance terminate`](#yd-instance-terminate), or [`yd node terminate`](#yd-node-terminate) for a Node's.

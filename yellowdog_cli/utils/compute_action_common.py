@@ -30,9 +30,11 @@ from yellowdog_client.model import (
     InstanceStatus,
     NodeStatus,
     ProvisionedWorkerPool,
+    WorkerPoolStatus,
 )
 
 from yellowdog_cli.utils.action_runner import (
+    FAILED,
     SKIPPED,
     Item,
     Record,
@@ -58,6 +60,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_INSTANCES,
     ET_NODES,
+    RN_PROVISIONED_POOL,
 )
 from yellowdog_cli.utils.entity_utils import (
     AmbiguousNameError,
@@ -67,18 +70,26 @@ from yellowdog_cli.utils.entity_utils import (
     find_compute_requirement_by_name,
     get_compute_requirement_summaries,
     get_instance_by_id,
+    get_worker_pool_by_id,
+    get_worker_pool_summaries,
     namespace_scope,
 )
-from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError
+from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
+    ExitCode,
+    NotFoundError,
+    classify,
+)
 from yellowdog_cli.utils.follow_utils import follow_ids
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.interactive import select
+from yellowdog_cli.utils.limits import AUTO_SHUTDOWN_POOLS_CHECKED
 from yellowdog_cli.utils.misc_utils import (
     is_http_not_found,
     link_entity,
     shown_expiry,
 )
-from yellowdog_cli.utils.printing import counted, plural, print_info
+from yellowdog_cli.utils.printing import counted, plural, print_error, print_info
 from yellowdog_cli.utils.results import record_action
 from yellowdog_cli.utils.ydid_utils import (
     YDIDType,
@@ -113,6 +124,9 @@ class ComputeAction:
     # What the Compute Requirement the method returns adds to the line
     # printed for it, and the fields it adds to its record
     reported: Callable[[ComputeRequirement], tuple[str, dict[str, Any]]] | None = None
+    # Refuse, before confirming, a Compute Requirement a Provisioned Worker
+    # Pool manages, which sets what the action changes itself
+    refused_for_worker_pool: bool = False
 
     @property
     def prompt(self) -> str:
@@ -275,6 +289,7 @@ def compute_auto_shutdown(shutdown: AutoShutdown) -> ComputeAction:
         record_name="autoshutdown",
         cr_arguments=(shutdown,),
         reported=_auto_shutdown_reported,
+        refused_for_worker_pool=True,
     )
 
 
@@ -456,6 +471,78 @@ def _matching(
     )
 
 
+def _worker_pool_rule(
+    ctx: RunContext, action: ComputeAction, items: list[Item]
+) -> list[Item]:
+    """
+    The items, less each Compute Requirement a Provisioned Worker Pool
+    manages, for an action the pool overrides, each reported and recorded as
+    failed: the Platform manages such a Compute Requirement's auto shutdown,
+    resetting it at its next scheduler refresh.
+    """
+    if not action.refused_for_worker_pool:
+        return items
+    kept: list[Item] = []
+    for item in items:
+        compute_requirement = item.value
+        pool = (
+            _owning_worker_pool(ctx, compute_requirement)
+            if item.entity_type == ET_COMPUTE_REQUIREMENTS
+            else None
+        )
+        if pool is None:
+            kept.append(item)
+            continue
+        reason = (
+            f"Compute Requirement '{compute_requirement.namespace}/"
+            f"{compute_requirement.name}' belongs to Worker Pool '{pool.name}',"
+            " whose auto shutdown the Platform manages, resetting any change at"
+            " its next scheduler refresh; set the pool's idleNodeShutdown and"
+            " idlePoolShutdown instead"
+        )
+        print_error(reason)
+        action.recorder()(item.entity, item.entity_type, FAILED, reason)
+    return kept
+
+
+def _owning_worker_pool(
+    ctx: RunContext, compute_requirement: _ComputeRequirementTarget
+) -> ProvisionedWorkerPool | None:
+    """
+    The unfinished Provisioned Worker Pool that manages a Compute
+    Requirement, if one does: its namespace's searched (one call, filtered
+    by type on the Platform), and each fetched (a summary does not name its
+    Compute Requirement), one named as the Compute Requirement first, at
+    most AUTO_SHUTDOWN_POOLS_CHECKED of them. A failure to look is no
+    warning, bar one every later call would repeat.
+    """
+    try:
+        summaries = [
+            summary
+            for summary in get_worker_pool_summaries(
+                ctx.client,
+                compute_requirement.namespace,
+                partial_name_matches=True,
+                pool_type=RN_PROVISIONED_POOL,
+            )
+            if summary.status
+            not in (WorkerPoolStatus.SHUTDOWN, WorkerPoolStatus.TERMINATED)
+        ]
+        summaries.sort(key=lambda summary: summary.name != compute_requirement.name)
+        for summary in summaries[:AUTO_SHUTDOWN_POOLS_CHECKED]:
+            pool = get_worker_pool_by_id(ctx.client, cast(str, summary.id))
+            if (
+                isinstance(pool, ProvisionedWorkerPool)
+                and pool.computeRequirementId == compute_requirement.id
+            ):
+                return pool
+    except Exception as e:
+        if classify(e) in SESSION_FAILURES:
+            raise
+        _LOG.debug("Could not look for the Worker Pool managing it", exc_info=True)
+    return None
+
+
 def _apply_action_to_summaries(
     ctx: RunContext, action: ComputeAction, summaries: list[ComputeRequirementSummary]
 ):
@@ -464,7 +551,7 @@ def _apply_action_to_summaries(
     Compute Requirements.
     """
     selected: list[ComputeRequirementSummary] = select(ctx.client, summaries)
-    items = [_cr_item(summary) for summary in selected]
+    items = _worker_pool_rule(ctx, action, [_cr_item(summary) for summary in selected])
 
     if items and not confirm_items(
         f"{action.prompt} {counted(len(items), 'Compute Requirement')}?",
@@ -574,6 +661,10 @@ def _apply_action_by_name_or_id(
         )
         return
 
+    items = _worker_pool_rule(ctx, action, items)
+    if not items:
+        print_info(f"No Compute Requirements {action.past_tense.lower()}")
+        return
     if not confirm_items(_confirmation(action, items), items, action.recorder()):
         print_info(f"No Compute Requirements {action.past_tense.lower()}")
         return
