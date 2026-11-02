@@ -472,7 +472,7 @@
     # Optional — applies to yd computerequirement instantiate only (a Worker
     # Pool shuts down when idle instead); default: unset (the Platform's
     # default applies)
-    # autoShutdownTimeout = 120.0
+    # autoShutdown = 120.0
 
     # --------------------------------------------------------------------------
     # Images and instance configuration

@@ -28,7 +28,7 @@ class DeprecatedKey:
 
 
 DEPRECATED_KEYS = [
-    DeprecatedKey("autoShutdown", f"Set {IDLE_POOL_TIMEOUT} to zero"),
+    DeprecatedKey("autoShutdownTimeout", AUTO_SHUTDOWN),
     DeprecatedKey("autoShutdownDelay", IDLE_POOL_TIMEOUT),
     DeprecatedKey("nodeBootTimeLimit", NODE_BOOT_TIMEOUT),
     DeprecatedKey("nodeIdleTimeLimit", IDLE_NODE_TIMEOUT),

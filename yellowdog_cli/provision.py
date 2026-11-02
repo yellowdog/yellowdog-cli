@@ -41,7 +41,7 @@ from yellowdog_cli.utils.printing import (
     worker_pool_specification,
 )
 from yellowdog_cli.utils.property_names import (
-    AUTO_SHUTDOWN_TIMEOUT,
+    AUTO_SHUTDOWN,
     IDLE_POOL_TIMEOUT,
     IMAGES_ID,
     INSTANCE_TAGS,
@@ -107,9 +107,9 @@ def main(ctx: RunContext) -> None:
         CONFIG_WP.target_instance_count = ctx.args.target
         CONFIG_WP.target_instance_count_set = True
 
-    if CONFIG_WP.auto_shutdown_timeout is not None:
+    if CONFIG_WP.auto_shutdown is not None:
         print_warning(
-            f"Property '{AUTO_SHUTDOWN_TIMEOUT}' is ignored when creating a"
+            f"Property '{AUTO_SHUTDOWN}' is ignored when creating a"
             f" Worker Pool, which shuts down when idle ('{IDLE_POOL_TIMEOUT}')"
         )
 

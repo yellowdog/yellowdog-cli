@@ -115,7 +115,7 @@ class TestDeprecatedKeys:
     @pytest.mark.parametrize(
         "key",
         [
-            "autoShutdown",
+            "autoShutdownTimeout",
             "autoShutdownDelay",
             "nodeBootTimeLimit",
             "nodeIdleTimeLimit",

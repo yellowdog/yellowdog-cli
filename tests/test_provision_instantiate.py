@@ -908,7 +908,7 @@ class TestProvisionReport:
 
 class TestAutoShutdown:
     """
-    'autoShutdownTimeout' gives yd-instantiate's Compute Requirement its auto
+    'autoShutdown' gives yd-instantiate's Compute Requirement its auto
     shutdown, in minutes, 0 disabling it; yd-provision ignores it, warning.
     """
 
@@ -926,7 +926,7 @@ class TestAutoShutdown:
 
     def test_the_configuration_sets_it(self, run):
         usage = self._provisioned(
-            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=90)
+            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown=90)
         )
         assert usage.autoShutdown == AutoShutdown(
             enabled=True, timeout=timedelta(minutes=90)
@@ -934,7 +934,7 @@ class TestAutoShutdown:
 
     def test_zero_disables_it(self, run):
         usage = self._provisioned(
-            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=0)
+            run, ConfigWorkerPool(template_id=CRT_ID, auto_shutdown=0)
         )
         assert usage.autoShutdown == AutoShutdown(enabled=False)
 
@@ -945,7 +945,7 @@ class TestAutoShutdown:
     def test_a_specification_inherits_it(self, run, cr_file):
         usage = self._provisioned(
             run,
-            ConfigWorkerPool(auto_shutdown_timeout=90),
+            ConfigWorkerPool(auto_shutdown=90),
             compute_requirement_file_positional=cr_file({}),
         )
         assert usage.autoShutdown == AutoShutdown(
@@ -955,7 +955,7 @@ class TestAutoShutdown:
     def test_a_specifications_own_wins(self, run, cr_file):
         usage = self._provisioned(
             run,
-            ConfigWorkerPool(auto_shutdown_timeout=90),
+            ConfigWorkerPool(auto_shutdown=90),
             compute_requirement_file_positional=cr_file(
                 {"autoShutdown": {"enabled": True, "timeout": "PT10M"}}
             ),
@@ -967,7 +967,7 @@ class TestAutoShutdown:
     def test_a_dry_run_shows_it_as_a_specification_writes_it(self, run, cr_file):
         out, _ = run(
             yd_instantiate,
-            ConfigWorkerPool(auto_shutdown_timeout=90),
+            ConfigWorkerPool(auto_shutdown=90),
             dry_run=True,
             json_output=True,
             compute_requirement_file_positional=cr_file({}),
@@ -980,14 +980,12 @@ class TestAutoShutdown:
     def test_provision_ignores_it_and_says_so(self, run):
         run(
             yd_provision,
-            ConfigWorkerPool(template_id=CRT_ID, auto_shutdown_timeout=90),
+            ConfigWorkerPool(template_id=CRT_ID, auto_shutdown=90),
             dry_run=True,
             json_output=True,
         )
         assert run.exit_code == ExitCode.SUCCESS
-        assert "'autoShutdownTimeout' is ignored when creating a Worker Pool" in (
-            run.err
-        )
+        assert "'autoShutdown' is ignored when creating a Worker Pool" in (run.err)
 
 
 class TestInstantiateReporting:

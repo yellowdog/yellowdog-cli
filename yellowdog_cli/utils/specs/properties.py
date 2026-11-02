@@ -652,7 +652,7 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
         ),
     ),
     Property(
-        "autoShutdownTimeout",
+        "autoShutdown",
         FLOAT_CAST,
         description=(
             "minutes until the Compute Requirement is terminated; 0 never (yd"
