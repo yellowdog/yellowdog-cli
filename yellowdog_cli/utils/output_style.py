@@ -7,6 +7,9 @@ import re
 
 DEFAULT_LOG_WIDTH = 120
 MAX_TABLE_DESCRIPTION = 50
+# The namespaces a namespace pattern matched that a progress line names,
+# before 'and N more' (the --debug trace names them all)
+NAMESPACE_SCOPE_SHOWN = 10
 # Longer output is printed uncoloured: Rich's highlighting costs ~50us a
 # line for a table (a span per cell) and ~11us for JSON, on Apple silicon
 MAX_LINES_COLOURED_TABLE = 2000

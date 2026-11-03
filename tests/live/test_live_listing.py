@@ -15,6 +15,7 @@ from collections.abc import Iterator
 
 import pytest
 from harness import work
+from harness.run import NAMESPACE
 
 # On one worker: its Work Requirement is the module's, named for the run, and
 # a second worker's would be refused as a duplicate name
@@ -97,3 +98,21 @@ def test_a_status_is_sent_with_the_search(live_run, listing_wr):
     assert (
         yd(*within, "--status", "completed", "--count", "--quiet").stdout.strip() == "0"
     )
+
+
+def test_a_namespace_pattern_lists_the_namespaces_it_matches(live_run, listing_wr):
+    # The run's namespace found through a pattern: as the main Application,
+    # by one search of the Platform's namespaces (whether that search finds
+    # every namespace that holds work is what this checks)
+    pattern = f"{NAMESPACE[:-2]}*"
+    listed = live_run.yd(
+        "workrequirement", "list", "-n", pattern, "--name", listing_wr["name"], *_JSON
+    )
+    assert [(wr["id"], wr["namespace"]) for wr in listed.records] == [
+        (listing_wr["id"], NAMESPACE)
+    ]
+
+
+def test_a_namespace_pattern_matching_nothing_is_an_empty_listing(live_run):
+    listed = live_run.yd("workrequirement", "list", "-n", "ydst-no-such-ns-*", *_JSON)
+    assert listed.records == []

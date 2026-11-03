@@ -179,13 +179,13 @@ def test_confirmation_rows_stay_visible_at_every_width(window, width):
 def test_chooser_rows_stay_visible_at_every_width(window, width):
     dialog, _accept = window._build_chooser_dialog(
         "Download Objects",
-        "Downloading objects matching 'pyex-bash-peter_toft*' into 'results'.",
+        "Downloading objects matching 'pyex-bash-alice_smith*' into 'results'.",
         "Download",
         object_rows(
             [
                 ObjectSummary(
-                    path=f"S3:b/pfx/pyex-bash-peter_toft_{n:04d}",
-                    name=f"pyex-bash-peter_toft_{n:04d}/",
+                    path=f"S3:b/pfx/pyex-bash-alice_smith_{n:04d}",
+                    name=f"pyex-bash-alice_smith_{n:04d}/",
                     is_dir=True,
                 )
                 for n in range(2)

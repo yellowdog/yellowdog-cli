@@ -20,7 +20,7 @@
    * [Which Value Wins](#which-value-wins)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Oct 27 16:12:21 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov  3 09:40:26 GMT 2026 -->
 
 <!--te-->
 
@@ -134,7 +134,7 @@ The `[common]` section of the configuration file can contain the following prope
 |:------------|:--------------------------------------------------------------------------------------------|
 | `key`       | The **key ID** of the YellowDog Application under which the commands will run               |
 | `secret`    | The **key secret** of the YellowDog Application under which the commands will run           |
-| `namespace` | The **namespace** to be used for grouping resources. Defaults to `default`                  |
+| `namespace` | The **namespace** to be used for grouping resources. Defaults to `default`. A pattern such as `team-*` is honoured by `yd list` alone (see [Listing Several Namespaces](commands.md#listing-several-namespaces)); every other command refuses one |
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |

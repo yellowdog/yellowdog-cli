@@ -36,6 +36,7 @@ CASES = (
     "auth-wrong-secret-read",
     "auth-wrong-secret-action",
     "permission-control",
+    "permission-namespace-pattern",
     "permission-other-namespace",
     "permission-unscoped",
     "permission-keyrings",

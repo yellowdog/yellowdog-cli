@@ -94,9 +94,9 @@ def test_the_notice_carries_one_ok_button_that_closes_it(window, monkeypatch):
 
 
 def test_a_windows_path_is_not_interpreted_as_markup(window, monkeypatch):
-    # A real report: 'C:\\Users\\Peter Toft\\...\\results'. Rich text would eat the
+    # A real report: 'C:\\Users\\Alice Smith\\...\\results'. Rich text would eat the
     # backslashes, and a name containing <...> would vanish entirely.
-    message = r"Directory 'C:\Users\Peter Toft\<demo>\results' does not (yet) exist"
+    message = r"Directory 'C:\Users\Alice Smith\<demo>\results' does not (yet) exist"
     dialog = window._build_notice_dialog(message)
 
     assert dialog.text() == message

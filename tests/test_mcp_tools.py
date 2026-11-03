@@ -836,3 +836,13 @@ def test_descriptions_name_commands_in_the_yd_form():
         ]
         for text in texts:
             assert not re.search(r"\byd-[a-z]", text), (name, text)
+
+
+def test_the_list_tools_say_their_namespace_takes_a_pattern():
+    for name in ("yd_workrequirement_list", "yd_list"):
+        if name not in TOOLS:
+            continue
+        description = TOOLS[name].input_schema["properties"]["namespace"]["description"]
+        assert "pattern" in description
+    cancel = TOOLS["yd_workrequirement_cancel"].input_schema["properties"]["namespace"]
+    assert "pattern" not in cancel["description"]

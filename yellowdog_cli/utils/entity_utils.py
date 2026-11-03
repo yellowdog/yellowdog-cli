@@ -75,10 +75,19 @@ from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
     classify,
 )
-from yellowdog_cli.utils.glob_utils import GLOB_CHARS, glob_search_prefix
+from yellowdog_cli.utils.glob_utils import (
+    GLOB_CHARS,
+    contains_glob_chars,
+    glob_literal_hint,
+    glob_search_prefix,
+)
 from yellowdog_cli.utils.interactive import confirmed, select
-from yellowdog_cli.utils.limits import KEYRING_FETCH_WORKERS
+from yellowdog_cli.utils.limits import (
+    KEYRING_FETCH_WORKERS,
+    NAMESPACE_PATTERN_MAX_MATCHES,
+)
 from yellowdog_cli.utils.misc_utils import is_http_not_found
+from yellowdog_cli.utils.output_style import NAMESPACE_SCOPE_SHOWN
 from yellowdog_cli.utils.printing import print_info, print_warning
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
@@ -95,6 +104,34 @@ from yellowdog_cli.utils.ydid_utils import (
 _LOG = logging.getLogger(__name__)
 
 
+class NoMatchingNamespaces(Exception):
+    """
+    A namespace pattern ('team-*') that matches no namespace the Application
+    can read. Never a NotFoundError: the listing commands, the only ones
+    given a pattern, turn it into an empty listing (exit 0), so one that
+    escaped them would exit 1 and be noticed rather than pass for a
+    deliberate not-found.
+    """
+
+    def __init__(self, pattern: str):
+        super().__init__(f"No namespaces match '{pattern}'")
+        self.pattern = pattern
+
+
+class TooManyNamespaces(ValueError):
+    """
+    A namespace pattern matching more namespaces than a search can name: a
+    search sends them in its URL, which a server limits.
+    """
+
+    def __init__(self, pattern: str, count: int):
+        super().__init__(
+            f"The namespace pattern '{pattern}' matches {count} namespaces, more"
+            f" than the {NAMESPACE_PATTERN_MAX_MATCHES} a search can name: narrow"
+            " the pattern, or give -n '' for every namespace"
+        )
+
+
 def search_namespaces(
     client: PlatformClient, namespace: str | None
 ) -> list[str] | None:
@@ -108,7 +145,20 @@ def search_namespaces(
     with no namespace is never left unscoped for one. With no readable
     namespace at all, the search is left unscoped, and the Platform's 403
     says which permission is missing. '' is no namespace, as yd-list takes it.
+    A pattern ('team-*', yd-list's alone) is the readable namespaces it
+    matches (matching_namespaces()), and raises NoMatchingNamespaces for
+    none: an empty list must never reach a search, which could read it as
+    every namespace. One matching more than NAMESPACE_PATTERN_MAX_MATCHES
+    raises TooManyNamespaces, unless it matched every namespace of an
+    Application that can read them all, which is searched unscoped (None).
     """
+    if namespace and contains_glob_chars(namespace):
+        matches = matching_namespaces(client, namespace)
+        if matches is None:
+            return None
+        if len(matches) > NAMESPACE_PATTERN_MAX_MATCHES:
+            raise TooManyNamespaces(namespace, len(matches))
+        return list(matches)
     if namespace:
         return [namespace]
     details = get_application_details(client)
@@ -120,6 +170,63 @@ def search_namespaces(
         + ", ".join(repr(n) for n in details.readableNamespaces)
     )
     return list(details.readableNamespaces)
+
+
+@lru_cache
+def matching_namespaces(client: PlatformClient, pattern: str) -> tuple[str, ...] | None:
+    """
+    The readable namespaces a pattern matches, sorted: those the Application
+    can read when it cannot read them all, matched without a request; else
+    the Platform's namespaces, searched once for the pattern's longest
+    literal run (the search matches a substring) and matched here, None
+    when a pattern with no literal run matched every one of them ('*'), so
+    that the search is unscoped as for no namespace. Cached, so the several
+    searches of one listing make one request. Raises NoMatchingNamespaces
+    for none.
+    """
+    details = get_application_details(client)
+    if details.allNamespacesReadable or not details.readableNamespaces:
+        found = client.namespaces_client.get_namespaces(
+            NamespaceSearch(namespaceContains=glob_literal_hint(pattern) or None)
+        ).list_all()
+        candidates = [n.namespace for n in found if n.namespace is not None]
+        if not glob_literal_hint(pattern) and all(
+            fnmatch.fnmatchcase(n, pattern) for n in candidates
+        ):
+            _LOG.debug("Namespace pattern %r matched every namespace", pattern)
+            if candidates:
+                return None
+    else:
+        candidates = list(details.readableNamespaces)
+    matches = tuple(sorted({n for n in candidates if fnmatch.fnmatchcase(n, pattern)}))
+    _LOG.debug("Namespace pattern %r matched %s", pattern, list(matches))
+    if not matches:
+        raise NoMatchingNamespaces(pattern)
+    return matches
+
+
+def clear_namespace_cache() -> None:
+    """
+    Clear the cache of the namespaces patterns matched.
+    """
+    matching_namespaces.cache_clear()
+
+
+def in_namespace_scope(
+    client: PlatformClient, namespace: str | None, item_namespace: str | None
+) -> bool:
+    """
+    Whether an item a search found is in the namespaces it was scoped to,
+    for a search the Platform matches as a substring ('dev' finding
+    'dev-team'): any for no namespace, the one given exactly, or one a
+    pattern matched.
+    """
+    if not namespace:
+        return True
+    if contains_glob_chars(namespace):
+        matches = matching_namespaces(client, namespace)
+        return matches is None or item_namespace in matches
+    return item_namespace == namespace
 
 
 _SCOPES_TRACED: set[str] = set()
@@ -927,17 +1034,21 @@ def split_namespace_and_name(
 
 
 def resolve_name_glob(
-    pattern: str, default_namespace: str | None
+    pattern: str,
+    default_namespace: str | None,
+    allow_namespace_pattern: bool = False,
 ) -> tuple[str | None, str]:
     """
     Split an optional 'namespace/pattern' into (namespace, pattern), applying
     'default_namespace' when no namespace prefix is present. Raises ValueError
-    if the namespace part itself contains glob metacharacters (wildcards are
-    only allowed in the name).
+    if the namespace part itself contains glob metacharacters, unless
+    'allow_namespace_pattern' (yd-list alone, whose searches expand one:
+    search_namespaces()); every other caller acts on what it finds, and
+    takes wildcards in the name only.
     """
     namespace, name = split_namespace_and_name(pattern)
     namespace = default_namespace if namespace is None else namespace
-    if GLOB_CHARS.intersection(namespace or ""):
+    if not allow_namespace_pattern and GLOB_CHARS.intersection(namespace or ""):
         raise ValueError(
             f"Wildcards are not allowed in the namespace part of '{pattern}'"
         )
@@ -949,17 +1060,23 @@ def namespace_scope(client: PlatformClient, namespace: str | None) -> str:
     The phrase for the namespaces a search is scoped to, as
     search_namespaces() scopes it: "in namespace 'X'" for the one given; for
     none, "in namespaces 'a', 'b'" naming those the Application can read when
-    it cannot read them all, else "in all namespaces". The Application's
-    details are cached, so the search reading them again costs nothing.
+    it cannot read them all, else "in all namespaces"; for a pattern, those
+    it matched and the pattern, the first NAMESPACE_SCOPE_SHOWN named. The
+    Application's details and a pattern's matches are cached, so the search
+    reading them again costs nothing.
     """
-    if namespace:
+    pattern = bool(namespace) and contains_glob_chars(cast(str, namespace))
+    if namespace and not pattern:
         return f"in namespace '{namespace}'"
     namespaces = search_namespaces(client, namespace)
+    matching = f" (matching '{namespace}')" if pattern else ""
     if namespaces is None:
-        return "in all namespaces"
+        return f"in all namespaces{matching}"
     if len(namespaces) == 1:
-        return f"in namespace '{namespaces[0]}'"
-    return f"in namespaces {', '.join(repr(n) for n in namespaces)}"
+        return f"in namespace '{namespaces[0]}'{matching}"
+    shown = ", ".join(repr(n) for n in namespaces[:NAMESPACE_SCOPE_SHOWN])
+    more = len(namespaces) - NAMESPACE_SCOPE_SHOWN
+    return f"in namespaces {shown}{f' and {more} more' if more > 0 else ''}{matching}"
 
 
 def filter_phrase(template: str, value: str | None) -> str:

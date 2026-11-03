@@ -344,6 +344,14 @@ def test_permission_control(as_limited):
     assert as_limited(*limited.CONTROL).records == []
 
 
+def test_permission_namespace_pattern(as_limited):
+    # A control, as permission-control is: a pattern matched against the
+    # namespaces it can read, without a namespace search: its own (empty)
+    # namespace, never the run's, which it cannot read
+    pattern = f"{LIMITED_NAMESPACE[:-2]}*"
+    assert as_limited("wr", "list", "--namespace", pattern, *_JSON).records == []
+
+
 def test_permission_other_namespace(live_run, as_limited):
     _fails(
         as_limited,

@@ -678,10 +678,10 @@ def test_name_glob_roles_warns_on_unnamed(capsys):
     [
         (
             "default",
-            "pwt",
-            "Listing Worker Pools in namespace 'default' with 'pwt' in name",
+            "alice",
+            "Listing Worker Pools in namespace 'default' with 'alice' in name",
         ),
-        ("", "pwt", "Listing Worker Pools in all namespaces with 'pwt' in name"),
+        ("", "alice", "Listing Worker Pools in all namespaces with 'alice' in name"),
         ("", "", "Listing Worker Pools in all namespaces"),
     ],
 )
@@ -811,7 +811,7 @@ def test_the_tag_is_not_defaulted_away(command_name, entity_type):
     assert parser.parse_args([*arguments, "-t"]).tag == ""
 
 
-def _template_fetch(function_name, ctx_tag, configured_tag="pwt"):
+def _template_fetch(function_name, ctx_tag, configured_tag="alice"):
     import yellowdog_cli.list as yd_list
 
     captured = {}
@@ -868,7 +868,7 @@ def test_image_families_are_listed_whatever_the_configured_tag():
         patch.object(
             wrapper_module,
             "CONFIG_COMMON",
-            MagicMock(namespace="default", name_tag="pwt"),
+            MagicMock(namespace="default", name_tag="alice"),
         ),
         patch.object(wrapper_module, "ARGS_PARSER", _args(name_glob=None, tag=None)),
         patch.object(yd_list, "search_namespaces", return_value=["default"]),
@@ -888,20 +888,20 @@ def test_image_families_are_listed_whatever_the_configured_tag():
             ET_WORK_REQUIREMENTS,
             "list_work_requirements",
             "get_filtered_work_requirement_summaries",
-            "Listing active Work Requirements in namespace 'ns' with 'pwt' in tag",
+            "Listing active Work Requirements in namespace 'ns' with 'alice' in tag",
         ),
         (
             "compute-requirements",
             "list_compute_requirements",
             "get_compute_requirement_summaries",
             "Listing active Compute Requirements in namespace 'ns' with tags"
-            " including 'pwt'",
+            " including 'alice'",
         ),
         (
             ET_WORKER_POOLS,
             "list_worker_pools",
             "get_worker_pool_summaries",
-            "Listing active Worker Pools in namespace 'ns' with 'pwt' in name",
+            "Listing active Worker Pools in namespace 'ns' with 'alice' in name",
         ),
     ],
 )
@@ -915,7 +915,7 @@ def test_active_only_is_said_in_the_one_line(entity_type, lister, search, expect
     with (
         patch.object(wrapper_module, "CLIENT", MagicMock()),
         patch.object(
-            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="ns", name_tag="pwt")
+            wrapper_module, "CONFIG_COMMON", MagicMock(namespace="ns", name_tag="alice")
         ),
         patch.object(
             wrapper_module,

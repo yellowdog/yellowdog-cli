@@ -112,3 +112,13 @@ def test_a_variable_name_the_cli_refuses_is_refused_at_launch(config, capsys):
 
 def test_a_reserved_variable_name_is_refused_at_launch(config, capsys):
     assert "'namespace' is not a variable" in _refused(["-v", "namespace=n"], capsys)
+
+
+def test_a_namespace_pattern_is_refused_at_launch(config, capsys):
+    # The server's namespace is given to every command it runs; a list
+    # tool's own 'namespace' argument takes a pattern
+    err = " ".join(_refused(["--namespace", "team-*"], capsys).split())
+    assert (
+        "--namespace 'team-*' is a pattern: the server's namespace is given to"
+        " every command; give one namespace, or a pattern to a list tool"
+    ) in err

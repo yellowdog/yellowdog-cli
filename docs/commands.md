@@ -33,6 +33,7 @@
       * [yd computerequirement start](#yd-computerequirement-start)
       * [yd computerequirement reprovision](#yd-computerequirement-reprovision)
       * [yd computerequirement autoshutdown](#yd-computerequirement-autoshutdown)
+         * [Details](#details-1)
       * [yd computerequirement terminate](#yd-computerequirement-terminate)
    * [yd instance](#yd-instance)
       * [yd instance stop](#yd-instance-stop)
@@ -67,6 +68,8 @@
       * [yd cloudinfo prices](#yd-cloudinfo-prices)
    * [Other Commands](#other-commands)
       * [yd list](#yd-list)
+         * [Listing Several Namespaces](#listing-several-namespaces)
+            * [Details](#details-2)
       * [yd show](#yd-show)
       * [yd follow](#yd-follow)
       * [yd wait](#yd-wait)
@@ -84,7 +87,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Oct 31 09:22:24 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov  3 09:40:25 GMT 2026 -->
 
 <!--te-->
 
@@ -163,7 +166,7 @@ These options are accepted by many commands, but not by all. The command section
 | Option | Effect |
 |---|---|
 | `--variable <var1=v1>`, `-v` | Set a user-defined variable substitution; can be supplied multiple times, one per variable — see [User-Defined Variables](variables.md#user-defined-variables) |
-| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value. Since its value is optional, `-n wr.json` would take a file name as the namespace: a namespace (or tag) ending `.json`, `.jsonnet`, `.toml`, `.yaml`, `.yml` or `.csv` is refused, so give the option after the file |
+| `--namespace [<namespace>]`, `-n` | The namespace to use when naming or selecting entities; this is set to `''` if the option is supplied without a value. [`yd list`](#yd-list) also takes a pattern, listing several namespaces (see [Listing Several Namespaces](#listing-several-namespaces)). Since its value is optional, `-n wr.json` would take a file name as the namespace: a namespace (or tag) ending `.json`, `.jsonnet`, `.toml`, `.yaml`, `.yml` or `.csv` is refused, so give the option after the file |
 | `--tag [<tag>]`, `-t` | The tag to use when naming, tagging, or selecting entities; this is set to `''` if the option is supplied without a value |
 | `--yes`, `-y` | Perform modifying or destructive actions without requiring user confirmation |
 | `--dry-run`, `-D` | Report what the command would do, without acting |
@@ -1612,6 +1615,7 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 
 | Option | Description |
 |---|---|
+| `--namespace`/`-n <namespace-or-pattern>` | List in this namespace, or in every readable namespace a glob pattern (`*`, `?`, `[...]`) matches, e.g. `yd wr list -n 'team-a-*'`; `-n ''` lists every readable namespace. See [Listing Several Namespaces](#listing-several-namespaces) |
 | `--details`/`-d` | Show the full JSON representation of selected objects; in some cases this drills into additional detail, e.g. `yd list keyrings --details` allows inspection of the Credentials within the selected Keyrings |
 | `--active-only`/`-l` | List only entities in a non-terminated state: Work Requirements (and their Task Groups and Tasks), Worker Pools (and their Nodes and Workers) and Compute Requirements (and their Instances); a Compute Requirement that is still provisioning counts as active |
 | `--name <glob>` | List only entities whose name matches the given glob pattern (`*`, `?`, `[...]`), e.g. `yd list work-requirements --name 'myproject-*'` (a name without wildcards matches exactly, so use `*` for partial matches, e.g. `'linux*'` or `'*linux*'`); applies to Namespaces, Work Requirements, Task Groups, Tasks, Worker Pools, Compute Requirements, Compute Requirement/Source Templates, Image Families, Users, Applications, Groups, Roles, Keyrings and Permissions, and is refused for other entity types (for Groups, Roles, Keyrings and Permissions, whose names are optional, any entries without a name are excluded from matching, with a warning); it's also a non-destructive way to preview which entities a glob passed to `yd workrequirement cancel`, `yd workerpool shutdown` or `yd computerequirement terminate` would select |
@@ -1636,6 +1640,25 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 ```shell
 yd list work-requirements --name 'myproject-*' --active-only
 ```
+
+#### Listing Several Namespaces
+
+A namespace pattern lists across every namespace it matches that the Application can read, the namespace column saying where each item is:
+
+```shell
+yd workrequirement list -n 'team-a-*' --active-only
+yd list compute-requirements -n 'prod-?' --json
+```
+
+The first line of the listing names the namespaces matched. `--name` takes a pattern in its namespace part as well, as in `yd list worker-pools --name 'team-*/render-*'`.
+
+##### Details
+
+- A pattern is for `yd list` and the `list` verbs alone. Every other command refuses one, whether it was given with `--namespace` (exit code 2) or configured in the configuration file, `YD_NAMESPACE` or `--property common.namespace=` (exit code 3), so no command acts on, or creates in, namespaces it was not given. `yd doctor` and `yd variables`, which only report the configuration, show a configured pattern as it is.
+- A pattern matching no readable namespace is an empty listing (exit code 0): `No namespaces match 'team-x-*'`, or `0` with `--count` and `[]` with `--json`.
+- A pattern may match at most 100 namespaces, since a search names them in its request; more is refused (exit code 1), saying how many matched. For an Application that can read every namespace, a pattern matching all of them (`-n '*'`) is listed as `-n ''` is.
+- Under a pattern, `--within` takes IDs and names given with their namespace (`namespace/name`, `namespace/wr/tg`); a bare name, which has no one namespace to be looked up in, is refused (exit code 2).
+- `namespace-policies` are those of the namespaces `-n` gives, or of every readable namespace without it.
 
 For Instances and Nodes, `--status`, `--provider` and `--active-only` are passed to the Platform with the search, so only the matching ones are fetched. For Tasks, which can number in the millions, `--status`, `--with-errors` and `--name` are passed to the Platform with the search, so only the matching Tasks are fetched: `--name` as the longest literal part of its pattern (the Platform matches it as a case-sensitive substring), the pattern itself then applied to what comes back.
 

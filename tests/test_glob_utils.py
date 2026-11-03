@@ -239,7 +239,7 @@ def test_namespace_scope_with_none_readable_is_unscoped(readable):
 
 @pytest.mark.parametrize(
     "value, expected",
-    [("pwt", " with 'pwt' in tag"), ("", ""), (None, "")],
+    [("alice", " with 'alice' in tag"), ("", ""), (None, "")],
 )
 def test_filter_phrase_is_empty_for_an_empty_filter(value, expected):
     assert filter_phrase("with '{}' in tag", value) == expected

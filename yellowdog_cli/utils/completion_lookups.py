@@ -64,6 +64,7 @@ from yellowdog_cli.utils.entity_names import (
     RN_SOURCE_TEMPLATE,
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
     LOOKUP_MAX_ITEMS,
     LOOKUP_MAX_PARENTS,
@@ -82,6 +83,10 @@ def candidates(request: LookupRequest) -> tuple[Candidate, ...]:
     try:
         common = _load_common(request.settings)
         if common is None:
+            return ()
+        # A namespace pattern ('team-*') names no one namespace to look in,
+        # and the command being completed may refuse it
+        if contains_glob_chars(common.namespace):
             return ()
         if request.lookup.entity == ET_NODES and request.scope:
             return _offered(
@@ -126,6 +131,8 @@ def _load_common(settings: dict[str, object]) -> ConfigCommon | None:
     """
     from yellowdog_cli.utils import load_config
 
+    # Without 'namespace_pattern_refused', a namespace pattern loads rather
+    # than exits: candidates() then offers nothing for it, whatever the command
     args = SimpleNamespace(**settings, namespace_required=False, tag_required=False)
     try:
         load_config.ensure_config_loaded(args)
@@ -314,7 +321,7 @@ def _fetch_resources(
         return [
             _item(t.name, t.id)
             for t in _capped(search(client, namespace))
-            if not namespace or t.namespace == namespace
+            if entity_utils.in_namespace_scope(client, namespace, t.namespace)
         ]
     if resource_type == RN_CONFIGURED_POOL:
         pools = Lookup(

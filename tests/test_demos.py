@@ -3,6 +3,7 @@ Tests that run the standard demos.
 Use 'pytest --run-demos', otherwise these will be skipped.
 """
 
+import os
 import shutil
 import sys
 
@@ -10,7 +11,7 @@ import pytest
 from cli_test_helpers import shell
 
 DEMO_DIR = "../python-examples-demos"
-NEXTFLOW = "/Users/pwt/nextflow/nextflow"
+NEXTFLOW = os.path.expanduser("~/nextflow/nextflow")
 
 # Wall-clock budget for any single 'yd-*' command in a demo. A demo that exceeds
 # it has hung rather than merely run long: a Work Requirement that is never

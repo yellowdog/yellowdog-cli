@@ -152,14 +152,14 @@ def downloaded_results(root: Path) -> Path:
     A results directory shaped the way yd data download leaves one — work requirement,
     task group, task, output file — and the path of the file at the bottom of it.
     """
-    task = root / "pyex-bash-pwt_260820-083723781" / "task_group_1" / "task_1"
+    task = root / "pyex-bash-alice_260820-083723781" / "task_group_1" / "task_1"
     task.mkdir(parents=True)
     output = task / "taskoutput.txt"
     output.write_text("task output\n")
-    (root / "pyex-bash-pwt_260820-083723781" / "sleep_script.sh").write_text(
+    (root / "pyex-bash-alice_260820-083723781" / "sleep_script.sh").write_text(
         "sleep 1\n"
     )
-    (root / "pyex-bash-pwt_260820-083725128").mkdir()
+    (root / "pyex-bash-alice_260820-083725128").mkdir()
     return output
 
 

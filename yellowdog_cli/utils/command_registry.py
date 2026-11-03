@@ -221,6 +221,11 @@ class Command:
     # it has no 'yd-*' entry point, so nothing to deprecate, and is typed only
     # as its 'yd' word or noun verb
     script: bool = True
+    # True for the commands that read across namespaces, taking a glob for
+    # the namespace ('-n team-*'): yd-list, and so its derived list verbs.
+    # Every other command refuses a pattern, from any source, so that no
+    # write or action is ever spread across namespaces it was not given
+    namespace_patterns: bool = False
 
     @property
     def internal_name(self) -> str:
@@ -1439,6 +1444,30 @@ def check_namespace_and_tag_are_no_files(
                 f"{flag} '{value}' looks like a file name: give {flag} a value,"
                 f" or put it after the file (e.g. '{value} {flag} <value>')"
             )
+
+
+# The commands that report the configuration and act on nothing, so take a
+# configured namespace pattern as it is rather than exit: yd-doctor shows
+# it, yd-variables reports {{namespace}}
+NAMESPACE_PATTERN_REPORTERS: frozenset[str] = frozenset({"yd-doctor", "yd-variables"})
+
+
+def check_namespace_is_no_pattern(
+    args: Namespace, parser: ArgumentParser, allowed: bool
+) -> None:
+    """
+    Every command with -n: a namespace pattern ('team-*') is for the listing
+    commands alone ('allowed'); any other command reading one would act on,
+    or write to, namespaces it was not given. Namespace names exclude the
+    glob characters, so a value holding one is always a pattern.
+    """
+    value = getattr(args, "namespace", None)
+    if allowed or not isinstance(value, str) or not contains_glob_chars(value):
+        return
+    parser.error(
+        f"--namespace '{value}' is a pattern: only 'yd list' and the 'list'"
+        " verbs take one"
+    )
 
 
 def check_paths_given(args: Namespace, parser: ArgumentParser) -> None:
@@ -3028,7 +3057,12 @@ COMMANDS["yd-provision"] = Command(
 
 # --- yd-list -------------------------------------------------------------
 
-LIST_NAMESPACE = NAMESPACE.variant(help="the namespace to use when listing entities")
+LIST_NAMESPACE = NAMESPACE.variant(
+    help=(
+        "the namespace to use when listing entities, or a pattern ('team-*')"
+        " listing those of every readable namespace it matches"
+    )
+)
 
 # Tag attribute is defaulted to "" when using 'yd-list'
 LIST_TAG = TAG.variant(
@@ -3276,6 +3310,7 @@ COMMANDS["yd-list"] = Command(
     purpose="listing all kinds of YellowDog items",
     summary="List YellowDog items",
     kind=CommandKind.API,
+    namespace_patterns=True,
     options=(
         SORT,
         REVERSE,

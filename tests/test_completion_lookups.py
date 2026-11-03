@@ -4,6 +4,7 @@ what is searched for, what is offered and how it is described, the cache,
 and that every failure offers nothing rather than raising.
 """
 
+import dataclasses
 from datetime import datetime, timezone
 from itertools import count
 from types import SimpleNamespace
@@ -27,7 +28,7 @@ COMMON = ConfigCommon(
     key="key-id",
     secret="secret",
     namespace="ns",
-    name_tag="pwt",
+    name_tag="tara",
     url="https://api.example",
     use_pac=False,
 )
@@ -115,11 +116,11 @@ def test_only_names_beginning_with_the_word_are_offered(monkeypatch):
     offered, _ = _offered(
         monkeypatch,
         CANCEL,
-        [_summary("pwt-a", "RUNNING"), _summary("other", "RUNNING")],
-        "pw",
+        [_summary("tara-a", "RUNNING"), _summary("other", "RUNNING")],
+        "ta",
     )
 
-    assert [c.value for c in offered] == ["pwt-a"]
+    assert [c.value for c in offered] == ["tara-a"]
 
 
 def test_ids_are_offered_described_by_name_and_status(monkeypatch):
@@ -156,7 +157,7 @@ def test_the_search_is_scoped_as_the_command_scopes_it(monkeypatch):
 
     (search,), _ = client.work_client.get_work_requirements.call_args
     assert search.namespaces == ["ns"]
-    assert search.tag == "pwt"
+    assert search.tag == "tara"
     assert sorted(status.name for status in search.statuses) == [
         "FINISHING",
         "HELD",
@@ -175,7 +176,7 @@ def test_compute_requirements_are_searched_by_tag(monkeypatch):
     _, client = _offered(monkeypatch, TERMINATE, [])
 
     (search,), _ = client.compute_client.get_compute_requirement_summaries.call_args
-    assert search.tag == "pwt"
+    assert search.tag == "tara"
     assert "TERMINATED" not in {status.name for status in search.statuses}
 
 
@@ -184,17 +185,17 @@ def test_worker_pools_are_those_with_the_tag_in_their_name(monkeypatch):
     offered, client = _offered(
         monkeypatch,
         SHUTDOWN,
-        [_summary("pwt-pool", "RUNNING"), _summary("on-premise", "EMPTY")],
+        [_summary("tara-pool", "RUNNING"), _summary("on-premise", "EMPTY")],
     )
 
-    assert [c.value for c in offered] == ["pwt-pool"]
+    assert [c.value for c in offered] == ["tara-pool"]
     (search,), _ = client.worker_pool_client.get_worker_pools.call_args
-    assert search.name == "pwt"
+    assert search.name == "tara"
     assert search.namespaces == ["ns"]
 
 
 def test_worker_pools_with_another_tag_are_another_cache_entry(monkeypatch):
-    _offered(monkeypatch, SHUTDOWN, [_summary("pwt-pool", "RUNNING")])
+    _offered(monkeypatch, SHUTDOWN, [_summary("tara-pool", "RUNNING")])
     monkeypatch.setattr(
         completion_lookups,
         "_load_common",
@@ -211,11 +212,11 @@ def test_worker_pools_with_another_tag_are_another_cache_entry(monkeypatch):
     offered, client = _offered(
         monkeypatch,
         SHUTDOWN,
-        [_summary("pwt-pool", "RUNNING"), _summary("on-premise", "EMPTY")],
+        [_summary("tara-pool", "RUNNING"), _summary("on-premise", "EMPTY")],
     )
 
     assert client.worker_pool_client.get_worker_pools.called
-    assert sorted(c.value for c in offered) == ["on-premise", "pwt-pool"]
+    assert sorted(c.value for c in offered) == ["on-premise", "tara-pool"]
 
 
 def test_token_offers_configured_worker_pools_only(monkeypatch):
@@ -223,12 +224,12 @@ def test_token_offers_configured_worker_pools_only(monkeypatch):
         monkeypatch,
         TOKEN,
         [
-            _summary("pwt-c", "RUNNING", type_="co.yellowdog.ConfiguredWorkerPool"),
-            _summary("pwt-p", "RUNNING", type_="co.yellowdog.ProvisionedWorkerPool"),
+            _summary("tara-c", "RUNNING", type_="co.yellowdog.ConfiguredWorkerPool"),
+            _summary("tara-p", "RUNNING", type_="co.yellowdog.ProvisionedWorkerPool"),
         ],
     )
 
-    assert [c.value for c in offered] == ["pwt-c"]
+    assert [c.value for c in offered] == ["tara-c"]
 
 
 def test_one_page_of_the_cap_is_requested(monkeypatch):
@@ -307,10 +308,10 @@ def test_every_entity_can_be_looked_up(monkeypatch, entity):
     offered, _ = _offered(
         monkeypatch,
         Lookup(entity, ids=False, statuses=None),
-        [_summary("pwt-x", "RUNNING")],
+        [_summary("tara-x", "RUNNING")],
     )
 
-    assert [c.value for c in offered] == ["pwt-x"]
+    assert [c.value for c in offered] == ["tara-x"]
 
 
 # The configuration, loaded for real: load_config keeps the first command line
@@ -683,7 +684,7 @@ def test_a_typed_compute_requirement_narrows_the_instances(monkeypatch):
 
 
 def test_nodes_are_offered_by_id_described_by_their_pools_name(monkeypatch):
-    pools = [_summary("pwt-pool", "RUNNING", id_="ydid:wrkrpool:000000:p")]
+    pools = [_summary("tara-pool", "RUNNING", id_="ydid:wrkrpool:000000:p")]
     client = _client(pools)
     searched = []
     _with_children(
@@ -694,7 +695,7 @@ def test_nodes_are_offered_by_id_described_by_their_pools_name(monkeypatch):
     monkeypatch.setattr(completion_lookups, "_client", lambda common: client)
     offered = completion_lookups.candidates(_request(NODE_SHUTDOWN))
     assert [(c.value, c.description) for c in offered] == [
-        ("ydid:node:000000:p:1", "pwt-pool (RUNNING)")
+        ("ydid:node:000000:p:1", "tara-pool (RUNNING)")
     ]
 
 
@@ -797,12 +798,12 @@ def test_attribute_definitions_of_the_type(monkeypatch):
 def test_users_by_username_or_name(monkeypatch):
     from yellowdog_client.model import ExternalUser, InternalUser
 
-    internal = InternalUser(username="pwt", name="Peter")
+    internal = InternalUser(username="tara", name="Tara")
     external = ExternalUser(name="someone")
     _, offer = _resource(
         "InternalUser", monkeypatch, get_all_users=lambda client: [internal, external]
     )
-    assert [c.value for c in offer()] == ["pwt", "someone"]
+    assert [c.value for c in offer()] == ["tara", "someone"]
 
 
 def test_allowances_by_id_described_by_description(monkeypatch):
@@ -848,3 +849,31 @@ def test_configured_worker_pools_whatever_their_name(monkeypatch):
         lambda reference: SimpleNamespace(items=pools, nextSliceId=None)
     )
     assert [c.value for c in offer()] == ["on-premise"]
+
+
+def test_a_namespace_pattern_offers_nothing_and_asks_nothing(monkeypatch):
+    # A pattern names no one namespace to look in, and the command being
+    # completed may refuse it: nothing is offered, and no client is built
+    monkeypatch.setattr(
+        completion_lookups,
+        "_load_common",
+        lambda settings: dataclasses.replace(COMMON, namespace="tara-*"),
+    )
+    monkeypatch.setattr(
+        completion_lookups,
+        "_client",
+        lambda common: pytest.fail("a client was built"),
+    )
+    assert completion_lookups.candidates(_request(CANCEL)) == ()
+
+
+def test_a_configured_namespace_pattern_loads_without_exiting(tmp_path, monkeypatch):
+    (tmp_path / "config.toml").write_text(
+        '[common]\nkey = "k"\nsecret = "s"\nnamespace = "tara-*"\ntag = "t"\n',
+        encoding="utf-8",
+    )
+    assert _load_in(tmp_path, ["yd", "wr", "cancel"], monkeypatch) == [
+        "tara-*",
+        "t",
+        "k",
+    ]

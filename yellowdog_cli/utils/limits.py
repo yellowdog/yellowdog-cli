@@ -107,3 +107,8 @@ DEFAULT_LIST_LIMIT = 1000
 # A name pattern given to yd-show, yd-follow or yd-wait matching more than
 # this many objects is warned of (nothing is changed, so nothing is asked)
 PATTERN_MATCH_WARNING = 50
+
+# The most namespaces a namespace pattern ('-n team-*') may match: a search
+# names its namespaces in the request's URL, one query parameter each, which
+# a server limits to some kilobytes
+NAMESPACE_PATTERN_MAX_MATCHES = 100

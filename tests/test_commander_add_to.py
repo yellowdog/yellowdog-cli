@@ -44,7 +44,7 @@ CANCELLING = {
 @pytest.fixture
 def window(qapp):
     window = YellowDogApp()
-    window._discovery.tag = "pwt"
+    window._discovery.tag = "alice"
     yield window
     # Its timers stopped and children ended, so nothing of it runs in a
     # later test's event loop
@@ -88,7 +88,7 @@ def test_lists_the_active_work_requirements(window, captured, monkeypatch):
     asked = listed(window, monkeypatch, [])
     window._add_to_work_requirement_action()
     assert asked == [
-        ("yd list", ["--json"], ["work-requirements", "--active-only", "-t", "pwt"])
+        ("yd list", ["--json"], ["work-requirements", "--active-only", "-t", "alice"])
     ]
 
 
@@ -396,7 +396,7 @@ class TestFollowedWorkRequirements:
 @pytest.fixture
 def unattended(qapp):
     window = YellowDogApp(StartupSettings(disable_confirmations=True))
-    window._discovery.tag = "pwt"
+    window._discovery.tag = "alice"
     return window
 
 
