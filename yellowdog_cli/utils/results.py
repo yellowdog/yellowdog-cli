@@ -295,6 +295,13 @@ def flush_results() -> None:
     print_objects_as_json(list(_ITEMS))
 
 
+def nothing_recorded() -> bool:
+    """
+    Whether the command has recorded nothing: no items and no document.
+    """
+    return not (_HAS_DOCUMENT or _ITEMS)
+
+
 def flush_results_after_failure() -> None:
     """
     flush_results() for a wrapper's failure path, whose exit code is already

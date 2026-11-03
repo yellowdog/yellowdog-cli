@@ -1234,6 +1234,30 @@ class TestLive:
         )
         assert dc.check_namespace_granted(ctx).status is dc.Status.OK
 
+    def _granted(self, namespace, all_readable, readable):
+        ctx = _ctx(
+            config_loaded=True,
+            config_common=self._cfg(namespace=namespace),
+            client=object(),
+        )
+        ctx.application = SimpleNamespace(
+            allNamespacesReadable=all_readable, readableNamespaces=readable
+        )
+        return dc.check_namespace_granted(ctx)
+
+    def test_a_namespace_pattern_is_granted_by_its_readable_matches(self):
+        r = self._granted("team-*", False, ["team-b", "team-a", "other"])
+        assert r == dc.Result(dc.Status.OK, "'team-*' matches 'team-a', 'team-b'")
+
+    def test_a_namespace_pattern_matching_nothing_readable_warns(self):
+        r = self._granted("team-*", False, ["other"])
+        assert r.status is dc.Status.WARN
+        assert r.detail == "'team-*' matches no namespace this application can read"
+
+    def test_a_namespace_pattern_for_a_global_reader(self):
+        r = self._granted("team-*", True, [])
+        assert r == dc.Result(dc.Status.OK, "'team-*' (every namespace is readable)")
+
     def _keyrings_row(self, monkeypatch, lookup):
         import yellowdog_cli.utils.entity_utils as entity_utils
 
@@ -1873,3 +1897,29 @@ class TestShellCompletion:
         for name in ("yd on PATH", "Shell completion"):
             assert rows[name].group == "Installation"
             assert rows[name].needs is dc.Need.NOTHING
+
+
+def test_a_namespace_pattern_is_warned_of(monkeypatch):
+    from yellowdog_cli.utils import load_config
+
+    monkeypatch.setitem(
+        load_config.CONFIG_SOURCES, "namespace", "environment (YD_NAMESPACE)"
+    )
+    ctx = _ctx(config_loaded=True, config_common=_cfg(namespace="team-*"))
+    r = dc.check_config_value("namespace")(ctx)
+    assert r.status is dc.Status.WARN
+    assert r.detail == "team-* (environment (YD_NAMESPACE))"
+    assert r.remedy == (
+        "A namespace pattern is taken by 'yd list' and the 'list' verbs alone;"
+        " every other command refuses it (exit code 3): set one namespace for them"
+    )
+
+
+def test_a_plain_namespace_is_ok(monkeypatch):
+    from yellowdog_cli.utils import load_config
+
+    monkeypatch.setitem(load_config.CONFIG_SOURCES, "namespace", "default")
+    ctx = _ctx(config_loaded=True, config_common=_cfg(namespace="default"))
+    assert dc.check_config_value("namespace")(ctx) == dc.Result(
+        dc.Status.OK, "default (default)"
+    )

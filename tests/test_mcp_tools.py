@@ -836,3 +836,11 @@ def test_descriptions_name_commands_in_the_yd_form():
         ]
         for text in texts:
             assert not re.search(r"\byd-[a-z]", text), (name, text)
+
+
+def test_the_list_tools_say_their_namespace_takes_a_pattern():
+    # The noun list verbs have no tools of their own: yd_list lists them all
+    listing = TOOLS["yd_list"].input_schema["properties"]["namespace"]
+    assert "pattern" in listing["description"]
+    cancel = TOOLS["yd_workrequirement_cancel"].input_schema["properties"]["namespace"]
+    assert "pattern" not in cancel["description"]

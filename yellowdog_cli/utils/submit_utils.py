@@ -732,7 +732,7 @@ class RcloneUploadedFiles:
         Example:
             conn_str = "rclone:S3,type=s3,provider=AWS,env_auth=true,\
                         region=eu-west-2,location_constraint=eu-west-2:\
-                        tech.yellowdog.devsandbox.dev-platform/yd-demo/pwt/file.txt"
+                        tech.yellowdog.devsandbox.dev-platform/yd-demo/alice/file.txt"
             delete_single_s3_object(conn_str)
         """
         from rclone_api import Config

@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 08:18:21 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov  3 09:40:56 GMT 2026 -->
 
 <!--te-->
 
@@ -58,7 +58,7 @@ yd mcp /home/alice/rendering/config.toml
 The launch options are those of the other `yd` commands:
 
 - the configuration file, as the positional argument or with `-c`/`--config`
-- `-n`/`--namespace` and `-t`/`--tag`, which override the configuration's namespace and tag
+- `-n`/`--namespace` and `-t`/`--tag`, which override the configuration's namespace and tag (a namespace pattern such as `team-*` is refused here, since the namespace is given to every command; a `yd_list` call's own `namespace` takes one)
 - `-v`/`--variable name=value`, repeated for each variable
 - `--transport stdio`, the default and the only transport
 
@@ -303,6 +303,8 @@ Six commands have no tool at all: `yd cloudwizard` (interactive cloud provider s
 ## Namespace, Tag and Variables
 
 The `-n`/`-t`/`-v` values given at launch apply to every command the server runs. A tool's own `namespace`, `tag` or `variable` argument, where the underlying command has one, is added to the command line after the launch-time values, and so overrides them for that call.
+
+`yd_list`'s `namespace` may be a pattern (`team-a-*`), listing every readable namespace it matches, as `yd list -n` does; every other tool's `namespace` names one namespace, and a pattern there is refused.
 
 ## Logging
 

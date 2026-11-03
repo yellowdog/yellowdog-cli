@@ -188,3 +188,55 @@ def test_no_command_module_imports_what_its_context_carries():
                     if alias.name in _CONTEXT_GLOBALS
                 ]
     assert offenders == []
+
+
+def _run_exiting(monkeypatch, code: int, recorded: list) -> list[str]:
+    """
+    run_command() of a command that records 'recorded' and then exits with
+    'code', under '--json': what the flush printed.
+    """
+    from yellowdog_cli.utils import output_settings, results
+
+    args = SimpleNamespace(debug=False, print_pid=True, json_output=True)
+    for name in (
+        "enable_undefined_variable_warnings",
+        "report_problems_to",
+        "warn_of_undefined_config_variables",
+        "warn_of_config_violations",
+    ):
+        monkeypatch.setattr(runner_module, name, lambda *a, **k: None)
+    printed: list[str] = []
+    monkeypatch.setattr(
+        results, "print_objects_as_json", lambda items: printed.append(str(items))
+    )
+    results.reset_results()
+
+    def command():
+        for item in recorded:
+            results.record(item)
+        raise SystemExit(code)
+
+    try:
+        with output_settings.configured(SimpleNamespace(json_output=True)):
+            with pytest.raises(SystemExit) as raised:
+                runner_module.run_command(command, args=args, config_sections=())
+    finally:
+        results.reset_results()
+    assert raised.value.code == code
+    return printed
+
+
+@pytest.mark.parametrize("code", [ExitCode.USAGE, ExitCode.CONFIGURATION])
+def test_a_usage_or_configuration_exit_with_nothing_recorded_prints_nothing(
+    monkeypatch, code
+):
+    # docs/json-output.md: exit codes 2 and 3 leave stdout empty
+    assert _run_exiting(monkeypatch, code, []) == []
+
+
+def test_a_usage_exit_after_records_still_reports_them(monkeypatch):
+    assert _run_exiting(monkeypatch, ExitCode.USAGE, [{"id": "a"}]) == ["[{'id': 'a'}]"]
+
+
+def test_another_exit_with_nothing_recorded_still_prints_an_empty_array(monkeypatch):
+    assert _run_exiting(monkeypatch, ExitCode.FAILURE, []) == ["[]"]

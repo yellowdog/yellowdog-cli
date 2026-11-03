@@ -6,6 +6,7 @@ Command to list YellowDog entities.
 
 import fnmatch
 import logging
+import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from itertools import chain, islice
 from os.path import exists
@@ -91,6 +92,7 @@ from yellowdog_cli.utils.entity_names import (
     RN_STRING_ATTRIBUTE_DEFINITION,
 )
 from yellowdog_cli.utils.entity_utils import (
+    NoMatchingNamespaces,
     filter_phrase,
     filter_summaries_by_name_glob,
     find_compute_requirement_by_name,
@@ -109,6 +111,7 @@ from yellowdog_cli.utils.entity_utils import (
     get_worker_pool_by_id,
     get_worker_pool_id_by_name,
     get_worker_pool_summaries,
+    in_namespace_scope,
     iterate_tasks_in_task_group,
     namespace_scope,
     resolve_name_glob,
@@ -117,8 +120,12 @@ from yellowdog_cli.utils.entity_utils import (
     substitute_ids_for_names_in_crt,
     substitute_image_family_id_for_name_in_cst,
 )
-from yellowdog_cli.utils.exit_codes import NotFoundError
-from yellowdog_cli.utils.glob_utils import glob_literal_hint, glob_search_prefix
+from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError
+from yellowdog_cli.utils.glob_utils import (
+    contains_glob_chars,
+    glob_literal_hint,
+    glob_search_prefix,
+)
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import resolved_each
@@ -126,6 +133,7 @@ from yellowdog_cli.utils.output_settings import configure_output
 from yellowdog_cli.utils.printing import (
     counted,
     plural,
+    print_error,
     print_info,
     print_json,
     print_objects_as_json,
@@ -479,10 +487,73 @@ def main(ctx: RunContext):
 
     _warn_of_unknown_statuses(ctx)
 
+    list_entities(ctx)
+
+
+def list_entities(ctx: RunContext) -> None:
+    """
+    List the entity type asked for. A namespace pattern matching no readable
+    namespace is an empty listing, raised before any search is made
+    (search_namespaces()), never a search of every namespace.
+    """
     # An option that does not apply to the entity type has been refused as
     # the command line was parsed ('check_list_options' in the registry); the
     # type itself is a required positional, so is always given
-    _LISTERS[cast(str, ctx.args.entity_type)](ctx)
+    _check_within_targets_name_their_namespace(ctx)
+    try:
+        _LISTERS[cast(str, ctx.args.entity_type)](ctx)
+    except NoMatchingNamespaces as e:
+        _print_empty(ctx, str(e))
+
+
+def _namespace_is_pattern(ctx: RunContext) -> bool:
+    """
+    Whether the namespace is a pattern ('team-*'), which names no namespace to
+    look up a name in.
+    """
+    return bool(ctx.config.namespace) and contains_glob_chars(ctx.config.namespace)
+
+
+def _in_pattern_scope(ctx: RunContext, items: list[Any]) -> list[Any]:
+    """
+    Under a namespace pattern, the items in the namespaces it matched: a
+    search that matches a namespace as a substring would also send those of
+    'team-ab' for 'team-a'. A plain namespace is left as the search gave it.
+    Image Families are never held to it, since their search adds the public
+    ones of every namespace on purpose.
+    """
+    namespace = (
+        resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )[0]
+        if ctx.args.name_glob
+        else ctx.config.namespace
+    )
+    if not namespace or not contains_glob_chars(namespace):
+        return items
+    return [
+        item
+        for item in items
+        if in_namespace_scope(ctx.client, namespace, getattr(item, "namespace", None))
+    ]
+
+
+def _check_within_targets_name_their_namespace(ctx: RunContext) -> None:
+    """
+    Under a namespace pattern, each '--within' target is an ID or names its
+    namespace ('namespace/name'): a bare name has no one namespace to be
+    looked up in, and is refused before anything is looked up.
+    """
+    if not _namespace_is_pattern(ctx):
+        return
+    for target in ctx.args.within_targets or []:
+        target_namespace, slash, _ = target.partition("/")
+        if get_ydid_type(target) is None and not (slash and target_namespace):
+            print_error(
+                f"--within '{target}' names no namespace: with the namespace"
+                f" pattern '{ctx.config.namespace}', give 'namespace/name' or an ID"
+            )
+            sys.exit(ExitCode.USAGE)
 
 
 def _adjust_output_options(ctx: RunContext) -> None:
@@ -559,7 +630,9 @@ def list_work_requirements(ctx: RunContext):
     )
     work_requirement_summaries: list[WorkRequirementSummary]
     if ctx.args.name_glob and ctx.args.entity_type == ET_WORK_REQUIREMENTS:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             f"Listing {_active_phrase(ctx)}Work Requirements"
             f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
@@ -585,6 +658,7 @@ def list_work_requirements(ctx: RunContext):
             tag=ctx.config.name_tag,
             exclude_filter=exclude_filter,
         )
+    work_requirement_summaries = _in_pattern_scope(ctx, work_requirement_summaries)
     if not work_requirement_summaries:
         _print_empty(ctx, "No matching Work Requirements")
         return
@@ -876,7 +950,12 @@ def _task_groups_within(ctx: RunContext, target: str) -> list[TaskGroup]:
                 raise NotFoundError(f"Task Group '{target}' not found")
             return found
         case None:
-            named = resolve_named_target(ctx.client, target, ctx.config.namespace)
+            named = resolve_named_target(
+                ctx.client,
+                target,
+                ctx.config.namespace,
+                qualified_only=_namespace_is_pattern(ctx),
+            )
             if named.task_group is not None:
                 return [named.task_group]
             return get_task_groups_from_wr_by_id(
@@ -1085,7 +1164,9 @@ def list_worker_pools(ctx: RunContext):
 
     worker_pool_summaries: list[WorkerPoolSummary]
     if ctx.args.name_glob:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             f"Listing {_active_phrase(ctx)}{_pool_kind_phrase(ctx)}Worker Pools"
             f" {namespace_scope(ctx.client, namespace)} "
@@ -1123,13 +1204,13 @@ def list_worker_pools(ctx: RunContext):
         else []
     )
 
-    # Only the namespace searched, matched exactly: a substring match let
-    # 'dev' take in 'dev-team'
+    # Only the namespaces searched, matched exactly: the search matches a
+    # substring, which would let 'dev' take in 'dev-team'
     worker_pools = [
         wp_summary
         for wp_summary in worker_pool_summaries
         if wp_summary.status not in excluded_states
-        and (not searched_namespace or wp_summary.namespace == searched_namespace)
+        and in_namespace_scope(ctx.client, searched_namespace, wp_summary.namespace)
     ]
     # A Worker Pool's own status filters Worker Pools, not their Nodes or
     # Workers, which are filtered on theirs
@@ -1356,7 +1437,9 @@ def list_compute_requirements(ctx: RunContext):
 
     compute_requirement_summaries: list[ComputeRequirementSummary]
     if ctx.args.name_glob:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             f"Listing {_active_phrase(ctx)}Compute Requirements"
             f" {namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
@@ -1381,6 +1464,9 @@ def list_compute_requirements(ctx: RunContext):
             ctx.client, ctx.config.namespace, ctx.config.name_tag, included_statuses
         )
 
+    compute_requirement_summaries = _in_pattern_scope(
+        ctx, compute_requirement_summaries
+    )
     if not compute_requirement_summaries:
         _print_empty(ctx, "No matching Compute Requirements")
         return
@@ -1701,7 +1787,9 @@ def list_compute_requirement_templates(ctx: RunContext):
     """
     cr_templates: list[ComputeRequirementTemplateSummary]
     if ctx.args.name_glob:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             "Listing Compute Requirement Templates "
             f"{namespace_scope(ctx.client, namespace)} matching name pattern '{name}'"
@@ -1728,6 +1816,7 @@ def list_compute_requirement_templates(ctx: RunContext):
             partial_name_matches=True,
         )
 
+    cr_templates = _in_pattern_scope(ctx, cr_templates)
     if not cr_templates:
         _print_empty(ctx, "No matching Compute Requirement Templates")
         return
@@ -1756,7 +1845,9 @@ def list_compute_source_templates(ctx: RunContext):
     """
 
     if ctx.args.name_glob:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             f"Listing Compute Source Templates {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
@@ -1780,6 +1871,7 @@ def list_compute_source_templates(ctx: RunContext):
     cs_templates = _apply_provider_filter(
         ctx, cs_templates, lambda template: template.provider
     )
+    cs_templates = _in_pattern_scope(ctx, cs_templates)
     if not cs_templates:
         _print_empty(ctx, "No matching Compute Source Templates")
         return
@@ -1827,7 +1919,9 @@ def list_image_families(ctx: RunContext):
     """
     image_family_summaries: list[MachineImageFamilySummary]
     if ctx.args.name_glob:
-        namespace, name = resolve_name_glob(ctx.args.name_glob, ctx.config.namespace)
+        namespace, name = resolve_name_glob(
+            ctx.args.name_glob, ctx.config.namespace, allow_namespace_pattern=True
+        )
         print_info(
             f"Listing Machine Image Families {namespace_scope(ctx.client, namespace)} "
             f"matching name pattern '{name}'"
@@ -1984,10 +2078,16 @@ def list_namespaces(ctx: RunContext):
 
 def list_namespace_policies(ctx: RunContext):
     """
-    List namespace policies.
+    List namespace policies: of the namespace or pattern given with '-n',
+    else of every readable namespace.
     """
 
-    np_search = NamespacePolicySearch(namespaces=search_namespaces(ctx.client, None))
+    # '-n' alone scopes them, as '-t' alone filters the shared resources by
+    # name (_shared_tag()): the configured namespace is the one work goes
+    # in, not a filter on the policies of every readable namespace
+    np_search = NamespacePolicySearch(
+        namespaces=search_namespaces(ctx.client, ctx.args.namespace or None)
+    )
     search_client: SearchClient = ctx.client.namespaces_client.get_namespace_policies(
         np_search
     )

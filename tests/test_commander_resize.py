@@ -64,7 +64,7 @@ CONFIGURED = {
 
 def make_window(settings: StartupSettings | None = None) -> YellowDogApp:
     window = YellowDogApp(settings) if settings else YellowDogApp()
-    window._discovery.tag = "pwt"
+    window._discovery.tag = "alice"
     return window
 
 
@@ -116,7 +116,7 @@ def test_lists_the_active_worker_pools_in_full(window, captured, monkeypatch):
         (
             "yd list",
             ["--json"],
-            ["worker-pools", "--active-only", "--details", "-t", "pwt"],
+            ["worker-pools", "--active-only", "--details", "-t", "alice"],
         )
     ]
 
@@ -297,7 +297,7 @@ def test_yes_still_shows_the_dialog(qapp, monkeypatch):
 # spin box was too narrow for its digit. A word-wrapped label is sized before it
 # knows its width, and the warning appeared after the dialog had taken its size.
 
-LONG_POOL = dict(OLDER, name="pyex-bash-pwt_260929-1350413-vg", expectedNodeCount=2)
+LONG_POOL = dict(OLDER, name="pyex-bash-alice_260929-1350413-vg", expectedNodeCount=2)
 
 
 def clipped_labels(dialog) -> dict:

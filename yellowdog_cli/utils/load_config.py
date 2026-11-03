@@ -26,6 +26,7 @@ from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.file_substitution import (
     load_toml_file_with_variable_substitutions,
 )
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
     CR_MAX_INSTANCES,
     PLATFORM_READ_TIMEOUT,
@@ -672,6 +673,9 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
             add_substitutions_without_overwriting(subs={SECRET: secret})
 
         namespace = _resolved_common_value(NAMESPACE, common_section[NAMESPACE], strict)
+        _refuse_namespace_pattern(
+            namespace, CONFIG_SOURCES.get(NAMESPACE, "configured")
+        )
         add_substitutions_without_overwriting(subs={NAMESPACE: namespace})
         name_tag = _resolved_common_value(NAME_TAG, common_section[NAME_TAG], strict)
         add_substitutions_without_overwriting(subs={NAME_TAG: name_tag})
@@ -863,6 +867,27 @@ def _resolved_url(common_section: dict, strict: bool = True) -> str:
     return url
 
 
+def _refuse_namespace_pattern(namespace: str, source: str) -> None:
+    """
+    A namespace that is a pattern ('team-*', from the file, the environment
+    or '--property') ends the run of a command that would act on, or write
+    to, namespaces it was not given (CLIParser.namespace_pattern_refused);
+    the listing commands take it, and yd-doctor and yd-variables report it.
+    The command line's '--namespace' was refused as parsed. Read with
+    getattr(), since completion loads the configuration with arguments of
+    its own, which refuse nothing.
+    """
+    if not contains_glob_chars(namespace):
+        return
+    if getattr(_ARGS, "namespace_pattern_refused", False) is not True:
+        return
+    print_error(
+        f"The namespace '{namespace}' ({source}) is a pattern: only 'yd list'"
+        " and the 'list' verbs take one"
+    )
+    exit(ExitCode.CONFIGURATION)
+
+
 def _resolved_common_value(key_name: str, value: object, strict: bool = True) -> str:
     """
     A [common] value with its variables substituted. One that is not text
@@ -946,19 +971,29 @@ def _load_namespace_and_tag() -> None:
     explicit_config = config_file_explicitly_selected()
 
     if _ARGS.namespace is not None:
-        namespace = _ARGS.namespace
+        namespace, source = _ARGS.namespace, "command line"
     elif _set_by_property_override(COMMON_SECTION, NAMESPACE):
-        namespace = str(common_section[NAMESPACE])
+        namespace, source = str(common_section[NAMESPACE]), "command line"
     elif explicit_config and common_section.get(NAMESPACE) is not None:
-        namespace = str(common_section[NAMESPACE])
+        namespace, source = (
+            str(common_section[NAMESPACE]),
+            f"config file ({CONFIG_FILE})",
+        )
         _outranked(f"{COMMON_SECTION}.{NAMESPACE}", YD_NAMESPACE, namespace)
     elif os.environ.get(YD_NAMESPACE) is not None:
-        namespace = os.environ[YD_NAMESPACE]
+        namespace, source = os.environ[YD_NAMESPACE], f"environment ({YD_NAMESPACE})"
     elif common_section.get(NAMESPACE) is not None:
-        namespace = str(common_section[NAMESPACE])
+        namespace, source = (
+            str(common_section[NAMESPACE]),
+            f"config file ({CONFIG_FILE})",
+        )
     else:
-        namespace = "default"
+        namespace, source = "default", "default"
     namespace = _resolve_value(namespace, f"{COMMON_SECTION}.{NAMESPACE}")
+    # The data client commands reach {{namespace}} here alone, never through
+    # load_config_common(): a pattern would build a literal 'team-*/...' path
+    if isinstance(namespace, str):
+        _refuse_namespace_pattern(namespace, source)
 
     if _ARGS.tag is not None:
         name_tag = _ARGS.tag

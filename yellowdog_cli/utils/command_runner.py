@@ -34,6 +34,7 @@ from yellowdog_cli.utils.results import (
     failure_exit_code,
     flush_results,
     flush_results_after_failure,
+    nothing_recorded,
 )
 from yellowdog_cli.utils.specs.schema_cache import report_problems_to
 from yellowdog_cli.utils.top_level import deprecation_message
@@ -152,7 +153,14 @@ def run_command(
     except SystemExit as e:
         # An explicit exit code raised by the command is kept
         exit_code = exit_code_of(e)
-        flush_results_after_failure()
+        # A usage or configuration error found as the command starts
+        # ('--within' under a namespace pattern, a data client path check)
+        # leaves stdout empty, as argparse's and the loader's do
+        # (docs/json-output.md); records already made are still reported
+        if not (
+            exit_code in (ExitCode.USAGE, ExitCode.CONFIGURATION) and nothing_recorded()
+        ):
+            flush_results_after_failure()
     except Exception as e:
         _LOG.debug("%s raised", type(e).__name__, exc_info=True)
         if not isinstance(e, ReportedFailure):  # else reported already

@@ -2,6 +2,24 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.9.0 — 2026-11-03
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`--json` leaves stdout empty on a usage or configuration error found as a command starts** (exit code 2 or 3), as it does for one found as the command line is read: `yd data delete`, `upload`, `download` and `copy` refusing a path printed `[]` before exiting 2.
+- **`yd list namespacepolicies` honours `-n`**: the policies of the namespace (or pattern) given, where it listed every readable namespace's whatever `-n` said; without `-n` it still lists them all.
+- **`yd workerpool list` counts claimed Workers**: its Workers column is `Claimed/All`, the Workers a Task Group has claimed, where it was `Working/All`, which counted the same Workers though a claimed Worker may be idle.
+
+### Listing
+
+- **`yd list` takes a namespace pattern**: `yd workrequirement list -n 'team-a-*'` lists across every readable namespace the pattern matches (at most 100), and `--name 'team-*/render-*'` takes one in its namespace part. A pattern matching nothing is an empty listing. Every other command refuses a pattern, whether from `--namespace` (exit code 2) or the configuration file, `YD_NAMESPACE` or `--property` (exit code 3), and so does `yd mcp --namespace`. See [Listing Several Namespaces](docs/commands.md#listing-several-namespaces).
+
+### Other
+
+- **YellowDog SDK 15.9.3 is now the minimum.** Its corrected descriptions are reflected in the CLI's: `maintainInstanceCount` keeps the target number of Instances alive (`PENDING`, `RUNNING`, `STOPPING` or `STOPPED`) while the Compute Requirement is `RUNNING`; `minWorkers` keeps Workers claimed while the Task Group is `RUNNING` and does not delay its start; and `tasksPerWorker` sizes claims only until the Platform has estimated how long the Tasks take.
+
 ## 15.8.0 — 2026-11-02
 
 ### Upgrading

@@ -537,7 +537,7 @@ class TestMembers:
 
     def test_a_user_is_shown_with_its_groups(self, capsys):
         client = MagicMock()
-        client.account_client.get_user.return_value = _Obj("pwt")
+        client.account_client.get_user.return_value = _Obj("alice")
         client.account_client.get_user_groups.return_value.list_all.return_value = [
             _member("ydid:group:1", "administrators")
         ]

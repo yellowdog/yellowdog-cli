@@ -11,6 +11,7 @@ import sys
 
 from yellowdog_cli.mcp.tools import ServerSettings
 from yellowdog_cli.utils.check_imports import check_mcp_imports
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 from yellowdog_cli.utils.variable_syntax import (
@@ -115,6 +116,12 @@ def parse_args(argv: list[str] | None = None) -> ServerSettings:
     args = parser.parse_args(argv)
     if args.config_file is not None and args.config_option is not None:
         parser.error(ONCE)
+    if args.namespace is not None and contains_glob_chars(args.namespace):
+        parser.error(
+            f"--namespace '{args.namespace}' is a pattern: the server's namespace"
+            " is given to every command; give one namespace, or a pattern to a"
+            " list tool"
+        )
     return ServerSettings(
         config_file=args.config_file or args.config_option,
         namespace=args.namespace,

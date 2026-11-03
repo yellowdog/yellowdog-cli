@@ -67,6 +67,8 @@ def _args(entity_type: str, **values) -> Any:
         with_errors=False,
         within_targets=None,
         list_limit=0,
+        # '-n' as parsed when not given
+        namespace=None,
     )
     defaults.update(values)
     return SimpleNamespace(**defaults)
@@ -898,15 +900,15 @@ class TestWithin:
         ctx = self._ctx(monkeypatch, "tasks", "my-wr/tg-1")
         seen = []
 
-        def resolve(client, target, namespace):
-            seen.append((target, namespace))
+        def resolve(client, target, namespace, qualified_only=False):
+            seen.append((target, namespace, qualified_only))
             return NamedTarget(SimpleNamespace(id=WR), self._groups()[0])
 
         monkeypatch.setattr(yd_list, "resolve_named_target", resolve)
         assert [
             g.id for g in yd_list._task_groups_within(ctx, ctx.args.within_targets[0])
         ] == [TG1]
-        assert seen == [("my-wr/tg-1", "ns")]
+        assert seen == [("my-wr/tg-1", "ns", False)]
 
     def test_the_tasks_within_are_listed_without_asking(
         self, listing, monkeypatch, capsys

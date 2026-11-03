@@ -81,16 +81,38 @@ def named_target_entity_type(target: str) -> str:
 
 
 def resolve_named_target(
-    client: PlatformClient, target: str, namespace: str | None
+    client: PlatformClient,
+    target: str,
+    namespace: str | None,
+    qualified_only: bool = False,
 ) -> NamedTarget:
     """
     The Work Requirement, or Task Group, a named target names. Raises
     TargetNotFound, MalformedTarget or AmbiguousNameError; any other failure
-    is the lookup's own, and is raised as it is.
+    is the lookup's own, and is raised as it is. With 'qualified_only' (yd
+    list --within under a namespace pattern, which is no namespace to look a
+    name up in), the target must name its namespace: 'namespace/wr' or
+    'namespace/wr/tg', never 'wr' or 'wr/tg'.
     """
     parts = target.split("/")
     if parts[0] == "" and len(parts) > 1:  # a leading '/' names no namespace
         parts = parts[1:]
+
+    if qualified_only:
+        if len(parts) == 2:
+            target_namespace, work_requirement_name = parts
+            found = _work_requirement_named(
+                client, work_requirement_name, target_namespace
+            )
+            if found is None:
+                raise TargetNotFound(
+                    f"Work Requirement '{work_requirement_name}' in namespace"
+                    f" '{target_namespace}'",
+                    ET_WORK_REQUIREMENTS,
+                )
+            return NamedTarget(found)
+        if len(parts) != 3:
+            raise MalformedTarget(target)
 
     if len(parts) == 1:
         work_requirement = _work_requirement_named(client, parts[0], namespace)

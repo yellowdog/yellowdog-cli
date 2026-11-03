@@ -8,9 +8,11 @@ from typing import Any
 
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.command_registry import (
+    NAMESPACE_PATTERN_REPORTERS,
     Command,
     build_parser,
     check_namespace_and_tag_are_no_files,
+    check_namespace_is_no_pattern,
     command_from_argv0,
     named_target_type,
     parse_range,
@@ -93,12 +95,39 @@ class CLIParser:
 
         if self.command is not None:
             check_namespace_and_tag_are_no_files(self.args, self.parser)
+            check_namespace_is_no_pattern(
+                self.args, self.parser, self.namespace_patterns_allowed
+            )
             for validator in self.command.validators:
                 validator(self.args, self.parser)
 
     @property
     def namespace_required(self) -> bool:
         return self.command is not None and self.command.requires_namespace_and_tag
+
+    @property
+    def namespace_patterns_allowed(self) -> bool:
+        """
+        Whether the namespace may be a pattern ('team-*'): for the listing
+        commands alone (Command.namespace_patterns).
+        """
+        return self.command is not None and self.command.namespace_patterns
+
+    @property
+    def namespace_pattern_refused(self) -> bool:
+        """
+        Whether a configured namespace pattern (the file, the environment or
+        '--property') ends the run: for every command but the listing ones,
+        which take it, and those that only report the configuration
+        (NAMESPACE_PATTERN_REPORTERS). Whether credentials are required, or
+        '--validate' given, plays no part, so a check passes nothing the run
+        would refuse.
+        """
+        return (
+            self.command is not None
+            and not self.command.namespace_patterns
+            and self.command_name not in NAMESPACE_PATTERN_REPORTERS
+        )
 
     @property
     def tag_required(self) -> bool:
