@@ -2826,7 +2826,8 @@ def run_dc(monkeypatch, capsys):
     Return run_dc(module, **args): run a data client command's main()
     through dataclient_wrapper against the local 'remote', and return
     (parsed stdout, stderr, exit code); stdout is left as text when
-    'json_output' is false.
+    'json_output' is false, and is None for a usage or configuration exit,
+    which prints nothing on it.
     """
     config = ConfigDataClient(remote="loc,type=local", bucket="remote")
 
@@ -2850,7 +2851,13 @@ def run_dc(monkeypatch, capsys):
         with pytest.raises(SystemExit) as exit_info:
             module.main()
         out, err = capsys.readouterr()
-        return (json_loads(out) if args.json_output else out), err, exit_info.value.code
+        code = exit_info.value.code
+        if args.json_output and code in (ExitCode.USAGE, ExitCode.CONFIGURATION):
+            # A usage or configuration error leaves stdout empty
+            # (docs/json-output.md), a refusal as the command starts included
+            assert out == ""
+            return None, err, code
+        return (json_loads(out) if args.json_output else out), err, code
 
     return _run
 

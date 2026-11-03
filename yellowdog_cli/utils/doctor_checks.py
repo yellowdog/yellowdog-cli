@@ -15,6 +15,7 @@ row is printed.
 from __future__ import annotations
 
 import contextlib
+import fnmatch
 import importlib.util
 import io
 import logging
@@ -43,6 +44,7 @@ from yellowdog_cli.utils.check_imports import (
 from yellowdog_cli.utils.dataclient.rclone import shown_remote
 from yellowdog_cli.utils.dataclient.rclone_version import find_rclone, rclone_version
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
+from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.paths import is_user_config_file
 from yellowdog_cli.utils.property_names import (
@@ -745,6 +747,14 @@ def check_config_value(prop: str) -> Callable[[Context], Result]:
             )
         shown = REDACTED_VALUE if prop == SECRET else str(value)
         source = load_config.CONFIG_SOURCES.get(prop, "not set")
+        if prop == NAMESPACE and contains_glob_chars(str(value)):
+            return Result(
+                Status.WARN,
+                f"{shown} ({source})",
+                "A namespace pattern is taken by 'yd list' and the 'list' verbs"
+                " alone; every other command refuses it (exit code 3): set one"
+                " namespace for them",
+            )
         return Result(Status.OK, f"{shown} ({source})")
 
     return run
@@ -1072,6 +1082,8 @@ def check_namespace_granted(ctx: Context) -> Result:
     if ctx.application is None:
         return Result(Status.SKIP, "not authenticated")
     namespace = ctx.config_common.namespace
+    if contains_glob_chars(namespace):
+        return _pattern_granted(ctx, namespace)
     if ctx.application.allNamespacesReadable or namespace in (
         ctx.application.readableNamespaces or []
     ):
@@ -1081,6 +1093,32 @@ def check_namespace_granted(ctx: Context) -> Result:
         f"'{namespace}' is not readable by this application",
         "Give the Application a role scoped to this namespace, or set a"
         " namespace it can read",
+    )
+
+
+def _pattern_granted(ctx: Context, pattern: str) -> Result:
+    """
+    The namespaces a configured pattern matches among those the Application
+    can read, as 'yd list' matches them: every one, for an Application that
+    reads them all, which 'yd list' searches for.
+    """
+    assert ctx.application is not None
+    if ctx.application.allNamespacesReadable:
+        return Result(Status.OK, f"'{pattern}' (every namespace is readable)")
+    matches = sorted(
+        n
+        for n in ctx.application.readableNamespaces or []
+        if fnmatch.fnmatchcase(n, pattern)
+    )
+    if not matches:
+        return Result(
+            Status.WARN,
+            f"'{pattern}' matches no namespace this application can read",
+            "Give the Application a role scoped to a namespace the pattern"
+            " matches, or set another pattern",
+        )
+    return Result(
+        Status.OK, f"'{pattern}' matches {', '.join(repr(n) for n in matches)}"
     )
 
 

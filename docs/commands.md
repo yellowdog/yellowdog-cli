@@ -1654,9 +1654,9 @@ The first line of the listing names the namespaces matched. `--name` takes a pat
 
 ##### Details
 
-- A pattern is for `yd list` and the `list` verbs alone. Every other command refuses one, whether it was given with `--namespace` (exit code 2) or configured in the configuration file, `YD_NAMESPACE` or `--property common.namespace=` (exit code 3), so no command acts on, or creates in, namespaces it was not given. `yd doctor` and `yd variables`, which only report the configuration, show a configured pattern as it is.
+- A pattern is for `yd list` and the `list` verbs alone. Every other command refuses one, whether it was given with `--namespace` (exit code 2) or configured in the configuration file, `YD_NAMESPACE` or `--property common.namespace=` (exit code 3), so no command acts on, or creates in, namespaces it was not given. `yd doctor` and `yd variables`, which only report the configuration, show a configured pattern as it is, `yd doctor` warning that other commands refuse it and naming the readable namespaces it matches.
 - A pattern matching no readable namespace is an empty listing (exit code 0): `No namespaces match 'team-x-*'`, or `0` with `--count` and `[]` with `--json`.
-- A pattern may match at most 100 namespaces, since a search names them in its request; more is refused (exit code 1), saying how many matched. For an Application that can read every namespace, a pattern matching all of them (`-n '*'`) is listed as `-n ''` is.
+- A pattern may match at most 100 namespaces, since a search names them in its request; more is refused (exit code 1), saying how many matched. A pattern matching every namespace the Application can read (`-n '*'`) is listed as `-n ''` is, however many there are.
 - Under a pattern, `--within` takes IDs and names given with their namespace (`namespace/name`, `namespace/wr/tg`); a bare name, which has no one namespace to be looked up in, is refused (exit code 2).
 - `namespace-policies` are those of the namespaces `-n` gives, or of every readable namespace without it.
 

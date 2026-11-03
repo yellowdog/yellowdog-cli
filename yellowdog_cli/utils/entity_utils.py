@@ -149,13 +149,18 @@ def search_namespaces(
     matches (matching_namespaces()), and raises NoMatchingNamespaces for
     none: an empty list must never reach a search, which could read it as
     every namespace. One matching more than NAMESPACE_PATTERN_MAX_MATCHES
-    raises TooManyNamespaces, unless it matched every namespace of an
-    Application that can read them all, which is searched unscoped (None).
+    raises TooManyNamespaces, unless it matched every namespace the
+    Application can read, which is scoped as '' is: unscoped (None) for an
+    Application that can read them all, else every one it can.
     """
     if namespace and contains_glob_chars(namespace):
         matches = matching_namespaces(client, namespace)
         if matches is None:
             return None
+        readable = get_application_details(client).readableNamespaces or []
+        if set(matches) == set(readable):
+            # Every namespace a limited Application can read: as '' scopes it
+            return list(readable)
         if len(matches) > NAMESPACE_PATTERN_MAX_MATCHES:
             raise TooManyNamespaces(namespace, len(matches))
         return list(matches)

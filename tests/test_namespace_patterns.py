@@ -676,3 +676,19 @@ def test_a_pattern_listing_keeps_only_the_matched_namespaces(
         yd_list.list_entities(ctx)
     shown = (emit.call_args or printed.call_args).args[1]
     assert [item.id for item in shown] == kept
+
+
+def test_a_limited_reader_matching_every_readable_namespace_is_searched_as_with_none():
+    # As '-n ""' scopes it: every readable namespace, however many, never
+    # refused for matching more than the limit
+    names = [f"ns-{i:03}" for i in range(NAMESPACE_PATTERN_MAX_MATCHES + 50)]
+    client = _client(readable=names)
+    assert entity_utils.search_namespaces(client, "*") == names
+    assert entity_utils.search_namespaces(client, "") == names
+
+
+def test_a_limited_reader_matching_too_many_but_not_all_is_still_refused():
+    names = [f"ns-{i:03}" for i in range(NAMESPACE_PATTERN_MAX_MATCHES + 50)]
+    client = _client(readable=[*names, "other"])
+    with pytest.raises(entity_utils.TooManyNamespaces):
+        entity_utils.search_namespaces(client, "ns-*")
