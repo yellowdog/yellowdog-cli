@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- At a prompt (selecting items, confirming an action, `yd init`'s questions), the cursor keys and history work, rather than echoing escape sequences such as `^[[A` that became part of the answer. Where Python uses libedit (macOS's Python, uv's), the prompt's last line is shown uncoloured.
+
 ## 15.9.0 — 2026-11-03
 
 ### Upgrading

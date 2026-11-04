@@ -135,7 +135,7 @@ yellowdog_cli/
     ├── compact_json.py          # CompactJSONEncoder; numbers kept as written
     ├── check_imports.py         # Optional-extra import guards and EXTRA_PROBES
     ├── user_agent.py            # set_user_agent() for the client; set_default_user_agent() with no SDK, for the PAC fetch
-    ├── rich_console_input_fixed.py  # Rich backspace-deletes-prompt workaround
+    ├── rich_console_input_fixed.py  # A Rich Console whose input() hands the prompt's last line to readline (codes marked for GNU readline, removed for libedit), so editing keeps the prompt and the cursor keys work
     ├── cloudwizard/             # AWS/Azure/GCP setup; errors through common.print_error(), counted, so a run reporting any exits 1
     ├── dataclient/              # yd-upload/download/delete/ls/copy; imports no SDK
     │   ├── wrapper.py           # @dataclient_wrapper: run_command() with no client or proxy
