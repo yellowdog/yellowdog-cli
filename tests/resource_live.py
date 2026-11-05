@@ -84,9 +84,8 @@ def _updated_attribute_definition(resource: str, spec: dict) -> dict:
 def _updated_application(resource: str, spec: dict) -> dict | None:
     """
     An Application with its description changed: set where it had none,
-    cleared to '' where it had one ('description' left out does not remove
-    it, YEL-15305, which test_an_application_description_left_out_is_removed
-    holds). Its Keyring grants are left out, since an update makes them only
+    cleared to '' where it had one (removing it by leaving 'description' out
+    is test_an_application_description_left_out_is_removed's). Its Keyring grants are left out, since an update makes them only
     with a regenerated key, which would print a new secret. The file's Group
     and Keyring are not updated.
     """

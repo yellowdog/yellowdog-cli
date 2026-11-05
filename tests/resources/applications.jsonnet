@@ -25,7 +25,7 @@
 //
 // The live layer then updates both Applications (resource_live.UPDATES):
 // application-min gains a description and application-max's is cleared to
-// ''. Removing a description by leaving it out is YEL-15305, held by
+// ''. Removing a description by leaving it out is held by
 // test_system_resources.py's test_an_application_description_left_out_is_removed.
 
 local base = import 'lib/base.libsonnet';

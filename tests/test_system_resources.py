@@ -644,20 +644,7 @@ def test_read_gate_exclusions_are_evidenced():
         )
 
 
-class _DescriptionKept(AssertionError):
-    """
-    YEL-15305's symptom, and only it, for the xfail below: any other failure
-    of the test still fails it.
-    """
-
-
 @pytest.mark.system
-@pytest.mark.xfail(
-    strict=True,
-    raises=_DescriptionKept,
-    reason="YEL-15305: PUT /account/applications/{id} keeps a description the"
-    " update leaves out; remove this mark once the Platform clears it",
-)
 def test_an_application_description_left_out_is_removed(run_id, cleanup, tmp_path):
     """
     An Application updated from a specification without a 'description' has
@@ -690,5 +677,4 @@ def test_an_application_description_left_out_is_removed(run_id, cleanup, tmp_pat
     assert [r["action"] for r in json.loads(result.stdout)] == ["updated"]
 
     description = resource_live.show(app_id).get("description")
-    if description is not None:
-        raise _DescriptionKept(f"Application {name} kept its description")
+    assert description is None, f"Application {name} kept its description"

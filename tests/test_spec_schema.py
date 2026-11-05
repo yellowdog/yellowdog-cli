@@ -777,7 +777,7 @@ class TestCorpusAndExamples:
         """
         The Applications' update: application-min gains a description and
         application-max's is cleared to '' (removing it by leaving it out is
-        YEL-15305); the Group and Keyring are left out, and so are the
+        test_system_resources.py's); the Group and Keyring are left out, and so are the
         Keyring grants, which an update makes only with a regenerated key.
         """
         import resource_corpus
