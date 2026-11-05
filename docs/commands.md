@@ -1666,7 +1666,7 @@ For Instances and Nodes, `--status`, `--provider` and `--active-only` are passed
 
 An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provisioned`, `--configured`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
-Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` asks before replacing an existing file, which `--yes`/`-y` skips, and writes a file named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes), which evaluates to the same JSON. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
+Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` writes the details to the file instead of stdout (to both under `--json`), asks before replacing an existing file, which `--yes`/`-y` skips, and writes a file named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes), which evaluates to the same JSON. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
 

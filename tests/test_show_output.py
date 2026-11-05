@@ -24,7 +24,7 @@ from requests import HTTPError, Response
 
 import yellowdog_cli.show as show_module
 from yellowdog_cli.show import show_ydids
-from yellowdog_cli.utils import output_settings, results
+from yellowdog_cli.utils import output_settings, printing, results
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.ydid_utils import YDIDType
@@ -763,20 +763,24 @@ def test_hide_user_data_summarises_a_compute_source_template(tmp_path, capsys):
     )
 
     assert failures == 0
-    assert loads(output)["source"]["userData"] == summary
+    assert output == ""  # The details go to the file instead
     written = loads(output_file.read_text(encoding="utf-8"))
     assert written["source"]["userData"] == summary
 
 
 @pytest.mark.parametrize("count", [1, 2])
-def test_a_jsonnet_output_file_evaluates_to_what_was_shown(tmp_path, capsys, count):
+def test_a_jsonnet_output_file_evaluates_to_what_json_shows(tmp_path, capsys, count):
+    # '--json' puts the document on stdout as well as in the file
     _jsonnet = pytest.importorskip("_jsonnet")
     client = MagicMock()
     ydid, _ = _node(client)
     output_file = tmp_path / "nodes.jsonnet"
 
     failures, output = _run(
-        [ydid] * count, client, _args(output_file=str(output_file)), capsys
+        [ydid] * count,
+        client,
+        _args(output_file=str(output_file), json_output=True),
+        capsys,
     )
 
     assert failures == 0
@@ -784,6 +788,24 @@ def test_a_jsonnet_output_file_evaluates_to_what_was_shown(tmp_path, capsys, cou
     assert '"name"' not in written  # The Jsonnet style: keys unquoted
     evaluated = loads(_jsonnet.evaluate_snippet(str(output_file), written))
     assert evaluated == loads(output)
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_an_output_file_takes_the_details_from_stdout(tmp_path, capsys, count):
+    client = MagicMock()
+    ydid, obj = _node(client)
+    output_file = tmp_path / "nodes.json"
+    args = _args(output_file=str(output_file))
+
+    with patch.object(printing, "print_info") as print_info:
+        failures, output = _run([ydid] * count, client, args, capsys)
+
+    assert failures == 0
+    assert output == ""
+    written = loads(output_file.read_text(encoding="utf-8"))
+    assert _names(written) == [obj.payload["name"]] * count
+    noun = "item" if count == 1 else "items"
+    print_info.assert_called_once_with(f"Wrote {count} {noun} to '{output_file}'")
 
 
 # ---------------------------------------------------------------------------

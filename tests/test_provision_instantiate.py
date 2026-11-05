@@ -65,6 +65,7 @@ _DEFAULTS = {
     "compute_requirement_file_positional": None,
     "report": False,
     "hide_user_data": False,
+    "output_file": None,
 }
 
 

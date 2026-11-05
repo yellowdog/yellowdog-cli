@@ -527,20 +527,15 @@ def print_json(
     json_string = indent(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
-    # Coloured formatting of JSON console output is expensive
-    if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
-        if with_final_comma:
-            print(json_string, end=",\n", flush=True)
+    if details_to_console():
+        end = ",\n" if with_final_comma else "\n"
+        # Coloured formatting of JSON console output is expensive
+        if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
+            print(json_string, end=end, flush=True)
         else:
-            print(json_string, flush=True)
+            CONSOLE_JSON.print(escape(json_string), end=end, soft_wrap=True)
 
-    else:
-        if with_final_comma:
-            CONSOLE_JSON.print(escape(json_string), end=",\n", soft_wrap=True)
-        else:
-            CONSOLE_JSON.print(escape(json_string), soft_wrap=True)
-
-    if OUTPUT.output_file is not None:  # Also output to a nominated file
+    if OUTPUT.output_file is not None:  # Instead, or as well under '--json'
         print_to_file(
             json_string=json_string,
             output_file=OUTPUT.output_file,
@@ -591,11 +586,9 @@ def print_yd_object_list(
     Print a JSON list of objects.
     """
 
-    if OUTPUT.output_file is not None:
-        print_info(f"Copying detailed resource list to '{OUTPUT.output_file}'")
-
     if len(objects) > 1:
-        print("[")
+        if details_to_console():
+            print("[")
         if OUTPUT.output_file is not None:
             print_to_file("[", OUTPUT.output_file)
 
@@ -608,9 +601,28 @@ def print_yd_object_list(
         )
 
     if len(objects) > 1:
-        print("]")
+        if details_to_console():
+            print("]")
         if OUTPUT.output_file is not None:
             print_to_file("]", OUTPUT.output_file)
+    report_output_file(len(objects))
+
+
+def details_to_console() -> bool:
+    """
+    Whether the JSON details go to stdout: not when '--output-file' takes
+    them instead, unless '--json' asks for the document on stdout too.
+    """
+    return OUTPUT.output_file is None or bool(OUTPUT.json_output)
+
+
+def report_output_file(count: int) -> None:
+    """
+    Say where '--output-file' put the details, if it was given and anything
+    was written.
+    """
+    if OUTPUT.output_file is not None and count:
+        print_info(f"Wrote {counted(count, 'item')} to '{OUTPUT.output_file}'")
 
 
 def print_worker_pool(
