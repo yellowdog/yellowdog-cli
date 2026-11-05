@@ -101,11 +101,6 @@ SPECIFICATION_POSITIONALS: dict[str, str] = {
 SPECIFICATION_ITEM_SCHEMA: dict[str, Any] = {
     "oneOf": [{"type": "string"}, {"type": "object"}]
 }
-# The commands that print their own JSON document (printing.print_json(),
-# which printing.json_document_printed() records) with no --json option to
-# silence the rest of their output: only --quiet keeps the wrapper's 'Done'
-# off stdout after the document, which otherwise does not parse
-SELF_PRINTING_COMMANDS = frozenset({"yd-show", "yd-variables"})
 INLINE_SPECIFICATION_PREFIX = ".yd-mcp-"
 # The entity_type description, in place of the argparse help, which offers
 # prefixes and single-letter synonyms the schema's enum refuses
@@ -473,7 +468,7 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
     """
     The arguments the server adds ahead of a tool's own, each only where
     the command has the option: the config source, no formatting, the JSON
-    result (or, for SELF_PRINTING_COMMANDS, quiet), no prompts, and the
+    result, no prompts, and the
     launch-time namespace, tag and variables (first, so a tool's own come
     later and win).
     """
@@ -489,8 +484,6 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
         args.append("--nf")
     if command.option_named("--json") is not None:
         args.append("--json")
-    if command.internal_name in SELF_PRINTING_COMMANDS:
-        args.append("--quiet")
     if command.option_named("--yes") is not None:
         args.append("--yes")
     # Joined, as a tool's own values are (see _joined()): a launch-time value

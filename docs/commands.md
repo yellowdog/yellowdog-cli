@@ -1722,7 +1722,7 @@ A User is always shown with `groups`, the names of the Groups it belongs to, as 
 
 At least one ID is required. A YDID names its entity in whatever namespace it is in, so an ID needs no `--namespace` (which applies to a name given with `--type`), and `yd show` takes no `--tag`.
 
-Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token, `--show-source-report` or `--show-exhaustion` add their reports after a Compute Requirement or Provisioned Worker Pool, or `--show-members` adds a Group's or a Role's members. Combine with `--quiet`/`-q` to suppress the status messages and leave only the JSON on stdout.
+Supplying more than one ID produces a JSON array, whatever the verbosity options say, so that the shape of the output follows what was asked for rather than how much of it succeeded. A single ID produces the object on its own, except when `--show-token` yields both a Configured Worker Pool and its token, `--show-source-report` or `--show-exhaustion` add their reports after a Compute Requirement or Provisioned Worker Pool, or `--show-members` adds a Group's or a Role's members. Pass `--json` to leave only the JSON on stdout, with any warnings and errors on stderr, for example to pipe it into another program; `--quiet`/`-q` does the same but drops the warnings.
 
 It exits with code 0 if every ID was shown; 6 if those that were not all name entities that do not exist; and 1 if any could not be shown for another reason (an invalid ID, or an API error). The IDs that could be shown are still emitted. If a lookup fails because the Application's credentials are not accepted, or the platform cannot be reached, the remaining IDs are not attempted, what was shown is still emitted, and the command exits with that failure's code (4 or 8).
 
@@ -1838,7 +1838,7 @@ The `yd variables` command reports the processed values of variable substitution
 yd variables [options] [<var> ...]
 ```
 
-Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd show`, it is preceded by any warnings and followed by `Done`; pass `--quiet`/`-q` to get the JSON alone, for example to pipe it into another program.
+Only the named variables are reported if any names are supplied; every variable is reported otherwise. The output is a JSON object keyed by variable name, in alphabetical order. As with `yd show`, it is preceded by any warnings and followed by `Done`; pass `--json` to get the JSON alone on stdout, with the warnings on stderr, for example to pipe it into another program (`--quiet`/`-q` drops the warnings instead).
 
 A name that isn't the name of a variable reports `null`, with a warning that it is not defined, so the command also answers whether a variable is set at all; a name no variable could have, such as `{{tag}}` or `env:HOME`, is refused. `yd variables` never contacts the Platform, so it needs no application key or secret: when they are not configured, `key` and `secret` are reported as `null`.
 

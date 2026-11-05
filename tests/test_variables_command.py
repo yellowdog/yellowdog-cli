@@ -379,6 +379,20 @@ class TestCommandOutput:
             "tag": "my-tag",
         }
 
+    def test_json_leaves_only_the_json_with_the_warnings_on_stderr(self, tmp_path):
+        # A name matching the credential pattern is redacted, and said so
+        result = _run(
+            "--json", "-v", "api_token=t", "api_token", "namespace", cwd=tmp_path
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert loads(result.stdout) == {
+            "api_token": REDACTED_VALUE,
+            "namespace": "my-namespace",
+        }
+        assert WARNING_MARKER in result.stderr
+        assert "Redacted 1 variable" in " ".join(result.stderr.split())
+
     def test_a_command_line_variable_is_reported(self, tmp_path):
         result = _run("-q", "-v", "instances=5", "instances", cwd=tmp_path)
 

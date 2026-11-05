@@ -990,6 +990,14 @@ JSON = option(
     required=False,
     help="emit results as a plain JSON array (suppresses table formatting)",
 )
+# yd-show and yd-variables print JSON whatever is asked: '--json' leaves it
+# alone on stdout
+JSON_DOCUMENT_ONLY = JSON.variant(
+    help=(
+        "print the JSON document alone on stdout, with any warnings on stderr"
+        " and no other messages"
+    )
+)
 OFFLINE = option(
     "--offline",
     action="store_true",
@@ -2906,6 +2914,7 @@ COMMANDS["yd-show"] = Command(
         STRIP_IDS,
         HIDE_USER_DATA,
         OUTPUT_FILE,
+        JSON_DOCUMENT_ONLY,
     ),
     validators=(check_show_ids,),
     tool=ToolKind.READ_ONLY,
@@ -4490,6 +4499,7 @@ COMMANDS["yd-variables"] = Command(
                 " credential"
             )
         ),
+        JSON_DOCUMENT_ONLY,
     ),
     validators=(check_variable_names,),
     requires_namespace_and_tag=True,

@@ -69,6 +69,7 @@ from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import is_pattern, resolve_targets
 from yellowdog_cli.utils.printing import (
     counted,
+    note_json_document_printed,
     print_error,
     print_info,
     print_to_file,
@@ -352,6 +353,7 @@ def _print_items(ctx: RunContext, items: list[ShowItem], as_json_array: bool):
     are applied.
     """
     if as_json_array:
+        note_json_document_printed()
         print("[")
         if ctx.args.output_file is not None:
             print_to_file("[", ctx.args.output_file)

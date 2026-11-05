@@ -24,7 +24,7 @@ from requests import HTTPError, Response
 
 import yellowdog_cli.show as show_module
 from yellowdog_cli.show import show_ydids
-from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils import output_settings, results
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.ydid_utils import YDIDType
@@ -583,6 +583,39 @@ class TestFailures:
         exit_code, output = _run(
             ["not-a-ydid", "also-not"], MagicMock(), _args(), capsys
         )
+        assert exit_code == ExitCode.FAILURE
+        assert loads(output) == []
+
+
+class TestJsonOption:
+    """
+    Under '--json' the output is the one document on stdout, the status
+    messages left out: the '--json' flush adds nothing after it, even where
+    the array holds nothing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_results(self):
+        results.reset_results()
+        yield
+        results.reset_results()
+
+    def _shown(self, ydids: list[str], client: MagicMock, capsys) -> tuple[int, str]:
+        args = _args(quiet=False, json_output=True)
+        exit_code, output = _run(ydids, client, args, capsys)
+        with output_settings.configured(args):
+            results.flush_results()
+        return exit_code, output + capsys.readouterr().out
+
+    def test_one_id_is_its_object_alone(self, capsys):
+        client = MagicMock()
+        ydid, obj = _node(client)
+        exit_code, output = self._shown([ydid], client, capsys)
+        assert exit_code == ExitCode.SUCCESS
+        assert _names(loads(output)) == [obj.payload["name"]]
+
+    def test_every_id_failing_leaves_one_empty_array(self, capsys):
+        exit_code, output = self._shown(["not-a-ydid", "also-not"], MagicMock(), capsys)
         assert exit_code == ExitCode.FAILURE
         assert loads(output) == []
 

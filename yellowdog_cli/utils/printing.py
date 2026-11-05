@@ -474,6 +474,16 @@ def json_document_printed() -> bool:
     return _JSON_DOCUMENT_PRINTED
 
 
+def note_json_document_printed() -> None:
+    """
+    Record that a JSON document has been printed to stdout other than by
+    print_json(): an array's brackets, printed around its items, which may
+    be none.
+    """
+    global _JSON_DOCUMENT_PRINTED
+    _JSON_DOCUMENT_PRINTED = True
+
+
 def reset_json_document_printed() -> None:
     """
     Forget that a JSON document was printed (for tests, via reset_results()).

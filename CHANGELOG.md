@@ -6,6 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - At a prompt (selecting items, confirming an action, `yd init`'s questions), the cursor keys and history work, rather than echoing escape sequences such as `^[[A` that became part of the answer. Where Python uses libedit (macOS's Python, uv's), the prompt's last line is shown uncoloured.
 - The CLI requires `yellowdog-sdk` 15.10.0 or later, so a GCE compute source (`GceInstancesComputeSource`, `GceInstanceGroupComputeSource`) in a Compute Requirement Template can set `reservation` and `reservationBound`, to provision instances from a GCE reservation.
+- `yd show` and `yd variables` take `--json`, which leaves their JSON document alone on stdout, with any warnings on stderr, as on the other commands; `--quiet` still gives the document alone without the warnings. Through the MCP server, `yd_show` and `yd_variables` now return those warnings in `stderr`.
 
 ## 15.9.0 — 2026-11-03
 
