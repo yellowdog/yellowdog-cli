@@ -6,10 +6,11 @@
       * [Details](#details)
    * [Checking Jsonnet Processing](#checking-jsonnet-processing)
       * [Details](#details-1)
+   * [Starting from Existing Resources](#starting-from-existing-resources)
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:27 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov  5 17:27:40 GMT 2026 -->
 
 <!--te-->
 
@@ -120,13 +121,24 @@ local max_nodes = '__{{num:max_nodes:=8}}__';
 
 There are three ways to check that a Jsonnet specification does what is intended:
 
-1. **`yd jsonnet2json`** shows the basic conversion of Jsonnet into JSON, without any additional processing by the CLI: `yd jsonnet2json render.jsonnet`.
+1. **`yd jsonnet tojson`** shows the basic conversion of Jsonnet into JSON, without any additional processing by the CLI: `yd jsonnet tojson render.jsonnet`.
 2. **`--jsonnet-dry-run`** (`-J`) shows the JSON the Jsonnet produces, with the variable substitutions applied, but before it is expanded into the full specification that would be submitted to the Platform. The `yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd node action`, `yd resource create` and `yd resource remove` commands take it.
 3. **`--dry-run`** (`-D`) shows the full processing of the Jsonnet file into what would be submitted to the API, so that you can check it before submitting to the Platform.
 
 ### Details
 
-**`yd jsonnet2json` makes no variable substitution**, so a `{{variable}}` is left as written. It finds an `import` only beside the file importing it, while the other commands also look in the current directory. With several files or a glob pattern, it writes each conversion to a `<name>.json` file beside its source, asking before it replaces one that differs (see [yd jsonnet2json](commands.md#yd-jsonnet2json)).
+**`yd jsonnet tojson` makes no variable substitution**, so a `{{variable}}` is left as written. It finds an `import` only beside the file importing it, while the other commands also look in the current directory. With `--write`, it writes each conversion to a `<name>.json` file beside its source, asking before it replaces one that differs (see [yd jsonnet tojson](commands.md#yd-jsonnet-tojson)).
+
+## Starting from Existing Resources
+
+`yd jsonnet factor` turns a list of specifications, such as `yd list` captures, into a Jsonnet file to edit, with what each kind of resource shares written once:
+
+```shell
+yd list compute-source-templates --json --substitute-ids --strip-ids > csts.json
+yd jsonnet factor csts.json > csts.jsonnet
+```
+
+Each Compute Source Template becomes a shared base and its differences, such as `awsInstances {source+: {name: 'aws-eu-west-2b-spot', availabilityZone: 'eu-west-2b', spot: true}}`. The file evaluates to the same JSON, so `yd resource create csts.jsonnet` creates the same resources; from there, a series written out one by one can be turned into a function or a loop by hand. See [yd jsonnet factor](commands.md#yd-jsonnet-factor).
 
 ## Jsonnet Example
 

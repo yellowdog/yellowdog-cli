@@ -975,6 +975,28 @@ NOUNS: tuple[Noun, ...] = (
             _cloud_info("prices", CI_PRICES, "List instance prices"),
         ),
     ),
+    Noun(
+        "jsonnet",
+        "Convert Jsonnet to JSON, and factor JSON into Jsonnet",
+        (
+            Verb(
+                "tojson",
+                "yd-jsonnet2json",
+                "Convert Jsonnet files to JSON",
+                "converting Jsonnet files to JSON: one file to stdout, or with"
+                " --write each file (or a glob pattern's matches) to <name>.json"
+                " beside it",
+            ),
+            Verb(
+                "factor",
+                "yd-jsonnet-factor",
+                "Factor a list of specifications into compact Jsonnet",
+                "printing a list of specifications as Jsonnet, what each kind"
+                " shares held once in a local base and each specification"
+                " written as its differences from it",
+            ),
+        ),
+    ),
 )
 
 

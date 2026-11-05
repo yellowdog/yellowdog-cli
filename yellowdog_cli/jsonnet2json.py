@@ -2,10 +2,11 @@
 
 """
 Simple utility to take Jsonnet file(s) and output their JSON representation.
-With a single file, output goes to stdout, coloured on a terminal unless
---no-format is given, and errors to stderr, so that a failed conversion
-piped to a file never leaves an error message in it.
-With multiple files or a glob pattern, each file is written to <name>.json,
+One file's output goes to stdout, coloured on a terminal unless --no-format
+is given, and errors to stderr, so that a failed conversion piped to a
+file never leaves an error message in it; several files or a glob pattern
+are refused, since their documents together are no JSON document.
+With --write, each file (or a pattern's matches) is written to <name>.json,
 replaced whole or not at all: every file is converted before any is
 written, and an existing <name>.json that the conversion would change is
 replaced only once confirmed (or with --yes), since it may be a file of
@@ -56,6 +57,14 @@ def main():
     # --no-format, for print_json_text(), and --yes, for confirmed()
     configure_output(args)
     warn_if_deprecated_script("yd-jsonnet2json")
+    # Several documents on stdout would be no JSON document
+    if not args.write and (
+        len(args.files) > 1 or _GLOB_CHARS.intersection(args.files[0])
+    ):
+        parser.error(
+            "several files or a glob pattern are written beside their sources"
+            " with --write; without it, give one file, whose JSON goes to stdout"
+        )
 
     # This command has no @main_wrapper to catch and print an exception, so the
     # guard's message is presented here; otherwise advice about how to install
@@ -68,11 +77,7 @@ def main():
 
     from _jsonnet import evaluate_file
 
-    single_file_mode = len(args.files) == 1 and not _GLOB_CHARS.intersection(
-        args.files[0]
-    )
-
-    if single_file_mode:
+    if not args.write:
         try:
             print_json_text(_as_json(evaluate_file(args.files[0])))
         except Exception as e:

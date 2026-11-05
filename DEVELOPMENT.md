@@ -338,7 +338,7 @@ A command's `main()` is decorated by a wrapper (`utils/wrapper.py`'s `@main_wrap
 3. **Report.** With `--json`, the outcomes the command recorded (`utils/results.py`) are printed as one JSON document, even when the command failed part-way, so a script still learns what was done.
 4. **Exit.** Whatever escaped `main()` is classified (`utils/exit_codes.py`'s `classify()`) into an exit code saying what kind of failure it was: not found, not authorised, a connection failure, a server error, and so on.
 
-A handful of commands sit outside this. `yd help`, `yd version`, `yd format-json` and `yd jsonnet2json` need neither credentials nor configuration and have a plain `main()`. `yd doctor` and `yd schema` build their own run, because `yd doctor` exists to diagnose exactly the missing or broken configuration that would stop a wrapper before `main()`.
+A handful of commands sit outside this. `yd help`, `yd version`, `yd format-json` and the `yd jsonnet` verbs need neither credentials nor configuration and have a plain `main()`. `yd doctor` and `yd schema` build their own run, because `yd doctor` exists to diagnose exactly the missing or broken configuration that would stop a wrapper before `main()`.
 
 ### The command registry
 

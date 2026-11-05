@@ -66,10 +66,15 @@
       * [yd cloudinfo sub-regions](#yd-cloudinfo-sub-regions)
       * [yd cloudinfo instance-types](#yd-cloudinfo-instance-types)
       * [yd cloudinfo prices](#yd-cloudinfo-prices)
+   * [yd jsonnet](#yd-jsonnet)
+      * [yd jsonnet tojson](#yd-jsonnet-tojson)
+         * [Writing Files](#writing-files)
+      * [yd jsonnet factor](#yd-jsonnet-factor)
+         * [Details](#details-2)
    * [Other Commands](#other-commands)
       * [yd list](#yd-list)
          * [Listing Several Namespaces](#listing-several-namespaces)
-            * [Details](#details-2)
+            * [Details](#details-3)
       * [yd show](#yd-show)
       * [yd follow](#yd-follow)
       * [yd wait](#yd-wait)
@@ -80,14 +85,13 @@
       * [yd help](#yd-help)
       * [yd version](#yd-version)
       * [yd format-json](#yd-format-json)
-      * [yd jsonnet2json](#yd-jsonnet2json)
       * [yd schema](#yd-schema)
       * [yd completion](#yd-completion)
          * [Names and IDs from the Platform](#names-and-ids-from-the-platform)
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:25 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov  5 17:27:39 GMT 2026 -->
 
 <!--te-->
 
@@ -128,7 +132,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet2json` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet2json` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet factor` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet tojson` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -1566,6 +1570,86 @@ Key options:
 yd cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
 ```
 
+## yd jsonnet
+
+The `yd jsonnet` verbs work on Jsonnet files without any processing by the CLI (no variable substitution, no property expansion): `tojson` converts Jsonnet to JSON, and `factor` goes the other way, turning a list of specifications into compact Jsonnet to edit. Both need the `jsonnet` extra; without it they exit 1, saying how to install it. See [Jsonnet Support](jsonnet.md).
+
+```shell
+yd jsonnet <tojson|factor> [options] <file> ...
+```
+
+| Verb | What it does | Replaces |
+|---|---|---|
+| [`tojson`](#yd-jsonnet-tojson) | Convert Jsonnet files to JSON | `yd-jsonnet2json` |
+| [`factor`](#yd-jsonnet-factor) | Factor a list of specifications into compact Jsonnet | |
+
+### yd jsonnet tojson
+
+The `yd jsonnet tojson` command converts a Jsonnet file to JSON without any additional processing by the CLI (no variable substitution, no property expansion), printing the JSON to stdout, coloured on a terminal unless `--no-format`/`--nf` is given. With `--write`/`-w`, each file given, or matched by a glob pattern, is converted to a `<name>.json` file beside its source instead.
+
+```shell
+yd jsonnet tojson [--no-format] <file.jsonnet>
+yd jsonnet tojson --write [--yes] <file.jsonnet> [<file.jsonnet> ...]
+```
+
+```shell
+yd jsonnet tojson my_spec.jsonnet                         # JSON to stdout
+yd jsonnet tojson --write spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
+yd jsonnet tojson --write 'specs/*.jsonnet'               # writes a .json file per match
+```
+
+Errors go to stderr, so a failed conversion piped to a file never leaves an error message in it, and the command exits 1. Several files or a glob pattern without `--write` are refused (exit 2), since their documents together would be no JSON document.
+
+#### Writing Files
+
+Each `.json` file is replaced whole or not at all, keeping an existing file's permissions. Every file is converted before any is written: an existing `.json` file that already holds what the conversion produces is reported as unchanged and left alone, and the others that would be replaced are listed and confirmed with one prompt, since a `.json` file of that name may be a file of its own rather than an earlier conversion. Declining keeps them and still writes the new files; `--yes`/`-y` overwrites without asking, and without a terminal to answer from the command writes nothing and exits 1, naming `--yes`.
+
+Non-ASCII text is kept as it is rather than escaped. A pattern that matches nothing is reported as such, and a file named twice, or matched by more than one pattern, is converted once.
+
+With `--write`, a file not named `*.jsonnet` is skipped, with a message. Converting needs the `jsonnet` extra; without it the command exits 1, saying how to install it. A Jsonnet `import` is found beside the file importing it, not in the current directory.
+
+This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
+
+See [Jsonnet Support](jsonnet.md) for installation and usage.
+
+### yd jsonnet factor
+
+The `yd jsonnet factor` command prints a list of specifications as Jsonnet, with what each kind of specification shares written once. It is the quickest way to turn a captured set of resources into a file worth editing by hand:
+
+```shell
+yd list compute-source-templates --json --substitute-ids --strip-ids > csts.json
+yd jsonnet factor csts.json > csts.jsonnet
+```
+
+Each kind of specification (its `resource`, and the `type` of its `source`, so AWS, Azure and GCE Compute Source Templates are kinds of their own) gets a `local` base holding the value most of its members give each property, and each specification is written as that base and its differences:
+
+```jsonnet
+local awsInstances = {
+  source: {type: 'co.yellowdog.platform.model.AwsInstancesComputeSource', region: 'eu-west-2', spot: false},
+  namespace: 'render-dev',
+  resource: 'ComputeSourceTemplate',
+};
+
+[
+  awsInstances {source+: {name: 'aws-eu-west-2a-ondemand', availabilityZone: 'eu-west-2a'}},
+  awsInstances {source+: {name: 'aws-eu-west-2a-spot', availabilityZone: 'eu-west-2a', spot: true}},
+]
+```
+
+The file evaluates to exactly the JSON it was made from, so `yd resource create` takes it as it is; the command evaluates it before printing it, and prints nothing if it would not.
+
+```shell
+yd jsonnet factor <file>
+```
+
+The file is JSON, or Jsonnet evaluated first if it is named `.jsonnet`; `-` reads JSON from standard input. Errors go to stderr, and the command exits 1.
+
+#### Details
+
+A base holds a property that at least four in five of its kind set, at the value most of them give it, where at least two give it the same one. A specification that lacks a property its base holds hides it (`instanceTags:: null`, a hidden field, which is left out of the JSON); below the specification and its `source`, an object that lacks one is written whole instead. A kind with one member is written as it is.
+
+The command finds what the specifications share, not why: a series a person would write as a loop over zones is still written out one specification at a time.
+
 ## Other Commands
 
 These commands act on no one kind of object, and are named by their `yd` word alone: `yd list`, `yd show`, `yd follow` and `yd wait` take any type of object, and the rest are utilities.
@@ -1895,7 +1979,7 @@ A value with a comma in it that has neither form, such as `a,b` or `x,y=z`, is s
 
 This is a heuristic, and the note is there so that it is not mistaken for a guarantee. `key` on its own is deliberately not in the pattern, so `APP_KEY_DEMO`, an application key's identifier rather than its secret, is shown in full; and a credential held under a name the pattern does not match, such as `APP_CREDS`, is shown in full too. Keeping a credential like that out of a report you send somewhere it will persist is up to you: name the variables you want, or rename the one holding it so that the pattern matches it.
 
-None of `yd completion`, `yd init`, `yd help`, `yd version`, `yd schema`, `yd format-json` and `yd jsonnet2json` requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd init`, `yd help`, `yd version`, `yd schema` and `yd jsonnet2json` accept (`yd version`'s `--debug` is an option of its own, adding the Python executable and path); `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
+None of `yd completion`, `yd init`, `yd help`, `yd version`, `yd schema` and `yd format-json` (nor the [`yd jsonnet`](#yd-jsonnet) verbs) requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd init`, `yd help`, `yd version` and `yd schema` accept (`yd version`'s `--debug` is an option of its own, adding the Python executable and path); `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
 
 ### yd init
 
@@ -2008,32 +2092,6 @@ Only the layout changes: numbers are written back exactly as they were written (
 ```shell
 yd format-json my_file.json my_other_file.json
 ```
-
-### yd jsonnet2json
-
-The `yd jsonnet2json` command converts Jsonnet files to JSON without any additional processing by the CLI (no variable substitution, no property expansion). With a single (non-glob) argument, the resulting JSON is written to stdout, coloured on a terminal unless `--no-format`/`--nf` is given; with multiple arguments or a glob pattern, each file is converted and written to a `<name>.json` file alongside its source.
-
-```shell
-yd jsonnet2json [--yes] [--no-format] <file.jsonnet> [<file.jsonnet> ...]
-```
-
-```shell
-yd jsonnet2json my_spec.jsonnet                 # JSON to stdout
-yd jsonnet2json spec_1.jsonnet spec_2.jsonnet   # writes spec_1.json, spec_2.json
-yd jsonnet2json 'specs/*.jsonnet'               # writes a .json file per match
-```
-
-Errors go to stderr, so a failed conversion piped to a file never leaves an error message in it, and the command exits 1.
-
-Each `.json` file is replaced whole or not at all, keeping an existing file's permissions. Every file is converted before any is written: an existing `.json` file that already holds what the conversion produces is reported as unchanged and left alone, and the others that would be replaced are listed and confirmed with one prompt, since a `.json` file of that name may be a file of its own rather than an earlier conversion. Declining keeps them and still writes the new files; `--yes`/`-y` overwrites without asking, and without a terminal to answer from the command writes nothing and exits 1, naming `--yes`.
-
-Non-ASCII text is kept as it is rather than escaped. A pattern that matches nothing is reported as such, and a file named twice, or matched by more than one pattern, is converted once.
-
-With several files or a glob pattern, a file not named `*.jsonnet` is skipped, with a message. Converting needs the `jsonnet` extra; without it the command exits 1, saying how to install it. A Jsonnet `import` is found beside the file importing it, not in the current directory.
-
-This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
-
-See [Jsonnet Support](jsonnet.md) for installation and usage.
 
 ### yd schema
 
@@ -2164,7 +2222,7 @@ Where a command acts on more than one kind of object, each kind has a verb of it
 | `yd-help` | `yd help` |
 | `yd-hold` | `yd workrequirement hold` |
 | `yd-instantiate` | `yd computerequirement instantiate` |
-| `yd-jsonnet2json` | `yd jsonnet2json` |
+| `yd-jsonnet2json` | `yd jsonnet tojson` |
 | `yd-list` | `yd list` |
 | `yd-ls` | `yd data list` |
 | `yd-mcp` | `yd mcp` |

@@ -4640,23 +4640,59 @@ JSONNET2JSON_FILES = option(
     "files",
     nargs="+",
     metavar="<file.jsonnet>",
-    help="the Jsonnet file(s), or quoted glob pattern(s), to convert",
+    help=(
+        "the Jsonnet file to convert; with --write, file(s) or quoted glob pattern(s)"
+    ),
     completes=Completes.FILE,
+)
+JSONNET2JSON_WRITE = option(
+    "--write",
+    "-w",
+    action="store_true",
+    required=False,
+    help=(
+        "write each file's JSON to <name>.json beside it, rather than one"
+        " file's to stdout; needed for several files or a glob pattern"
+    ),
 )
 COMMANDS["yd-jsonnet2json"] = Command(
     name="yd-jsonnet2json",
     purpose=(
-        "converting Jsonnet files to JSON: one file to stdout, or several (or"
-        " a glob pattern) each to <name>.json beside it"
+        "converting Jsonnet files to JSON: one file to stdout, or with --write"
+        " each file (or a glob pattern's matches) to <name>.json beside it"
     ),
     summary="Convert a Jsonnet file to JSON",
     kind=CommandKind.STANDALONE,
     options=(
         JSONNET2JSON_FILES,
-        NO_FORMAT.variant(help="print a single file's JSON without colouring"),
-        YES.variant(help="overwrite existing .json files without asking"),
+        JSONNET2JSON_WRITE,
+        NO_FORMAT.variant(help="print the JSON without colouring"),
+        YES.variant(help="with --write, overwrite existing .json files without asking"),
     ),
     tool=ToolKind.NONE,
+)
+JSONNET_FACTOR_FILE = option(
+    "file",
+    metavar="<file>",
+    help=(
+        "the JSON list of specifications to factor, such as 'yd list"
+        " --details' writes; a '.jsonnet' file is evaluated first, and '-'"
+        " reads JSON from standard input"
+    ),
+    completes=Completes.FILE,
+)
+COMMANDS["yd-jsonnet-factor"] = Command(
+    name="yd-jsonnet-factor",
+    purpose=(
+        "printing a list of specifications as Jsonnet, what each kind shares"
+        " held once in a local base and each specification written as its"
+        " differences from it, checked to evaluate to the same JSON"
+    ),
+    summary="Factor a list of specifications into compact Jsonnet",
+    kind=CommandKind.STANDALONE,
+    options=(JSONNET_FACTOR_FILE,),
+    tool=ToolKind.NONE,
+    script=False,
 )
 # yd-version's single-version flags, each printing one version number alone,
 # exclusive with one another and with its '--json'

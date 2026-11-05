@@ -298,7 +298,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
-Six commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated `yd-*` commands the nouns replace: their noun verbs' tools stand in for them.
+Seven commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json`, `yd jsonnet tojson` and `yd jsonnet factor` (local file tools, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated `yd-*` commands the nouns replace: their noun verbs' tools stand in for them.
 
 ## Namespace, Tag and Variables
 

@@ -140,8 +140,14 @@ class TestUniversalOptions:
         standalone = {
             n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
         }
-        named = set(re.findall(r"`(yd [\w-]+)`", self.section.split("\n\n")[1]))
-        assert named == {yd_form(n) for n in standalone | {"yd-commander", "yd-mcp"}}
+        named = set(
+            re.findall(r"`(yd [\w-]+(?: [\w-]+)?)`", self.section.split("\n\n")[1])
+        )
+        assert named == {
+            form
+            for n in standalone | {"yd-commander", "yd-mcp"}
+            for form in _yd_forms(n)
+        }
 
     def test_preamble_names_the_withheld_options(self):
         assert (
@@ -178,9 +184,21 @@ DOCUMENTED = sorted(
 )
 
 
+# A standalone command a verb replaces has the verb's section
 STANDALONE_DOCUMENTED = sorted(
-    n for n, c in COMMANDS.items() if c.kind is CommandKind.STANDALONE
+    n
+    for n, c in COMMANDS.items()
+    if c.kind is CommandKind.STANDALONE and n not in REPLACED_BY_VERBS
 )
+
+
+def _yd_forms(name: str) -> list[str]:
+    """
+    How a command is typed under 'yd': its noun forms where a verb
+    replaces it, else 'yd <word>'.
+    """
+    return REPLACED_BY_VERBS.get(name, [yd_form(name)])
+
 
 # The noun verbs with sections of their own: every one but a generic command
 # restricted to the noun, which its noun's table points to that command for

@@ -28,7 +28,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 
 The `yd-*` commands, such as `yd-submit` and `yd-list`, are deprecated: they still run, with a warning, until a future release; `yd help --deprecated` says what replaces each.
 
-Utility commands are also provided: **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet2json`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
+Utility commands are also provided: **`yd init`** (a starter configuration file), **`yd format-json`**, **`yd help`**, **`yd jsonnet tojson`** and **`yd jsonnet factor`**, **`yd schema`**, and **`yd version`**. For a full list of commands run **`yd help`**.
 
 The remote data store commands — the `yd data` verbs `upload`, `download`, `delete`, `list` and `copy` — use **[rclone](https://rclone.org)**, and do not require YellowDog credentials. An `rclone` binary already on your `PATH` is used in preference, and is never modified. Otherwise one is downloaded to a per-user cache directory the first time it's needed.
 

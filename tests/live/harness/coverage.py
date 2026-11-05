@@ -89,7 +89,8 @@ NOT_EXERCISED: dict[str, str] = {
     "yd init": "writes a configuration file, never reaching the Platform; "
     + _UNIT_TESTED,
     "yd format-json": _UNIT_TESTED,
-    "yd jsonnet2json": _UNIT_TESTED,
+    "yd jsonnet tojson": _UNIT_TESTED,
+    "yd jsonnet factor": _UNIT_TESTED,
     "yd schema": (
         "never reaches the Platform, and takes neither --config nor --quiet;"
         " covered by the unit tests"

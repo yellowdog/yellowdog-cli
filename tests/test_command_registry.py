@@ -196,6 +196,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-completion",
             "yd-auto-shutdown",
             "yd-init",
+            "yd-jsonnet-factor",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -218,6 +219,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-version",
             "yd-format-json",
             "yd-jsonnet2json",
+            "yd-jsonnet-factor",
             "yd-schema",
         }
         for name, cmd in COMMANDS.items():
@@ -440,6 +442,7 @@ class TestToolKinds:
             "yd-init",
             "yd-format-json",
             "yd-jsonnet2json",
+            "yd-jsonnet-factor",
             "yd-help",
         }
 
