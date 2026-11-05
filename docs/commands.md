@@ -1666,7 +1666,7 @@ For Instances and Nodes, `--status`, `--provider` and `--active-only` are passed
 
 An option that does not apply to the entity type listed — `--name`, `--status`, `--active-only`, `--ids-only`, `--public-ips-only`, `--unhealthy`, `--provisioned`, `--configured`, `--provider`, `--description`, `--with-errors`, `--within`, `--limit`, `--deletable` or `--substitute-ids` — is refused (exit code 2), rather than ignored and the whole listing returned. With `--details`, Compute Requirements are shown in full, as Work Requirements and Worker Pools are.
 
-Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` asks before replacing an existing file, which `--yes`/`-y` skips. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
+Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` asks before replacing an existing file, which `--yes`/`-y` skips, and writes a file named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes), which evaluates to the same JSON. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
 
@@ -1714,7 +1714,7 @@ Key options:
 - `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))
 - `--show-members` — follow a Group with `{"groupId", "users", "applications"}`, its Users (each `{"id", "username", "name"}`, `username` being `null` for an external User) and its Applications (each `{"id", "name"}`), or a Role with `{"roleId", "groups"}`, the Groups that hold it (each `{"id", "name"}`); a Group's own roles are already in its details. It is refused unless at least one of the IDs is a Group's or a Role's
 - `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd list`, `--output-file` included
-- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`; see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`, a `.jsonnet` file included; see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
 
 A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd list users --details` shows them.
 

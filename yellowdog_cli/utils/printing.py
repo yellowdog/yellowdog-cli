@@ -26,6 +26,7 @@ from rich.theme import Theme
 
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.debug_log import CLI_LOGGER
+from yellowdog_cli.utils.jsonnet_style import is_jsonnet_path, jsonnet_style
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     DEFAULT_LOG_WIDTH,
@@ -696,10 +697,13 @@ FIRST_OUTPUT_TO_FILE = True  # Determine whether to 'write' or 'append'
 
 def print_to_file(json_string: str, output_file: str, with_final_comma: bool = False):
     """
-    Dump details output to a file.
+    Dump details output to a file: in the Jsonnet style for a '.jsonnet'
+    file, which evaluates to the same JSON.
     """
     global FIRST_OUTPUT_TO_FILE
 
+    if is_jsonnet_path(output_file):
+        json_string = jsonnet_style(json_string)
     try:
         with open(
             output_file, "w" if FIRST_OUTPUT_TO_FILE else "a", encoding="utf-8"

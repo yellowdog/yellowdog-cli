@@ -768,6 +768,24 @@ def test_hide_user_data_summarises_a_compute_source_template(tmp_path, capsys):
     assert written["source"]["userData"] == summary
 
 
+@pytest.mark.parametrize("count", [1, 2])
+def test_a_jsonnet_output_file_evaluates_to_what_was_shown(tmp_path, capsys, count):
+    _jsonnet = pytest.importorskip("_jsonnet")
+    client = MagicMock()
+    ydid, _ = _node(client)
+    output_file = tmp_path / "nodes.jsonnet"
+
+    failures, output = _run(
+        [ydid] * count, client, _args(output_file=str(output_file)), capsys
+    )
+
+    assert failures == 0
+    written = output_file.read_text(encoding="utf-8")
+    assert '"name"' not in written  # The Jsonnet style: keys unquoted
+    evaluated = loads(_jsonnet.evaluate_snippet(str(output_file), written))
+    assert evaluated == loads(output)
+
+
 # ---------------------------------------------------------------------------
 # A resource shown by name: '--type <type> <name>'
 # ---------------------------------------------------------------------------

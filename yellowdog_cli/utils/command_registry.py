@@ -1355,7 +1355,7 @@ OUTPUT_FILE = option(
     required=False,
     help=(
         "if specified, the detailed JSON resource listing will also be written "
-        "to the nominated output file"
+        "to the nominated output file, in the Jsonnet style for a '.jsonnet' file"
     ),
     completes=Completes.FILE,
     metavar="<output-file>",

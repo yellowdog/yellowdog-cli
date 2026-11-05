@@ -194,6 +194,12 @@ The `--output-file` option also writes the detailed list to a file, as well as d
 yd list compute-source-templates --details --output-file render-templates.json
 ```
 
+A file named `.jsonnet` is written in the Jsonnet style, for editing by hand as a [Jsonnet](jsonnet.md) specification: keys unquoted, strings in single quotes and a trailing comma after each last element. It evaluates to the same JSON, so `yd resource create` takes it as it is:
+
+```shell
+yd list compute-source-templates --details --output-file render-templates.jsonnet
+```
+
 Alternatively, `yd show` gives the details of each resource whose `ydid` it is given. This writes a JSON file that can be used with `yd resource create` as it is, or edited:
 
 ```shell
