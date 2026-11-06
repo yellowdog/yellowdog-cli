@@ -989,6 +989,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -5134,6 +5148,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -9456,6 +9484,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -10581,6 +10623,115 @@
       ],
       "required": false,
       "type": "str"
+    }
+  ],
+  "yd jsonnet factor": [
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "file",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [],
+      "required": null,
+      "type": null
+    }
+  ],
+  "yd jsonnet fromjson": [
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "files",
+      "kind": "_StoreAction",
+      "nargs": "+",
+      "option_strings": [],
+      "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "yes",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--yes",
+        "-y"
+      ],
+      "required": false,
+      "type": null
+    }
+  ],
+  "yd jsonnet tojson": [
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "files",
+      "kind": "_StoreAction",
+      "nargs": "+",
+      "option_strings": [],
+      "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_format",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-format",
+        "--nf"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "yes",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--yes",
+        "-y"
+      ],
+      "required": false,
+      "type": null
     }
   ],
   "yd node action": [
@@ -12240,6 +12391,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -15238,6 +15403,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -16786,6 +16965,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -18219,6 +18412,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -19136,6 +19343,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -21078,6 +21299,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -24622,6 +24857,20 @@
       ],
       "required": false,
       "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
     },
     {
       "choices": null,
@@ -32817,6 +33066,60 @@
       "type": "str"
     }
   ],
+  "yd-jsonnet-factor": [
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "file",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [],
+      "required": null,
+      "type": null
+    }
+  ],
+  "yd-jsonnet-fromjson": [
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "files",
+      "kind": "_StoreAction",
+      "nargs": "+",
+      "option_strings": [],
+      "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "yes",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--yes",
+        "-y"
+      ],
+      "required": false,
+      "type": null
+    }
+  ],
   "yd-jsonnet2json": [
     {
       "choices": null,
@@ -32827,6 +33130,20 @@
       "nargs": "+",
       "option_strings": [],
       "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
       "type": null
     },
     {
@@ -35803,6 +36120,20 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "docs",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -38238,6 +38569,20 @@
       "nargs": 0,
       "option_strings": [
         "--show-secrets"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
       ],
       "required": false,
       "type": null

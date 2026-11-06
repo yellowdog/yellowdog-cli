@@ -310,24 +310,22 @@ class TestFixedArgs:
         settings = ServerSettings(
             config_file=None, namespace="ns", tag="t", variables=("a=1",)
         )
-        # yd-show has no --yes; yd-show and yd-variables print JSON without
-        # a flag; yd-wait has no namespace or tag; yd-version, standalone,
-        # takes --json and --nf alone
+        # yd-show has no --yes; yd-wait has no namespace or tag; yd-version,
+        # standalone, takes --json and --nf alone
         assert "--yes" not in fixed_args(COMMANDS["yd-show"], settings)
-        assert "--json" not in fixed_args(COMMANDS["yd-show"], settings)
-        assert "--json" not in fixed_args(COMMANDS["yd-variables"], settings)
         assert "-n" not in fixed_args(COMMANDS["yd-wait"], settings)
         assert fixed_args(COMMANDS["yd-version"], settings) == ["--nf", "--json"]
 
-    def test_the_self_printing_commands_are_quiet(self):
-        # yd-show and yd-variables print their own JSON with no --json option,
-        # so only --quiet keeps the wrapper's 'Done' off their stdout
+    def test_the_self_printing_commands_take_json(self):
+        # yd-show and yd-variables print their own JSON document, which
+        # --json leaves alone on stdout, their warnings going to stderr
         settings = ServerSettings(
             config_file=None, namespace=None, tag=None, variables=()
         )
-        assert "--quiet" in fixed_args(COMMANDS["yd-show"], settings)
-        assert "--quiet" in fixed_args(COMMANDS["yd-variables"], settings)
-        assert "--quiet" not in fixed_args(COMMANDS["yd-list"], settings)
+        for name in ("yd-show", "yd-variables"):
+            args = fixed_args(COMMANDS[name], settings)
+            assert "--json" in args
+            assert "--quiet" not in args
 
 
 class TestToArgv:

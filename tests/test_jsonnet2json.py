@@ -1,7 +1,8 @@
 """
 yd-jsonnet2json (jsonnet2json.py): one file's JSON on stdout, coloured on a
 terminal unless --no-format, with an error on stderr, never in the output;
-several files each written whole to <name>.json, non-ASCII kept, an
+several files, or a glob pattern, refused without --write and with it
+each written whole to <name>.json, non-ASCII kept, an
 existing one the conversion would change replaced only once confirmed or
 with --yes, and nothing written when the prompt can get no answer; a
 wildcard matching nothing reported as such; each file converted once; and
@@ -102,7 +103,11 @@ def test_several_files_are_written_beside_their_sources(
             f'{{ x: "{name}" }}', encoding="utf-8"
         )
     out, _, code = _run(
-        monkeypatch, capsys, str(tmp_path / "a.jsonnet"), str(tmp_path / "*.jsonnet")
+        monkeypatch,
+        capsys,
+        "--write",
+        str(tmp_path / "a.jsonnet"),
+        str(tmp_path / "*.jsonnet"),
     )
     assert code == 0
     # a.jsonnet named and matched: converted once
@@ -114,11 +119,35 @@ def test_several_files_are_written_beside_their_sources(
 def test_a_wildcard_matching_nothing_says_so(jsonnet, tmp_path, monkeypatch, capsys):
     (tmp_path / "a.jsonnet").write_text("{}", encoding="utf-8")
     _, err, code = _run(
-        monkeypatch, capsys, str(tmp_path / "a.jsonnet"), str(tmp_path / "zz*.jsonnet")
+        monkeypatch,
+        capsys,
+        "-w",
+        str(tmp_path / "a.jsonnet"),
+        str(tmp_path / "zz*.jsonnet"),
     )
     assert code == 1
     assert "No files match" in err
     assert (tmp_path / "a.json").exists()
+
+
+@pytest.mark.parametrize(
+    "files", [["a.jsonnet", "b.jsonnet"], ["*.jsonnet"]], ids=["several", "glob"]
+)
+def test_several_files_or_a_pattern_need_write(tmp_path, monkeypatch, capsys, files):
+    # Refused as parsed, writing nothing, Jsonnet installed or not
+    (tmp_path / "a.jsonnet").write_text("{}", encoding="utf-8")
+    _, err, code = _run(monkeypatch, capsys, *[str(tmp_path / f) for f in files])
+    assert code == 2 and "--write" in err
+    assert not (tmp_path / "a.json").exists()
+
+
+def test_write_writes_one_file_beside_its_source(
+    jsonnet, tmp_path, monkeypatch, capsys
+):
+    (tmp_path / "a.jsonnet").write_text("{ a: 1 }", encoding="utf-8")
+    out, _, code = _run(monkeypatch, capsys, "--write", str(tmp_path / "a.jsonnet"))
+    assert code == 0 and "Converted:" in out
+    assert json.loads((tmp_path / "a.json").read_text(encoding="utf-8")) == {"a": 1}
 
 
 def _sources(tmp_path) -> tuple[str, str]:
@@ -144,7 +173,7 @@ def test_declining_keeps_an_existing_file_and_writes_the_new_ones(
 ):
     pattern, hand_written = _sources(tmp_path)
     _answer(monkeypatch, "n\n")
-    out, _, code = _run(monkeypatch, capsys, pattern)
+    out, _, code = _run(monkeypatch, capsys, "--write", pattern)
     assert code == 0
     assert "Would overwrite:" in out and "Not overwritten:" in out
     assert (tmp_path / "b.json").read_text(encoding="utf-8") == hand_written
@@ -154,7 +183,7 @@ def test_declining_keeps_an_existing_file_and_writes_the_new_ones(
 def test_confirming_overwrites(jsonnet, tmp_path, monkeypatch, capsys):
     pattern, _ = _sources(tmp_path)
     _answer(monkeypatch, "y\n")
-    _, _, code = _run(monkeypatch, capsys, pattern)
+    _, _, code = _run(monkeypatch, capsys, "--write", pattern)
     assert code == 0
     assert json.loads((tmp_path / "b.json").read_text(encoding="utf-8")) == {"b": 2}
 
@@ -162,7 +191,7 @@ def test_confirming_overwrites(jsonnet, tmp_path, monkeypatch, capsys):
 def test_yes_overwrites_without_asking(jsonnet, tmp_path, monkeypatch, capsys):
     pattern, _ = _sources(tmp_path)
     _answer(monkeypatch, "")
-    _, _, code = _run(monkeypatch, capsys, "--yes", pattern)
+    _, _, code = _run(monkeypatch, capsys, "--write", "--yes", pattern)
     assert code == 0
     assert json.loads((tmp_path / "b.json").read_text(encoding="utf-8")) == {"b": 2}
 
@@ -170,7 +199,7 @@ def test_yes_overwrites_without_asking(jsonnet, tmp_path, monkeypatch, capsys):
 def test_no_answer_writes_nothing_at_all(jsonnet, tmp_path, monkeypatch, capsys):
     pattern, hand_written = _sources(tmp_path)
     _answer(monkeypatch, "")
-    _, err, code = _run(monkeypatch, capsys, pattern)
+    _, err, code = _run(monkeypatch, capsys, "--write", pattern)
     assert code == 1 and "--yes" in err
     assert (tmp_path / "b.json").read_text(encoding="utf-8") == hand_written
     assert not (tmp_path / "a.json").exists()
@@ -183,7 +212,7 @@ def test_a_file_the_conversion_would_not_change_is_left_unasked(
     (tmp_path / "b.json").write_text('{"b": 2}\n', encoding="utf-8")
     before = os.stat(tmp_path / "b.json").st_mtime_ns
     _answer(monkeypatch, "")
-    out, _, code = _run(monkeypatch, capsys, pattern)
+    out, _, code = _run(monkeypatch, capsys, "--write", pattern)
     assert code == 0
     assert "Unchanged: " in out and "Would overwrite" not in out
     assert os.stat(tmp_path / "b.json").st_mtime_ns == before

@@ -1,33 +1,40 @@
 """
-This fixes an issue using Rich's Console.input() method, where the prompt
-is deleted if a backspace is typed. The problematic method in the base
-Console class is overridden.
+A Rich Console whose input() keeps its prompt while the line is edited.
 
-Bug:
-  https://github.com/Textualize/rich/issues/2293
+Rich's own Console.input() prints the prompt itself, then calls input()
+with no prompt (https://github.com/Textualize/rich/issues/2293). readline
+knows nothing of the printed prompt, so redrawing the line on an editing
+key (backspace, a cursor key, history) erases it.
 
-Root cause: Rich 13.x prints the prompt directly then calls input() with no
-arguments. readline doesn't know about the pre-printed prompt, so when it
-redraws the line on any editing keystroke (backspace, cursor movement), it
-erases the prompt.
+With readline loaded and both stdin and stdout terminals, the prompt's last
+line goes to input() itself, so readline redraws it with the line, and the
+cursor keys and history work. GNU readline is given its colour codes
+between \\001 and \\002 (RL_PROMPT_START_IGNORE/END_IGNORE), which leave
+them out of the prompt's width. libedit (macOS's Python, and others) is
+given the last line uncoloured: it counts a colour code's characters as
+columns, and writes the codes between those markers ahead of the text and
+again at each redraw. Any earlier lines of the prompt are printed as they
+are.
 
-Fix: capture the rendered prompt string, write it to the console's output
-file directly, then read from sys.stdin. This bypasses readline entirely and
-relies on the terminal's own cooked-mode line editing, which correctly handles
-backspace without any knowledge of the prompt width.
-
-The \001/\002 (RL_PROMPT_START_IGNORE/END_IGNORE) approach used to signal
-non-printing characters to readline is not used here because macOS Python uses
-libedit rather than GNU readline, and libedit does not reliably support those
-markers.
+Otherwise the prompt is printed and the line read from sys.stdin, with the
+terminal's own line editing, if any. Bypassing readline at a terminal would
+leave the cursor keys echoed as escape sequences, which then become part of
+the answer.
 """
 
+import re
 import sys
 from getpass import getpass
 from typing import TextIO
 
 from rich.console import Console
 from rich.text import TextType
+
+# A CSI escape sequence: the colours and styles Rich writes
+_ESCAPE_SEQUENCE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+_READLINE_IGNORE_START = "\001"
+_READLINE_IGNORE_END = "\002"
 
 
 class ConsoleWithInputBackspaceFixed(Console):
@@ -49,19 +56,64 @@ class ConsoleWithInputBackspaceFixed(Console):
             self.file.write(prompt_str)
             prompt_str = ""
         if password:
-            result = getpass(prompt_str, stream=stream)
-        else:
-            self.file.write(prompt_str)
-            self.file.flush()
-            if stream:
-                # As Rich's own input(): the line as read, newline and all,
-                # and "" at the end of the stream
-                result = stream.readline()
-            else:
-                raw_line = sys.stdin.readline()
-                if raw_line == "":
-                    # Match builtin input(): EOF must raise, not return "",
-                    # otherwise callers' retry loops spin forever
-                    raise EOFError("EOF when reading a line")
-                result = raw_line.rstrip("\n")
-        return result
+            return getpass(prompt_str, stream=stream)
+        if stream is None and self._line_editing():
+            earlier_lines, newline, last_line = prompt_str.rpartition("\n")
+            if newline:
+                self.file.write(earlier_lines + newline)
+                self.file.flush()
+            return input(_readline_prompt(last_line))
+        # Bypassing readline, which would erase the printed prompt on
+        # redrawing the line
+        self.file.write(prompt_str)
+        self.file.flush()
+        if stream:
+            # As Rich's own input(): the line as read, newline and all,
+            # and "" at the end of the stream
+            return stream.readline()
+        raw_line = sys.stdin.readline()
+        if raw_line == "":
+            # Match builtin input(): EOF must raise, not return "",
+            # otherwise callers' retry loops spin forever
+            raise EOFError("EOF when reading a line")
+        return raw_line.rstrip("\n")
+
+    def _line_editing(self) -> bool:
+        """
+        Whether the line is read through readline: only with readline
+        loaded, and both stdin and stdout terminals, the prompt going to
+        stdout, which must be this console's file.
+        """
+        if "readline" not in sys.modules or self.file is not sys.stdout:
+            return False
+        try:
+            return sys.stdin.isatty() and sys.stdout.isatty()
+        except (AttributeError, ValueError):
+            return False
+
+
+def _readline_prompt(prompt: str) -> str:
+    """
+    The prompt as readline is to be given it: its escape sequences marked
+    as taking no width for GNU readline, removed for libedit.
+    """
+    if _is_libedit():
+        return _ESCAPE_SEQUENCE.sub("", prompt)
+    return _ESCAPE_SEQUENCE.sub(
+        lambda match: _READLINE_IGNORE_START + match.group(0) + _READLINE_IGNORE_END,
+        prompt,
+    )
+
+
+def _is_libedit() -> bool:
+    """
+    Whether the readline module is libedit's: its 'backend' from Python
+    3.13, its docstring before that.
+    """
+    readline = sys.modules.get("readline")
+    if readline is None:
+        return False
+    backend = getattr(readline, "backend", None)
+    if backend is not None:
+        return backend == "editline"
+    return "libedit" in (readline.__doc__ or "")

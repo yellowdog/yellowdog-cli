@@ -83,16 +83,17 @@ class TestNounsAndVerbs:
         assert _values(["yd", "completion"], "z") == ["zsh"]
 
     @pytest.mark.parametrize(
-        "word, options",
+        "words, options",
         [
-            ("format-json", ["--check", "--help"]),
-            ("jsonnet2json", ["--no-format", "--yes", "--help"]),
+            (["format-json"], ["--check", "--help"]),
+            (["jsonnet", "tojson"], ["--write", "--no-format", "--yes", "--help"]),
+            (["jsonnet", "factor"], ["--help"]),
         ],
     )
-    def test_a_standalone_command_completes_its_files_and_options(self, word, options):
+    def test_a_standalone_command_completes_its_files_and_options(self, words, options):
         # Its files positional is marked as files, so the shell completes them
-        assert complete(["yd", word], "").mode is Mode.FILES
-        assert sorted(_values(["yd", word], "-")) == sorted(options)
+        assert complete(["yd", *words], "").mode is Mode.FILES
+        assert sorted(_values(["yd", *words], "-")) == sorted(options)
 
     def test_yd_versions_options_complete(self):
         assert _values(["yd", "version"], "--j") == ["--jsonnet", "--json"]

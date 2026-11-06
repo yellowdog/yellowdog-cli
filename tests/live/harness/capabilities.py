@@ -65,15 +65,7 @@ class KnownFaultWarning(UserWarning):
 CAPABILITIES: dict[str, dict[str, Unsupported | KnownFault]] = {
     "aws": {},
     "azure": {},
-    "gcp": {
-        # The resize terminates an Instance, then the target drops again, to
-        # 0, with the other Instance left RUNNING
-        "resize-down": KnownFault(
-            issue="https://yellowdog.atlassian.net/browse/YEL-15298",
-            symptom="1 of 0 Instances running",
-            wait_seconds=300,
-        ),
-    },
+    "gcp": {},
     "oci": {},
 }
 

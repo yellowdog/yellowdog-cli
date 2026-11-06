@@ -9,7 +9,7 @@
    * [The Compiled-Schema Cache](#the-compiled-schema-cache)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:28 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov  6 10:15:13 GMT 2026 -->
 
 <!--te-->
 
@@ -94,7 +94,7 @@ Alternatively, a file can name its own schema with a `$schema` key at the top, w
 
 The configuration file can do the same, with a top-level `"$schema" = "./schemas/config.schema.json"`, which the configuration check accepts; editors whose TOML support comes from Taplo (such as VS Code's Even Better TOML) also read a `#:schema ./schemas/config.schema.json` comment on the first line, which the CLI ignores as it does any comment.
 
-An editor checks the file as written, while the CLI checks it after substitution and conversion. A `{{variable}}` is accepted wherever a value stands, so an unresolved one is never itself a violation; but a resource's `resource` property and a Node Action's `type` choose which further properties are checked, so a `{{variable}}` there leaves the rest of that resource or action unchecked. An editor cannot check a Jsonnet file against a JSON Schema; run `yd jsonnet2json` on it to see the JSON that is checked.
+An editor checks the file as written, while the CLI checks it after substitution and conversion. A `{{variable}}` is accepted wherever a value stands, so an unresolved one is never itself a violation; but a resource's `resource` property and a Node Action's `type` choose which further properties are checked, so a `{{variable}}` there leaves the rest of that resource or action unchecked. An editor cannot check a Jsonnet file against a JSON Schema; run `yd jsonnet tojson` on it to see the JSON that is checked.
 
 ## Keeping the Schemas Current
 

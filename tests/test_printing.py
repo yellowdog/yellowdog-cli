@@ -1138,6 +1138,31 @@ def test_an_output_file_that_cannot_be_written_keeps_its_cause(tmp_path):
     assert isinstance(raised.value.__cause__, OSError)
 
 
+@pytest.mark.parametrize("json_output", [False, True])
+def test_a_listing_to_an_output_file_leaves_stdout_to_json(
+    tmp_path, capsys, json_output
+):
+    # The details go to the file instead, or under '--json' to both
+    import json
+
+    output_file = tmp_path / "keyrings.json"
+    keyrings = [KeyringSummary(id=f"ydid:keyring:{n}", name=f"k{n}") for n in (1, 2)]
+    args = SimpleNamespace(
+        output_file=str(output_file), json_output=json_output, no_format=True
+    )
+    with (
+        output_settings.configured(args),
+        patch.object(printing_module, "print_info") as print_info,
+    ):
+        printing_module.print_yd_object_list([(k, None) for k in keyrings])
+
+    written = json.loads(output_file.read_text(encoding="utf-8"))
+    assert [k["name"] for k in written] == ["k1", "k2"]
+    stdout = capsys.readouterr().out
+    assert (json.loads(stdout) == written) if json_output else stdout == ""
+    print_info.assert_called_once_with(f"Wrote 2 items to '{output_file}'")
+
+
 class TestStatesAreWholeWords:
     """
     A state is highlighted as a whole word only: not 'NEW' inside a quoted

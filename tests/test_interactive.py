@@ -4,17 +4,24 @@ Unit tests for yellowdog_cli.utils.interactive
 Only the pure-logic / non-I/O paths are tested here:
   - confirmed(): the --yes short-circuit
   - get_selected_list_items(): range-parsing logic (with _get_user_input mocked)
+
+and the prompt's line editing, through a pseudo-terminal.
 """
 
 import os
+import select
+import subprocess
+import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 import yellowdog_cli.utils.interactive as interactive_module
-from yellowdog_cli.utils import output_settings
+from yellowdog_cli.utils import output_settings, rich_console_input_fixed
 from yellowdog_cli.utils.interactive import confirmed, get_selected_list_items
+from yellowdog_cli.utils.rich_console_input_fixed import ConsoleWithInputBackspaceFixed
 
 # ---------------------------------------------------------------------------
 # confirmed() — short-circuit paths (no user input required)
@@ -308,3 +315,102 @@ class TestAPromptLeftUnanswered:
         ):
             interactive_module.ask("Question:", secret=secret)
         assert capsys.readouterr().out.endswith("\n")
+
+
+class TestLineEditing:
+    """
+    At a terminal with readline loaded, the prompt's last line is handed to
+    input(), so readline redraws it and the cursor keys edit the line rather
+    than being echoed as escape sequences, which would join the answer.
+    """
+
+    @pytest.mark.parametrize(
+        "backend, expected",
+        [
+            ("readline", "\001\x1b[34m\002TIME\001\x1b[0m\002 : pick> "),
+            ("editline", "TIME : pick> "),
+        ],
+    )
+    def test_the_prompt_as_readline_is_given_it(self, backend, expected):
+        fake = SimpleNamespace(backend=backend, __doc__="")
+        with patch.dict(sys.modules, {"readline": fake}):
+            assert (
+                rich_console_input_fixed._readline_prompt(
+                    "\x1b[34mTIME\x1b[0m : pick> "
+                )
+                == expected
+            )
+
+    def test_libedit_is_recognised_by_its_docstring_without_a_backend(self):
+        fake = SimpleNamespace(__doc__="... using libedit readline.")
+        with patch.dict(sys.modules, {"readline": fake}):
+            assert rich_console_input_fixed._is_libedit()
+
+    def test_the_last_line_goes_to_input(self):
+        console = ConsoleWithInputBackspaceFixed(
+            no_color=True, emoji=False, legacy_windows=False
+        )
+        with (
+            patch.object(
+                ConsoleWithInputBackspaceFixed, "_line_editing", return_value=True
+            ),
+            patch.object(
+                ConsoleWithInputBackspaceFixed,
+                "file",
+                new_callable=lambda: SimpleNamespace(
+                    write=lambda _: None, flush=lambda: None
+                ),
+            ),
+            patch("builtins.input", return_value="2") as read,
+        ):
+            assert console.input("first\nsecond: ") == "2"
+        read.assert_called_once_with("second: ")
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="no pseudo-terminals")
+    def test_the_cursor_keys_edit_the_answer(self):
+        pty = pytest.importorskip("pty")
+        pytest.importorskip("readline")
+        script = (
+            "from types import SimpleNamespace\n"
+            "from yellowdog_cli.utils import interactive, output_settings\n"
+            "output_settings.configure_output(SimpleNamespace(no_format=False))\n"
+            "print('ANSWER', repr(interactive.ask('Select:')))\n"
+        )
+        # Type 'abc', back two, delete the 'a', type 'Z', forward one
+        keys = [b"abc", b"\x1b[D", b"\x1b[D", b"\x7f", b"Z", b"\x1b[C", b"\r"]
+        fd, terminal = pty.openpty()
+        child = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdin=terminal,
+            stdout=terminal,
+            stderr=terminal,
+            start_new_session=True,
+        )
+        os.close(terminal)
+        output = b""
+
+        def drain(seconds: float) -> None:
+            nonlocal output
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                ready, _, _ = select.select([fd], [], [], 0.05)
+                if ready:
+                    try:
+                        output += os.read(fd, 4096)
+                    except OSError:
+                        return
+
+        try:
+            deadline = time.monotonic() + 20
+            while b"Select:" not in output and time.monotonic() < deadline:
+                drain(0.1)
+            for key in keys:
+                os.write(fd, key)
+                drain(0.2)
+            drain(1.0)
+        finally:
+            os.close(fd)
+            child.kill()
+            child.wait()
+        assert b"ANSWER 'Zbc'" in output, output
+        assert b"^[[" not in output, output

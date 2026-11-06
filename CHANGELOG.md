@@ -2,6 +2,24 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.10.0 — 2026-11-06
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd jsonnet2json` is `yd jsonnet tojson`**, a verb of the new `yd jsonnet` noun, and writes `<name>.json` files only with `--write`: one file's JSON goes to stdout, and several files or a glob pattern without `--write` are refused (exit 2). `yd jsonnet2json` is refused. The deprecated `yd-jsonnet2json` command still runs, as `yd jsonnet tojson` does, with a warning naming it.
+- **`--output-file` takes the details off stdout**: `yd list` and `yd show` write the JSON details to the file alone, saying how many items they wrote, where they printed them to the terminal too. Under `--json`, stdout still holds the document as well as the file; `yd list … | tee <file>` gives both otherwise.
+
+### Other
+
+- At a prompt (selecting items, confirming an action, `yd init`'s questions), the cursor keys and history work, rather than echoing escape sequences such as `^[[A` that became part of the answer. Where Python uses libedit (macOS's Python, uv's), the prompt's last line is shown uncoloured.
+- The CLI requires `yellowdog-sdk` 15.10.0 or later, so a GCE compute source (`GceInstancesComputeSource`, `GceInstanceGroupComputeSource`) in a Compute Requirement Template can set `reservation` and `reservationBound`, to provision instances from a GCE reservation.
+- `yd show` and `yd variables` take `--json`, which leaves their JSON document alone on stdout, with any warnings on stderr, as on the other commands; `--quiet` still gives the document alone without the warnings. Through the MCP server, `yd_show` and `yd_variables` now return those warnings in `stderr`.
+- `yd list` and `yd show` write an `--output-file` named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes, trailing commas), ready to edit as a Jsonnet specification; it evaluates to the same JSON, so `yd resource create` takes it as it is.
+- `yd jsonnet fromjson` converts a JSON file to Jsonnet in the same style, to stdout or, with `--write`, to `<name>.jsonnet` beside it, checking that it evaluates to the same JSON.
+- `yd jsonnet factor` prints a list of specifications, such as `yd list --json` captures, as compact Jsonnet: what each kind shares is written once as a `local` base, and each specification as its differences from it. The file evaluates to the same JSON, which the command checks before printing it.
+
 ## 15.9.0 — 2026-11-03
 
 ### Upgrading

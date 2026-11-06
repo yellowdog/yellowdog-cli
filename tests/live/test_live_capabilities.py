@@ -43,13 +43,6 @@ def test_every_entry_is_an_action_the_chain_runs_with_a_reason():
                 )
 
 
-def test_gcps_resize_down_is_a_known_fault():
-    fault = capabilities.known_fault("gcp", "resize-down")
-    assert fault is not None
-    assert fault.issue.endswith("/YEL-15298")
-    assert capabilities.unsupported("gcp", "resize-down") is None
-
-
 def test_every_action_is_performed_by_the_provider_chain():
     source = PROVIDERS_MODULE.read_text(encoding="utf-8")
     for action in ACTIONS:

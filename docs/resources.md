@@ -42,7 +42,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:27 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov  6 10:15:13 GMT 2026 -->
 
 <!--te-->
 
@@ -188,16 +188,22 @@ yd list image-families --details --substitute-ids --strip-ids
 
 This produces a list of resource specifications that can be used directly with `yd resource create` and `yd resource remove`.
 
-The `--output-file` option also writes the detailed list to a file, as well as displaying it:
+The `--output-file` option writes the detailed list to a file instead of displaying it:
 
 ```shell
 yd list compute-source-templates --details --output-file render-templates.json
 ```
 
+A file named `.jsonnet` is written in the Jsonnet style, for editing by hand as a [Jsonnet](jsonnet.md) specification: keys unquoted, strings in single quotes and a trailing comma after each last element. It evaluates to the same JSON, so `yd resource create` takes it as it is:
+
+```shell
+yd list compute-source-templates --details --output-file render-templates.jsonnet
+```
+
 Alternatively, `yd show` gives the details of each resource whose `ydid` it is given. This writes a JSON file that can be used with `yd resource create` as it is, or edited:
 
 ```shell
-yd show -q ydid:cst:000000:cde265f8-0b17-4e0e-be1c-505174a620e4 --substitute-ids --strip-ids --output-file aws-eu-west-2-ondemand.json
+yd show ydid:cst:000000:cde265f8-0b17-4e0e-be1c-505174a620e4 --substitute-ids --strip-ids --output-file aws-eu-west-2-ondemand.json
 ```
 
 Both `yd list` and `yd show` take these two options:

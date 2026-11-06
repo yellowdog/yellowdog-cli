@@ -210,7 +210,7 @@ The per-family document shapes are the CLI README's own, in [Machine-readable Ou
 
 **Why `result` is wrapped.** `structuredContent` must itself be an object, and the document is often an array.
 
-**`yd_show` and `yd_variables`.** These two are the exceptions to `--json`: their commands have no such option, since they print their JSON document whatever they are given. The server runs them with `--quiet` instead, which leaves the document alone on stdout. The warnings those two commands would print, such as an undefined variable in `yd_variables`, are suppressed by `--quiet` rather than sent to stderr.
+**`yd_show` and `yd_variables`.** These two print their JSON document whatever they are given, and `--json` leaves it alone on stdout. Their warnings, such as an undefined variable in `yd_variables`, come back in `stderr`.
 
 **Per-item failures.** A run that exits non-zero is still a success when its document holds a record whose `outcome` or `action` is `failed`, the CLI's own per-item failure convention. The command completed and reported what went wrong itself. Its exit code is then the cause the failures share (6 when every target was not found, 5 when each was refused) or 1.
 
@@ -298,7 +298,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 - **A credential in a tool result is a credential in the conversation**: `--show-keyring-passwords`, `--show-secrets`.
 - **The specification file options**, replaced by each tool's own `specification`/`specifications` argument: `yd workrequirement submit`'s `--work-requirement`, `yd workerpool provision`'s and `yd computerequirement instantiate`'s `--worker-pool`, `yd computerequirement instantiate`'s `--compute-requirement`, and the equivalent positional file arguments (see [Specifications](#specifications)). `yd_node_action`'s `worker_pool`, which shares the name but is no file, is offered as on the command line.
 
-Six commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json` and `yd jsonnet2json` (local file formatters, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated `yd-*` commands the nouns replace: their noun verbs' tools stand in for them.
+Eight commands have no tool at all: `yd cloudwizard` (interactive cloud provider setup), `yd init` (an interactive starter configuration), `yd completion` (a shell's completion script), `yd format-json`, `yd jsonnet tojson`, `fromjson` and `factor` (local file tools, not platform commands), and `yd help` (the tool list, above, is the help). Nor do the deprecated `yd-*` commands the nouns replace: their noun verbs' tools stand in for them.
 
 ## Namespace, Tag and Variables
 

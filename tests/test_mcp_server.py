@@ -138,8 +138,8 @@ def test_an_unknown_tool_is_a_tool_error(settings, clean_env):
 
 
 def test_yd_variables_returns_its_document(settings, clean_env, monkeypatch):
-    # yd-variables prints its own JSON, with no --json option to silence the
-    # wrapper's 'Done' after it: without --quiet the document does not parse
+    # yd-variables prints its own JSON, which --json leaves alone on stdout:
+    # the wrapper's 'Done' after it would not parse
     for name, value in (
         ("YD_KEY", "k"),
         ("YD_SECRET", "s"),

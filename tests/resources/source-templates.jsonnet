@@ -255,6 +255,14 @@ local gceInstanceGroupMax = gceInstanceGroupMin {
   targetDistributionShape: 'BALANCED',
 };
 
+// Reservation-bound instances cannot be Spot ones, which the maximal variant
+// asks for, so the reservation has a variant of its own
+local gceInstanceGroupReserved = gceInstanceGroupMin {
+  name: base.name('gce-instance-group-reserved'),
+  reservation: '{{gcp_reservation}}',
+  reservationBound: true,
+};
+
 // ---------------------------------------------------------------------------
 // GCE: individual instances
 // ---------------------------------------------------------------------------
@@ -289,6 +297,14 @@ local gceInstancesMax = gceInstancesMin {
   acceleratorCount: 1,
   hostMaintenanceBehaviour: 'MIGRATE',
   serviceAccountEmail: '{{gcp_service_account_email}}',
+};
+
+// Reservation-bound instances cannot be Spot ones, which the maximal variant
+// asks for, so the reservation has a variant of its own
+local gceInstancesReserved = gceInstancesMin {
+  name: base.name('gce-instances-reserved'),
+  reservation: '{{gcp_reservation}}',
+  reservationBound: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -428,8 +444,10 @@ local sources = [
   [azureScaleSetMax, 'maximal AzureScaleSetComputeSource'],
   [gceInstanceGroupMin, 'minimal GceInstanceGroupComputeSource'],
   [gceInstanceGroupMax, 'maximal GceInstanceGroupComputeSource'],
+  [gceInstanceGroupReserved, 'reservation-bound GceInstanceGroupComputeSource'],
   [gceInstancesMin, 'minimal GceInstancesComputeSource'],
   [gceInstancesMax, 'maximal GceInstancesComputeSource'],
+  [gceInstancesReserved, 'reservation-bound GceInstancesComputeSource'],
   [ociInstancePoolMin, 'minimal OciInstancePoolComputeSource'],
   [ociInstancePoolMax, 'maximal OciInstancePoolComputeSource'],
   [ociInstancesMin, 'minimal OciInstancesComputeSource'],

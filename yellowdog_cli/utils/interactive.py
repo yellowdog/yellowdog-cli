@@ -251,9 +251,12 @@ def _get_user_input(input_prompt: str, secret: bool = False) -> str:
             return read("")
         if OUTPUT.no_format:
             return read(input_prompt)
-        # Prevents broken wrapping
-        CONSOLE.print(input_prompt, end="", soft_wrap=True)
-        return getpass("") if secret else CONSOLE.input("")
+        if secret:
+            # Prevents broken wrapping
+            CONSOLE.print(input_prompt, end="", soft_wrap=True)
+            return getpass("")
+        # The console's input() hands the prompt to readline, for editing
+        return CONSOLE.input(input_prompt)
     except KeyboardInterrupt:
         console.print(soft_wrap=True)
         raise

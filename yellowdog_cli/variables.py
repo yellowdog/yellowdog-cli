@@ -170,9 +170,9 @@ def report_variables(variable_names: list[str], show_secrets: bool = False) -> R
 @main_wrapper
 def main(ctx: RunContext):
     # Like yd-show, whose output is also always JSON, the warnings and the
-    # wrapper's trailing 'Done' are printed around it unless '--quiet' is
-    # given, which is how a caller needing the JSON alone asks for it (as
-    # Commander does)
+    # wrapper's trailing 'Done' are printed around it, unless '--json' (the
+    # warnings to stderr) or '--quiet' (none) leaves it alone on stdout, as
+    # Commander asks for it
     variable_names = ctx.args.variable_names
     report = report_variables(variable_names, show_secrets=bool(ctx.args.show_secrets))
     # A redacted value is REDACTED_VALUE here, and so carries no reference

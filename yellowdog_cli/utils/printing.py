@@ -26,6 +26,7 @@ from rich.theme import Theme
 
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.debug_log import CLI_LOGGER
+from yellowdog_cli.utils.jsonnet_style import is_jsonnet_path, jsonnet_style
 from yellowdog_cli.utils.output_settings import OUTPUT
 from yellowdog_cli.utils.output_style import (
     DEFAULT_LOG_WIDTH,
@@ -474,6 +475,16 @@ def json_document_printed() -> bool:
     return _JSON_DOCUMENT_PRINTED
 
 
+def note_json_document_printed() -> None:
+    """
+    Record that a JSON document has been printed to stdout other than by
+    print_json(): an array's brackets, printed around its items, which may
+    be none.
+    """
+    global _JSON_DOCUMENT_PRINTED
+    _JSON_DOCUMENT_PRINTED = True
+
+
 def reset_json_document_printed() -> None:
     """
     Forget that a JSON document was printed (for tests, via reset_results()).
@@ -516,20 +527,15 @@ def print_json(
     json_string = indent(
         json_dumps(data, indent=JSON_INDENT, cls=CompactJSONEncoder), initial_indent
     )
-    # Coloured formatting of JSON console output is expensive
-    if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
-        if with_final_comma:
-            print(json_string, end=",\n", flush=True)
+    if details_to_console():
+        end = ",\n" if with_final_comma else "\n"
+        # Coloured formatting of JSON console output is expensive
+        if json_string.count("\n") > MAX_LINES_COLOURED_JSON or OUTPUT.no_format:
+            print(json_string, end=end, flush=True)
         else:
-            print(json_string, flush=True)
+            CONSOLE_JSON.print(escape(json_string), end=end, soft_wrap=True)
 
-    else:
-        if with_final_comma:
-            CONSOLE_JSON.print(escape(json_string), end=",\n", soft_wrap=True)
-        else:
-            CONSOLE_JSON.print(escape(json_string), soft_wrap=True)
-
-    if OUTPUT.output_file is not None:  # Also output to a nominated file
+    if OUTPUT.output_file is not None:  # Instead, or as well under '--json'
         print_to_file(
             json_string=json_string,
             output_file=OUTPUT.output_file,
@@ -580,11 +586,9 @@ def print_yd_object_list(
     Print a JSON list of objects.
     """
 
-    if OUTPUT.output_file is not None:
-        print_info(f"Copying detailed resource list to '{OUTPUT.output_file}'")
-
     if len(objects) > 1:
-        print("[")
+        if details_to_console():
+            print("[")
         if OUTPUT.output_file is not None:
             print_to_file("[", OUTPUT.output_file)
 
@@ -597,9 +601,28 @@ def print_yd_object_list(
         )
 
     if len(objects) > 1:
-        print("]")
+        if details_to_console():
+            print("]")
         if OUTPUT.output_file is not None:
             print_to_file("]", OUTPUT.output_file)
+    report_output_file(len(objects))
+
+
+def details_to_console() -> bool:
+    """
+    Whether the JSON details go to stdout: not when '--output-file' takes
+    them instead, unless '--json' asks for the document on stdout too.
+    """
+    return OUTPUT.output_file is None or bool(OUTPUT.json_output)
+
+
+def report_output_file(count: int) -> None:
+    """
+    Say where '--output-file' put the details, if it was given and anything
+    was written.
+    """
+    if OUTPUT.output_file is not None and count:
+        print_info(f"Wrote {counted(count, 'item')} to '{OUTPUT.output_file}'")
 
 
 def print_worker_pool(
@@ -686,10 +709,13 @@ FIRST_OUTPUT_TO_FILE = True  # Determine whether to 'write' or 'append'
 
 def print_to_file(json_string: str, output_file: str, with_final_comma: bool = False):
     """
-    Dump details output to a file.
+    Dump details output to a file: in the Jsonnet style for a '.jsonnet'
+    file, which evaluates to the same JSON.
     """
     global FIRST_OUTPUT_TO_FILE
 
+    if is_jsonnet_path(output_file):
+        json_string = jsonnet_style(json_string)
     try:
         with open(
             output_file, "w" if FIRST_OUTPUT_TO_FILE else "a", encoding="utf-8"

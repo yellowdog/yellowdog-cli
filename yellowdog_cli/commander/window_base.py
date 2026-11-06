@@ -43,18 +43,27 @@ from yellowdog_cli.utils.command_registry import (
     VARIABLE,
     CommandKind,
 )
-from yellowdog_cli.utils.noun_registry import command_named
+from yellowdog_cli.utils.noun_registry import REPLACED_BY_VERBS, command_named
 from yellowdog_cli.utils.top_level import yd_form
+
+
+def _spellings(name: str) -> tuple[str, ...]:
+    """
+    A command's 'yd-*' name and how it is typed under 'yd': its noun forms
+    where a verb replaces it ('yd jsonnet tojson'), else 'yd <word>'.
+    """
+    return (name, *REPLACED_BY_VERBS.get(name, [yd_form(name)]))
+
 
 # The commands that take none of the configuration options Commander adds to
 # the others (the config source, namespace, tag, variables, properties,
 # '--pp'), so a typed one is run as it was typed, bar '--nf' (below): each by
-# its 'yd' form and by its deprecated 'yd-*' name, either of which is typed
+# its 'yd' forms and by its deprecated 'yd-*' name, any of which is typed
 UNDECORATED_YD_COMMANDS = frozenset(
     spelling
     for name, command in COMMANDS.items()
     if command.kind is CommandKind.STANDALONE
-    for spelling in (name, yd_form(name))
+    for spelling in _spellings(name)
 )
 # Those of them that take '--nf', which Commander adds as it does to the rest,
 # since the output window shows no colour; a test holds it to each command's
@@ -63,7 +72,7 @@ NO_FORMAT_UNDECORATED_YD_COMMANDS = frozenset(
     spelling
     for name, command in COMMANDS.items()
     if command.kind is CommandKind.STANDALONE and command.has(NO_FORMAT)
-    for spelling in (name, yd_form(name))
+    for spelling in _spellings(name)
 )
 NO_FORMAT_FLAGS = ("--nf", "--no-format")
 BUTTON_TEXT_MARGIN = 24  # px of button padding to keep clear of the label

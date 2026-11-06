@@ -129,12 +129,21 @@ def test_a_commands_parser_shows_its_prog(monkeypatch, ran):
 
 
 @pytest.mark.parametrize(
-    "word", ["help", "version", "format-json", "jsonnet2json", "commander", "mcp"]
+    "words",
+    [
+        ["help"],
+        ["version"],
+        ["format-json"],
+        ["jsonnet", "tojson"],
+        ["jsonnet", "factor"],
+        ["commander"],
+        ["mcp"],
+    ],
 )
-def test_a_standalone_parser_shows_its_prog(monkeypatch, capsys, word):
-    if word == "mcp":
+def test_a_standalone_parser_shows_its_prog(monkeypatch, capsys, words):
+    if words == ["mcp"]:
         pytest.importorskip("mcp")
     with pytest.raises(SystemExit) as exit_:
-        _run(monkeypatch, word, "--help")
+        _run(monkeypatch, *words, "--help")
     assert exit_.value.code == ExitCode.SUCCESS
-    assert f"usage: yd {word}" in capsys.readouterr().out
+    assert f"usage: yd {' '.join(words)}" in capsys.readouterr().out
