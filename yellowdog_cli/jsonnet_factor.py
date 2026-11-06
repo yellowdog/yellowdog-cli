@@ -15,6 +15,7 @@ import sys
 
 from yellowdog_cli.utils.check_imports import check_jsonnet_import
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
+from yellowdog_cli.utils.file_conversion import parsed_json
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.jsonnet_style import is_jsonnet_path
 from yellowdog_cli.utils.output_encoding import use_utf8_output
@@ -51,8 +52,8 @@ def main():
             )
         text = factored_and_checked(specifications)
     except (OSError, ValueError, RuntimeError, FactoringError) as e:
-        # json.JSONDecodeError is a ValueError, and _jsonnet raises a
-        # RuntimeError for a file that does not evaluate
+        # parsed_json() raises a ValueError, and _jsonnet a RuntimeError for
+        # a file that does not evaluate
         name = "standard input" if args.file == STDIN_PATH else f"'{args.file}'"
         print(f"{ERROR_MARKER}Cannot factor {name}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -65,13 +66,13 @@ def _read(path: str):
     '.jsonnet' file; '-' is standard input, read as JSON.
     """
     if path == STDIN_PATH:
-        return json.load(sys.stdin)
+        return parsed_json(sys.stdin.read(), path)
     if is_jsonnet_path(path):
         from _jsonnet import evaluate_file
 
         return json.loads(evaluate_file(path))
     with open(path, encoding="utf-8") as f:
-        return json.load(f)
+        return parsed_json(f.read(), path)
 
 
 # Entry point

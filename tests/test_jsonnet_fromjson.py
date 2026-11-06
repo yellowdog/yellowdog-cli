@@ -83,15 +83,33 @@ def test_a_conversion_that_changes_the_json_is_refused(
     assert "would not evaluate to the same JSON" in err
 
 
-@pytest.mark.parametrize("content", ["{", ""])
-def test_an_unusable_file_is_an_error_on_stderr(
-    jsonnet, tmp_path, monkeypatch, capsys, content
+@pytest.mark.parametrize(
+    "name, content, reason",
+    [
+        ("bad.json", '{"a": 1,}', "it is not JSON (illegal trailing comma"),
+        ("bad.json", "{", "at line 1, column 2)"),
+        ("bad.json", " \n", "it is empty"),
+        ("spec.jsonnet", "local a = 1; {a: a}", "'yd jsonnet tojson' converts"),
+    ],
+)
+def test_an_unusable_file_is_an_error_saying_why_on_stderr(
+    jsonnet, tmp_path, monkeypatch, capsys, name, content, reason
 ):
-    source = tmp_path / "bad.json"
+    source = tmp_path / name
     source.write_text(content, encoding="utf-8")
     out, err, code = _run(monkeypatch, capsys, str(source))
     assert (out, code) == ("", 1)
-    assert err.startswith(f"{ERROR_MARKER}Cannot convert '{source}'")
+    assert err.startswith(f"{ERROR_MARKER}Cannot convert '{source}': ")
+    assert reason in err
+
+
+def test_a_jsonnet_file_holding_json_is_converted(
+    jsonnet, tmp_path, monkeypatch, capsys
+):
+    source = tmp_path / "spec.jsonnet"
+    source.write_text('{"a": 1}', encoding="utf-8")
+    out, _, code = _run(monkeypatch, capsys, str(source))
+    assert (out, code) == ("{a: 1}\n", 0)
 
 
 def test_a_missing_file_is_an_error(jsonnet, tmp_path, monkeypatch, capsys):

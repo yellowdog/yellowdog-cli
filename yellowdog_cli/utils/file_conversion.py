@@ -1,5 +1,7 @@
 """
-The '--write' half of the 'yd jsonnet' conversions ('tojson', 'fromjson'):
+What the 'yd jsonnet' verbs share: parsed_json(), reading JSON with a
+plain reason where it is none, and the '--write' half of the conversions
+('tojson', 'fromjson'):
 each file given, or each match of a glob pattern, converted and written
 beside it under the other extension, replaced whole or not at all. Every
 file is converted before any is written, and an existing file that the
@@ -8,6 +10,7 @@ since it may be a file of its own rather than an earlier conversion.
 Errors go to stderr, so that none is ever mistaken for a file's contents.
 """
 
+import json
 import os
 import sys
 from collections.abc import Callable
@@ -15,6 +18,7 @@ from glob import glob
 
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
+from yellowdog_cli.utils.jsonnet_style import is_jsonnet_path
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 
 _GLOB_CHARS = frozenset("*?[")
@@ -22,6 +26,26 @@ _GLOB_CHARS = frozenset("*?[")
 
 def print_conversion_error(message: str) -> None:
     print(f"{ERROR_MARKER}{message}", file=sys.stderr)
+
+
+def parsed_json(text: str, path: str):
+    """
+    The JSON in 'text', read from 'path': a ValueError saying plainly why
+    not where it is none, pointing a file named as Jsonnet to 'tojson'.
+    """
+    if not text.strip():
+        raise ValueError("it is empty")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        if is_jsonnet_path(path):
+            raise ValueError(
+                "it is a Jsonnet file, not JSON; 'yd jsonnet tojson' converts"
+                " Jsonnet to JSON"
+            ) from e
+        raise ValueError(
+            f"it is not JSON ({e.msg.lower()} at line {e.lineno}, column {e.colno})"
+        ) from e
 
 
 def is_glob_pattern(argument: str) -> bool:

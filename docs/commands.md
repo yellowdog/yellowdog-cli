@@ -1640,7 +1640,7 @@ yd jsonnet fromjson <file.json>
 yd jsonnet fromjson --write [--yes] <file.json> [<file.json> ...]
 ```
 
-One file's Jsonnet goes to stdout, and `-` reads JSON from standard input. With `--write`/`-w`, each file given, or matched by a glob pattern, is written to a `<name>.jsonnet` file beside it instead, as `yd jsonnet tojson --write` writes its `.json` files (see [Writing Files](#writing-files)): a file not named `*.json` is skipped, and an existing `.jsonnet` file the conversion would change is replaced only once confirmed, or with `--yes`/`-y`. Errors go to stderr, and the command exits 1; several files or a glob pattern without `--write`, or `-` with it, are refused (exit 2).
+One file's Jsonnet goes to stdout, and `-` reads JSON from standard input. With `--write`/`-w`, each file given, or matched by a glob pattern, is written to a `<name>.jsonnet` file beside it instead, as `yd jsonnet tojson --write` writes its `.json` files (see [Writing Files](#writing-files)): a file not named `*.json` is skipped, and an existing `.jsonnet` file the conversion would change is replaced only once confirmed, or with `--yes`/`-y`. Errors go to stderr, and the command exits 1: input that is not JSON is said to be, with where the JSON goes wrong, and a file named `.jsonnet` that is not JSON is pointed to `yd jsonnet tojson`. Several files or a glob pattern without `--write`, or `-` with it, are refused (exit 2).
 
 ### yd jsonnet factor
 
@@ -1672,7 +1672,7 @@ The file evaluates to exactly the JSON it was made from, so `yd resource create`
 yd jsonnet factor <file>
 ```
 
-The file is JSON, or Jsonnet evaluated first if it is named `.jsonnet`; `-` reads JSON from standard input. Errors go to stderr, and the command exits 1.
+The file is JSON, or Jsonnet evaluated first if it is named `.jsonnet`; `-` reads JSON from standard input. Errors go to stderr, and the command exits 1; input that is not JSON is said to be, with where the JSON goes wrong.
 
 #### Details
 

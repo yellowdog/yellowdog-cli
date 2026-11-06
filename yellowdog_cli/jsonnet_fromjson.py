@@ -23,6 +23,7 @@ from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
 from yellowdog_cli.utils.compact_json import CompactJSONEncoder
 from yellowdog_cli.utils.file_conversion import (
     is_glob_pattern,
+    parsed_json,
     print_conversion_error,
     write_conversions,
 )
@@ -80,11 +81,10 @@ def main():
     path = args.files[0]
     try:
         if path == STDIN_PATH:
-            text = _converted(json.load(sys.stdin))
+            text = _converted(parsed_json(sys.stdin.read(), path))
         else:
             text = _converted_file(path)
     except (OSError, ValueError, ConversionError) as e:
-        # json.JSONDecodeError is a ValueError
         name = "standard input" if path == STDIN_PATH else f"'{path}'"
         print_conversion_error(f"Cannot convert {name}: {e}")
         sys.exit(1)
@@ -93,7 +93,7 @@ def main():
 
 def _converted_file(path: str) -> str:
     with open(path, encoding="utf-8") as f:
-        return _converted(json.load(f))
+        return _converted(parsed_json(f.read(), path))
 
 
 def _converted(value) -> str:
