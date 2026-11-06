@@ -86,8 +86,9 @@ def test_a_conversion_that_changes_the_json_is_refused(
 @pytest.mark.parametrize(
     "name, content, reason",
     [
-        ("bad.json", '{"a": 1,}', "it is not JSON (illegal trailing comma"),
-        ("bad.json", "{", "at line 1, column 2)"),
+        # The parser's own wording and column vary with the Python version
+        ("bad.json", '{"a": 1,}', "it is not JSON ("),
+        ("bad.json", "{", " at line 1, column "),
         ("bad.json", " \n", "it is empty"),
         ("spec.jsonnet", "local a = 1; {a: a}", "'yd jsonnet tojson' converts"),
     ],

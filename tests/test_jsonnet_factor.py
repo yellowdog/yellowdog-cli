@@ -199,7 +199,7 @@ class TestCommand:
         "content, reason",
         [
             ('{"resource": "Keyring"}', "a single object"),
-            ("[1,", "it is not JSON (expecting value at line 1, column 4)"),
+            ("[1,", "it is not JSON ("),
             ("", "it is empty"),
         ],
     )
