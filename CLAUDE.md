@@ -106,7 +106,7 @@ if __name__ == "__main__":
     main()
 ```
 
-A small number of standalone commands (`yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json` and `yd-jsonnet-factor` (`yd jsonnet tojson` and `factor`), `yd-init`) need neither credentials nor a config file — they just define a bare `main()` function with no decorator.
+A small number of standalone commands (`yd-help`, `yd-version`, `yd-format-json`, `yd-jsonnet2json`, `yd-jsonnet-fromjson` and `yd-jsonnet-factor` (`yd jsonnet tojson`, `fromjson` and `factor`), `yd-init`) need neither credentials nor a config file — they just define a bare `main()` function with no decorator.
 
 `yd-doctor` is, with `yd-schema`, one of the two registry commands that read `ARGS_PARSER` but are on neither wrapper: both `@main_wrapper` and `@dataclient_wrapper` exit on a missing or broken configuration before `main()` runs, which is exactly the state `yd-doctor` exists to diagnose, so `doctor.py` builds its own `Context` from `ARGS_PARSER` and runs `utils/doctor_checks.CHECKS` over it instead. PAC belongs to the Proxy row: it reports `HTTPS_PROXY`, or with PAC on resolves the proxy for the API URL (a WARN when none resolves) and keeps it in `HTTPS_PROXY`, so the live checks after it — Reachable included, which does not resolve PAC itself — use it.
 

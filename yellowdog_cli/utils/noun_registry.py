@@ -977,7 +977,7 @@ NOUNS: tuple[Noun, ...] = (
     ),
     Noun(
         "jsonnet",
-        "Convert Jsonnet to JSON, and factor JSON into Jsonnet",
+        "Convert between Jsonnet and JSON, and factor JSON into Jsonnet",
         (
             Verb(
                 "tojson",
@@ -986,6 +986,14 @@ NOUNS: tuple[Noun, ...] = (
                 "converting Jsonnet files to JSON: one file to stdout, or with"
                 " --write each file (or a glob pattern's matches) to <name>.json"
                 " beside it",
+            ),
+            Verb(
+                "fromjson",
+                "yd-jsonnet-fromjson",
+                "Convert JSON files to Jsonnet",
+                "converting JSON files to Jsonnet in the style of a hand-written"
+                " file: one file to stdout, or with --write each file (or a glob"
+                " pattern's matches) to <name>.jsonnet beside it",
             ),
             Verb(
                 "factor",

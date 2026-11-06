@@ -112,8 +112,6 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/format_json.py::main#0": _STANDALONE,
     "yellowdog_cli/format_json.py::main#1": _STANDALONE,
     "yellowdog_cli/jsonnet2json.py::main#0": _STANDALONE,
-    "yellowdog_cli/jsonnet2json.py::main#1": _STANDALONE,
-    "yellowdog_cli/jsonnet2json.py::main#2": _STANDALONE,
     "yellowdog_cli/ls.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/mcp/server.py::call_tool#0": (
         "yd-mcp's last resort, logged with its traceback: raised, the SDK would"
@@ -163,6 +161,8 @@ ALLOWED: dict[str, str] = {
     "yellowdog_cli/utils/doctor_checks.py::_load_data_client_under_test#0": _DOCTOR,
     "yellowdog_cli/utils/doctor_checks.py::check_data_client_remote#0": _DOCTOR,
     "yellowdog_cli/utils/doctor_checks.py::check_data_client_remote#1": _DOCTOR,
+    "yellowdog_cli/utils/file_conversion.py::write_conversions#0": _STANDALONE,
+    "yellowdog_cli/utils/file_conversion.py::write_conversions#1": _STANDALONE,
     "yellowdog_cli/utils/follow_utils.py::_restore_cursor#0": _CURSOR,
     "yellowdog_cli/utils/follow_utils.py::follow_events#0": (
         "Decoding the message of a refused stream; the HTTPError is still"

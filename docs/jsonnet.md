@@ -10,7 +10,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov  5 17:27:40 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov  6 10:15:12 GMT 2026 -->
 
 <!--te-->
 
@@ -139,6 +139,14 @@ yd jsonnet factor csts.json > csts.jsonnet
 ```
 
 Each Compute Source Template becomes a shared base and its differences, such as `awsInstances {source+: {name: 'aws-eu-west-2b-spot', availabilityZone: 'eu-west-2b', spot: true}}`. The file evaluates to the same JSON, so `yd resource create csts.jsonnet` creates the same resources; from there, a series written out one by one can be turned into a function or a loop by hand. See [yd jsonnet factor](commands.md#yd-jsonnet-factor).
+
+A single specification, such as a Work Requirement written as JSON, is converted as it is by `yd jsonnet fromjson`, which writes the same data in the Jsonnet style (keys unquoted, strings in single quotes) without factoring anything:
+
+```shell
+yd jsonnet fromjson my_spec.json > my_spec.jsonnet
+```
+
+See [yd jsonnet fromjson](commands.md#yd-jsonnet-fromjson).
 
 ## Jsonnet Example
 

@@ -4694,6 +4694,42 @@ COMMANDS["yd-jsonnet-factor"] = Command(
     tool=ToolKind.NONE,
     script=False,
 )
+JSONNET_FROMJSON_FILES = option(
+    "files",
+    nargs="+",
+    metavar="<file.json>",
+    help=(
+        "the JSON file to convert, or '-' for standard input; with --write,"
+        " file(s) or quoted glob pattern(s)"
+    ),
+    completes=Completes.FILE,
+)
+COMMANDS["yd-jsonnet-fromjson"] = Command(
+    name="yd-jsonnet-fromjson",
+    purpose=(
+        "converting JSON files to Jsonnet in the style of a hand-written file,"
+        " checked to evaluate to the same JSON: one file to stdout, or with"
+        " --write each file (or a glob pattern's matches) to <name>.jsonnet"
+        " beside it"
+    ),
+    summary="Convert a JSON file to Jsonnet",
+    kind=CommandKind.STANDALONE,
+    options=(
+        JSONNET_FROMJSON_FILES,
+        JSONNET2JSON_WRITE.variant(
+            help=(
+                "write each file's Jsonnet to <name>.jsonnet beside it, rather"
+                " than one file's to stdout; needed for several files or a glob"
+                " pattern"
+            )
+        ),
+        YES.variant(
+            help="with --write, overwrite existing .jsonnet files without asking"
+        ),
+    ),
+    tool=ToolKind.NONE,
+    script=False,
+)
 # yd-version's single-version flags, each printing one version number alone,
 # exclusive with one another and with its '--json'
 VERSION_CLI = option(

@@ -90,6 +90,7 @@ NOT_EXERCISED: dict[str, str] = {
     + _UNIT_TESTED,
     "yd format-json": _UNIT_TESTED,
     "yd jsonnet tojson": _UNIT_TESTED,
+    "yd jsonnet fromjson": _UNIT_TESTED,
     "yd jsonnet factor": _UNIT_TESTED,
     "yd schema": (
         "never reaches the Platform, and takes neither --config nor --quiet;"

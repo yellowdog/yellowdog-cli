@@ -69,6 +69,7 @@
    * [yd jsonnet](#yd-jsonnet)
       * [yd jsonnet tojson](#yd-jsonnet-tojson)
          * [Writing Files](#writing-files)
+      * [yd jsonnet fromjson](#yd-jsonnet-fromjson)
       * [yd jsonnet factor](#yd-jsonnet-factor)
          * [Details](#details-2)
    * [Other Commands](#other-commands)
@@ -91,7 +92,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov  5 17:27:39 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov  6 10:15:10 GMT 2026 -->
 
 <!--te-->
 
@@ -132,7 +133,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet factor` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet tojson` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson`, `yd jsonnet factor` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet tojson` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -1572,15 +1573,16 @@ yd cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
 
 ## yd jsonnet
 
-The `yd jsonnet` verbs work on Jsonnet files without any processing by the CLI (no variable substitution, no property expansion): `tojson` converts Jsonnet to JSON, and `factor` goes the other way, turning a list of specifications into compact Jsonnet to edit. Both need the `jsonnet` extra; without it they exit 1, saying how to install it. See [Jsonnet Support](jsonnet.md).
+The `yd jsonnet` verbs work on Jsonnet and JSON files without any processing by the CLI (no variable substitution, no property expansion): `tojson` converts Jsonnet to JSON, `fromjson` converts JSON to Jsonnet, and `factor` turns a list of specifications into compact Jsonnet to edit. All three need the `jsonnet` extra; without it they exit 1, saying how to install it. See [Jsonnet Support](jsonnet.md).
 
 ```shell
-yd jsonnet <tojson|factor> [options] <file> ...
+yd jsonnet <tojson|fromjson|factor> [options] <file> ...
 ```
 
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`tojson`](#yd-jsonnet-tojson) | Convert Jsonnet files to JSON | `yd-jsonnet2json` |
+| [`fromjson`](#yd-jsonnet-fromjson) | Convert JSON files to Jsonnet | |
 | [`factor`](#yd-jsonnet-factor) | Factor a list of specifications into compact Jsonnet | |
 
 ### yd jsonnet tojson
@@ -1611,6 +1613,34 @@ With `--write`, a file not named `*.jsonnet` is skipped, with a message. Convert
 This is the quickest way to verify that a Jsonnet file is syntactically correct and produces the expected JSON structure. For full variable substitution and property expansion, use `--jsonnet-dry-run` or `--dry-run` on the relevant command instead.
 
 See [Jsonnet Support](jsonnet.md) for installation and usage.
+
+### yd jsonnet fromjson
+
+The `yd jsonnet fromjson` command converts a JSON file to Jsonnet in the style of a hand-written file, a starting point for editing a specification as Jsonnet. The data is unchanged; only the way it is written changes:
+
+```shell
+yd jsonnet fromjson my_spec.json > my_spec.jsonnet
+```
+
+```jsonnet
+{
+  workRequirement: {
+    name: 'render-{{datetime}}',
+    taskGroups: [
+      {taskType: 'bash', 'max-retries': 2},
+    ],
+  },
+}
+```
+
+A key is unquoted where it is an identifier (and not a Jsonnet keyword), a string is in single quotes unless it holds one, and a multi-line object or array has a trailing comma. Nothing is factored: for a list of specifications sharing most of their properties, `yd jsonnet factor` writes them more compactly. The command evaluates the Jsonnet before using it, and uses it only if it gives back the same JSON.
+
+```shell
+yd jsonnet fromjson <file.json>
+yd jsonnet fromjson --write [--yes] <file.json> [<file.json> ...]
+```
+
+One file's Jsonnet goes to stdout, and `-` reads JSON from standard input. With `--write`/`-w`, each file given, or matched by a glob pattern, is written to a `<name>.jsonnet` file beside it instead, as `yd jsonnet tojson --write` writes its `.json` files (see [Writing Files](#writing-files)): a file not named `*.json` is skipped, and an existing `.jsonnet` file the conversion would change is replaced only once confirmed, or with `--yes`/`-y`. Errors go to stderr, and the command exits 1; several files or a glob pattern without `--write`, or `-` with it, are refused (exit 2).
 
 ### yd jsonnet factor
 
