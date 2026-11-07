@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- `yd jsonnet fromjson` and `yd jsonnet factor` read JSON as `yd format-json` does: a number is written as it was written (`1.10` stays `1.10`, `2e3` stays `2e3`), and a file that repeats a key is refused, saying so, rather than all but the last of them being dropped.
+- `yd format-json` expands a quoted glob pattern (`yd format-json 'specs/*.json'`), as the `yd jsonnet` verbs do, and `yd format-json -` reformats standard input to stdout. Its messages match theirs: `Skipping non-JSON file`, and a file that cannot be formatted says why (`Cannot format 'x.json': it is not JSON (… at line 1, column 8)`, `it is empty`, `it repeats the key 'a'`).
 - `yd jsonnet factor` takes `--write`, as `tojson` and `fromjson` do: each `.json` file given, or matched by a glob pattern, is factored to `<name>.jsonnet` beside it, an existing file it would change replaced only once confirmed (or with `--yes`).
 
 ## 15.10.0 — 2026-11-06

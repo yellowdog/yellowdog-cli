@@ -4587,7 +4587,10 @@ FORMAT_JSON_FILES = option(
     "files",
     nargs="+",
     metavar="<file.json>",
-    help="the JSON file(s) to reformat",
+    help=(
+        "the JSON file(s) or quoted glob pattern(s) to reformat in place, or"
+        " '-' to reformat standard input to stdout"
+    ),
     completes=Completes.FILE,
 )
 FORMAT_JSON_CHECK = option(
@@ -4603,7 +4606,8 @@ COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
     purpose=(
         "reformatting JSON files in place with the CLI's compact layout (small"
-        " containers on one line), changing nothing but the layout"
+        " containers on one line), changing nothing but the layout, or standard"
+        " input to stdout"
     ),
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,

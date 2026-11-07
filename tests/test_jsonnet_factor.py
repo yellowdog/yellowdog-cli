@@ -283,3 +283,32 @@ class TestWrite:
         code, _, err = self._run(monkeypatch, capsys, *argv)
         assert code == 2
         assert "error:" in err
+
+
+class TestNumbersAsWritten:
+    @pytest.fixture(autouse=True)
+    def _needs_jsonnet(self):
+        pytest.importorskip("_jsonnet")
+
+    def test_a_number_keeps_how_it_was_written(self, monkeypatch, capsys):
+        members = '[{"resource": "X", "v": 1.10, "n": "a"}, {"resource": "X", "v": 1.10, "n": "b"}]'
+        code, out, _ = _run_factor(monkeypatch, capsys, "-", stdin=members)
+        assert code == 0
+        assert "v: 1.10" in out
+
+    def test_numbers_written_differently_are_not_the_same(self, monkeypatch, capsys):
+        members = (
+            '[{"resource": "X", "v": 1.10, "n": "a"},'
+            ' {"resource": "X", "v": 1.10, "n": "b"},'
+            ' {"resource": "X", "v": 1.1, "n": "c"}]'
+        )
+        code, out, _ = _run_factor(monkeypatch, capsys, "-", stdin=members)
+        assert code == 0
+        assert "x {v: 1.1, n: 'c'}" in out
+
+    def test_a_repeated_key_is_refused(self, monkeypatch, capsys):
+        code, out, err = _run_factor(
+            monkeypatch, capsys, "-", stdin='[{"a": 1, "a": 2}]'
+        )
+        assert (code, out) == (1, "")
+        assert "it repeats the key 'a'" in err

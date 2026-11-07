@@ -4,10 +4,13 @@
 Reformat JSON files in place, using the CLI's compact JSON encoder.
 
 A formatter must never change what a file says, only how it is laid out:
-numbers are written back exactly as they were written, non-ASCII text is
-kept as it is, a file with a repeated key is refused rather than losing
-one of them, and a file is replaced only once its new text is complete,
-so an interruption leaves the original.
+the file is read as utils/file_conversion.py's parsed_json() reads it, so
+numbers are written back exactly as they were written and a file with a
+repeated key is refused rather than losing one of them; non-ASCII text is
+kept as it is; and a file is replaced only once its new text is complete,
+so an interruption leaves the original. A quoted glob pattern is expanded
+as the 'yd jsonnet' verbs expand one, and '-' reformats standard input to
+stdout.
 """
 
 import json
@@ -15,46 +18,27 @@ import sys
 
 from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.command_registry import COMMANDS, build_parser
-from yellowdog_cli.utils.compact_json import (
-    CompactJSONEncoder,
-    FloatAsWritten,
-    IntAsWritten,
+from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.file_conversion import (
+    expanded_files,
+    parsed_json,
+    print_conversion_error,
 )
 from yellowdog_cli.utils.invocation import selected_prog
 from yellowdog_cli.utils.output_encoding import use_utf8_output
-from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.top_level import warn_if_deprecated_script
 
-
-def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict:
-    """
-    An object's pairs as a dict, refusing a repeated key, which json.loads()
-    would otherwise resolve by silently dropping all but the last.
-    """
-    result: dict = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate key '{key}'")
-        result[key] = value
-    return result
+STDIN_PATH = "-"
+JSON_EXTENSION = ".json"
 
 
-def reformatted(text: str) -> str:
+def reformatted(text: str, path: str = "") -> str:
     """
-    The reformatted text of a JSON document, raising ValueError for one
-    that is not valid JSON or repeats a key.
+    The reformatted text of a JSON document, read from 'path', raising
+    ValueError for one that is not valid JSON or repeats a key.
     """
-    data = json.loads(
-        text,
-        object_pairs_hook=_no_duplicate_keys,
-        parse_float=FloatAsWritten,
-        parse_int=IntAsWritten,
-    )
+    data = parsed_json(text, path)
     return json.dumps(data, indent=2, cls=CompactJSONEncoder, ensure_ascii=False) + "\n"
-
-
-def _error(message: str) -> None:
-    print(f"{ERROR_MARKER}{message}", file=sys.stderr)
 
 
 def main():
@@ -64,19 +48,24 @@ def main():
         COMMANDS["yd-format-json"], prog=selected_prog("yd-format-json")
     )
     args = parser.parse_args()
+    if STDIN_PATH in args.files:
+        if len(args.files) > 1:
+            parser.error("standard input ('-') is reformatted alone, to stdout")
+        sys.exit(_reformat_standard_input(args.check))
 
-    failed = would_change = 0
-    for filename in args.files:
-        if not filename.lower().endswith(".json"):
-            print(f"Ignoring non-JSON file: '{filename}'")
+    files, failed = expanded_files(args.files)
+    would_change = 0
+    for filename in files:
+        if not filename.lower().endswith(JSON_EXTENSION):
+            print(f"Skipping non-JSON file: '{filename}'")
             continue
 
         try:
             with open(filename, encoding="utf-8") as f:
                 text = f.read()
-            new_text = reformatted(text)
-        except Exception as e:
-            _error(f"Unable to process '{filename}': {e}")
+            new_text = reformatted(text, filename)
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            print_conversion_error(f"Cannot format '{filename}': {e}")
             failed += 1
             continue
 
@@ -90,14 +79,35 @@ def main():
 
         try:
             write_text_atomically(filename, new_text)
-        except Exception as e:
-            _error(f"Unable to write '{filename}': {e}")
+        except OSError as e:
+            print_conversion_error(f"Cannot write '{filename}': {e}")
             failed += 1
             continue
         print(f"Reformatted: '{filename}'")
 
     if failed or would_change:
         sys.exit(1)
+
+
+def _reformat_standard_input(check: bool) -> int:
+    """
+    Standard input reformatted to stdout, or with 'check' only said to be
+    unchanged or not; the exit code.
+    """
+    text = sys.stdin.read()
+    try:
+        new_text = reformatted(text)
+    except ValueError as e:
+        print_conversion_error(f"Cannot format standard input: {e}")
+        return 1
+    if not check:
+        sys.stdout.write(new_text)
+        return 0
+    if new_text == text:
+        print("Unchanged: standard input")
+        return 0
+    print("Would reformat: standard input")
+    return 1
 
 
 if __name__ == "__main__":

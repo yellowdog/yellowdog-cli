@@ -1633,7 +1633,7 @@ yd jsonnet fromjson my_spec.json > my_spec.jsonnet
 }
 ```
 
-A key is unquoted where it is an identifier (and not a Jsonnet keyword), a string is in single quotes unless it holds one, and a multi-line object or array has a trailing comma. Nothing is factored: for a list of specifications sharing most of their properties, `yd jsonnet factor` writes them more compactly. The command evaluates the Jsonnet before using it, and uses it only if it gives back the same JSON.
+A key is unquoted where it is an identifier (and not a Jsonnet keyword), a string is in single quotes unless it holds one, and a multi-line object or array has a trailing comma. The JSON is read as `yd format-json` reads it: a number is written as it was written (`1.10`, `2e3`), a file that repeats a key is refused, and a number Jsonnet cannot hold exactly, which would change on evaluation, fails the check below. Nothing is factored: for a list of specifications sharing most of their properties, `yd jsonnet factor` writes them more compactly. The command evaluates the Jsonnet before using it, and uses it only if it gives back the same JSON.
 
 ```shell
 yd jsonnet fromjson <file.json>
@@ -1680,6 +1680,8 @@ With `--write`/`-w`, each `.json` file given, or matched by a glob pattern, is f
 #### Details
 
 A base holds a property that at least four in five of its kind set, at the value most of them give it, where at least two give it the same one. A specification that lacks a property its base holds hides it (`instanceTags:: null`, a hidden field, which is left out of the JSON); below the specification and its `source`, an object that lacks one is written whole instead. A kind with one member is written as it is.
+
+The JSON is read as `yd format-json` reads it: a number is written as it was written, so `1.10` and `1.1` are not shared as one value, and a file that repeats a key is refused.
 
 The command finds what the specifications share, not why: a series a person would write as a loop over zones is still written out one specification at a time.
 
@@ -2114,16 +2116,21 @@ The rclone version is detected using the same lookup order as `yd workrequiremen
 
 ### yd format-json
 
-The `yd format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). Files not named `*.json` are skipped, each with a message.
+The `yd format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). A quoted glob pattern is expanded, as the `yd jsonnet` verbs expand one, and files not named `*.json` are skipped, each with a message.
 
 ```shell
 yd format-json [--check] <file.json> [<file.json> ...]
+yd format-json [--check] -
 ```
 
-Only the layout changes: numbers are written back exactly as they were written (`1.10` stays `1.10`), non-ASCII text is kept rather than escaped, and a file that repeats a key is refused, and left as it is, rather than losing all but one of them. A file is replaced only once its new text is complete, keeping its permissions, so an interruption leaves the original; a file already in this layout is left untouched. `--check` writes nothing, reporting the files that would be reformatted, and exits 1 if there are any, for use in CI. A file that cannot be read, parsed or written is reported on stderr, the others are still processed, and the command exits 1.
+Only the layout changes: numbers are written back exactly as they were written (`1.10` stays `1.10`), non-ASCII text is kept rather than escaped, and a file that repeats a key is refused, and left as it is, rather than losing all but one of them. A file is replaced only once its new text is complete, keeping its permissions, so an interruption leaves the original; a file already in this layout is left untouched. `--check` writes nothing, reporting the files that would be reformatted, and exits 1 if there are any, for use in CI. A file that cannot be read, parsed or written is reported on stderr, saying why (`it is not JSON (…)` with where the JSON goes wrong, `it is empty`, `it repeats the key 'a'`), the others are still processed, and the command exits 1.
+
+`-` reformats standard input to stdout, alone; with `--check`, it writes nothing, saying only whether standard input would change, and exits 1 if it would.
 
 ```shell
 yd format-json my_file.json my_other_file.json
+yd format-json 'specs/*.json'
+yd list compute-source-templates --json | yd format-json -
 ```
 
 ### yd schema

@@ -11,8 +11,9 @@ class FloatAsWritten(float):
     A JSON number with a fraction or exponent, keeping the text it was
     written as: json.loads(..., parse_float=FloatAsWritten) and the
     encoder below write '1.10' back as '1.10', not '1.1', and never round a
-    value a double cannot hold exactly. yd-format-json, which must not
-    change what a file says, is what reads with it.
+    value a double cannot hold exactly. file_conversion.parsed_json(),
+    which yd-format-json and the 'yd jsonnet' verbs read JSON with, since
+    none of them may change what a file says, is what reads with it.
     """
 
     text: str
