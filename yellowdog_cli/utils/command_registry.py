@@ -4671,13 +4671,15 @@ COMMANDS["yd-jsonnet2json"] = Command(
     ),
     tool=ToolKind.NONE,
 )
-JSONNET_FACTOR_FILE = option(
-    "file",
+JSONNET_FACTOR_FILES = option(
+    "files",
+    nargs="+",
     metavar="<file>",
     help=(
-        "the JSON list of specifications to factor, such as 'yd list"
-        " --details' writes; a '.jsonnet' file is evaluated first, and '-'"
-        " reads JSON from standard input"
+        "the JSON list of specifications to factor, such as 'yd list --json'"
+        " writes; a '.jsonnet' file is evaluated first, and '-' reads JSON"
+        " from standard input; with --write, .json file(s) or quoted glob"
+        " pattern(s)"
     ),
     completes=Completes.FILE,
 )
@@ -4686,11 +4688,25 @@ COMMANDS["yd-jsonnet-factor"] = Command(
     purpose=(
         "printing a list of specifications as Jsonnet, what each kind shares"
         " held once in a local base and each specification written as its"
-        " differences from it, checked to evaluate to the same JSON"
+        " differences from it, checked to evaluate to the same JSON: one file"
+        " to stdout, or with --write each .json file (or a glob pattern's"
+        " matches) to <name>.jsonnet beside it"
     ),
     summary="Factor a list of specifications into compact Jsonnet",
     kind=CommandKind.STANDALONE,
-    options=(JSONNET_FACTOR_FILE,),
+    options=(
+        JSONNET_FACTOR_FILES,
+        JSONNET2JSON_WRITE.variant(
+            help=(
+                "write each .json file's factored Jsonnet to <name>.jsonnet"
+                " beside it, rather than one file's to stdout; needed for"
+                " several files or a glob pattern"
+            )
+        ),
+        YES.variant(
+            help="with --write, overwrite existing .jsonnet files without asking"
+        ),
+    ),
     tool=ToolKind.NONE,
     script=False,
 )

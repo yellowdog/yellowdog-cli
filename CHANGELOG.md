@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- `yd jsonnet factor` takes `--write`, as `tojson` and `fromjson` do: each `.json` file given, or matched by a glob pattern, is factored to `<name>.jsonnet` beside it, an existing file it would change replaced only once confirmed (or with `--yes`).
+
 ## 15.10.0 — 2026-11-06
 
 ### Upgrading

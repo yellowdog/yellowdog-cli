@@ -1,7 +1,9 @@
 """
 yd jsonnet factor: utils/jsonnet_factor.py's factoring of a list of
 specifications into a base per kind and each member's differences, held
-to evaluating to the same JSON, and jsonnet_factor.py's command.
+to evaluating to the same JSON, and jsonnet_factor.py's command: one file
+to stdout, or with --write each .json file to <name>.jsonnet beside it, a
+.jsonnet file skipped rather than overwritten.
 """
 
 import io
@@ -153,21 +155,25 @@ def test_a_factoring_that_changes_the_json_is_refused(monkeypatch):
         factored_and_checked([{"resource": "Keyring", "name": "k"}])
 
 
+def _run_factor(monkeypatch, capsys, *args: str, stdin: str = ""):
+    monkeypatch.setattr(sys, "argv", ["yd jsonnet factor", *args])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+    code = 0
+    try:
+        factor_command.main()
+    except SystemExit as e:
+        code = e.code
+    out, err = capsys.readouterr()
+    return code, out, err
+
+
 class TestCommand:
     @pytest.fixture(autouse=True)
     def _needs_jsonnet(self):
         pytest.importorskip("_jsonnet")
 
     def _run(self, monkeypatch, capsys, *args: str, stdin: str = ""):
-        monkeypatch.setattr(sys, "argv", ["yd jsonnet factor", *args])
-        monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-        code = 0
-        try:
-            factor_command.main()
-        except SystemExit as e:
-            code = e.code
-        out, err = capsys.readouterr()
-        return code, out, err
+        return _run_factor(monkeypatch, capsys, *args, stdin=stdin)
 
     def test_a_json_file_is_printed_factored(self, monkeypatch, capsys, tmp_path):
         members = [_cst("a"), _cst("b")]
@@ -219,3 +225,61 @@ class TestCommand:
         assert code == 1
         assert out == ""
         assert "No such file" in err
+
+
+class TestWrite:
+    @pytest.fixture(autouse=True)
+    def _needs_jsonnet(self):
+        pytest.importorskip("_jsonnet")
+
+    def _run(self, monkeypatch, capsys, *args: str, stdin: str = ""):
+        return _run_factor(monkeypatch, capsys, *args, stdin=stdin)
+
+    def test_each_json_file_is_written_beside_it(self, monkeypatch, capsys, tmp_path):
+        members = [_cst("a"), _cst("b")]
+        (tmp_path / "a.json").write_text(json.dumps(members), encoding="utf-8")
+        (tmp_path / "b.json").write_text(json.dumps(members[:1]), encoding="utf-8")
+        code, out, err = self._run(
+            monkeypatch, capsys, "--write", str(tmp_path / "*.json")
+        )
+        assert code == 0, err
+        assert out.count("Converted:") == 2
+        for name, expected in (("a", members), ("b", members[:1])):
+            text = (tmp_path / f"{name}.jsonnet").read_text(encoding="utf-8")
+            assert _evaluated(text) == expected
+
+    def test_a_jsonnet_file_is_skipped_never_overwritten(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        source = tmp_path / "keyrings.jsonnet"
+        original = "[{resource: 'Keyring', name: n} for n in ['a', 'b']]"
+        source.write_text(original, encoding="utf-8")
+        code, out, _ = self._run(monkeypatch, capsys, "--write", str(source))
+        assert code == 0
+        assert "Skipping non-JSON file" in out
+        assert source.read_text(encoding="utf-8") == original
+
+    def test_a_file_that_is_no_list_fails_and_the_rest_are_written(
+        self, monkeypatch, capsys, tmp_path
+    ):
+        (tmp_path / "a.json").write_text(json.dumps([_cst("a")]), encoding="utf-8")
+        (tmp_path / "b.json").write_text('{"resource": "Keyring"}', encoding="utf-8")
+        code, _, err = self._run(
+            monkeypatch,
+            capsys,
+            "--write",
+            str(tmp_path / "a.json"),
+            str(tmp_path / "b.json"),
+        )
+        assert code == 1
+        assert "a single object" in err
+        assert (tmp_path / "a.jsonnet").exists()
+        assert not (tmp_path / "b.jsonnet").exists()
+
+    @pytest.mark.parametrize(
+        "argv", [["a.json", "b.json"], ["*.json"], ["--write", "-"]]
+    )
+    def test_what_has_no_one_place_to_go_is_refused(self, monkeypatch, capsys, argv):
+        code, _, err = self._run(monkeypatch, capsys, *argv)
+        assert code == 2
+        assert "error:" in err

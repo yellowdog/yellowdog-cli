@@ -1670,9 +1670,12 @@ The file evaluates to exactly the JSON it was made from, so `yd resource create`
 
 ```shell
 yd jsonnet factor <file>
+yd jsonnet factor --write [--yes] <file.json> [<file.json> ...]
 ```
 
 The file is JSON, or Jsonnet evaluated first if it is named `.jsonnet`; `-` reads JSON from standard input. Errors go to stderr, and the command exits 1; input that is not JSON is said to be, with where the JSON goes wrong.
+
+With `--write`/`-w`, each `.json` file given, or matched by a glob pattern, is factored to a `<name>.jsonnet` file beside it instead, as `yd jsonnet tojson --write` writes its `.json` files (see [Writing Files](#writing-files)): an existing `.jsonnet` file the factoring would change is replaced only once confirmed, or with `--yes`/`-y`. A `.jsonnet` file is skipped, since its own name is where it would be written. Several files or a glob pattern without `--write`, or `-` with it, are refused (exit 2).
 
 #### Details
 

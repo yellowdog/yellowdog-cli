@@ -87,7 +87,8 @@ class TestNounsAndVerbs:
         [
             (["format-json"], ["--check", "--help"]),
             (["jsonnet", "tojson"], ["--write", "--no-format", "--yes", "--help"]),
-            (["jsonnet", "factor"], ["--help"]),
+            (["jsonnet", "fromjson"], ["--write", "--yes", "--help"]),
+            (["jsonnet", "factor"], ["--write", "--yes", "--help"]),
         ],
     )
     def test_a_standalone_command_completes_its_files_and_options(self, words, options):

@@ -10630,11 +10630,39 @@
       "choices": null,
       "const": null,
       "default": null,
-      "dest": "file",
+      "dest": "files",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "+",
       "option_strings": [],
       "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "yes",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--yes",
+        "-y"
+      ],
+      "required": false,
       "type": null
     }
   ],
@@ -33071,11 +33099,39 @@
       "choices": null,
       "const": null,
       "default": null,
-      "dest": "file",
+      "dest": "files",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "+",
       "option_strings": [],
       "required": null,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "write",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--write",
+        "-w"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "yes",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--yes",
+        "-y"
+      ],
+      "required": false,
       "type": null
     }
   ],
