@@ -110,3 +110,40 @@ def test_a_request_is_traced(tmp_path, platform_url):
     assert result.returncode == 4  # the refusal's own exit code
     assert '"GET /workerPools/' in result.stderr
     assert "Traceback (most recent call last):" in result.stderr
+
+
+# The secrets in the corpus's Credentials, each a dummy
+CORPUS_SECRETS = (
+    "dummyDummyDummyDummyDummyDummyDummyDummy",
+    "dummy-session-token",
+    "yd-dummy-external-id",
+    "dummy-client-key",
+    "dummy-admin-password",
+    "dummy-account-key",
+    '"project_id": "yd-dummy"',
+    "-----BEGIN PRIVATE KEY-----",
+    "dummy-passphrase",
+)
+
+
+@pytest.mark.parametrize("corpus_file", ["credentials", "applications"])
+def test_no_credential_is_traced_by_a_resource_plan(
+    corpus_file, tmp_path, platform_url
+):
+    from yellowdog_cli.utils.check_imports import check_jsonnet_import
+
+    try:
+        check_jsonnet_import()
+    except ImportError as exc:
+        pytest.skip(str(exc))
+    path = os.path.join(
+        os.path.dirname(__file__), "resources", f"{corpus_file}.jsonnet"
+    )
+    result = _run(
+        ["resource", "plan", path, "-v", "run_id=offline"], tmp_path, platform_url
+    )
+    assert result.returncode == 4, result.stderr  # the refusal's own exit code
+    assert "DEBUG : " in result.stderr, result.stderr
+    for secret in CREDENTIALS + CORPUS_SECRETS:
+        assert secret not in result.stderr, secret
+        assert secret not in result.stdout, secret

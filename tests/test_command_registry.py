@@ -199,6 +199,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-jsonnet-factor",
             "yd-jsonnet-fromjson",
             "yd-status",
+            "yd-resource-plan",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -463,6 +464,7 @@ class TestToolKinds:
             "yd-version",
             "yd-schema",
             "yd-status",
+            "yd-resource-plan",
         }
 
     def test_the_destructive_commands(self):

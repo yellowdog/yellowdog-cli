@@ -12,6 +12,8 @@ one, which the command and any other caller both use.
 
 import dataclasses
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -26,6 +28,7 @@ from yellowdog_client.model import (
     AddApplicationResponse,
     AddConfiguredWorkerPoolResponse,
     AddGroupRequest,
+    Allowance,
     ApiKey,
     Application,
     CreateNamespaceRequest,
@@ -168,10 +171,31 @@ class CreateOptions:
     regenerate_app_keys: bool = False
 
 
-# The options of the run in progress, set by create_resources() for its
-# duration: every creator reads them here rather than having them threaded
-# through each call
+# The options of the run in progress, set by create_resources() (and a
+# plan, resource_plan.plan_resources()) for its duration: every creator and
+# prepare step reads them here rather than having them threaded through
+# each call
 _OPTIONS: CreateOptions = CreateOptions()
+
+
+@contextmanager
+def options_in_effect(options: CreateOptions) -> Iterator[None]:
+    """
+    Make 'options' the run's for the duration of the block.
+    """
+    global _OPTIONS
+    previous, _OPTIONS = _OPTIONS, options
+    try:
+        yield
+    finally:
+        _OPTIONS = previous
+
+
+def run_options() -> CreateOptions:
+    """
+    The options of the run in progress.
+    """
+    return _OPTIONS
 
 
 def create_resources(
@@ -184,12 +208,8 @@ def create_resources(
     Create or update the resources a list of specifications describes, with
     'options' (the defaults when None). The list is not changed.
     """
-    global _OPTIONS
-    previous, _OPTIONS = _OPTIONS, options or CreateOptions()
-    try:
+    with options_in_effect(options or CreateOptions()):
         _create_all(ctx, deepcopy(resources), show_secrets)
-    finally:
-        _OPTIONS = previous
 
 
 def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> None:
@@ -288,12 +308,14 @@ def _show_dry_run_specification(resource_type: str, resource: dict) -> None:
         print_json(user_data_as_shown(resource))
 
 
-def create_compute_source_template(
-    ctx: RunContext, resource: dict, source_dir: str | None = None
-):
+def _resolved_source_template(
+    ctx: RunContext, resource: dict, source_dir: str | None
+) -> tuple[str, str, str, dict]:
     """
-    Create or update a Compute Source Template using a resource specification.
-    Handles all Source types.
+    A Compute Source Template specification resolved as the real run sends
+    it, touching nothing: its Source taken out of 'resource', the Source's
+    image name and User Data files resolved. Gives the template's namespaced
+    name, the Source's type in full and as its class name, and the Source.
     """
     try:
         namespace = resource[PROP_NAMESPACE]
@@ -323,12 +345,20 @@ def create_compute_source_template(
     # Resolve userDataFile / userDataFiles -> userData
     resolve_user_data_in_spec(source, base_dir=source_dir)
 
-    if _OPTIONS.dry_run:
-        _get_model_object(source_type, source)  # Report extras and omissions
-        # Shown with its 'type', so the output is a specification yd-create takes
-        resource[PROP_SOURCE] = {PROP_TYPE: full_source_type, **source}
-        _show_dry_run_specification(RN_SOURCE_TEMPLATE, resource)
-        return
+    # The namespace prepended, as existing templates are searched for
+    name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
+    return name, full_source_type, source_type, source
+
+
+def prepare_compute_source_template(
+    ctx: RunContext, resource: dict, source_dir: str | None = None
+) -> tuple[str, model.ComputeSourceTemplate]:
+    """
+    The Compute Source Template a specification describes, as the real run
+    would send it, and its namespaced name; nothing on the Platform is
+    changed. 'resource' loses its Source.
+    """
+    name, _, source_type, source = _resolved_source_template(ctx, resource, source_dir)
 
     # Create the Compute Source
     compute_source = _get_model_object(source_type, source)
@@ -337,9 +367,30 @@ def create_compute_source_template(
     compute_source_template = _get_model_object(
         "ComputeSourceTemplate", resource, source=compute_source
     )
+    return name, compute_source_template
 
-    # Prepend the namespace when searching for existing templates
-    name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
+
+def create_compute_source_template(
+    ctx: RunContext, resource: dict, source_dir: str | None = None
+):
+    """
+    Create or update a Compute Source Template using a resource specification.
+    Handles all Source types.
+    """
+    if _OPTIONS.dry_run:
+        _, full_source_type, source_type, source = _resolved_source_template(
+            ctx, resource, source_dir
+        )
+        _get_model_object(source_type, source)  # Report extras and omissions
+        # Shown with its 'type', so the output is a specification yd-create takes
+        resource[PROP_SOURCE] = {PROP_TYPE: full_source_type, **source}
+        _show_dry_run_specification(RN_SOURCE_TEMPLATE, resource)
+        return
+
+    name, compute_source_template = prepare_compute_source_template(
+        ctx, resource, source_dir
+    )
+    namespace = resource[PROP_NAMESPACE]
 
     # Check for an existing ID
     source_id = get_compute_source_template_id_by_name(ctx.client, name, namespace)
@@ -368,16 +419,39 @@ def create_compute_source_template(
         print_quiet_result(compute_source.id)
 
 
-def create_compute_requirement_template(
-    ctx: RunContext, resource: dict, source_dir: str | None = None
-):
+def _source_template_planned(
+    planned: set[tuple[str, str]], namespace: str, template_name: str
+) -> bool:
     """
-    Create or update a Compute Requirement Template. Handles all
-    Compute Requirement types.
+    Whether an earlier specification in a plan creates the Compute Source
+    Template a Compute Requirement Template names, by its name or by its
+    name in the requirement template's namespace.
+    """
+    return (RN_SOURCE_TEMPLATE, template_name) in planned or (
+        RN_SOURCE_TEMPLATE,
+        f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{template_name}",
+    ) in planned
+
+
+def _resolved_requirement_template(
+    ctx: RunContext,
+    resource: dict,
+    source_dir: str | None,
+    planned: set[tuple[str, str]] | None,
+) -> tuple[str, str, str, list[str]]:
+    """
+    A Compute Requirement Template specification resolved as the real run
+    sends it, touching nothing: its type taken out of 'resource', its Source
+    Template names resolved to IDs, its image names and User Data files
+    resolved. A Source Template name not found is NotFoundError, unless a
+    dry run leaves it, or 'planned' (a plan's) has an earlier specification
+    creating it, which leaves it as its name. Gives the template's
+    namespaced name, its type in full and as its class name, and the Source
+    Template names left for 'planned'.
     """
     try:
         full_type = resource.pop(PROP_TYPE)
-        type = full_type.split(".")[-1]  # Extract type
+        template_type = full_type.split(".")[-1]  # Extract type
         name = resource[PROP_NAME]
         namespace = resource[PROP_NAMESPACE]
     except KeyError as e:
@@ -399,6 +473,7 @@ def create_compute_requirement_template(
     name = f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}"
 
     source_template_substitutions = 0
+    unresolved: list[str] = []
 
     # Dynamic templates don't have 'sources'; return '[]'
     for source in resource.get(PROP_SOURCES, []):
@@ -411,7 +486,13 @@ def create_compute_requirement_template(
                 client=ctx.client, name=template_name_or_id, namespace=namespace
             )
             if template_id is None:
-                if _OPTIONS.dry_run:
+                if planned is not None and _source_template_planned(
+                    planned, namespace, template_name_or_id
+                ):
+                    # Created by an earlier specification in the plan: its
+                    # name is left for the plan to show
+                    unresolved.append(template_name_or_id)
+                elif _OPTIONS.dry_run:
                     # It may be created by an earlier specification, which
                     # a dry run does not create
                     print_dry_run(
@@ -419,11 +500,14 @@ def create_compute_requirement_template(
                         " (yet): its name is left unresolved"
                     )
                     continue
-                raise NotFoundError(
-                    f"Compute Source Template name '{template_name_or_id}' not found"
-                )
-            source[PROP_CST_ID] = template_id
-            source_template_substitutions += 1
+                else:
+                    raise NotFoundError(
+                        f"Compute Source Template name '{template_name_or_id}'"
+                        " not found"
+                    )
+            else:
+                source[PROP_CST_ID] = template_id
+                source_template_substitutions += 1
 
         source_image_id = source.get(PROP_IMAGE_ID)
         if source_image_id is not None:
@@ -442,13 +526,25 @@ def create_compute_requirement_template(
     # Resolve userDataFile / userDataFiles -> userData
     resolve_user_data_in_spec(resource, base_dir=source_dir)
 
-    if _OPTIONS.dry_run:
-        _get_model_object(type, resource)  # Report omissions, extras, errors
-        # Shown with its 'type', so the output is a specification yd-create takes
-        _show_dry_run_specification(
-            RN_REQUIREMENT_TEMPLATE, {PROP_TYPE: full_type, **resource}
-        )
-        return
+    return name, full_type, template_type, unresolved
+
+
+def prepare_compute_requirement_template(
+    ctx: RunContext,
+    resource: dict,
+    source_dir: str | None = None,
+    planned: set[tuple[str, str]] | None = None,
+) -> tuple[str, model.ComputeRequirementTemplate, list[str]]:
+    """
+    The Compute Requirement Template a specification describes, as the real
+    run would send it, its namespaced name, and the Source Template names
+    left as names because 'planned' (a plan's: the (resource type, name) of
+    each resource an earlier specification creates) has them; nothing on
+    the Platform is changed. 'resource' loses its type.
+    """
+    name, _, template_type, unresolved = _resolved_requirement_template(
+        ctx, resource, source_dir, planned
+    )
 
     # Overwrite source dictionaries with ComputeSourceUsage objects for static CRTs
     if resource.get(PROP_SOURCES) is not None:
@@ -457,7 +553,31 @@ def create_compute_requirement_template(
             for source in resource.get(PROP_SOURCES, [])
         ]
 
-    compute_template = _get_model_object(type, resource)
+    compute_template = _get_model_object(template_type, resource)
+    return name, compute_template, unresolved
+
+
+def create_compute_requirement_template(
+    ctx: RunContext, resource: dict, source_dir: str | None = None
+):
+    """
+    Create or update a Compute Requirement Template. Handles all
+    Compute Requirement types.
+    """
+    if _OPTIONS.dry_run:
+        _, full_type, template_type, _ = _resolved_requirement_template(
+            ctx, resource, source_dir, None
+        )
+        _get_model_object(template_type, resource)  # Report omissions, extras, errors
+        # Shown with its 'type', so the output is a specification yd-create takes
+        _show_dry_run_specification(
+            RN_REQUIREMENT_TEMPLATE, {PROP_TYPE: full_type, **resource}
+        )
+        return
+
+    name, compute_template, _ = prepare_compute_requirement_template(
+        ctx, resource, source_dir
+    )
 
     # Check for an existing ID
     template_id = get_compute_requirement_template_id_by_name(ctx.client, name)
@@ -490,6 +610,19 @@ def create_compute_requirement_template(
     print_quiet_result(template.id)
 
 
+def prepare_keyring(resource: dict) -> tuple[str, str]:
+    """
+    A Keyring specification as the real run sends it, touching nothing: its
+    name and its description, both required.
+    """
+    try:
+        name = resource[PROP_NAME]
+        description = resource[PROP_DESCRIPTION]
+    except KeyError as e:
+        raise missing_property(e) from e
+    return name, description
+
+
 def create_keyring(ctx: RunContext, resource: dict, show_secrets: bool = False):
     """
     Create a Keyring, or update the description of an existing one in place.
@@ -497,11 +630,7 @@ def create_keyring(ctx: RunContext, resource: dict, show_secrets: bool = False):
     name is what an existing one is matched on. Credentials and accessors are
     untouched by an update -- the Keyring is not deleted and recreated.
     """
-    try:
-        name = resource[PROP_NAME]
-        description = resource[PROP_DESCRIPTION]
-    except KeyError as e:
-        raise missing_property(e) from e
+    name, description = prepare_keyring(resource)
 
     existing = get_keyring_summary_by_name(ctx.client, name)
     if existing is not None:
@@ -537,9 +666,12 @@ def create_keyring(ctx: RunContext, resource: dict, show_secrets: bool = False):
     print_quiet_result(f"{keyring.id} {keyring_password}")  # type: ignore[union-attr]
 
 
-def create_credential(ctx: RunContext, resource: dict):
+def prepare_credential(resource: dict) -> tuple[str, str, Any]:
     """
-    Create or update a Credential.
+    A Credential specification as the real run sends it, touching nothing:
+    its Keyring's name, its own name, and the SDK model built from it (an
+    unknown type or a missing required property is an error). Pops the
+    credential's 'type'. Nothing of the credential's values is printed.
     """
     try:
         keyring_name = resource[PROP_KEYRING_NAME]
@@ -552,6 +684,14 @@ def create_credential(ctx: RunContext, resource: dict):
         raise missing_property(e) from e
 
     credential = _get_model_object(credential_type, credential_data)
+    return keyring_name, name, credential
+
+
+def create_credential(ctx: RunContext, resource: dict):
+    """
+    Create or update a Credential.
+    """
+    keyring_name, name, credential = prepare_credential(resource)
     try:
         ctx.client.keyring_client.put_credential_by_name(keyring_name, credential)
         print_info(f"Added Credential '{name}' to Keyring '{keyring_name}'")
@@ -569,9 +709,12 @@ def create_credential(ctx: RunContext, resource: dict):
         raise
 
 
-def create_image_family(ctx: RunContext, resource):
+def prepare_image_family(
+    ctx: RunContext, resource: dict
+) -> tuple[str, MachineImageFamily]:
     """
-    Create or update an Image Family.
+    The Image Family a specification describes, as 'yd resource create'
+    sends it, with its namespaced name. Pops 'osType' from 'resource'.
     """
     try:
         family_name = resource[PROP_NAME]
@@ -590,8 +733,17 @@ def create_image_family(ctx: RunContext, resource):
             f" {[e.value for e in ImageOsType]}"
         ) from None
 
+    return fq_name, _get_model_object("MachineImageFamily", resource, osType=os_type)
+
+
+def create_image_family(ctx: RunContext, resource):
+    """
+    Create or update an Image Family.
+    """
     # Start by updating the outer Image Family
-    image_family = _get_model_object("MachineImageFamily", resource, osType=os_type)
+    fq_name, image_family = prepare_image_family(ctx, resource)
+    family_name = resource[PROP_NAME]
+    namespace = resource[PROP_NAMESPACE]
 
     # Check for existing Image Family
     try:
@@ -801,9 +953,17 @@ def create_configured_worker_pool(ctx: RunContext, resource: dict):
     print_quiet_result(cwp_response.workerPool.id)  # type: ignore[union-attr]
 
 
-def create_allowance(ctx: RunContext, resource: dict):
+def _prepare_allowance_resource(
+    ctx: RunContext,
+    resource: dict,
+    planned: set[tuple[str, str]] | None = None,
+) -> tuple[str, str]:
     """
-    Create an allowance.
+    An Allowance specification resolved as the real run sends it, touching
+    nothing: its type taken out of 'resource', its template name resolved to
+    an ID (left as its name where a dry run leaves it, or 'planned' has an
+    earlier specification creating it) and its dates parsed. Gives the type
+    in full and as its class name.
     """
     try:
         original_type = resource.pop(PROP_TYPE)
@@ -819,6 +979,8 @@ def create_allowance(ctx: RunContext, resource: dict):
             YDIDType.COMPUTE_SOURCE_TEMPLATE,
             "Compute Source Template",
             get_compute_source_template_id_by_name,
+            RN_SOURCE_TEMPLATE,
+            planned,
         )
     elif type == "RequirementsAllowance":
         _resolve_allowance_template(
@@ -828,6 +990,8 @@ def create_allowance(ctx: RunContext, resource: dict):
             YDIDType.COMPUTE_REQUIREMENT_TEMPLATE,
             "Compute Requirement Template",
             get_compute_requirement_template_id_by_name,
+            RN_REQUIREMENT_TEMPLATE,
+            planned,
         )
 
     for property_ in [PROP_EFFECTIVE_FROM, PROP_EFFECTIVE_UNTIL]:
@@ -838,6 +1002,29 @@ def create_allowance(ctx: RunContext, resource: dict):
                 f"Property '{property_}' = '{value}' set to "
                 f"'{_display_datetime(resource[property_])}'"
             )
+    return original_type, type
+
+
+def prepare_allowance(
+    ctx: RunContext,
+    resource: dict,
+    planned: set[tuple[str, str]] | None = None,
+) -> tuple[str | None, Allowance]:
+    """
+    An Allowance specification as the real run would send it, touching
+    nothing: its description and the model built from it. A template name
+    that 'planned' (a plan's) has an earlier specification creating is left
+    as its name.
+    """
+    _, type = _prepare_allowance_resource(ctx, resource, planned)
+    return resource.get(PROP_DESCRIPTION), _get_model_object(type, resource)
+
+
+def create_allowance(ctx: RunContext, resource: dict):
+    """
+    Create an allowance.
+    """
+    original_type, type = _prepare_allowance_resource(ctx, resource)
 
     if _OPTIONS.dry_run:
         _get_model_object(type, resource)  # Report extras and omissions
@@ -892,6 +1079,19 @@ def _group_shown(ctx: RunContext, group_id: str | None) -> str:
     return str(group_id) if name is None else f"'{name}' ({group_id})"
 
 
+def _template_planned(
+    planned: set[tuple[str, str]], template_type: str, namespace: str, name: str
+) -> bool:
+    """
+    Whether 'planned' has an earlier specification creating the template
+    'name', by that name or by its name in 'namespace'.
+    """
+    return (template_type, name) in planned or (
+        template_type,
+        f"{namespace}{NAMESPACE_PREFIX_SEPARATOR}{name}",
+    ) in planned
+
+
 def _resolve_allowance_template(
     ctx: RunContext,
     resource: dict,
@@ -899,11 +1099,15 @@ def _resolve_allowance_template(
     ydid_type: YDIDType,
     label: str,
     lookup,
+    template_type: str,
+    planned: set[tuple[str, str]] | None = None,
 ) -> None:
     """
     Replace a template name in an Allowance with its ID. A name without a
-    namespace is looked for in the configured namespace. In a dry run, a
-    name not found is left as it is: an earlier specification may create it.
+    namespace is looked for in the configured namespace. A name not found is
+    left as it is in a dry run (an earlier specification may create it) and
+    where 'planned' (a plan's) has an earlier specification creating it,
+    by its name or by its name in the configured namespace.
     """
     template_name_or_id = resource.get(property_)
     if template_name_or_id is None or get_ydid_type(template_name_or_id) == ydid_type:
@@ -912,6 +1116,10 @@ def _resolve_allowance_template(
         ctx.client, cast(str, template_name_or_id), ctx.config.namespace
     )
     if template_id is None:
+        if planned is not None and _template_planned(
+            planned, template_type, ctx.config.namespace, cast(str, template_name_or_id)
+        ):
+            return
         if _OPTIONS.dry_run:
             print_dry_run(
                 f"{label} '{template_name_or_id}' not found (yet): its name is"
@@ -949,9 +1157,21 @@ def _display_datetime(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S %Z%z").rstrip()
 
 
-def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: str):
+def attribute_definition_endpoint(ctx: RunContext) -> tuple[str, dict[str, str]]:
     """
-    Use the API to create/update user attribute definitions.
+    The URL of the user Attribute Definitions and the headers a request to
+    it carries (which hold the credentials: never logged).
+    """
+    url = f"{ctx.config.url}/compute/attributes/user"
+    headers = {"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"}
+    return url, headers
+
+
+def prepare_attribute_definition(
+    ctx: RunContext, resource: dict, resource_type: str
+) -> dict:
+    """
+    The payload a specification's Attribute Definition is sent as.
     """
     default_rank_order = None
     try:
@@ -962,8 +1182,6 @@ def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
     except KeyError as e:
         raise missing_property(e) from e
 
-    url = f"{ctx.config.url}/compute/attributes/user"
-    headers = {"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"}
     if resource_type == RN_STRING_ATTRIBUTE_DEFINITION:
         payload = {
             # Required
@@ -989,6 +1207,16 @@ def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: 
             PROP_RANGE: resource.get(PROP_RANGE),
             PROP_OPTIONS: resource.get(PROP_OPTIONS),
         }
+    return payload
+
+
+def create_attribute_definition(ctx: RunContext, resource: dict, resource_type: str):
+    """
+    Use the API to create/update user attribute definitions.
+    """
+    payload = prepare_attribute_definition(ctx, resource, resource_type)
+    name = payload[PROP_NAME]
+    url, headers = attribute_definition_endpoint(ctx)
 
     # Attempt attribute creation
     _LOG.debug("Attempting to create or update Attribute Definition '%s'", name)
@@ -1081,12 +1309,14 @@ class RoleSpecification:
     namespaces: set[str] | None
 
 
-def create_group(ctx: RunContext, resource: dict):
+def prepare_group(
+    ctx: RunContext, resource: dict
+) -> tuple[str, str | None, list[RoleSpecification] | None]:
     """
-    Create or update a group, and the scoped roles it holds, specified by
-    their names or IDs. Without 'roles' an existing group's roles are left
-    as they are; with 'roles' they are made to match it, so '[]' removes
-    them all. Every role is resolved before anything is changed.
+    A Group specification resolved as the real run sends it, touching
+    nothing: its name, its description, and its roles, each resolved by its
+    name or ID (a role that does not exist is an error), or None without
+    'roles'.
     """
     try:
         name = resource[PROP_NAME]
@@ -1098,6 +1328,17 @@ def create_group(ctx: RunContext, resource: dict):
     role_specifications = (
         None if roles_input is None else _role_specifications(ctx, roles_input)
     )
+    return name, description, role_specifications
+
+
+def create_group(ctx: RunContext, resource: dict):
+    """
+    Create or update a group, and the scoped roles it holds, specified by
+    their names or IDs. Without 'roles' an existing group's roles are left
+    as they are; with 'roles' they are made to match it, so '[]' removes
+    them all. Every role is resolved before anything is changed.
+    """
+    name, description, role_specifications = prepare_group(ctx, resource)
 
     group_id = get_group_id_by_name(ctx.client, name)
     if group_id is None:  # New group
@@ -1274,26 +1515,42 @@ def _roles_to_remove(
     ]
 
 
-def _group_ids(ctx: RunContext, group_names: list[str]) -> set[str]:
+def _group_ids(
+    ctx: RunContext,
+    group_names: list[str],
+    planned: set[tuple[str, str]] | None = None,
+) -> set[str]:
     """
     The IDs of Groups named by name or ID; a Group that does not exist is an
-    error, before anything is changed, since memberships are made to match.
+    error, before anything is changed, since memberships are made to match,
+    unless 'planned' (a plan's: the (resource type, name) of each resource
+    an earlier specification creates) has it, which leaves it as its name.
     """
     group_ids = set()
     for group_name in group_names:
         group_id = get_group_id_by_name(ctx.client, group_name)
         if group_id is None:
+            if planned is not None and (RN_GROUP, group_name) in planned:
+                # Created by an earlier specification in the plan: its name
+                # is left for the plan to show
+                group_ids.add(group_name)
+                continue
             raise NotFoundError(f"Group '{group_name}' not found")
         group_ids.add(group_id)
     return group_ids
 
 
-def create_application(ctx: RunContext, resource: dict):
+def prepare_application(
+    ctx: RunContext,
+    resource: dict,
+    planned: set[tuple[str, str]] | None = None,
+) -> tuple[str, dict, set[str] | None, list[str]]:
     """
-    Create or update an application, the groups it belongs to (by their
-    names or IDs) and the Keyrings it may access. Without 'groups' an
-    existing application's groups are left as they are; with 'groups' they
-    are made to match it, so '[]' removes them all.
+    An Application specification resolved as the real run sends it,
+    touching nothing: its name, the specification less its 'groups' and
+    'keyrings', the IDs of its Groups (None without 'groups'; a Group
+    'planned' has, not yet existing, as its name), and the names of the
+    Keyrings it is to be granted.
     """
     try:
         name = resource[PROP_NAME]
@@ -1303,7 +1560,32 @@ def create_application(ctx: RunContext, resource: dict):
     groups: list[str] | None = resource.pop(PROP_GROUPS, None)
     keyrings: list[str] = resource.pop(PROP_KEYRINGS, None) or []
     # Every Group is resolved before anything is changed
-    new_group_ids = None if groups is None else _group_ids(ctx, groups)
+    new_group_ids = None if groups is None else _group_ids(ctx, groups, planned)
+    return name, resource, new_group_ids, keyrings
+
+
+def check_keyring_grants(name: str, keyrings: list[str]) -> None:
+    """
+    Refuse Keyring grants to the existing Application 'name' without
+    '--regenerate-app-keys'.
+    """
+    if keyrings and not _OPTIONS.regenerate_app_keys:
+        # A grant needs the key, which the Platform returns only when the
+        # application is created or its key regenerated
+        raise ValueError(
+            f"Application '{name}' exists: granting it access to Keyring(s)"
+            " needs its API key; re-run with '--regenerate-app-keys'"
+        )
+
+
+def create_application(ctx: RunContext, resource: dict):
+    """
+    Create or update an application, the groups it belongs to (by their
+    names or IDs) and the Keyrings it may access. Without 'groups' an
+    existing application's groups are left as they are; with 'groups' they
+    are made to match it, so '[]' removes them all.
+    """
+    name, resource, new_group_ids, keyrings = prepare_application(ctx, resource)
 
     app_id = get_application_id_by_name(ctx.client, name)
     if app_id is None:
@@ -1361,13 +1643,7 @@ def _update_application(
     Update an existing application, including its groups, its key (with
     '--regenerate-app-keys') and its Keyring grants.
     """
-    if keyrings and not _OPTIONS.regenerate_app_keys:
-        # A grant needs the key, which the Platform returns only when the
-        # application is created or its key regenerated
-        raise ValueError(
-            f"Application '{name}' exists: granting it access to Keyring(s)"
-            " needs its API key; re-run with '--regenerate-app-keys'"
-        )
+    check_keyring_grants(name, keyrings)
     if not confirmed(f"Update Application '{name}' ({app_id})?"):
         record_resource(RN_APPLICATION, name, app_id, "skipped")
         return
@@ -1472,17 +1748,22 @@ def _key_and_secret(api_key: ApiKey | None) -> dict:
     return {"apiKeyId": api_key.id, "apiKeySecret": api_key.secret}
 
 
-def update_user(ctx: RunContext, resource: dict, internal_user: bool):
+def prepare_user(
+    ctx: RunContext,
+    resource: dict,
+    internal_user: bool,
+    planned: set[tuple[str, str]] | None = None,
+) -> tuple[User, set[str] | None]:
     """
-    Update the groups of a user specified by name, username or ID; the
-    groups are named by their names or IDs. Without 'groups' the user's
-    groups are left as they are; with 'groups' they are made to match it,
-    so '[]' removes them all. Users cannot be created by the CLI.
+    A User specification resolved as the real run resolves it, touching
+    nothing: the User its name, username or ID finds (every identifier
+    given finding the same one; none found is NotFoundError, Users not
+    being created by the CLI), and the IDs of its Groups (None without
+    'groups'; a Group 'planned' has, not yet existing, as its name).
     """
     name = resource.get(PROP_NAME)
     username = resource.get(PROP_USERNAME)
     id = resource.get(PROP_ID)
-    resource_type = RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER
 
     # Check we have a user identity
     if internal_user:
@@ -1499,7 +1780,7 @@ def update_user(ctx: RunContext, resource: dict, internal_user: bool):
 
     groups: list[str] | None = resource.pop(PROP_GROUPS, None)
     # Every Group is resolved before anything is changed
-    new_group_ids = None if groups is None else _group_ids(ctx, groups)
+    new_group_ids = None if groups is None else _group_ids(ctx, groups, planned)
 
     # Every identifier given must find the same User, if it finds one
     identifiers = [i for i in (name, username, id) if i is not None]
@@ -1520,6 +1801,18 @@ def update_user(ctx: RunContext, resource: dict, internal_user: bool):
     user: User = next(iter(users.values()))
     if id is not None and user.id != id:
         raise ValueError(f"User name and supplied ID do not match ({resource})")
+    return user, new_group_ids
+
+
+def update_user(ctx: RunContext, resource: dict, internal_user: bool):
+    """
+    Update the groups of a user specified by name, username or ID; the
+    groups are named by their names or IDs. Without 'groups' the user's
+    groups are left as they are; with 'groups' they are made to match it,
+    so '[]' removes them all. Users cannot be created by the CLI.
+    """
+    resource_type = RN_INTERNAL_USER if internal_user else RN_EXTERNAL_USER
+    user, new_group_ids = prepare_user(ctx, resource, internal_user)
     username = user.username if isinstance(user, InternalUser) else user.name
 
     def update_groups() -> bool:

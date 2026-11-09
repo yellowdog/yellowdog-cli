@@ -783,6 +783,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def fail_on_changes(self) -> bool | None:
+        return self.args.fail_on_changes
+
+    @property
+    @allow_missing_attribute
     def regenerate_app_keys(self) -> bool | None:
         return self.args.regenerate_app_keys
 

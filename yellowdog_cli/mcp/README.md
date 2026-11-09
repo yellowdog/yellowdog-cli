@@ -158,6 +158,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_node_stop` | destructive | `yd node stop` | Stop the Instances of Nodes |
 | `yd_node_terminate` | destructive | `yd node terminate` | Terminate the Instances of Nodes |
 | `yd_resource_create` | acting | `yd resource create` | Create and update resources |
+| `yd_resource_plan` | read-only | `yd resource plan` | Show what creating resources would change |
 | `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
 | `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |
 | `yd_show` | read-only | `yd show` | Show the JSON details of entities referenced by their YDIDs |

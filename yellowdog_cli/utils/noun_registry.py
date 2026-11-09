@@ -891,6 +891,12 @@ NOUNS: tuple[Noun, ...] = (
                 "Create and update resources",
                 "creating and updating resources",
             ),
+            Verb(
+                "plan",
+                "yd-resource-plan",
+                "Show what creating resources would change",
+                "showing what creating resources would change",
+            ),
             Verb("remove", "yd-remove", "Remove resources", "removing resources"),
             Verb(
                 "list",

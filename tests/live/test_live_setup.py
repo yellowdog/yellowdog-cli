@@ -1,15 +1,18 @@
 """
-Live: a run's setup makes what it should, teardown leaves nothing, and the
-run's Keyring and Credentials can provision (Open Question 1 of the design).
+Live: a run's setup makes what it should, a plan of what it made changes
+nothing, teardown leaves nothing, and the run's Keyring and Credentials can
+provision (Open Question 1 of the design). A Group and Application are
+made and planned again too, since setup makes neither.
 
     pytest --run-live tests/live/test_live_setup.py
 """
 
+import json
 import time
 
 import pytest
 from harness import work
-from harness.lifecycle import REMOVAL_ORDER, owned, setup, teardown
+from harness.lifecycle import NAMESPACE_SPEC, REMOVAL_ORDER, owned, setup, teardown
 from harness.run import Run
 from harness.yd import Yd
 
@@ -17,6 +20,11 @@ pytestmark = [pytest.mark.live, pytest.mark.xdist_group("ydst")]
 
 _POLL_SECONDS = 15
 _SETTLED = {"RUNNING", "TERMINATED", "TERMINATING", "STOPPED"}
+# What a plan of the specifications setup has just created says of each type:
+# a Credential's secrets can't be read back, and an Allowance is never
+# updated, only created again; everything else is unchanged
+_PLANNED_AGAIN = {"Credential": "unknown", "Allowance": "create"}
+_PLAN = ("resource", "plan", "--json", "--quiet")
 
 
 def _names(entities: list[dict], key: str = "name") -> list[str]:
@@ -45,6 +53,119 @@ def test_the_keyring_holds_a_credential_per_provider(live_run):
     assert sorted(c["name"] for c in shown["credentials"]) == sorted(
         run.credential_name(p) for p in run.config.providers
     )
+
+
+def test_a_plan_of_what_setup_made_changes_nothing(live_run):
+    """
+    Each Platform default or reordered list the plan does not know of shows
+    here as a change (PLATFORM_DEFAULTS, UNORDERED_LISTS in resource_plan.py).
+    """
+    run, yd = live_run.run, live_run.yd
+    files = [str(NAMESPACE_SPEC), *(str(path) for path in run.spec_files())]
+    records = yd(*_PLAN, *files).records
+    assert records, "the plan recorded nothing"
+    wrong = [
+        record
+        for record in records
+        if record["action"] != _PLANNED_AGAIN.get(record["resource"], "unchanged")
+    ]
+    assert wrong == [], json.dumps(wrong, indent=2)
+
+
+def test_a_plan_of_a_group_and_application_changes_nothing(live_run, tmp_path):
+    """
+    A Group with a role in the run's namespace and an Application in it,
+    created and planned again: both unchanged. Removed after, as teardown
+    would remove them by name.
+    """
+    run, yd = live_run.run, live_run.yd
+    group, application = run.name("plan-group"), run.name("plan-app")
+    described = f"Live system tests, run {run.run_id}, namespace {run.namespace}"
+    specification = tmp_path / "group-and-application.json"
+    specification.write_text(
+        json.dumps(
+            [
+                {
+                    "resource": "Group",
+                    "name": group,
+                    "description": described,
+                    "roles": [
+                        {
+                            "role": {"name": "work-viewer"},
+                            "scope": {
+                                "global": False,
+                                "namespaces": [{"namespace": run.namespace}],
+                            },
+                        }
+                    ],
+                },
+                {
+                    "resource": "Application",
+                    "name": application,
+                    "description": described,
+                    "groups": [group],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    created = yd(
+        "resource",
+        "create",
+        str(specification),
+        "--yes",
+        *_PLAN[2:],
+        expect_secret=True,
+    ).records
+    for record in created:
+        for field in ("apiKeyId", "apiKeySecret"):
+            if record.get(field):
+                yd.add_secret(f"the plan Application's {field}", record[field])
+    ids = [record["id"] for record in created if record.get("id")]
+    remove = ("resource", "remove", "--ids", *ids, "--yes", *_PLAN[2:])
+    with work.cleaned_up(lambda: yd(*remove)):
+        records = yd(*_PLAN, str(specification)).records
+        assert [(r["resource"], r["action"]) for r in records] == [
+            ("Group", "unchanged"),
+            ("Application", "unchanged"),
+        ], json.dumps(records, indent=2)
+
+
+def test_a_plan_shows_one_changed_property(live_run, tmp_path):
+    """
+    A Compute Requirement Template as setup made it, but for its description:
+    one update, of that one property, and '--fail-on-changes' exits 1.
+    """
+    run, yd = live_run.run, live_run.yd
+    primary = run.config.primary
+    changed = tmp_path / "changed-template.json"
+    changed.write_text(
+        json.dumps(
+            {
+                "resource": "ComputeRequirementTemplate",
+                "type": "co.yellowdog.platform.model.ComputeRequirementStaticTemplate",
+                "namespace": run.namespace,
+                "name": run.requirement_template(primary),
+                "description": "A changed description",
+                "strategyType": "co.yellowdog.platform.model.WaterfallProvisionStrategy",
+                "sources": [
+                    {
+                        "sourceTemplateId": f"{run.namespace}/{run.source_template(primary)}"
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (record,) = yd(*_PLAN, str(changed)).records
+    assert record["action"] == "update", record
+    assert record["name"] == f"{run.namespace}/{run.requirement_template(primary)}"
+    (change,) = record["changes"]
+    assert change["path"] == "description", record
+    assert change["to"] == "A changed description", record
+
+    failing = yd(*_PLAN, "--fail-on-changes", str(changed), ok=(1,))
+    assert [r["action"] for r in failing.records] == ["update"]
 
 
 def test_a_run_torn_down_leaves_nothing(live_config, tmp_path):

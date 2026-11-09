@@ -886,6 +886,18 @@ def _namespace_family_group_match(
     return None
 
 
+def allowances_matching_description(client: PlatformClient, description: str) -> list:
+    """
+    The Allowances whose description is exactly 'description', unprompted.
+    """
+    allowances = client.allowances_client.get_allowances(
+        AllowanceSearch(description=description)
+    ).list_all()  # Note: partial matches on 'description'
+    return [
+        allowance for allowance in allowances if description == allowance.description
+    ]
+
+
 def allowances_to_remove(client: PlatformClient, description: str) -> list:
     """
     The Allowances whose description is exactly 'description' that the user
@@ -894,14 +906,7 @@ def allowances_to_remove(client: PlatformClient, description: str) -> list:
     asks before it creates the replacement, and an unanswerable prompt fails
     the run before anything has changed.
     """
-    allowances = client.allowances_client.get_allowances(
-        AllowanceSearch(description=description)
-    ).list_all()  # Note: partial matches on 'description'
-
-    # Ensure exact match
-    allowances = [
-        allowance for allowance in allowances if description == allowance.description
-    ]
+    allowances = allowances_matching_description(client, description)
 
     if not allowances:
         print_info(f"Cannot find Allowance matching description '{description}'")

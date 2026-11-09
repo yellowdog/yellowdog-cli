@@ -6,48 +6,50 @@
       * [Resource Creation](#resource-creation)
       * [Resource Update](#resource-update)
          * [Details](#details-1)
-      * [Resource Removal](#resource-removal)
+      * [Seeing What a Run Would Change](#seeing-what-a-run-would-change)
          * [Details](#details-2)
+      * [Resource Removal](#resource-removal)
+         * [Details](#details-3)
       * [Resource Matching](#resource-matching)
    * [Resource Specification Definitions](#resource-specification-definitions)
    * [Generating Resource Specifications using yd list](#generating-resource-specifications-using-yd-list)
       * [Usage Scenario: Moving or Copying Resources to a New Namespace](#usage-scenario-moving-or-copying-resources-to-a-new-namespace)
    * [Specifying a Resource on the Command Line](#specifying-a-resource-on-the-command-line)
-         * [Details](#details-3)
+         * [Details](#details-4)
    * [Preprocessing Resource Specifications](#preprocessing-resource-specifications)
    * [Keyrings](#keyrings)
    * [Credentials](#credentials)
    * [Compute Source Templates](#compute-source-templates)
-         * [Details](#details-4)
-   * [Compute Requirement Templates](#compute-requirement-templates)
          * [Details](#details-5)
-   * [Image Families](#image-families)
+   * [Compute Requirement Templates](#compute-requirement-templates)
          * [Details](#details-6)
-   * [Configured Worker Pools](#configured-worker-pools)
+   * [Image Families](#image-families)
          * [Details](#details-7)
-   * [Allowances](#allowances)
+   * [Configured Worker Pools](#configured-worker-pools)
          * [Details](#details-8)
+   * [Allowances](#allowances)
+         * [Details](#details-9)
    * [Attribute Definitions](#attribute-definitions)
       * [String Attribute Definitions](#string-attribute-definitions)
       * [Numeric Attribute Definitions](#numeric-attribute-definitions)
    * [Namespace Policies](#namespace-policies)
    * [Groups](#groups)
-         * [Details](#details-9)
-   * [Applications](#applications)
          * [Details](#details-10)
+   * [Applications](#applications)
+         * [Details](#details-11)
       * [Granting Keyring Access](#granting-keyring-access)
       * [Creating and Regenerating Application Keys](#creating-and-regenerating-application-keys)
    * [Users](#users)
-         * [Details](#details-11)
+         * [Details](#details-12)
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 09:49:00 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 12:22:01 GMT 2026 -->
 
 <!--te-->
 
 
-The commands **yd resource create** and **yd resource remove** create, update and remove YellowDog resources from specification files. For example, to create a Keyring, write its specification to `keyring.json`:
+The commands **yd resource create** and **yd resource remove** create, update and remove YellowDog resources from specification files, and **yd resource plan** shows what a create would change. For example, to create a Keyring, write its specification to `keyring.json`:
 
 ```json
 {"resource": "Keyring", "name": "render-keys", "description": "Keys for the render pipeline"}
@@ -114,14 +116,65 @@ yd resource create --yes templates.json
 
 #### Details
 
-**Create or update.** A resource not already present in the Platform is created, and one that is present is updated. The command does not check for differences, so an unchanged resource specification still causes an update.
+**Create or update.** A resource not already present in the Platform is created, and one that is present is updated. The command does not check for differences, so an unchanged resource specification still causes an update. `yd resource plan` shows the differences first (see [Seeing What a Run Would Change](#seeing-what-a-run-would-change)).
 
 **Exceptions.** Four resource types behave differently:
 
 - A **Credential** is put into its Keyring, replacing one of the same name, without a prompt.
 - A **Namespace** that already exists is reported with a warning and skipped.
 - An **Allowance** is created again, as a second Allowance. With `--match-allowances-by-description`/`-M`, it replaces those with the same description instead (see [Allowances](#allowances)).
-- A **Configured Worker Pool** is always added as a new pool.
+- A **Configured Worker Pool** is always created as a new pool, never updated. The Platform refuses one whose name is already taken by a Worker Pool in its namespace.
+
+### Seeing What a Run Would Change
+
+To see what `yd resource create` would do before running it, give `yd resource plan` the same files. It changes nothing and asks nothing, and says for each specification whether its resource would be created, updated (with each property that changes), left unchanged, or can't be compared:
+
+```shell
+yd resource plan templates.jsonnet
+```
+
+```
+2026-11-09 12:09:24 : Including 2 resources from 'templates.jsonnet'
+2026-11-09 12:09:24 : Plan for 2 resource specifications
+2026-11-09 12:09:24 : Unchanged  Compute Source Template 'image-processing/aws-ondemand' (ydid:cst:...:a8cc042e)
+2026-11-09 12:09:24 : Changed    Compute Requirement Template 'image-processing/aws-static' (ydid:crt:...:15552169)
+                                 description: 'AWS static' → 'AWS static, two sources'
+2026-11-09 12:09:24 : 1 changed, 1 unchanged
+2026-11-09 12:09:24 : Done
+```
+
+Then run `yd resource create` with the same files to make those changes. In a CI job, `--fail-on-changes` makes a plan with anything to do exit 1:
+
+```shell
+yd resource plan --fail-on-changes resources/*.jsonnet
+```
+
+#### Details
+
+**How each change is shown.** A changed property is shown by its path, with its old and new values: `sources[0].instanceType: 't3.small' → 't3.medium'`. A property the specification no longer sets is shown as `(cleared; was ...)`, because an update replaces the whole resource. A member added to or removed from a list matched by name is shown as `+` or `-`. User Data is shown by its length, and a long string is cut short.
+
+**The four outcomes.** `New` and `Changed` are what the real run would do: create the resource, or update it with the changes listed under it. `Unchanged` means the real run would send what the Platform already holds. `Unknown` is given to a Credential that already exists, since its secrets can't be read back: the real run replaces it. Under `--json` the same outcomes are the records' `action`: `create`, `update`, `unchanged` and `unknown`.
+
+**Namespaces.** Each specification is looked up as `yd resource create` looks it up. Compute Source Templates, Compute Requirement Templates, Image Families, Configured Worker Pools and Namespace Policies are looked up by name in the specification's own `namespace`, usually filled in from the configured namespace through `{{namespace}}`. Keyrings, Credentials, Groups, Applications, Users, Attribute Definitions and Namespaces are found by name across the account.
+
+**Per resource type:**
+
+- A **Compute Source Template** or **Compute Requirement Template** is compared property by property, a Requirement Template's `sources` by position. A source type change is one change, at `source.type`.
+- A **Keyring** is compared by its `description` alone, the only property an update changes.
+- An **Image Family** is compared with its Image Groups, and the Images in each, matched by name. A removed Image Group is shown as removed, which the real run asks about.
+- A **Configured Worker Pool** or an **Allowance** is always `New`, since neither is ever updated. A Configured Worker Pool whose name a Worker Pool in its namespace already holds, even one shut down, fails, as the real run does, since the Platform refuses it. With `--match-allowances-by-description`/`-M`, an Allowance's line lists the Allowances it would replace.
+- A **String** or **Numeric Attribute Definition** is compared by the properties its specification sets.
+- A **Group** is compared by its `description`, and, when the specification gives `roles`, by the roles added and removed in each scope.
+- An **Application** is compared by its `description` and, when the specification gives `groups`, by the Groups it joins and leaves. With `--regenerate-app-keys`, its line says the key would be regenerated, never showing a key.
+- A **User** is compared by the Groups it joins and leaves, when the specification gives `groups`. A User not found fails, as the real run does.
+- A **Namespace** is `Unchanged` when it exists, and a **Namespace Policy** is compared by its `autoscalingMaxNodes`.
+- A **Credential** is `New` when its Keyring holds none of its name, and otherwise `Unknown`. Its line names its Keyring: `Credential 'aws' in Keyring 'cloud-credentials'`.
+
+**References between specifications.** A specification that refers to a resource an earlier specification would create, such as a Requirement Template naming a new Source Template, shows the reference as `(to be created)`. A reference to a resource that neither exists nor is planned fails that specification, as it fails the real run.
+
+**Failures and exit codes.** A specification that can't be planned, for a missing property or an unknown image, for example, is reported as failed, and the rest are still planned; the command then exits with the failures' exit code. An authentication or connection failure stops the plan. Without `--fail-on-changes`, a plan with changes exits 0. Under `--json`, the plan is an array of records (see [Machine-readable Output and Exit Codes](json-output.md)).
+
+**Properties the Platform fills in.** The Platform sets some properties a specification leaves out, such as a Compute Requirement Template's `instanceTags`, which it sets to an empty map. The plan knows these, and doesn't show them as cleared.
 
 ### Resource Removal
 

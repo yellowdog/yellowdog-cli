@@ -52,6 +52,7 @@
    * [yd worker](#yd-worker)
    * [yd resource](#yd-resource)
       * [yd resource create](#yd-resource-create)
+      * [yd resource plan](#yd-resource-plan)
       * [yd resource remove](#yd-resource-remove)
    * [yd allowance](#yd-allowance)
       * [yd allowance boost](#yd-allowance-boost)
@@ -93,7 +94,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 09:48:58 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 12:21:58 GMT 2026 -->
 
 <!--te-->
 
@@ -1215,6 +1216,7 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
+| [`plan`](#yd-resource-plan) | Show what creating resources would change | `yd-resource-plan` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
 | `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
 | `show` | `yd show`, for resource IDs, or names with `--type`, with `--show-members` |  |
@@ -1247,6 +1249,28 @@ yd resource create --type Keyring --set name=team-keys --set description="Team k
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for the full resource specification reference.
+
+### yd resource plan
+
+The `yd resource plan` command shows what `yd resource create` would do with the same specifications, without changing anything or asking anything: for each specification, whether its resource would be created, updated (with each property that would change, from what to what), left unchanged, or can't be compared (a Credential that exists, whose secrets can't be read back). It takes the specifications `yd resource create` takes: JSON, Jsonnet or TOML files, `-` for one read from standard input as JSON, or a resource given with `--type` and `--set`. The specifications are planned in the order `yd resource create` would process them, and a summary line follows (see [Seeing What a Run Would Change](resources.md#seeing-what-a-run-would-change)).
+
+```shell
+yd resource plan [options] <resource-specification> [<resource-specification> ...]
+yd resource plan [options] --type <resource-type> --set <property=value> [--set ...]
+```
+
+Key options:
+- `--json` — print the plan as a JSON array, one record per specification (see [Machine-readable Output and Exit Codes](json-output.md))
+- `--fail-on-changes` — exit 1 once the plan is printed if anything would be created or updated, or can't be compared; a failed specification's own exit code takes precedence
+- `--regenerate-app-keys` — plan as `yd resource create --regenerate-app-keys` would act: an existing Application's line says its key would be regenerated
+- `--match-allowances-by-description`/`-M` — plan as `yd resource create -M` would act: an Allowance's line lists the Allowances of the same description it would replace
+- `--type <resource-type>` and `--set <property=value>` — a resource given on the command line, as for `yd resource create`
+- `--no-resequence` — plan the specifications in the order given, as `yd resource create --no-resequence` would process them
+
+```shell
+yd resource plan templates.jsonnet
+yd resource plan --fail-on-changes --json resources/*.jsonnet
+```
 
 ### yd resource remove
 

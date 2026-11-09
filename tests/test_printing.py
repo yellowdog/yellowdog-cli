@@ -1314,3 +1314,31 @@ def test_ids_only_leaves_stdout_to_the_ids(capsys):
     out, err = capsys.readouterr()
     assert out == ""
     assert "careful" in err
+
+
+# ---------------------------------------------------------------------------
+# info_silenced()
+# ---------------------------------------------------------------------------
+
+
+class TestInfoSilenced:
+    def test_info_is_silenced_and_warnings_are_not(self, capsys):
+        with output_settings.configured(_mock_args()):
+            with printing_module.info_silenced():
+                printing_module.print_info("progress")
+                printing_module.print_info("a key", override_quiet=True)
+                printing_module.print_warning("careful")
+            printing_module.print_info("after")
+        out = capsys.readouterr().out
+        assert "progress" not in out
+        assert "a key" in out
+        assert "careful" in out
+        assert "after" in out
+
+    def test_silencing_ends_with_the_block_even_on_an_error(self, capsys):
+        with output_settings.configured(_mock_args()):
+            with pytest.raises(RuntimeError):
+                with printing_module.info_silenced():
+                    raise RuntimeError
+            printing_module.print_info("after")
+        assert "after" in capsys.readouterr().out

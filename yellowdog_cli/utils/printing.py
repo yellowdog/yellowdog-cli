@@ -11,6 +11,8 @@ import logging
 import re
 import sys
 from bisect import bisect_left
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from json import dumps as json_dumps
 from os import get_terminal_size, getpid
@@ -215,6 +217,26 @@ def print_simple(
         CONSOLE.print(escape(log_message), soft_wrap=True)
 
 
+# Set while info_silenced() holds: print_info() prints nothing, unless told
+# to override, while warnings and errors still print
+_INFO_SILENCED = False
+
+
+@contextmanager
+def info_silenced() -> Iterator[None]:
+    """
+    print_info() silenced for a 'with' block, warnings and errors still
+    printed: for code run for its result whose progress messages are not the
+    command's (yd resource plan's use of the creators' preparation).
+    """
+    global _INFO_SILENCED
+    previous, _INFO_SILENCED = _INFO_SILENCED, True
+    try:
+        yield
+    finally:
+        _INFO_SILENCED = previous
+
+
 def print_info(
     log_message: str = "",
     override_quiet: bool = False,
@@ -229,7 +251,11 @@ def print_info(
     other colouring.
     """
     if (
-        OUTPUT.quiet or OUTPUT.json_output or OUTPUT.ids_only or OUTPUT.count_only
+        OUTPUT.quiet
+        or OUTPUT.json_output
+        or OUTPUT.ids_only
+        or OUTPUT.count_only
+        or _INFO_SILENCED
     ) and override_quiet is False:
         return
 

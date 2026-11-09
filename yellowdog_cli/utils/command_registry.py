@@ -1065,6 +1065,9 @@ CREATE_JSON = ACTIONS_JSON.variant(
         " array; with --dry-run, the processed specifications"
     )
 )
+PLAN_JSON = ACTIONS_JSON.variant(
+    help="print the plan as a JSON array, one record per specification"
+)
 ENTITY_JSON = ACTIONS_JSON.variant(
     help=(
         "emit the created entity as JSON; with --dry-run, the processed"
@@ -2345,6 +2348,13 @@ NO_RESEQUENCE = option(
     ),
 )
 
+FAIL_ON_CHANGES = option(
+    "--fail-on-changes",
+    action="store_true",
+    required=False,
+    help="exit 1 if anything would be created or updated, or can't be compared",
+)
+
 COMMANDS["yd-create"] = Command(
     name="yd-create",
     purpose="creating and updating resources",
@@ -2377,6 +2387,35 @@ COMMANDS["yd-create"] = Command(
         " per resource created, updated or skipped; yd_schema resources"
         " gives the schema to compose against."
     ),
+)
+
+COMMANDS["yd-resource-plan"] = Command(
+    name="yd-resource-plan",
+    purpose="showing what creating resources would change",
+    summary="Show what creating resources would change",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        TAG,
+        RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
+        MATCH_ALLOWANCES_BY_DESCRIPTION,
+        REGENERATE_APP_KEYS,
+        NO_RESEQUENCE,
+        PLAN_JSON,
+        FAIL_ON_CHANGES,
+    ),
+    requires_namespace_and_tag=True,
+    validators=(check_resource_inputs,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Show what creating or updating resources from specifications would"
+        " change, without changing anything: per resource, whether it would be"
+        " created, updated or left unchanged."
+    ),
+    script=False,
 )
 
 IDS = option(
