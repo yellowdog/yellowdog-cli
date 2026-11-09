@@ -110,20 +110,34 @@ yd resource create keyrings.json templates.json
 
 ### Resource Update
 
-To update resources, edit their specifications and run `yd resource create` again with the same files. Each update asks for approval first; `--yes` skips the prompt, as in other commands.
+To update resources, edit their specifications and run `yd resource create` again with the same files. A resource whose specification has changed is updated, after asking for approval, and one whose specification has not changed is left as it is. `--yes` skips the prompt, as in other commands.
 
 ```shell
 yd resource create --yes templates.json
 ```
 
+```
+2026-11-09 12:14:02 : Including 2 resources from 'templates.json'
+2026-11-09 12:14:03 : Unchanged Compute Source Template 'image-processing/aws-ondemand' (ydid:cst:...:a8cc042e): not updated
+2026-11-09 12:14:03 : Updated existing Compute Requirement Template 'image-processing/aws-static' (ydid:crt:...:15552169)
+2026-11-09 12:14:03 : 1 updated, 1 unchanged
+2026-11-09 12:14:03 : Done
+```
+
 #### Details
 
-**Create or update.** A resource not already present in the Platform is created, and one that is present is updated. The command does not check for differences, so an unchanged resource specification still causes an update. `yd resource plan` shows the differences first (see [Seeing What a Run Would Change](#seeing-what-a-run-would-change)).
+**Create or update.** A resource not already present in the Platform is created. One that is present is compared with its specification as `yd resource plan` compares it (see [Seeing What a Run Would Change](#seeing-what-a-run-would-change)): if they differ it is updated, and if they match it is not updated or asked about, and is reported as `Unchanged` (under `--quiet`, its ID is printed). A resource the plan can't compare, or whose comparison fails, is updated as if it had changed.
+
+**`--force-update`.** This option updates every existing resource, unchanged ones included, comparing nothing. Each update asks for approval, as a changed resource's does.
+
+**Never compared.** A Credential, an Allowance and a Configured Worker Pool are always sent (see the exceptions below), and an Application is always updated under `--regenerate-app-keys`, since its key is regenerated.
+
+**The summary.** At the end of a run, a line counts the resources created, updated, unchanged, skipped and failed, leaving out an outcome no resource had: `2 created, 1 updated, 7 unchanged`. A resource is `skipped` when its update is declined at the prompt, or when an authentication or connection failure stops the run before it is reached. An Image Family's Image Groups and Images are counted as well as the family. Under `--dry-run` or `--json` there is no summary; the `--json` records carry the same outcomes.
 
 **Exceptions.** Four resource types behave differently:
 
 - A **Credential** is put into its Keyring, replacing one of the same name, without a prompt.
-- A **Namespace** that already exists is reported with a warning and skipped.
+- A **Namespace** that already exists has nothing to update, and is left as it is.
 - An **Allowance** is created again, as a second Allowance. With `--match-allowances-by-description`/`-M`, it replaces those with the same description instead (see [Allowances](#allowances)).
 - A **Configured Worker Pool** is always created as a new pool, never updated. The Platform refuses one whose name is already taken by a Worker Pool in its namespace.
 
@@ -155,7 +169,7 @@ yd resource plan --fail-on-changes resources/*.jsonnet
 
 **How each change is shown.** A changed property is shown by its path, with its old and new values: `sources[0].instanceType: 't3.small' → 't3.medium'`. A property the specification no longer sets is shown as `(cleared; was ...)`, because an update replaces the whole resource. A member added to or removed from a list matched by name is shown as `+` or `-`. User Data is shown by its length, and a long string is cut short.
 
-**The four outcomes.** `New` and `Changed` are what the real run would do: create the resource, or update it with the changes listed under it. `Unchanged` means the real run would send what the Platform already holds. `Unknown` is given to a Credential that already exists, since its secrets can't be read back: the real run replaces it. Under `--json` the same outcomes are the records' `action`: `create`, `update`, `unchanged` and `unknown`.
+**The four outcomes.** `New` and `Changed` are what the real run would do: create the resource, or update it with the changes listed under it. `Unchanged` means the specification matches what the Platform already holds, so the real run leaves the resource as it is. `Unknown` is given to a Credential that already exists, since its secrets can't be read back: the real run replaces it. Under `--json` the same outcomes are the records' `action`: `create`, `update`, `unchanged` and `unknown`.
 
 **Namespaces.** Each specification is looked up as `yd resource create` looks it up. Compute Source Templates, Compute Requirement Templates, Image Families, Configured Worker Pools and Namespace Policies are looked up by name in the specification's own `namespace`, usually filled in from the configured namespace through `{{namespace}}`. Keyrings, Credentials, Groups, Applications, Users, Attribute Definitions and Namespaces are found by name across the account.
 
@@ -165,7 +179,7 @@ yd resource plan --fail-on-changes resources/*.jsonnet
 - A **Keyring** is compared by its `description` alone, the only property an update changes.
 - An **Image Family** is compared with its Image Groups, and the Images in each, matched by name. A removed Image Group is shown as removed, which the real run asks about.
 - A **Configured Worker Pool** or an **Allowance** is always `New`, since neither is ever updated. A Configured Worker Pool whose name a Worker Pool in its namespace already holds, even one shut down, fails, as the real run does, since the Platform refuses it. With `--match-allowances-by-description`/`-M`, an Allowance's line lists the Allowances it would replace.
-- A **String** or **Numeric Attribute Definition** is compared by the properties its specification sets.
+- A **String** or **Numeric Attribute Definition** is compared property by property. A property the definition holds and the specification leaves out is shown as cleared, since the real run sends it unset and the Platform then clears it.
 - A **Group** is compared by its `description`, and, when the specification gives `roles`, by the roles added and removed in each scope.
 - An **Application** is compared by its `description` and, when the specification gives `groups`, by the Groups it joins and leaves. With `--regenerate-app-keys`, its line says the key would be regenerated, never showing a key.
 - A **User** is compared by the Groups it joins and leaves, when the specification gives `groups`. A User not found fails, as the real run does.
@@ -176,7 +190,7 @@ yd resource plan --fail-on-changes resources/*.jsonnet
 
 **Failures and exit codes.** A specification that can't be planned, for a missing property or an unknown image, for example, is reported as failed, and the rest are still planned; the command then exits with the failures' exit code. An authentication or connection failure stops the plan. Without `--fail-on-changes`, a plan with changes exits 0. Under `--json`, the plan is an array of records (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-**Properties the Platform fills in.** The Platform sets some properties a specification leaves out, such as a Compute Requirement Template's `instanceTags`, which it sets to an empty map. The plan knows these, and doesn't show them as cleared.
+**Properties the Platform fills in.** The Platform sets some properties a specification leaves out, such as a Compute Requirement Template's `instanceTags`, which it sets to an empty map. The plan knows these, and doesn't show one as cleared while the Platform holds its default; one holding anything else, such as tags set earlier, is shown as cleared, and `yd resource create` clears it.
 
 ### Resource Removal
 

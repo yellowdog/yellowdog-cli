@@ -791,6 +791,11 @@ class CLIParser:
     def regenerate_app_keys(self) -> bool | None:
         return self.args.regenerate_app_keys
 
+    @property
+    @allow_missing_attribute
+    def force_update(self) -> bool | None:
+        return self.args.force_update
+
     # -----------------------------------------------------------------------
     # yd-remove
     # -----------------------------------------------------------------------

@@ -353,16 +353,25 @@ def plan_namespace_policy(
     )
 
 
-def _attribute_properties(definition: dict, only: dict | None = None) -> dict:
+# How the Platform lists an Attribute Definition's unset description and
+# options (live run ydst-2611091206-mxng)
+_LISTED_UNSET: tuple[Any, ...] = ("", [])
+
+
+def _attribute_properties(definition: dict, payload: dict) -> dict:
     """
-    An Attribute Definition less its 'type' and the properties it leaves
-    unset, and, given 'only', less any property not in it (what the
-    Platform adds to a definition is no difference).
+    An Attribute Definition's properties that are set, less its 'type' and
+    any property not in 'payload' (what the Platform adds to a definition
+    is no difference). A value listed as unset ("", []) where the payload
+    leaves the property unset is left out like None: the two agree.
     """
     return {
         key: value
         for key, value in definition.items()
-        if key != PROP_TYPE and value is not None and (only is None or key in only)
+        if key != PROP_TYPE
+        and key in payload
+        and value is not None
+        and not (value in _LISTED_UNSET and payload[key] is None)
     }
 
 
@@ -394,13 +403,17 @@ def plan_attribute_definition(
     )
     if existing is None:
         return PlanEntry(resource_type, name, None, "create")
-    wanted = _attribute_properties(payload)
+    # The payload names every property the definition can have, each sent,
+    # null where the specification leaves it out, and the Platform clears a
+    # property sent as null (a live check: a String Attribute Definition's
+    # description and options, PUT as null, read back null): one the
+    # existing definition holds and the payload does not is cleared
     return _compared(
         resource_type,
         name,
         None,
-        _attribute_properties(existing, wanted),
-        wanted,
+        _attribute_properties(existing, payload),
+        _attribute_properties(payload, payload),
     )
 
 

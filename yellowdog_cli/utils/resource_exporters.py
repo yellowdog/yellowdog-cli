@@ -6,16 +6,17 @@ type's exporter is written; the engine (utils/resource_export.py) knows only
 this interface.
 
 A specification is what 'yd resource plan' compares (comparable()), less a
-Platform default left empty, with every reference to another resource
-written as its name, and every '{{...}}' in a string written so that loading
-the file gives the string back (specification_of(), literal_for_jsonnet()).
+property holding its Platform default, with every reference to another
+resource written as its name, and every '{{...}}' in a string written so
+that loading the file gives the string back (specification_of(),
+literal_for_jsonnet()).
 """
 
 import json
 import logging
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields
 from fnmatch import fnmatchcase
@@ -132,10 +133,11 @@ from yellowdog_cli.utils.property_names import (
     PROP_USERNAME,
 )
 from yellowdog_cli.utils.resource_plan import (
-    PLATFORM_DEFAULTS,
     RESOURCE_TYPE_NAMES,
     comparable,
+    differences,
     path_pattern,
+    platform_defaults,
 )
 from yellowdog_cli.utils.settings import (
     NAMESPACE_PREFIX_SEPARATOR,
@@ -331,16 +333,18 @@ def literal_for_jsonnet(data: Any, mustache: bool = False) -> Any:
     return data
 
 
-def _without_defaults(data: Any, defaults: frozenset[str], path: str = "") -> Any:
+def _without_defaults(data: Any, defaults: Mapping[str, Any], path: str = "") -> Any:
     """
-    'data' less each property at a 'defaults' path left empty ({}, [] or ''),
-    which the Platform sets when it is unset; one with a value is kept.
+    'data' less each property holding the default 'defaults' maps its path
+    to, which the Platform sets when it is unset; one holding anything else
+    is kept.
     """
     if isinstance(data, dict):
         kept: dict[str, Any] = {}
         for key, value in data.items():
             child = f"{path}.{key}" if path else key
-            if path_pattern(child) in defaults and value in ({}, [], ""):
+            pattern = path_pattern(child)
+            if pattern in defaults and not differences(value, defaults[pattern]):
                 continue
             kept[key] = _without_defaults(value, defaults, child)
         return kept
@@ -358,15 +362,15 @@ def specification_of(
     """
     The specification of a resource as the Platform holds it: 'resource'
     first, then what 'yd resource plan' compares (comparable()), less a
-    Platform default left empty, with each '{{...}}' in a string written
-    raw, so that loading it gives the string back. With 'model_name', the
-    model 'yd resource create' sends where it is not the one read back
-    (AddConfiguredWorkerPoolRequest for a ConfiguredWorkerPool), only that
-    model's properties are written.
+    property holding its Platform default, with each '{{...}}' in a string
+    written raw, so that loading it gives the string back. With
+    'model_name', the model 'yd resource create' sends where it is not the
+    one read back (AddConfiguredWorkerPoolRequest for a ConfiguredWorkerPool),
+    only that model's properties are written.
     """
     properties = _without_defaults(
         comparable(model, model_name),
-        frozenset(PLATFORM_DEFAULTS.get(resource_type, {})),
+        platform_defaults(resource_type),
     )
     if model_name is not None:
         sent = {f.name for f in fields(model_class(model_name))}

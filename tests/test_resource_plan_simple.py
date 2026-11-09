@@ -306,6 +306,47 @@ def test_an_attribute_definition_as_the_platform_lists_it(platform, monkeypatch)
     assert entry.changes == (Change("options[0]", None, "team-a", "added"),)
 
 
+def test_a_property_the_specification_leaves_out_is_cleared(platform, monkeypatch):
+    """
+    'yd resource create' sends the property as null, so the plan must not
+    find it unchanged.
+    """
+    held = prepare_attribute_definition(
+        _ctx(platform),
+        _attribute(description="Where it runs"),
+        RN_STRING_ATTRIBUTE_DEFINITION,
+    )
+    _patch_get(monkeypatch, platform, [held])
+    entry = _plan(platform, RN_STRING_ATTRIBUTE_DEFINITION, _attribute())
+    assert entry.action == "update"
+    assert entry.changes == (Change("description", "Where it runs", None, "cleared"),)
+
+    entry = _plan(
+        platform,
+        RN_STRING_ATTRIBUTE_DEFINITION,
+        _attribute(description="Where it runs"),
+    )
+    assert (entry.action, entry.changes) == ("unchanged", ())
+
+
+def test_a_numeric_definitions_dropped_units_and_range_are_cleared(
+    platform, monkeypatch
+):
+    spec = {"name": "speed", "title": "Speed", "defaultRankOrder": "PREFER_HIGHER"}
+    held = prepare_attribute_definition(
+        _ctx(platform),
+        {**spec, "units": "GHz", "range": {"min": 1, "max": 10}},
+        RN_NUMERIC_ATTRIBUTE_DEFINITION,
+    )
+    _patch_get(monkeypatch, platform, [held])
+    entry = _plan(platform, RN_NUMERIC_ATTRIBUTE_DEFINITION, dict(spec))
+    assert entry.action == "update"
+    assert sorted(entry.changes, key=lambda change: change.path) == [
+        Change("range", {"min": 1, "max": 10}, None, "cleared"),
+        Change("units", "GHz", None, "cleared"),
+    ]
+
+
 @pytest.mark.parametrize(
     "resource_type, resource",
     [

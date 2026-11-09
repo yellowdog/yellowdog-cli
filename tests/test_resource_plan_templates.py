@@ -189,6 +189,24 @@ def test_a_changed_requirement_template_names_the_change(platform):
     assert entry.changes == (Change("description", "a", "b", "changed"),)
 
 
+def test_instance_tags_held_empty_and_left_out_are_unchanged(platform):
+    # The Platform sets an empty map when a template has none
+    _hold_source_template(platform, _source_template())
+    _hold_requirement_template(platform, _requirement_template(instanceTags={}))
+    entry = _plan(platform, RN_REQUIREMENT_TEMPLATE, _requirement_template())
+    assert (entry.action, entry.changes) == ("unchanged", ())
+
+
+def test_instance_tags_held_with_a_value_and_left_out_are_cleared(platform):
+    _hold_source_template(platform, _source_template())
+    _hold_requirement_template(
+        platform, _requirement_template(instanceTags={"team": "a"})
+    )
+    entry = _plan(platform, RN_REQUIREMENT_TEMPLATE, _requirement_template())
+    assert entry.action == "update"
+    assert entry.changes == (Change("instanceTags", {"team": "a"}, None, "cleared"),)
+
+
 def test_a_source_template_name_is_resolved_to_its_id(platform):
     held = _hold_source_template(platform, _source_template())
     _, template, unresolved = prepare_compute_requirement_template(

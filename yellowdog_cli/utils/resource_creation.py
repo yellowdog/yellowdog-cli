@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import yellowdog_client.model as model
 from dateparser import parse as date_parse
@@ -91,7 +91,9 @@ from yellowdog_cli.utils.entity_utils import (
     remove_allowances,
 )
 from yellowdog_cli.utils.exit_codes import (
+    SESSION_FAILURES,
     NotFoundError,
+    classify,
 )
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
@@ -149,11 +151,20 @@ from yellowdog_cli.utils.resource_processing import (
     missing_property,
     process_resources,
 )
-from yellowdog_cli.utils.results import record, record_resource
+from yellowdog_cli.utils.results import (
+    json_requested,
+    record,
+    record_count,
+    record_resource,
+    records_since,
+)
 from yellowdog_cli.utils.settings import NAMESPACE_PREFIX_SEPARATOR
 from yellowdog_cli.utils.specs.sdk_models import RESOURCE_TYPES
 from yellowdog_cli.utils.type_check import check_dict, check_list
 from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+
+if TYPE_CHECKING:
+    from yellowdog_cli.utils.resource_plan import PlanEntry
 
 _LOG = logging.getLogger(__name__)
 
@@ -169,6 +180,7 @@ class CreateOptions:
     match_allowances_by_description: bool = False
     show_keyring_passwords: bool = False
     regenerate_app_keys: bool = False
+    force_update: bool = False
 
 
 # The options of the run in progress, set by create_resources() (and a
@@ -236,18 +248,115 @@ def _create_all(ctx: RunContext, resources: list[dict], show_secrets: bool) -> N
                 raise ValueError(f"Unknown resource type '{resource_type}'")
             _show_dry_run_specification(resource_type, resource)
             return
+        if not (
+            _OPTIONS.dry_run
+            or _OPTIONS.force_update
+            or resource_type in _NEVER_UNCHANGED
+        ):
+            entry = _unchanged_entry(ctx, resource_type, resource, source_dir)
+            if entry is not None:
+                _report_unchanged(entry)
+                return
         _create_resource(ctx, resource_type, resource, source_dir, show_secrets)
 
     # In a dry run, '--json' is the processed specifications, so failures
     # are reported on stderr and in the exit code instead. Whether a
     # specification creates or updates is decided by its creator, after
     # this wording is chosen, so the wording covers both
-    process_resources(
-        cast(list[dict], resources),
-        _process,
-        "create or update",
-        record_outcomes=not _OPTIONS.dry_run,
-    )
+    first_record = record_count()
+    try:
+        process_resources(
+            cast(list[dict], resources),
+            _process,
+            "create or update",
+            record_outcomes=not _OPTIONS.dry_run,
+        )
+    except Exception:
+        # Re-raised: the summary is said before the run's failure
+        _print_summary(first_record)
+        raise
+    _print_summary(first_record)
+
+
+# The resource types whose plan is never 'unchanged', so never planned: a
+# Credential's secret cannot be read back to compare, and an Allowance or a
+# Configured Worker Pool is created afresh every time
+_NEVER_UNCHANGED = frozenset({RN_CREDENTIAL, RN_ALLOWANCE, RN_CONFIGURED_POOL})
+
+# The outcomes the summary counts, in the order it gives them
+_SUMMARY_ACTIONS = ("created", "updated", "unchanged", "skipped", "failed")
+
+
+def _print_summary(first_record: int) -> None:
+    """
+    Say how many of the run's resources were created, updated, left
+    unchanged, skipped and failed, from the records made since
+    'first_record', leaving out an outcome none had; nothing in a dry run
+    or under '--json', whose records say it.
+    """
+    if _OPTIONS.dry_run or json_requested():
+        return
+    actions = [
+        item.get("action")
+        for item in records_since(first_record)
+        if isinstance(item, dict)
+    ]
+    parts = [
+        f"{actions.count(action):,} {action}"
+        for action in _SUMMARY_ACTIONS
+        if action in actions
+    ]
+    if parts:
+        print_info(", ".join(parts))
+
+
+def _unchanged_entry(
+    ctx: RunContext, resource_type: str, resource: dict, source_dir: str | None
+) -> "PlanEntry | None":
+    """
+    The plan's entry for a specification whose existing resource it finds
+    unchanged, which is then left as it is; None for any other outcome, or
+    when planning fails, so that the creator runs and reports its own
+    failure. A session failure (authentication, connection) is raised, as
+    the creator's would be. 'resource' is not changed.
+    """
+    # Here, since resource_plan imports this module
+    from yellowdog_cli.utils import resource_plan
+
+    try:
+        # Planned against the Platform as it now is, which holds whatever
+        # an earlier specification of the run created: nothing 'planned'
+        entry = resource_plan.plan_one(
+            ctx, resource_type, deepcopy(resource), source_dir, set()
+        )
+    except Exception as e:
+        if classify(e) in SESSION_FAILURES:
+            raise
+        _LOG.debug(
+            "Planning %s failed; it is created or updated as without a plan",
+            resource_type,
+            exc_info=True,
+        )
+        return None
+    if entry.action != "unchanged":
+        return None
+    _LOG.debug("%s '%s' is unchanged: not updated", resource_type, entry.name)
+    return entry
+
+
+def _report_unchanged(entry: "PlanEntry") -> None:
+    """
+    Say, and record, that an existing resource was left unchanged, its ID
+    the bare result under '--quiet', as a created or updated one's is.
+    """
+    from yellowdog_cli.utils.resource_plan import RESOURCE_TYPE_NAMES
+
+    shown_type = RESOURCE_TYPE_NAMES.get(entry.resource_type, entry.resource_type)
+    shown_id = "" if entry.id is None else f" ({entry.id})"
+    print_info(f"Unchanged {shown_type} '{entry.name}'{shown_id}: not updated")
+    record_resource(entry.resource_type, entry.name, entry.id, "unchanged")
+    if entry.id is not None:
+        print_quiet_result(entry.id)
 
 
 def _create_resource(

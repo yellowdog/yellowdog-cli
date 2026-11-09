@@ -1,6 +1,7 @@
 """
 Live: a run's setup makes what it should, a plan of what it made changes
-nothing, nor does a plan of an export of it, teardown leaves nothing, and
+nothing, nor does a plan of an export of it, creating it again writes
+nothing but the always-sent, teardown leaves nothing, and
 the run's Keyring and Credentials can provision (Open Question 1 of the
 design). A Group and Application are made and planned again too, since
 setup makes neither.
@@ -26,6 +27,10 @@ _SETTLED = {"RUNNING", "TERMINATED", "TERMINATING", "STOPPED"}
 # updated, only created again; everything else is unchanged
 _PLANNED_AGAIN = {"Credential": "unknown", "Allowance": "create"}
 _PLAN = ("resource", "plan", "--json", "--quiet")
+# What 'yd resource create' of those specifications again records of each
+# type: a Credential is put by name and an Allowance created again;
+# everything else is unchanged, and not written
+_CREATED_AGAIN = {"Credential": "created", "Allowance": "created"}
 # The types of what setup makes, the namespace's defaults and the
 # account-wide types among them, and the file in the run's directory an
 # export of them is written to
@@ -138,6 +143,40 @@ def test_an_export_of_what_setup_made_plans_as_unchanged(live_run):
         if record["action"] != _PLANNED_AGAIN.get(record["resource"], "unchanged")
     ]
     assert wrong == [], json.dumps(wrong, indent=2)
+
+
+def test_creating_what_setup_made_again_changes_nothing(live_run):
+    """
+    'yd resource create' of the specifications setup has just created: each
+    existing resource the plan finds unchanged is left alone, bar those
+    always sent: a Credential (put by name, recorded 'created') and an
+    Allowance (created again). The second Allowance is given a description of
+    its own, still the run's, so that no other test finds two of the run's
+    one, and is removed after.
+    """
+    run, yd = live_run.run, live_run.yd
+    files = [str(NAMESPACE_SPEC), *(str(path) for path in run.spec_files())]
+    again = run.name("allowance-again")
+    records = yd(
+        "resource",
+        "create",
+        "--variable",
+        f"allowance_description={again}",
+        "--yes",
+        *_PLAN[2:],
+        *files,
+    ).records
+    allowances = [r["id"] for r in records if r["resource"] == "Allowance"]
+    remove = ("resource", "remove", "--ids", *allowances, "--yes", *_PLAN[2:])
+    with work.cleaned_up(lambda: allowances and yd(*remove)):
+        assert records, "the run recorded nothing"
+        wrong = [
+            record
+            for record in records
+            if record["action"] != _CREATED_AGAIN.get(record["resource"], "unchanged")
+        ]
+        assert wrong == [], json.dumps(wrong, indent=2)
+        assert [r["name"] for r in records if r["resource"] == "Allowance"] == [again]
 
 
 def _secret_variables(specifications: list[dict]) -> set[str]:

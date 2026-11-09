@@ -2386,6 +2386,12 @@ REGENERATE_APP_KEYS = option(
     required=False,
     help="regenerate the application key & secret when updating an application",
 )
+FORCE_UPDATE = option(
+    "--force-update",
+    action="store_true",
+    required=False,
+    help="update every existing resource, even one the plan finds unchanged",
+)
 NO_RESEQUENCE = option(
     "--no-resequence",
     action="store_true",
@@ -2425,6 +2431,7 @@ COMMANDS["yd-create"] = Command(
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         SHOW_KEYRING_PASSWORDS,
         REGENERATE_APP_KEYS,
+        FORCE_UPDATE,
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
@@ -2433,8 +2440,8 @@ COMMANDS["yd-create"] = Command(
     tool_description=(
         "Create or update resources from specifications (each a file path,"
         " or the specification itself). Returns {resource, name, id, action}"
-        " per resource created, updated or skipped; yd_schema resources"
-        " gives the schema to compose against."
+        " per resource created, updated, unchanged or skipped; yd_schema"
+        " resources gives the schema to compose against."
     ),
 )
 

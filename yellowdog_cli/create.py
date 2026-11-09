@@ -24,6 +24,7 @@ def main(ctx: RunContext):
             ),
             show_keyring_passwords=bool(ctx.args.show_keyring_passwords),
             regenerate_app_keys=bool(ctx.args.regenerate_app_keys),
+            force_update=bool(ctx.args.force_update),
         ),
     )
 

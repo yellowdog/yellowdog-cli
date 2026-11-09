@@ -37,6 +37,7 @@ from yellowdog_cli.utils.resource_plan import (
     Change,
     PlanEntry,
     PlanOptions,
+    PlatformDefault,
     comparable,
     differences,
     plan_one,
@@ -151,9 +152,18 @@ def test_a_property_the_specification_adds():
 
 def test_a_platform_default_is_not_cleared():
     assert (
-        differences({"strategyType": "SPLIT"}, {}, defaults=frozenset({"strategyType"}))
+        differences({"strategyType": "SPLIT"}, {}, defaults={"strategyType": "SPLIT"})
         == []
     )
+
+
+def test_a_platform_default_property_holding_another_value_is_cleared():
+    assert differences(
+        {"instanceTags": {"team": "a"}}, {}, defaults={"instanceTags": {}}
+    ) == [Change("instanceTags", {"team": "a"}, None, "cleared")]
+    assert differences({"a": 1}, {}, defaults={"a": True}) == [
+        Change("a", 1, None, "cleared")
+    ]
 
 
 def test_a_platform_default_is_matched_with_list_indices_as_brackets():
@@ -161,7 +171,7 @@ def test_a_platform_default_is_matched_with_list_indices_as_brackets():
         differences(
             {"sources": [{"instanceType": "t3"}]},
             {"sources": [{}]},
-            defaults=frozenset({"sources[].instanceType"}),
+            defaults={"sources[].instanceType": "t3"},
         )
         == []
     )
@@ -248,7 +258,9 @@ def test_an_unordered_list_compares_as_a_multiset():
 
 
 def test_resource_differences_reads_the_type_tables(monkeypatch):
-    monkeypatch.setitem(PLATFORM_DEFAULTS, "Thing", {"strategyType": "test"})
+    monkeypatch.setitem(
+        PLATFORM_DEFAULTS, "Thing", {"strategyType": PlatformDefault("SPLIT", "test")}
+    )
     monkeypatch.setitem(UNORDERED_LISTS, "Thing", {"tags": "test"})
     assert (
         resource_differences(

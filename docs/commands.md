@@ -1225,7 +1225,7 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 
 ### yd resource create
 
-The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON, Jsonnet or TOML files supplied on the command line, or `-` for one read from standard input as JSON. Each file can contain one or more resources. A resource can also be given on the command line, with `--type` and `--set`, in place of a file or as well as files (see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line)).
+The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON, Jsonnet or TOML files supplied on the command line, or `-` for one read from standard input as JSON. Each file can contain one or more resources. An existing resource that already matches its specification is left as it is, and a summary line counts the resources created, updated, unchanged, skipped and failed (see [Resource Update](resources.md#resource-update)). A resource can also be given on the command line, with `--type` and `--set`, in place of a file or as well as files (see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line)).
 
 ```shell
 yd resource create [options] <resource-specification> [<resource-specification> ...]
@@ -1238,12 +1238,13 @@ Key options:
 - `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
+- `--force-update` — update every existing resource, even one that `yd resource plan` finds unchanged
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
 - `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--jsonnet-dry-run`/`-J` — print each Jsonnet resource file as evaluated, its variables substituted, creating nothing
 - `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
-- `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
+- `--json` — emit the resources created, updated, unchanged or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd resource create my_keyring.json my_compute_templates.jsonnet

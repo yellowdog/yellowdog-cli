@@ -14141,6 +14141,19 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "force_update",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--force-update"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "no_resequence",
       "kind": "_StoreTrueAction",
       "nargs": 0,
@@ -31219,6 +31232,19 @@
       "nargs": 0,
       "option_strings": [
         "--regenerate-app-keys"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "force_update",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--force-update"
       ],
       "required": false,
       "type": null

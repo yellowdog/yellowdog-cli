@@ -13,11 +13,12 @@ planned, as 'yd resource create' carries on (resource_processing.py).
 import json
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import date, datetime, timedelta
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Literal
 
 from yellowdog_cli.utils.context import RunContext
@@ -122,15 +123,30 @@ class PlanEntry:
 Planner = Callable[[RunContext, dict, str | None, set[tuple[str, str]]], PlanEntry]
 PLANNERS: dict[str, Planner] = {}
 
-# Resource type -> {property path, list indices written '[]': reason}. A
+
+@dataclass(frozen=True)
+class PlatformDefault:
+    """
+    The value the Platform gives a property a specification omits, and how
+    that is known.
+    """
+
+    value: Any
+    reason: str
+
+
+# Resource type -> {property path, list indices written '[]': its default}. A
 # property the Platform fills in with a default when a specification omits
-# it, so the specification omitting it is no change. Each is found by the live
-# check (tests/live/test_live_setup.py: a plan of what setup just created
-# must be all unchanged), never guessed
-PLATFORM_DEFAULTS: dict[str, dict[str, str]] = {
+# it, so the specification omitting it is no change while the Platform holds
+# that default, and clears it while it holds anything else. Each is found by
+# the live check (tests/live/test_live_setup.py: a plan of what setup just
+# created must be all unchanged), never guessed
+PLATFORM_DEFAULTS: dict[str, dict[str, PlatformDefault]] = {
     RN_REQUIREMENT_TEMPLATE: {
         # Live run ydst-2611091205-j0sf: {} on every provider's template
-        "instanceTags": "the Platform sets an empty map when unset",
+        "instanceTags": PlatformDefault(
+            {}, "the Platform sets an empty map when unset"
+        ),
     },
 }
 
@@ -178,6 +194,8 @@ _INDEX = re.compile(r"\[[^\]]*\]")
 # The SDK's polymorphic discriminator, which settable_properties() leaves out
 # (the specification's creator pops it), but which tells two models apart
 _DISCRIMINATOR = "type"
+# differences() with no Platform defaults
+_NO_DEFAULTS: Mapping[str, Any] = MappingProxyType({})
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +279,16 @@ def path_pattern(path: str) -> str:
     return _INDEX.sub("[]", path)
 
 
+def platform_defaults(resource_type: str) -> dict[str, Any]:
+    """
+    The PLATFORM_DEFAULTS of a resource type, each path's default value.
+    """
+    return {
+        path: default.value
+        for path, default in PLATFORM_DEFAULTS.get(resource_type, {}).items()
+    }
+
+
 def _child(path: str, key: str) -> str:
     return f"{path}.{key}" if path else key
 
@@ -274,18 +302,20 @@ def differences(
     after: Any,
     path: str = "",
     by_name: frozenset[str] = frozenset(),
-    defaults: frozenset[str] = frozenset(),
+    defaults: Mapping[str, Any] = _NO_DEFAULTS,
     unordered: frozenset[str] = frozenset(),
 ) -> list[Change]:
     """
     The changes that would make 'before' (the resource as it is) 'after'
     (as the specification describes it), each comparable() data. Dicts are
     compared key by key, a key 'before' has and 'after' lacks (or holds
-    None) 'cleared' unless its path is in 'defaults'. Lists are compared by
-    position, except a list whose path is in 'by_name', matched on each
-    item's 'name' (each match compared under '<list>[name=<name>]'), and one
-    whose path is in 'unordered', compared as a multiset. The paths in the
-    three sets write list indices as '[]': 'sources[].instanceType'.
+    None) 'cleared' unless 'defaults' maps its path to the value it holds:
+    the Platform's default, which a specification omitting it leaves as it
+    is. Lists are compared by position, except a list whose path is in
+    'by_name', matched on each item's 'name' (each match compared under
+    '<list>[name=<name>]'), and one whose path is in 'unordered', compared
+    as a multiset. The paths in all three write list indices as '[]':
+    'sources[].instanceType'.
     """
     if isinstance(before, dict) and isinstance(after, dict):
         changes: list[Change] = []
@@ -295,7 +325,9 @@ def differences(
             if was is None and now is None:
                 continue
             if now is None:
-                if path_pattern(child) not in defaults:
+                pattern = path_pattern(child)
+                # Compared as everything else is: True is not 1
+                if pattern not in defaults or differences(was, defaults[pattern]):
                     changes.append(Change(child, was, None, "cleared"))
             elif was is None:
                 changes.append(Change(child, None, now, "added"))
@@ -321,7 +353,7 @@ def _by_name(
     after: list[dict],
     path: str,
     by_name: frozenset[str],
-    defaults: frozenset[str],
+    defaults: Mapping[str, Any],
     unordered: frozenset[str],
 ) -> list[Change]:
     was = {item["name"]: item for item in before}
@@ -359,7 +391,7 @@ def _by_position(
     after: list,
     path: str,
     by_name: frozenset[str],
-    defaults: frozenset[str],
+    defaults: Mapping[str, Any],
     unordered: frozenset[str],
 ) -> list[Change]:
     changes: list[Change] = []
@@ -390,7 +422,7 @@ def resource_differences(
         before,
         after,
         by_name=by_name,
-        defaults=frozenset(PLATFORM_DEFAULTS.get(resource_type, {})),
+        defaults=platform_defaults(resource_type),
         unordered=frozenset(UNORDERED_LISTS.get(resource_type, {})),
     )
 

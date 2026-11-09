@@ -46,6 +46,21 @@ def record(item: dict | Any) -> None:
     _ITEMS.append(item)
 
 
+def record_count() -> int:
+    """
+    How many items have been recorded: where a run starts, for
+    records_since().
+    """
+    return len(_ITEMS)
+
+
+def records_since(start: int) -> list[Any]:
+    """
+    The items recorded since record_count() was 'start'.
+    """
+    return _ITEMS[start:]
+
+
 def record_action(
     entity: Any,
     entity_type: str,
@@ -105,8 +120,8 @@ def record_resource(
 
     'resource_type' is the specification's 'resource' ('Keyring'); 'name'
     the name the command reports it by; 'id' its YellowDog ID, or None when
-    unknown; 'action' one of 'created', 'updated', 'removed', 'skipped' or
-    'failed'.
+    unknown; 'action' one of 'created', 'updated', 'unchanged', 'removed',
+    'skipped' or 'failed'.
     """
     item: dict[str, Any] = {
         "resource": resource_type,
