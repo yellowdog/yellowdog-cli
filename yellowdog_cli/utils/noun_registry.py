@@ -935,7 +935,9 @@ NOUNS: tuple[Noun, ...] = (
                     "entity_type": {
                         "help": "the type of resource to list: "
                         + ", ".join(sorted(RESOURCE_LIST_TYPES))
-                        + "; an unambiguous prefix (e.g. 'key') is accepted"
+                        + ", in any case; a singular, a specification's"
+                        " resource name (e.g. 'Keyring') or an unambiguous"
+                        " prefix (e.g. 'key') is accepted"
                     }
                 },
                 validators=(_check_resource_type,),

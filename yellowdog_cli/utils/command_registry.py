@@ -45,6 +45,8 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
     ET_COMPUTE_SOURCES,
+    ET_CONFIGURED_WORKER_POOLS,
+    ET_CREDENTIALS,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -652,17 +654,64 @@ def non_negative_int(value: str) -> int:
     return number
 
 
+# The resource types as a specification names them ('resource'), and the
+# type word each belongs to, so that a type argument takes either
+_RESOURCE_TYPE_WORDS: dict[str, str] = {
+    RN_ALLOWANCE: ET_ALLOWANCES,
+    RN_APPLICATION: ET_APPLICATIONS,
+    RN_CONFIGURED_POOL: ET_CONFIGURED_WORKER_POOLS,
+    RN_CREDENTIAL: ET_CREDENTIALS,
+    RN_EXTERNAL_USER: ET_USERS,
+    RN_GROUP: ET_GROUPS,
+    RN_IMAGE_FAMILY: ET_IMAGE_FAMILIES,
+    RN_INTERNAL_USER: ET_USERS,
+    RN_KEYRING: ET_KEYRINGS,
+    RN_NAMESPACE: ET_NAMESPACES,
+    RN_NAMESPACE_POLICY: ET_NAMESPACE_POLICIES,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION: ET_ATTRIBUTE_DEFINITIONS,
+    RN_REQUIREMENT_TEMPLATE: ET_COMPUTE_REQUIREMENT_TEMPLATES,
+    RN_SOURCE_TEMPLATE: ET_COMPUTE_SOURCE_TEMPLATES,
+    RN_STRING_ATTRIBUTE_DEFINITION: ET_ATTRIBUTE_DEFINITIONS,
+}
+
+
+def matching_type_words(value: str, words: Iterable[str]) -> list[str]:
+    """
+    The type words among 'words' that a type argument names, whatever its
+    case: the word itself, a specification's resource name for it
+    ('Keyring', 'ComputeSourceTemplate'), its singular ('keyring',
+    'image-family'), else every word it is a prefix of. The first of these
+    that matches anything decides, so an exact word or a singular is never
+    ambiguous with the longer words it is a prefix of.
+    """
+    words = list(words)
+    lowered = value.lower()
+    if lowered in words:
+        return [lowered]
+    by_name = {name.lower(): word for name, word in _RESOURCE_TYPE_WORDS.items()}
+    if by_name.get(lowered) in words:
+        return [by_name[lowered]]
+    plurals = {f"{lowered}s"}
+    if lowered.endswith("y"):
+        plurals.add(f"{lowered[:-1]}ies")
+    singular = [word for word in words if word in plurals]
+    if singular:
+        return singular
+    return [word for word in words if word.startswith(lowered)]
+
+
 def resolve_entity_type(value: str) -> str:
     """
     Resolve an entity type string to its canonical form.
 
-    Checks single-letter uppercase synonyms first, then falls back to
-    unambiguous prefix matching. Raises argparse.ArgumentTypeError if the
+    A single capital letter is a synonym (SYNONYMS); anything else is
+    matched whatever its case by matching_type_words(), so a single
+    lower-case letter is a prefix. Raises argparse.ArgumentTypeError if the
     value is ambiguous or unrecognised.
     """
     if value in SYNONYMS:
         return SYNONYMS[value]
-    matches = [e for e in ENTITY_TYPES if e.startswith(value)]
+    matches = matching_type_words(value, ENTITY_TYPES)
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -3144,9 +3193,10 @@ ENTITY_TYPE = option(
     type=resolve_entity_type,
     metavar="ENTITY_TYPE",
     help=(
-        "type of entity to list; accepts a full name, an unambiguous "
-        "prefix (e.g. 'work-r'), or a single uppercase synonym "
-        "(e.g. 'W'). Valid types: " + _ENTITY_TYPE_HELP
+        "type of entity to list, in any case; accepts a full name, a "
+        "singular (e.g. 'keyring'), a specification's resource name (e.g. "
+        "'ComputeSourceTemplate'), an unambiguous prefix (e.g. 'work-r'), "
+        "or a single uppercase synonym (e.g. 'W'). Valid types: " + _ENTITY_TYPE_HELP
     ),
 )
 ACTIVE_ONLY = option(
@@ -3361,8 +3411,9 @@ EXPORT_TYPES_OPTION = option(
     metavar="<type>",
     type=str,
     help=(
-        "the types of resource to export (e.g. 'keyrings'); an unambiguous"
-        " prefix (e.g. 'key') is accepted; with none, the Compute Source and"
+        "the types of resource to export (e.g. 'keyrings'), in any case; a"
+        " singular, a specification's resource name (e.g. 'Keyring') or an"
+        " unambiguous prefix (e.g. 'key') is accepted; with none, the Compute Source and"
         " Compute Requirement Templates, Image Families and Namespace Policy"
         " of the namespace"
     ),
@@ -3428,20 +3479,17 @@ EXPORT_JSON = ACTIONS_JSON.variant(
 
 def check_export_options(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-resource-export: each type word a type, its singular ('keyring',
-    'image-family') or the unambiguous prefix of one, resolved in place to the
-    full word; '--all' not with types; a '--name' holding no namespace, which
-    is given with -n; and a namespace, if given, not empty.
+    yd-resource-export: each type word a type, as matching_type_words()
+    reads it (any case, a specification's resource name, a singular or an
+    unambiguous prefix), resolved in place to the full word; '--all' not
+    with types; a '--name' holding no namespace, which is given with -n;
+    and a namespace, if given, not empty.
     """
     from yellowdog_cli.utils.noun_registry import EXPORT_TYPES
 
     resolved: list[str] = []
     for word in args.export_types or []:
-        plurals = {f"{word}s", f"{word[:-1]}ies" if word.endswith("y") else None}
-        matches = [word] if word in EXPORT_TYPES else []
-        matches = matches or [t for t in EXPORT_TYPES if t in plurals]
-        if not matches:
-            matches = [t for t in EXPORT_TYPES if t.startswith(word)]
+        matches = matching_type_words(word, EXPORT_TYPES)
         if len(matches) == 1:
             resolved.append(matches[0])
         elif matches:

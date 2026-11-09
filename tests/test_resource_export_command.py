@@ -61,6 +61,23 @@ def test_a_singular_type_is_taken_as_its_plural(singular, plural):
     assert _parse(singular).args.export_types == [plural]
 
 
+@pytest.mark.parametrize(
+    "given, word",
+    [
+        ("Keyring", "keyrings"),
+        ("KEYRINGS", "keyrings"),
+        ("Image-Families", "image-families"),
+        ("ComputeSourceTemplate", "compute-source-templates"),
+        ("MachineImageFamily", "image-families"),
+        ("Credential", "credentials"),
+        ("ConfiguredWorkerPool", "configured-worker-pools"),
+        ("InternalUser", "users"),
+    ],
+)
+def test_a_type_is_taken_in_any_case_or_as_its_resource_name(given, word):
+    assert _parse(given).args.export_types == [word]
+
+
 def test_an_ambiguous_prefix_is_refused(capsys):
     assert "ambiguous" in _error(capsys, "compute")
 
