@@ -1001,7 +1001,9 @@ NOUNS: tuple[Noun, ...] = (
                 "Factor a list of specifications into compact Jsonnet",
                 "printing a list of specifications as Jsonnet, what each kind"
                 " shares held once in a local base and each specification"
-                " written as its differences from it",
+                " written as its differences from it: one file to stdout, or"
+                " with --write each .json file (or a glob pattern's matches) to"
+                " <name>.jsonnet beside it",
             ),
         ),
     ),

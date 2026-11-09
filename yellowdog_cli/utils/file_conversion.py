@@ -1,13 +1,16 @@
 """
-What the 'yd jsonnet' verbs share: parsed_json(), reading JSON with a
-plain reason where it is none, and the '--write' half of the conversions
-('tojson', 'fromjson'):
-each file given, or each match of a glob pattern, converted and written
-beside it under the other extension, replaced whole or not at all. Every
-file is converted before any is written, and an existing file that the
-conversion would change is replaced only once confirmed (or with --yes),
-since it may be a file of its own rather than an earlier conversion.
-Errors go to stderr, so that none is ever mistaken for a file's contents.
+What the 'yd jsonnet' verbs and 'yd format-json' share. parsed_json()
+reads JSON faithfully, as a formatter must: a number keeps the text it
+was written as ('1.10', '2e3'), a repeated key is refused rather than all
+but the last dropped, and input that is not JSON is said to be plainly.
+expanded_files() expands the quoted glob patterns among the files given.
+write_conversions() is the '--write' half of the 'yd jsonnet' verbs: each
+file converted and written beside it under the other extension, replaced
+whole or not at all. Every file is converted before any is written, and
+an existing file that the conversion would change is replaced only once
+confirmed (or with --yes), since it may be a file of its own rather than
+an earlier conversion. Errors go to stderr, so that none is ever mistaken
+for a file's contents.
 """
 
 import json
@@ -17,6 +20,7 @@ from collections.abc import Callable
 from glob import glob
 
 from yellowdog_cli.utils.atomic_write import write_text_atomically
+from yellowdog_cli.utils.compact_json import FloatAsWritten, IntAsWritten
 from yellowdog_cli.utils.interactive import NoAnswerToPrompt, confirmed
 from yellowdog_cli.utils.jsonnet_style import is_jsonnet_path
 from yellowdog_cli.utils.output_style import ERROR_MARKER
@@ -28,15 +32,22 @@ def print_conversion_error(message: str) -> None:
     print(f"{ERROR_MARKER}{message}", file=sys.stderr)
 
 
-def parsed_json(text: str, path: str):
+def parsed_json(text: str, path: str = ""):
     """
-    The JSON in 'text', read from 'path': a ValueError saying plainly why
-    not where it is none, pointing a file named as Jsonnet to 'tojson'.
+    The JSON in 'text', read from 'path', each number keeping the text it
+    was written as (FloatAsWritten, IntAsWritten), which the compact
+    encoder writes back: a ValueError saying plainly why not where it is
+    none or repeats a key, pointing a file named as Jsonnet to 'tojson'.
     """
     if not text.strip():
         raise ValueError("it is empty")
     try:
-        return json.loads(text)
+        return json.loads(
+            text,
+            object_pairs_hook=_no_repeated_keys,
+            parse_float=FloatAsWritten,
+            parse_int=IntAsWritten,
+        )
     except json.JSONDecodeError as e:
         if is_jsonnet_path(path):
             raise ValueError(
@@ -48,24 +59,28 @@ def parsed_json(text: str, path: str):
         ) from e
 
 
+def _no_repeated_keys(pairs: list[tuple[str, object]]) -> dict:
+    """
+    An object's pairs as a dict, refusing a repeated key, which json.loads()
+    would otherwise resolve by silently dropping all but the last.
+    """
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"it repeats the key '{key}'")
+        result[key] = value
+    return result
+
+
 def is_glob_pattern(argument: str) -> bool:
     return bool(_GLOB_CHARS.intersection(argument))
 
 
-def write_conversions(
-    arguments: list[str],
-    source_extension: str,
-    target_extension: str,
-    source_kind: str,
-    convert: Callable[[str], str],
-) -> int:
+def expanded_files(arguments: list[str]) -> tuple[list[str], int]:
     """
-    Convert each file named in 'arguments' (a pattern expanded, each file
-    once in the order first found) whose name ends 'source_extension',
-    with 'convert' (a file's path to the text to write), and write it
-    beside it with 'target_extension' in its place. A file with another
-    extension is skipped, said as a non-'source_kind' file. The number of
-    failures is returned, a pattern matching nothing among them.
+    The files named in 'arguments', a quoted glob pattern expanded, each
+    file once in the order first found, and the number of patterns that
+    matched nothing, each reported.
     """
     errors = 0
     files: list[str] = []
@@ -78,9 +93,28 @@ def write_conversions(
             files.extend(expanded)
         else:
             files.append(argument)
+    return list(dict.fromkeys(files)), errors
 
+
+def write_conversions(
+    arguments: list[str],
+    source_extension: str,
+    target_extension: str,
+    source_kind: str,
+    action: str,
+    convert: Callable[[str], str],
+) -> int:
+    """
+    Convert each file named in 'arguments' (expanded_files()) whose name
+    ends 'source_extension', with 'convert' (a file's path to the text to
+    write), and write it beside it with 'target_extension' in its place. A
+    file with another extension is skipped, said as a non-'source_kind'
+    file, and a failure is said as 'Cannot <action>'. The number of
+    failures is returned, a pattern matching nothing among them.
+    """
+    files, errors = expanded_files(arguments)
     conversions: list[tuple[str, str, str]] = []
-    for filepath in dict.fromkeys(files):
+    for filepath in files:
         if not filepath.lower().endswith(source_extension):
             print(f"Skipping non-{source_kind} file: '{filepath}'")
             continue
@@ -88,7 +122,7 @@ def write_conversions(
         try:
             conversions.append((filepath, out_path, convert(filepath)))
         except Exception as e:
-            print_conversion_error(f"Error processing '{filepath}': {e}")
+            print_conversion_error(f"Cannot {action} '{filepath}': {e}")
             errors += 1
 
     changed = [
@@ -121,7 +155,7 @@ def write_conversions(
             # Windows cannot encode one
             print(f"Converted: '{filepath}' -> '{out_path}'")
         except Exception as e:
-            print_conversion_error(f"Error writing '{out_path}': {e}")
+            print_conversion_error(f"Cannot write '{out_path}': {e}")
             errors += 1
     return errors
 

@@ -72,7 +72,12 @@ def main():
 
     if args.write:
         errors = write_conversions(
-            args.files, JSON_EXTENSION, JSONNET_EXTENSION, "JSON", _converted_file
+            args.files,
+            JSON_EXTENSION,
+            JSONNET_EXTENSION,
+            "JSON",
+            "convert",
+            _converted_file,
         )
         if errors:
             sys.exit(1)

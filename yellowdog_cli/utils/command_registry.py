@@ -4587,8 +4587,20 @@ FORMAT_JSON_FILES = option(
     "files",
     nargs="+",
     metavar="<file.json>",
-    help="the JSON file(s) to reformat",
+    help=(
+        "the JSON file(s) or quoted glob pattern(s) to reformat in place, or"
+        " '-' to reformat standard input to stdout"
+    ),
     completes=Completes.FILE,
+)
+FORMAT_JSON_STDOUT = option(
+    "--stdout",
+    action="store_true",
+    required=False,
+    help=(
+        "print the one file given reformatted to stdout, coloured in a"
+        " terminal, leaving the file as it is"
+    ),
 )
 FORMAT_JSON_CHECK = option(
     "--check",
@@ -4603,11 +4615,17 @@ COMMANDS["yd-format-json"] = Command(
     name="yd-format-json",
     purpose=(
         "reformatting JSON files in place with the CLI's compact layout (small"
-        " containers on one line), changing nothing but the layout"
+        " containers on one line), changing nothing but the layout, or standard"
+        " input or one file to stdout"
     ),
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,
-    options=(FORMAT_JSON_FILES, FORMAT_JSON_CHECK),
+    options=(
+        FORMAT_JSON_FILES,
+        FORMAT_JSON_STDOUT,
+        FORMAT_JSON_CHECK,
+        NO_FORMAT.variant(help="print the JSON to stdout without colouring"),
+    ),
     tool=ToolKind.NONE,
 )
 HELP_JSON = ACTIONS_JSON.variant(
@@ -4671,13 +4689,15 @@ COMMANDS["yd-jsonnet2json"] = Command(
     ),
     tool=ToolKind.NONE,
 )
-JSONNET_FACTOR_FILE = option(
-    "file",
+JSONNET_FACTOR_FILES = option(
+    "files",
+    nargs="+",
     metavar="<file>",
     help=(
-        "the JSON list of specifications to factor, such as 'yd list"
-        " --details' writes; a '.jsonnet' file is evaluated first, and '-'"
-        " reads JSON from standard input"
+        "the JSON list of specifications to factor, such as 'yd list --json'"
+        " writes; a '.jsonnet' file is evaluated first, and '-' reads JSON"
+        " from standard input; with --write, .json file(s) or quoted glob"
+        " pattern(s)"
     ),
     completes=Completes.FILE,
 )
@@ -4686,11 +4706,25 @@ COMMANDS["yd-jsonnet-factor"] = Command(
     purpose=(
         "printing a list of specifications as Jsonnet, what each kind shares"
         " held once in a local base and each specification written as its"
-        " differences from it, checked to evaluate to the same JSON"
+        " differences from it, checked to evaluate to the same JSON: one file"
+        " to stdout, or with --write each .json file (or a glob pattern's"
+        " matches) to <name>.jsonnet beside it"
     ),
     summary="Factor a list of specifications into compact Jsonnet",
     kind=CommandKind.STANDALONE,
-    options=(JSONNET_FACTOR_FILE,),
+    options=(
+        JSONNET_FACTOR_FILES,
+        JSONNET2JSON_WRITE.variant(
+            help=(
+                "write each .json file's factored Jsonnet to <name>.jsonnet"
+                " beside it, rather than one file's to stdout; needed for"
+                " several files or a glob pattern"
+            )
+        ),
+        YES.variant(
+            help="with --write, overwrite existing .jsonnet files without asking"
+        ),
+    ),
     tool=ToolKind.NONE,
     script=False,
 )

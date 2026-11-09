@@ -27,7 +27,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from yellowdog_cli.utils.compact_json import CompactJSONEncoder
+from yellowdog_cli.utils.compact_json import (
+    CompactJSONEncoder,
+    FloatAsWritten,
+    IntAsWritten,
+)
 from yellowdog_cli.utils.jsonnet_style import JSONNET_KEYWORDS, jsonnet_style
 from yellowdog_cli.utils.property_names import (
     PROP_RESOURCE,
@@ -139,7 +143,7 @@ def _base(objects: list[dict]) -> dict:
             continue
         values = [o[key] for o in holders]
         if all(isinstance(v, dict) for v in values) and any(
-            v != values[0] for v in values
+            not _same(v, values[0]) for v in values
         ):
             inner = _base(values)
             if inner:
@@ -147,7 +151,7 @@ def _base(objects: list[dict]) -> dict:
             continue
         counts: dict[str, list] = {}
         for value in values:
-            counts.setdefault(json.dumps(value, sort_keys=True), [value, 0])[1] += 1
+            counts.setdefault(_identity(value), [value, 0])[1] += 1
         value, count = max(counts.values(), key=lambda vc: vc[1])
         if count >= 2:
             base[key] = value
@@ -166,7 +170,7 @@ def _difference(item: dict, base: dict, depth: int) -> list[_Field] | None:
     for key, value in item.items():
         if key not in base:
             fields.append(_Field(key, _Op.SET, value))
-        elif base[key] == value:
+        elif _same(base[key], value):
             continue
         elif isinstance(value, dict) and isinstance(base[key], dict):
             inner = _difference(value, base[key], depth + 1)
@@ -178,6 +182,29 @@ def _difference(item: dict, base: dict, depth: int) -> list[_Field] | None:
         else:
             fields.append(_Field(key, _Op.SET, value))
     return fields
+
+
+def _same(a: Any, b: Any) -> bool:
+    return _identity(a) == _identity(b)
+
+
+def _identity(value: Any) -> str:
+    """
+    'value' as text that two values share only if they are written the
+    same: a number read as written ('1.10') is not the same as '1.1', since
+    the factored file must write each as it was.
+    """
+    return json.dumps(_written(value), sort_keys=True)
+
+
+def _written(value: Any) -> Any:
+    if isinstance(value, (FloatAsWritten, IntAsWritten)):
+        return {"\u0000number": value.text}
+    if isinstance(value, dict):
+        return {key: _written(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_written(item) for item in value]
+    return value
 
 
 def _object_text(fields: list[_Field], depth: int) -> str:

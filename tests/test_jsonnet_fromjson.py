@@ -159,3 +159,25 @@ def test_write_asks_before_replacing_a_different_file(
     assert (tmp_path / "a.jsonnet").read_text(encoding="utf-8") == (
         "{ hand: 'written' }\n"
     )
+
+
+def test_numbers_keep_how_they_were_written(jsonnet, monkeypatch, capsys):
+    out, _, code = _run(
+        monkeypatch, capsys, "-", stdin='{"cpu": 1.10, "mem": 2e3, "z": -0}'
+    )
+    assert (out, code) == ("{cpu: 1.10, mem: 2e3, z: -0}\n", 0)
+
+
+def test_a_repeated_key_is_refused(jsonnet, monkeypatch, capsys):
+    out, err, code = _run(monkeypatch, capsys, "-", stdin='{"a": 1, "a": 2}')
+    assert (out, code) == ("", 1)
+    assert "it repeats the key 'a'" in err
+
+
+def test_a_number_jsonnet_cannot_hold_is_refused(jsonnet, monkeypatch, capsys):
+    # Jsonnet's numbers are doubles: the conversion would round it
+    out, err, code = _run(
+        monkeypatch, capsys, "-", stdin='{"id": 12345678901234567890}'
+    )
+    assert (out, code) == ("", 1)
+    assert "would not evaluate to the same JSON" in err

@@ -109,8 +109,6 @@ ALLOWED: dict[str, str] = {
         "A wildcard the --sync check cannot list is returned, and failed by the"
         " caller rather than synced unchecked"
     ),
-    "yellowdog_cli/format_json.py::main#0": _STANDALONE,
-    "yellowdog_cli/format_json.py::main#1": _STANDALONE,
     "yellowdog_cli/jsonnet2json.py::main#0": _STANDALONE,
     "yellowdog_cli/ls.py::main#0": _DATA_CLIENT,
     "yellowdog_cli/mcp/server.py::call_tool#0": (

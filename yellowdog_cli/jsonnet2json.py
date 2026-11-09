@@ -73,7 +73,7 @@ def main():
         try:
             print_json_text(_as_json(evaluate_file(args.files[0])))
         except Exception as e:
-            print_conversion_error(str(e))
+            print_conversion_error(f"Cannot convert '{args.files[0]}': {e}")
             sys.exit(1)
         return
 
@@ -82,6 +82,7 @@ def main():
         ".jsonnet",
         ".json",
         "Jsonnet",
+        "convert",
         lambda filepath: _as_json(evaluate_file(filepath)) + "\n",
     )
     if errors:
