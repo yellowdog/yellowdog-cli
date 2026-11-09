@@ -3354,6 +3354,149 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
                 parser.error(f"--public-ips-only cannot be used with {flag}")
 
 
+EXPORT_TYPES_OPTION = option(
+    "export_types",
+    nargs="*",
+    default=[],
+    metavar="<type>",
+    type=str,
+    help=(
+        "the types of resource to export (e.g. 'keyrings'); an unambiguous"
+        " prefix (e.g. 'key') is accepted; with none, the Compute Source and"
+        " Compute Requirement Templates, Image Families and Namespace Policy"
+        " of the namespace"
+    ),
+)
+EXPORT_ALL = option(
+    "--all",
+    dest="all_types",
+    action="store_true",
+    required=False,
+    help=(
+        "export every type of resource but Credentials, including the"
+        " account-wide ones; not with types"
+    ),
+)
+EXPORT_NAME = NAME.variant(
+    help=(
+        "export only resources whose name matches the given glob pattern"
+        " (e.g. 'render-*'), the name without its namespace (use -n for that)"
+    )
+)
+EXPORT_INTERACTIVE = INTERACTIVE.variant(
+    help="list, and interactively select, the resources to export"
+)
+EXPORT_WITH_DEPENDENCIES = option(
+    "--with-dependencies",
+    action="store_true",
+    required=False,
+    help=(
+        "also export what each resource refers to (the Compute Source"
+        " Templates of a Compute Requirement Template, the Keyring of a"
+        " Credential)"
+    ),
+)
+EXPORT_INCLUDE_CREDENTIALS = option(
+    "--include-credentials",
+    action="store_true",
+    required=False,
+    help=(
+        "also export Credentials, each field the Platform does not return"
+        " written as a variable"
+    ),
+)
+# Its own 'dest': the universal OUTPUT_FILE's, 'output_file', sends what the
+# command prints to a file (OutputSettings), which would replace the
+# specifications written there with the '--json' records
+EXPORT_OUTPUT_FILE = option(
+    "--output-file",
+    "-o",
+    dest="export_file",
+    type=str,
+    required=False,
+    help=(
+        "write the resource specifications to the nominated file instead of"
+        " stdout, in the Jsonnet style for a '.jsonnet' file"
+    ),
+    completes=Completes.FILE,
+    metavar="<output-file>",
+)
+EXPORT_JSON = ACTIONS_JSON.variant(
+    help="print the resources exported as a JSON array of records"
+)
+
+
+def check_export_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-resource-export: each type word a type, its singular ('keyring',
+    'image-family') or the unambiguous prefix of one, resolved in place to the
+    full word; '--all' not with types; a '--name' holding no namespace, which
+    is given with -n; and a namespace, if given, not empty.
+    """
+    from yellowdog_cli.utils.noun_registry import EXPORT_TYPES
+
+    resolved: list[str] = []
+    for word in args.export_types or []:
+        plurals = {f"{word}s", f"{word[:-1]}ies" if word.endswith("y") else None}
+        matches = [word] if word in EXPORT_TYPES else []
+        matches = matches or [t for t in EXPORT_TYPES if t in plurals]
+        if not matches:
+            matches = [t for t in EXPORT_TYPES if t.startswith(word)]
+        if len(matches) == 1:
+            resolved.append(matches[0])
+        elif matches:
+            parser.error(f"'{word}' is ambiguous; it matches: {', '.join(matches)}")
+        else:
+            suggestion = did_you_mean(word, EXPORT_TYPES)
+            parser.error(
+                f"'{word}' is not a resource type"
+                + (f"; did you mean '{suggestion}'?" if suggestion else "")
+                + f" Choose from: {', '.join(EXPORT_TYPES)}"
+            )
+    args.export_types = resolved
+    if args.all_types and resolved:
+        parser.error("--all cannot be given with resource types")
+    if args.name_glob and "/" in args.name_glob:
+        parser.error(
+            f"--name '{args.name_glob}' holds a '/': give the namespace with -n,"
+            " and --name the name alone"
+        )
+    if getattr(args, "namespace", None) == "":
+        parser.error(
+            "the namespace is empty: give one with -n, or leave -n out to use"
+            " the configured namespace"
+        )
+
+
+COMMANDS["yd-resource-export"] = Command(
+    name="yd-resource-export",
+    purpose="exporting resources as specifications",
+    summary="Write existing resources out as resource specifications",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        EXPORT_TYPES_OPTION,
+        EXPORT_ALL,
+        EXPORT_NAME,
+        EXPORT_INTERACTIVE,
+        EXPORT_WITH_DEPENDENCIES,
+        EXPORT_INCLUDE_CREDENTIALS,
+        EXPORT_OUTPUT_FILE,
+        EXPORT_JSON,
+    ),
+    requires_namespace_and_tag=False,
+    validators=(check_export_options,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Write existing resources out as resource specifications that"
+        " yd_resource_create reads back, as a JSON array, changing nothing."
+        " With no types, the Compute Source and Compute Requirement Templates,"
+        " Image Families and Namespace Policy of the namespace."
+    ),
+    script=False,
+)
+
 COMMANDS["yd-list"] = Command(
     name="yd-list",
     purpose="listing all kinds of YellowDog items",

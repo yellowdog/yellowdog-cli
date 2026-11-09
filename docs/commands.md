@@ -53,6 +53,7 @@
    * [yd resource](#yd-resource)
       * [yd resource create](#yd-resource-create)
       * [yd resource plan](#yd-resource-plan)
+      * [yd resource export](#yd-resource-export)
       * [yd resource remove](#yd-resource-remove)
    * [yd allowance](#yd-allowance)
       * [yd allowance boost](#yd-allowance-boost)
@@ -94,7 +95,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:21:58 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 16:03:52 GMT 2026 -->
 
 <!--te-->
 
@@ -1217,6 +1218,7 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 |---|---|---|
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
 | [`plan`](#yd-resource-plan) | Show what creating resources would change | `yd-resource-plan` |
+| [`export`](#yd-resource-export) | Write existing resources out as specifications | `yd-resource-export` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
 | `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
 | `show` | `yd show`, for resource IDs, or names with `--type`, with `--show-members` |  |
@@ -1271,6 +1273,37 @@ Key options:
 yd resource plan templates.jsonnet
 yd resource plan --fail-on-changes --json resources/*.jsonnet
 ```
+
+### yd resource export
+
+The `yd resource export` command writes existing resources out as resource specifications, the files `yd resource create` reads, changing nothing on the Platform. Every reference is written as a name (one that cannot be named, such as a deleted resource's, is kept as its ID, with a warning), no server-assigned property is written, and a `{{...}}` in a value is written so that `yd resource create` reads it back unchanged, so the output can be given to `yd resource create` in another namespace or account. The output is a JSON array on standard output, or in the file given with `--output-file`; the specifications are in the order `yd resource create` processes them, and by name within a type, so two exports of the same Platform state are identical.
+
+```shell
+yd resource export [options] [<type> ...]
+```
+
+With no type, the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy are exported. YellowDog's public Image Families are never exported, nor followed by `--with-dependencies`. The account-wide types (Namespaces, Keyrings, Attribute Definitions, Groups, Applications, Users and Allowances) are exported when named or with `--all`, as are Configured Worker Pools. A type can be given in the singular (`keyring`) or as an unambiguous prefix (`key` for `keyrings`).
+
+A Group is written with its roles, each role and the namespaces of its scope by name; an Application and a User with their Groups by name, a User by its `username` (Internal Users) or `name` (External Users). An Application's Keyring access is not written, since granting it to an existing Application needs `--regenerate-app-keys`; a warning names each Application that has any. Only the account's own Attribute Definitions, named `user.…`, are exported, the Platform's own being read-only. A Namespace Policy is named by its namespace, which `--name` matches; `--name` matches an Allowance's description, a Credential's Keyring's name and a User's `name`. Each Credential's required fields other than its name and description are written as variables, since the Platform does not return them: `{{<keyring>_<credential>_<field>}}`, numbered where two Credentials' would share a name, which a warning lists, to be supplied with `-v` or `YD_VAR_*` to `yd resource create`. A resource that can't be read is reported and left out, the rest are written, and the command exits with that failure's exit code; an authentication or connection failure writes nothing.
+
+Key options:
+- `<type> ...` — the types of resource to export: `namespaces`, `keyrings`, `credentials`, `image-families`, `attribute-definitions`, `compute-source-templates`, `compute-requirement-templates`, `allowances`, `namespace-policies`, `configured-worker-pools`, `groups`, `applications` and `users`
+- `--all` — export every type but Credentials; not with types
+- `--name <glob>` — export only resources whose name matches the glob, the name without its namespace (give the namespace with `-n`)
+- `--interactive`/`-i` — list, and select interactively, the resources to export
+- `--with-dependencies` — also export what each resource refers to: a template's Compute Source Templates and Image Families, an Allowance's template, a Credential's Keyring, and an Application's or a User's Groups
+- `--include-credentials` — also export Credentials, each field the Platform does not return written as a variable; `--all` alone leaves them out
+- `--output-file <file>`/`-o <file>` — write the specifications to the file instead of standard output, in the Jsonnet style for a `.jsonnet` file
+- `--json` — with `--output-file`, print a JSON array of records, one per resource exported or skipped (see [Machine-readable Output and Exit Codes](json-output.md)); without it, standard output is already the specifications
+- `--namespace`/`-n <namespace>` — the namespace to export from; a namespace pattern or an empty namespace is refused
+
+```shell
+yd resource export -o templates.json
+yd resource export --all -o account.json
+yd resource export compute-requirement-templates --name 'render-*' --with-dependencies
+```
+
+See [Exporting Resources as Specifications](resources.md#exporting-resources-as-specifications) for the round trip with `yd resource plan`, Credentials and the other details.
 
 ### yd resource remove
 
@@ -1812,7 +1845,7 @@ An option that does not apply to the entity type listed — `--name`, `--status`
 
 Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` writes the details to the file instead of stdout (to both under `--json`), asks before replacing an existing file, which `--yes`/`-y` skips, and writes a file named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes), which evaluates to the same JSON. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 
-The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
+The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Taking Resources One at a Time with `yd list` or `yd show`](resources.md#taking-resources-one-at-a-time-with-yd-list-or-yd-show). To capture a namespace's or an account's resources in one file, use [`yd resource export`](#yd-resource-export).
 
 ### yd show
 
@@ -1858,7 +1891,7 @@ Key options:
 - `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))
 - `--show-members` — follow a Group with `{"groupId", "users", "applications"}`, its Users (each `{"id", "username", "name"}`, `username` being `null` for an external User) and its Applications (each `{"id", "name"}`), or a Role with `{"roleId", "groups"}`, the Groups that hold it (each `{"id", "name"}`); a Group's own roles are already in its details. It is refused unless at least one of the IDs is a Group's or a Role's
 - `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd list`, `--output-file` included
-- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`, a `.jsonnet` file included; see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`, a `.jsonnet` file included; see [Taking Resources One at a Time with `yd list` or `yd show`](resources.md#taking-resources-one-at-a-time-with-yd-list-or-yd-show). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
 
 A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd list users --details` shows them.
 

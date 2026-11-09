@@ -12,39 +12,41 @@
          * [Details](#details-3)
       * [Resource Matching](#resource-matching)
    * [Resource Specification Definitions](#resource-specification-definitions)
-   * [Generating Resource Specifications using yd list](#generating-resource-specifications-using-yd-list)
-      * [Usage Scenario: Moving or Copying Resources to a New Namespace](#usage-scenario-moving-or-copying-resources-to-a-new-namespace)
-   * [Specifying a Resource on the Command Line](#specifying-a-resource-on-the-command-line)
+   * [Exporting Resources as Specifications](#exporting-resources-as-specifications)
          * [Details](#details-4)
+      * [Usage Scenario: Moving or Copying Resources to a New Namespace](#usage-scenario-moving-or-copying-resources-to-a-new-namespace)
+      * [Taking Resources One at a Time with yd list or yd show](#taking-resources-one-at-a-time-with-yd-list-or-yd-show)
+   * [Specifying a Resource on the Command Line](#specifying-a-resource-on-the-command-line)
+         * [Details](#details-5)
    * [Preprocessing Resource Specifications](#preprocessing-resource-specifications)
    * [Keyrings](#keyrings)
    * [Credentials](#credentials)
    * [Compute Source Templates](#compute-source-templates)
-         * [Details](#details-5)
-   * [Compute Requirement Templates](#compute-requirement-templates)
          * [Details](#details-6)
-   * [Image Families](#image-families)
+   * [Compute Requirement Templates](#compute-requirement-templates)
          * [Details](#details-7)
-   * [Configured Worker Pools](#configured-worker-pools)
+   * [Image Families](#image-families)
          * [Details](#details-8)
-   * [Allowances](#allowances)
+   * [Configured Worker Pools](#configured-worker-pools)
          * [Details](#details-9)
+   * [Allowances](#allowances)
+         * [Details](#details-10)
    * [Attribute Definitions](#attribute-definitions)
       * [String Attribute Definitions](#string-attribute-definitions)
       * [Numeric Attribute Definitions](#numeric-attribute-definitions)
    * [Namespace Policies](#namespace-policies)
    * [Groups](#groups)
-         * [Details](#details-10)
-   * [Applications](#applications)
          * [Details](#details-11)
+   * [Applications](#applications)
+         * [Details](#details-12)
       * [Granting Keyring Access](#granting-keyring-access)
       * [Creating and Regenerating Application Keys](#creating-and-regenerating-application-keys)
    * [Users](#users)
-         * [Details](#details-12)
+         * [Details](#details-13)
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:01 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 16:03:55 GMT 2026 -->
 
 <!--te-->
 
@@ -229,31 +231,105 @@ Every specification used with `yd resource create` and `yd resource remove` also
 - `"InternalUser"`, `"ExternalUser"` (update only)
 - `"Namespace"`
 
-## Generating Resource Specifications using `yd list`
+## Exporting Resources as Specifications
 
-To capture resources already in the Platform as specifications, use `yd list` with `--details`, `--substitute-ids`/`-U` and `--strip-ids`, and select the resources wanted:
+To capture resources already on the Platform as specifications, to keep them under version control, review them, or create them again in another namespace or account, use `yd resource export`. With no types named, it writes the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy to one file:
+
+```shell
+yd resource export --namespace image-processing -o image-processing.jsonnet
+```
+
+The file is what `yd resource create` reads, each reference to another resource written as its name. Planning it against the account it came from shows every resource unchanged:
+
+```shell
+yd resource plan image-processing.jsonnet
+```
+
+To export other types, name them, or give `--all` for every type. `--name` takes a glob pattern, and `--with-dependencies` adds the resources the selected ones refer to, such as a Compute Requirement Template's Compute Source Templates and Image Families. Without `-o`, standard output holds the specifications alone:
+
+```shell
+yd resource export keyrings groups applications -o access.json
+yd resource export compute-requirement-templates --name 'render-*' --with-dependencies > render.json
+```
+
+#### Details
+
+**Which resources are exported.** With no types named, export takes the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy, and warns that the account-wide types were left out. The account-wide types (Namespaces, Keyrings, Attribute Definitions, Groups, Applications, Users and Allowances) are exported when named or with `--all`. Configured Worker Pools are exported when named or with `--all`. Credentials are exported only when named or with `--include-credentials`, never with `--all` alone. YellowDog's public Image Families are never exported. A type can be given in the singular (`keyring`, `image-family`) or as an unambiguous prefix (`key` for `keyrings`), and `--all` cannot be given with types. The namespace must not be empty: an empty `-n` is refused, and so is an empty configured namespace when a namespaced type is exported.
+
+**Matching by name.** `--name` matches each type's name without its namespace: a glob with no wildcards is an exact match. An Allowance, which has no name, is matched by its description, a Namespace Policy by its namespace, a Credential by its Keyring's name, and a User by its `name`, an Internal User's included. A pattern naming a namespace (`'render/*'`) is refused: give the namespace with `-n`, which takes no pattern either. `--interactive`/`-i` lists the resources of each type, after the filters, to pick from.
+
+**How references are written.** Every reference is written as a name: a Compute Source Template as `namespace/name`, and an Image Family in a namespace of your own as `yd/<namespace>/<family>`. A reference to one of YellowDog's public Image Families is kept as it is and never followed by `--with-dependencies`, which reads each Image Family it would follow by name, once, to tell; an export without it reads none. A reference that cannot be named, such as one to a deleted resource, is written as its ID, with a warning.
+
+**Values holding `{{...}}`.** A value on the Platform holding `{{...}}`, such as User Data with a template in it, is written as a `{{raw:...}}` literal, so that `yd resource create` reads back the value exactly as it was, with nothing substituted (see [Variable Substitution](variables.md)).
+
+**What is left out.** Nothing the Platform assigns is written, an ID included. A property at the value the Platform gives it when a specification leaves it out is left out too, so the file holds what someone chose.
+
+**Applications' Keyring access.** An Application is written with its Groups but without its Keyring access, with a warning naming it. Granting access to an existing Application needs `yd resource create --regenerate-app-keys`, so add `keyrings` to its specification by hand when that is what you want.
+
+**Credentials.** The Platform returns a Credential's name, description and type, but none of its other fields. Each of its required fields other than its name and description, such as an AWS Credential's `accessKeyId` and `secretAccessKey` or an Azure Credential's `clientId`, is written as a variable, named `<keyring>_<credential>_<field>` (lower case, each character other than a letter, digit or `_` written as `_`), and a warning lists the variables. Where two Credentials would give a variable the same name (Keyring `aws-keys` with Credential `prod`, and Keyring `aws` with Credential `keys-prod`), the variable of the later by `keyring/credential` name is numbered (`aws_keys_prod_accesskeyid_2`), and its warning says so. Supply the variables with `-v` or `YD_VAR_*` when creating the resources:
+
+```shell
+yd resource export credentials --name render-keys -o credentials.json
+yd resource create credentials.json -v render_keys_aws_creds_accesskeyid=AKIAIOSFODNN7EXAMPLE -v render_keys_aws_creds_secretaccesskey=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+**Dependencies.** `--with-dependencies` follows a Compute Requirement Template's Compute Source Templates and Image Families, a Compute Source Template's Image Family, an Allowance's template, a Credential's Keyring, and an Application's or a User's Groups, transitively, each resource once. Without it, references stay names that `yd resource create` looks up on the Platform.
+
+**The round trip.** `yd resource plan` of an export, against the account it came from, shows every resource `Unchanged`, with three exceptions: a Credential is `Unknown`, its secrets not being comparable; an Allowance is `New`, Allowances never being updated; and a Configured Worker Pool fails, since the Platform refuses a pool whose name is taken.
+
+**Output.** The specifications are one JSON array, in the order `yd resource create` processes them and then by name, so two exports of the same resources are identical and an export can be compared with an earlier one. A `.jsonnet` file is written in the Jsonnet style. Without `-o`, standard output holds only the array, and messages and warnings go to standard error, so `yd resource export > setup.json` needs no `--quiet`. An export that finds nothing writes `[]`, with a warning, and exits 0.
+
+**Failures.** Everything is read before anything is written. A resource that can't be read, for a missing permission for example, is reported and left out, the rest are written, and the command exits with that failure's exit code. An authentication or connection failure writes nothing, leaving an existing file of that name as it was. Under `--json` with `-o`, a record per resource says whether it was exported or skipped (see [Machine-readable Output and Exit Codes](json-output.md)).
+
+### Usage Scenario: Moving or Copying Resources to a New Namespace
+
+In this scenario, a set of resources is moved from the namespace `render-dev` to `render-prod`: all its Compute Source Templates, Compute Requirement Templates and Image Families.
+
+**Step 1: Export the resources to a file**
+
+```shell
+yd resource export compute-source-templates compute-requirement-templates image-families --namespace render-dev -o render.json
+```
+
+**Step 2: Remove the resources** if moving them
+
+This removes every resource in the file **without asking for confirmation**. To **copy** the resources to the new namespace rather than move them, skip this step.
+
+```shell
+yd resource remove -y render.json
+```
+
+**Step 3: Change the namespace in the file**
+
+Replace the namespace wherever the file names it. That is every `namespace` property (`"render-dev"`), and the references, which name a resource by its namespace: a Compute Requirement Template's sources (`"render-dev/aws-eu-west-2-ondemand"`) and an Image Family (`"yd/render-dev/ubuntu-render-agent"`). A reference left unchanged would point at the resource removed in step 2. With `sed`, for example:
+
+```shell
+sed -i.bak -e 's#"render-dev"#"render-prod"#g' -e 's#"render-dev/#"render-prod/#g' -e 's#"yd/render-dev/#"yd/render-prod/#g' render.json
+```
+
+**Step 4: Create the resources in the new namespace**
+
+```shell
+yd resource create -y render.json
+```
+
+Once the resources have been created, the file can be deleted, or kept for your records.
+
+### Taking Resources One at a Time with `yd list` or `yd show`
+
+`yd list` and `yd show` give a resource's details as a specification too, which suits taking one resource, or a few picked from a listing. Use `yd list` with `--details`, `--substitute-ids`/`-U` and `--strip-ids`, and select the resources wanted:
 
 ```shell
 yd list compute-source-templates --details --substitute-ids --strip-ids
-yd list compute-requirement-templates --details --substitute-ids --strip-ids
-yd list image-families --details --substitute-ids --strip-ids
 ```
 
-This produces a list of resource specifications that can be used directly with `yd resource create` and `yd resource remove`.
-
-The `--output-file` option writes the detailed list to a file instead of displaying it:
+The `--output-file` option writes the detailed list to a file instead of displaying it. A file named `.jsonnet` is written in the Jsonnet style, for editing by hand as a [Jsonnet](jsonnet.md) specification: keys unquoted, strings in single quotes and a trailing comma after each last element. It evaluates to the same JSON, so `yd resource create` takes it as it is:
 
 ```shell
-yd list compute-source-templates --details --output-file render-templates.json
+yd list compute-source-templates --details --substitute-ids --strip-ids --output-file render-templates.jsonnet
 ```
 
-A file named `.jsonnet` is written in the Jsonnet style, for editing by hand as a [Jsonnet](jsonnet.md) specification: keys unquoted, strings in single quotes and a trailing comma after each last element. It evaluates to the same JSON, so `yd resource create` takes it as it is:
-
-```shell
-yd list compute-source-templates --details --output-file render-templates.jsonnet
-```
-
-Alternatively, `yd show` gives the details of each resource whose `ydid` it is given. This writes a JSON file that can be used with `yd resource create` as it is, or edited:
+`yd show` gives the details of each resource whose `ydid` it is given:
 
 ```shell
 yd show ydid:cst:000000:cde265f8-0b17-4e0e-be1c-505174a620e4 --substitute-ids --strip-ids --output-file aws-eu-west-2-ondemand.json
@@ -263,42 +339,6 @@ Both `yd list` and `yd show` take these two options:
 
 - `--substitute-ids`/`-U` replaces IDs with names, to make the output easier to reuse. In a Compute Requirement Template, it replaces Compute Source Template IDs and Image Family and Group IDs. In a Compute Source Template, it replaces Image Family and Group IDs.
 - `--strip-ids` removes the YellowDog IDs ('ydids') from the JSON output, as well as any other properties not needed to use the output with `yd resource create`.
-
-### Usage Scenario: Moving or Copying Resources to a New Namespace
-
-In this scenario, a set of resources is moved from the namespace `render-dev` to `render-prod`: all its Compute Source Templates, Compute Requirement Templates and Image Families.
-
-**Step 1: Capture the target resources in JSON files**
-
-```shell
-yd list compute-source-templates -q --namespace render-dev --substitute-ids --strip-ids --auto-select-all --output-file csts.json
-yd list compute-requirement-templates -q --namespace render-dev --substitute-ids --strip-ids --auto-select-all --output-file crts.json
-yd list image-families -q --namespace render-dev --substitute-ids --strip-ids --auto-select-all --output-file ifs.json
-```
-
-**Step 2: Remove all target resources** if moving resources
-
-This removes every resource in the files **without asking for confirmation**. To **copy** the resources to the new namespace rather than move them, skip this step.
-
-```shell
-yd resource remove -y csts.json crts.json ifs.json
-```
-
-**Step 3: Change the namespace in all the resources**
-
-Replace the namespace wherever the files name it. That is every `namespace` property (`"render-dev"`), and the references `--substitute-ids` wrote, which name a resource by its namespace: a Compute Requirement Template's sources (`"render-dev/aws-eu-west-2-ondemand"`) and an Image Family (`"yd/render-dev/ubuntu-render-agent"`). A reference left unchanged would point at the resource removed in step 2. With `sed`, for example:
-
-```shell
-sed -i.bak -e 's#"render-dev"#"render-prod"#g' -e 's#"render-dev/#"render-prod/#g' -e 's#"yd/render-dev/#"yd/render-prod/#g' csts.json crts.json ifs.json
-```
-
-**Step 4: Recreate all resources in the new namespace**
-
-```shell
-yd resource create -y csts.json crts.json ifs.json
-```
-
-Once the resources have been created, the JSON files can be deleted, or kept for your records.
 
 ## Specifying a Resource on the Command Line
 

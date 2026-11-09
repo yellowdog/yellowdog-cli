@@ -1,8 +1,9 @@
 """
 Live: a run's setup makes what it should, a plan of what it made changes
-nothing, teardown leaves nothing, and the run's Keyring and Credentials can
-provision (Open Question 1 of the design). A Group and Application are
-made and planned again too, since setup makes neither.
+nothing, nor does a plan of an export of it, teardown leaves nothing, and
+the run's Keyring and Credentials can provision (Open Question 1 of the
+design). A Group and Application are made and planned again too, since
+setup makes neither.
 
     pytest --run-live tests/live/test_live_setup.py
 """
@@ -25,6 +26,18 @@ _SETTLED = {"RUNNING", "TERMINATED", "TERMINATING", "STOPPED"}
 # updated, only created again; everything else is unchanged
 _PLANNED_AGAIN = {"Credential": "unknown", "Allowance": "create"}
 _PLAN = ("resource", "plan", "--json", "--quiet")
+# The types of what setup makes, the namespace's defaults and the
+# account-wide types among them, and the file in the run's directory an
+# export of them is written to
+_EXPORTED_TYPES = (
+    "compute-source-templates",
+    "compute-requirement-templates",
+    "image-families",
+    "namespace-policies",
+    "keyrings",
+    "allowances",
+)
+_EXPORT_FILE = "export.json"
 
 
 def _names(entities: list[dict], key: str = "name") -> list[str]:
@@ -70,6 +83,74 @@ def test_a_plan_of_what_setup_made_changes_nothing(live_run):
         if record["action"] != _PLANNED_AGAIN.get(record["resource"], "unchanged")
     ]
     assert wrong == [], json.dumps(wrong, indent=2)
+
+
+def test_an_export_of_what_setup_made_plans_as_unchanged(live_run):
+    """
+    'yd resource export' of the run's resources (its templates, Image
+    Families, Keyring, Credentials and Allowance, by the run's name prefix)
+    to a file in the run's directory, then 'yd resource plan' of that file:
+    each exported specification as setup made it. An exported Credential's
+    secrets are variables, given placeholders here, which the plan never
+    sends.
+    """
+    run, yd = live_run.run, live_run.yd
+    exported = yd(
+        "resource",
+        "export",
+        *_EXPORTED_TYPES,
+        "--include-credentials",
+        "--name",
+        f"{run.run_id}-*",
+        "--output-file",
+        _EXPORT_FILE,
+        "--json",
+        "--quiet",
+    ).records
+    providers = run.config.providers
+    assert sorted((r["resource"], r["action"]) for r in exported) == sorted(
+        [("Keyring", "exported"), ("Allowance", "exported")]
+        + [
+            (resource, "exported")
+            for resource in (
+                "Credential",
+                "MachineImageFamily",
+                "ComputeSourceTemplate",
+                "ComputeRequirementTemplate",
+            )
+            for _ in providers
+        ]
+    ), json.dumps(exported, indent=2)
+
+    specifications = json.loads(
+        (run.directory / _EXPORT_FILE).read_text(encoding="utf-8")
+    )
+    placeholders = [
+        argument
+        for variable in sorted(_secret_variables(specifications))
+        for argument in ("--variable", f"{variable}=exported-placeholder")
+    ]
+    records = yd(*_PLAN, *placeholders, _EXPORT_FILE).records
+    assert len(records) == len(specifications), json.dumps(records, indent=2)
+    wrong = [
+        record
+        for record in records
+        if record["action"] != _PLANNED_AGAIN.get(record["resource"], "unchanged")
+    ]
+    assert wrong == [], json.dumps(wrong, indent=2)
+
+
+def _secret_variables(specifications: list[dict]) -> set[str]:
+    """
+    The variables an exported Credential's secrets are written as.
+    """
+    return {
+        value[2:-2]
+        for specification in specifications
+        if specification["resource"] == "Credential"
+        for value in specification["credential"].values()
+        if isinstance(value, str) and value.startswith("{{") and value.endswith("}}")
+    }
 
 
 def test_a_plan_of_a_group_and_application_changes_nothing(live_run, tmp_path):

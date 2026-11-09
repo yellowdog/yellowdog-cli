@@ -44,6 +44,9 @@ ET_COMPUTE_SOURCE_TEMPLATES = "compute-source-templates"
 # A Compute Requirement's sources, as provisioned: no search of their own, but
 # read from the Compute Requirement
 ET_COMPUTE_SOURCES = "compute-sources"
+# The types only 'yd resource export' names: not listed, but written out
+ET_CONFIGURED_WORKER_POOLS = "configured-worker-pools"
+ET_CREDENTIALS = "credentials"
 ET_GROUPS = "groups"
 ET_IMAGE_FAMILIES = "image-families"
 ET_INSTANCES = "instances"

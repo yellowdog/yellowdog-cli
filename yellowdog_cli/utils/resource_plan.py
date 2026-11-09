@@ -213,7 +213,8 @@ def comparable(model: object, model_name: str | None = None) -> Any:
     An SDK model (or plain data holding them) as plain data, restricted to
     what a specification can set, at every level: an enum as its value, a
     datetime or date in ISO 8601, a duration as the SDK writes it, a None
-    property left out. A dict is kept whole, its values converted.
+    property left out. A dict is kept whole, its values converted and an
+    enum key as its value ('nodeEvents', keyed by NodeEvent).
     """
     if model is None or isinstance(model, (str, int, float, bool)):
         return model
@@ -226,7 +227,10 @@ def comparable(model: object, model_name: str | None = None) -> Any:
 
         return iso_timedelta_format(model)
     if isinstance(model, dict):
-        return {key: comparable(value) for key, value in model.items()}
+        return {
+            key.value if isinstance(key, Enum) else key: comparable(value)
+            for key, value in model.items()
+        }
     if isinstance(model, (list, tuple)):
         return [comparable(item) for item in model]
     if isinstance(model, (set, frozenset)):

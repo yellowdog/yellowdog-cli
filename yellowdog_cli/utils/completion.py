@@ -65,6 +65,7 @@ from yellowdog_cli.utils.completion_targets import (
 )
 from yellowdog_cli.utils.invocation import invoked_name
 from yellowdog_cli.utils.noun_registry import (
+    EXPORT_TYPES,
     NOUN_COMMANDS,
     NOUNS_BY_NAME,
     RESOURCE_LIST_TYPES,
@@ -89,6 +90,7 @@ _TYPE_VALUES: dict[object, tuple[str, ...]] = {
 # (derived command, option name) -> the values it accepts
 _VERB_VALUES: dict[tuple[str, str], tuple[str, ...]] = {
     ("yd resource list", "entity_type"): tuple(sorted(RESOURCE_LIST_TYPES)),
+    ("yd resource export", "export_types"): EXPORT_TYPES,
 }
 
 _HELP_FLAGS = (("--help", "show the help message and exit"),)

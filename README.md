@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:11:51 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 16:03:58 GMT 2026 -->
 
 <!--te-->
 
@@ -37,7 +37,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)
 - **Instances and Nodes** — stopping, starting, restarting, deprovisioning and terminating individual Instances with **`yd instance`**, and Worker Pool Nodes' Instances with **`yd node`**, which also shuts Nodes down and submits Node Actions to them; listing and showing Workers with **`yd worker`**
-- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or on the command line, and showing or removing them by name
+- **Resources** — creating, updating and removing Compute Source Templates, Compute Requirement Templates, Keyrings, Credentials, Image Families, Namespaces, Allowances, Configured Worker Pools, Attribute Definitions, Namespace Policies, Groups, Applications and Users (update only) with **`yd resource`**, from specification files or on the command line, showing or removing them by name, and exporting existing ones as specifications
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
@@ -321,7 +321,7 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
 | **[Worker Pools](docs/worker-pools.md)** | Provisioning Worker Pools and Compute Requirements: their properties and JSON specifications, large-scale provisioning, dry runs, and Node Actions |
 | **[Data Client](docs/data-client.md)** | Moving files to, from and between object stores with `yd data`, through rclone: remote paths, named profiles, worked examples and troubleshooting |
-| **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)** | `yd resource create`, `plan` and `remove`: templates, Keyrings and Credentials, Image Families, Allowances, Applications, Groups, Configured Worker Pools and the rest |
+| **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)** | `yd resource create`, `plan`, `remove` and `export`: templates, Keyrings and Credentials, Image Families, Allowances, Applications, Groups, Configured Worker Pools and the rest |
 | **[Jsonnet Support](docs/jsonnet.md)** | Writing any specification in Jsonnet, and how variable substitutions work in it |
 | **[Checking Specifications](docs/schemas.md)** | The specifications' JSON Schemas: checking a file with `--validate`, in an editor or in CI, and `yd schema` |
 

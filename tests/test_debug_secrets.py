@@ -1,10 +1,13 @@
 """
 The '--debug' trace never holds a credential: the configured key and
 secret, a secret-named variable's value, or the keys inside an inline rclone
-remote. Each command runs as a user would run it, in a subprocess with a
-configuration of the test's own, its stdout and stderr both searched; the
-Platform is a local server that refuses every request, so a failure's
-traceback is traced too, and nothing reaches the real Platform.
+remote. Most commands run as a user would run them, in a subprocess with a
+configuration of the test's own, their stdout and stderr both searched,
+against a local server that refuses every request, so a failure's traceback
+is traced too. 'yd resource export', whose trace matters where the Platform
+answers (a Keyring read, its Credentials), runs in process against the fake
+Platform (resource_plan_platform.py), its stderr, where the trace goes,
+searched. No test reaches the real Platform.
 """
 
 import os
@@ -12,8 +15,16 @@ import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 
 import pytest
+from yellowdog_client.model import Keyring, KeyringCredential
+
+from tests.resource_plan_platform import platform  # noqa: F401 (the fixture)
+from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.debug_log import set_debug_logging
+from yellowdog_cli.utils.entity_names import ET_CREDENTIALS, RN_KEYRING
+from yellowdog_cli.utils.resource_export import ExportOptions, export_resources
 
 KEY = "KEY-4f9c2a7e1b"
 SECRET = "SECRET-8d3e6b0f5a"
@@ -147,3 +158,58 @@ def test_no_credential_is_traced_by_a_resource_plan(
     for secret in CREDENTIALS + CORPUS_SECRETS:
         assert secret not in result.stderr, secret
         assert secret not in result.stdout, secret
+
+
+# What the Keyring summarises its Credential as: none of it may be traced
+CREDENTIAL_SUMMARY = "SUMMARY-9a4e1c7b3d"
+
+
+def test_no_credential_is_traced_by_an_export(
+    platform,
+    tmp_path,
+    capsys,
+):
+    """
+    'yd resource export credentials' under '--debug', in process on the fake
+    Platform: the Keyring's credentials are read, and neither their
+    summaries nor the configured key and secret reach the trace.
+    """
+    platform.holding(
+        RN_KEYRING,
+        Keyring(
+            name="render-keys",
+            description="Keys",
+            credentials=[
+                KeyringCredential(
+                    name="aws-prod",
+                    type="co.yellowdog.platform.model.AwsCredential",
+                    description=CREDENTIAL_SUMMARY,
+                )
+            ],
+        ),
+    )
+    ctx = RunContext(
+        SimpleNamespace(),
+        SimpleNamespace(namespace="team-a", key=KEY, secret=SECRET),
+        platform.client,
+    )
+    output_file = tmp_path / "export.json"
+    set_debug_logging(True)
+    try:
+        export_resources(
+            ctx,
+            ExportOptions(
+                types=(ET_CREDENTIALS,),
+                with_dependencies=True,
+                output_file=str(output_file),
+            ),
+        )
+    finally:
+        set_debug_logging(False)
+    shown = capsys.readouterr()
+    platform.client.keyring_client.get_keyring.assert_called()
+    assert " : DEBUG : " in shown.err, shown.err
+    # Written to the file, as its description, by design
+    assert CREDENTIAL_SUMMARY in output_file.read_text(encoding="utf-8")
+    for secret in (CREDENTIAL_SUMMARY, KEY, SECRET):
+        assert secret not in shown.err, secret

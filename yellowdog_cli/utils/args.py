@@ -1003,6 +1003,35 @@ class CLIParser:
         return self.args.output_file
 
     # -----------------------------------------------------------------------
+    # yd-resource-export
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def export_types(self) -> list[str] | None:
+        return self.args.export_types
+
+    @property
+    @allow_missing_attribute
+    def all_types(self) -> bool | None:
+        return self.args.all_types
+
+    @property
+    @allow_missing_attribute
+    def with_dependencies(self) -> bool | None:
+        return self.args.with_dependencies
+
+    @property
+    @allow_missing_attribute
+    def include_credentials(self) -> bool | None:
+        return self.args.include_credentials
+
+    @property
+    @allow_missing_attribute
+    def export_file(self) -> str | None:
+        return self.args.export_file
+
+    # -----------------------------------------------------------------------
     # yd-compare
     # -----------------------------------------------------------------------
 

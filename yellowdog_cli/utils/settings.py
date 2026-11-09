@@ -66,6 +66,9 @@ PYPI_PROJECT_URL = "https://pypi.org/pypi/yellowdog-cli/json"
 NAME_START_PREFIX = "yd_"
 NAMESPACE_PREFIX_SEPARATOR = "/"
 RCLONE_PREFIX = "rclone:"
+# The prefix every Attribute Definition an account defines has; the
+# Platform's own have none, and cannot be changed
+USER_ATTRIBUTE_PREFIX = "user."
 
 # The specification families yd-schema knows, in utils/specs/schema.py's
 # Family order. Carried here, as a plain tuple, rather than imported from

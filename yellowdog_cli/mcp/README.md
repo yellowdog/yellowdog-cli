@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:56 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 14:46:43 GMT 2026 -->
 
 <!--te-->
 
@@ -158,6 +158,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_node_stop` | destructive | `yd node stop` | Stop the Instances of Nodes |
 | `yd_node_terminate` | destructive | `yd node terminate` | Terminate the Instances of Nodes |
 | `yd_resource_create` | acting | `yd resource create` | Create and update resources |
+| `yd_resource_export` | read-only | `yd resource export` | Write existing resources out as specifications |
 | `yd_resource_plan` | read-only | `yd resource plan` | Show what creating resources would change |
 | `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
 | `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |

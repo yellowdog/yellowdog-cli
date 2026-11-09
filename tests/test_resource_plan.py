@@ -97,6 +97,14 @@ def test_plain_values_dicts_and_datetimes():
     assert comparable(None) is None
 
 
+def test_an_enum_key_is_its_value():
+    # A Worker Pool's 'nodeEvents' is keyed by NodeEvent as the SDK reads it;
+    # as plain data it is keyed by name, so it can be written as JSON
+    assert comparable({ImageOsType.LINUX: [ImageOsType.WINDOWS]}) == {
+        "LINUX": ["WINDOWS"]
+    }
+
+
 def test_a_class_settable_properties_knows_nothing_of_keeps_all_its_fields():
     shown = comparable(SimpleNamespace(x=1))  # not a dataclass: kept as it is
     assert shown.x == 1

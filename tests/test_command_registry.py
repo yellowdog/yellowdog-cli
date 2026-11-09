@@ -200,6 +200,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-jsonnet-fromjson",
             "yd-status",
             "yd-resource-plan",
+            "yd-resource-export",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -465,6 +466,7 @@ class TestToolKinds:
             "yd-schema",
             "yd-status",
             "yd-resource-plan",
+            "yd-resource-export",
         }
 
     def test_the_destructive_commands(self):
