@@ -18,7 +18,7 @@
       * [With Jsonnet support](#with-jsonnet-support-2)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov  6 10:15:12 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 09:48:59 GMT 2026 -->
 
 <!--te-->
 

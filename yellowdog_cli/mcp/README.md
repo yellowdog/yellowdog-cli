@@ -161,6 +161,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
 | `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |
 | `yd_show` | read-only | `yd show` | Show the JSON details of entities referenced by their YDIDs |
+| `yd_status` | read-only | `yd status` | Show the work and compute in the namespace |
 | `yd_task_abort` | destructive | `yd task abort` | Abort running Tasks |
 | `yd_task_cancel` | destructive | `yd task cancel` | Cancel Tasks |
 | `yd_taskgroup_compare` | read-only | `yd taskgroup compare` | Compare a Task Group against Worker Pool(s) |

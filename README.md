@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Oct 31 09:22:28 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 09:48:57 GMT 2026 -->
 
 <!--te-->
 
@@ -41,7 +41,7 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**. Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
+- **Inspecting** — seeing the work and compute in a namespace at a glance with **`yd status`**, listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**. Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command

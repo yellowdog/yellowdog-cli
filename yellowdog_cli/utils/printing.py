@@ -443,12 +443,20 @@ def _sdk_json(yd_object: object) -> Any:
     return Json.dump(yd_object)
 
 
+def objects_as_json(objects: list) -> list:
+    """
+    A list of SDK model objects (or plain dicts) as JSON data, each object
+    serialised as '--json' serialises it.
+    """
+    return [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
+
+
 def print_objects_as_json(objects: list) -> None:
     """
     Serialise a list of SDK model objects (or plain dicts) as a JSON array
     and print to stdout with no Rich formatting.  Used by --json mode.
     """
-    data = [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
+    data = objects_as_json(objects)
     if OUTPUT.strip_ids:
         stripped = []
         for item in data:

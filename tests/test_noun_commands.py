@@ -56,6 +56,7 @@ UTILITIES = {
     "yd-init",
     "yd-variables",
     "yd-schema",
+    "yd-status",
     "yd-format-json",
     "yd-help",
     "yd-version",

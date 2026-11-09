@@ -3364,6 +3364,51 @@ COMMANDS["yd-list"] = Command(
     ),
 )
 
+# --- yd-status -----------------------------------------------------------
+
+COMMANDS["yd-status"] = Command(
+    name="yd-status",
+    purpose=(
+        "showing the Work Requirements, Worker Pools and Compute Requirements"
+        " in the namespace, with their progress and health"
+    ),
+    summary="Show the work and compute in the namespace",
+    kind=CommandKind.API,
+    options=(
+        SORT,
+        REVERSE,
+        VARIABLE,
+        NAMESPACE.variant(help="the namespace to show"),
+        ACTIVE_ONLY.variant(
+            help=(
+                "show only the active Work Requirements, Worker Pools and"
+                " Compute Requirements, as 'yd list --active-only' lists them"
+            )
+        ),
+        TAG.variant(
+            help=(
+                "the tag to show by ('' for the whole namespace): Work"
+                " Requirements and Compute Requirements with it, and Worker"
+                " Pools with it in their names"
+            )
+        ),
+        JSON.variant(
+            help=(
+                "print one JSON document holding the three lists, and any"
+                " searches that failed"
+            )
+        ),
+    ),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Show the Work Requirements, Worker Pools and Compute Requirements in"
+        " the namespace (and tag), active_only keeping the active alone, as"
+        " one object holding the three lists of summaries and any searches"
+        " that failed."
+    ),
+    script=False,
+)
+
 # --- yd-cloud-info -------------------------------------------------------
 
 CLOUD_INFO_PROVIDERS = ("aws", "azure", "google", "oci")

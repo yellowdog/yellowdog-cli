@@ -79,6 +79,7 @@
       * [yd show](#yd-show)
       * [yd follow](#yd-follow)
       * [yd wait](#yd-wait)
+      * [yd status](#yd-status)
       * [yd application](#yd-application)
       * [yd variables](#yd-variables)
       * [yd init](#yd-init)
@@ -92,7 +93,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov  6 10:15:10 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 09:48:58 GMT 2026 -->
 
 <!--te-->
 
@@ -1904,6 +1905,47 @@ Key options:
 WR_ID=$(yd workrequirement submit mywork.json --quiet)
 yd wait "$WR_ID" && yd data download results/
 ```
+
+### yd status
+
+The `yd status` command shows the work and compute in the configured `namespace` and `tag` on one screen: the Work Requirements with their Task progress, the Worker Pools with their Nodes and Workers, and the Compute Requirements with their Instances. Each section lists what `yd list` lists for its type, and ends with a total. Give `--active-only` to leave out what has finished, shut down or terminated.
+
+```shell
+yd status [options]
+```
+
+```shell
+yd status -n image-processing -t nightly --active-only
+```
+
+```
+2026-11-09 09:50:12 : Active items in namespace 'image-processing' with tags including 'nightly'
+2026-11-09 09:50:12 : Work Requirements:
+    ┌─────┬─────────────────────────┬──────────┬──────────┬───────────┬──────────────────────────────────────────────────────────┐
+    │ #   │ Work Requirement Name   │ Status   │ Tasks    │ Healthy   │ Work Requirement ID                                      │
+    ├─────┼─────────────────────────┼──────────┼──────────┼───────────┼──────────────────────────────────────────────────────────┤
+    │ 1   │ nightly-render          │ RUNNING  │ 412/1000 │ Yes       │ ydid:workreq:000000:1d0a6a5c-3f9e-4d1e-8a2e-3a2f1b0c9d8e │
+    └─────┴─────────────────────────┴──────────┴──────────┴───────────┴──────────────────────────────────────────────────────────┘
+2026-11-09 09:50:12 : 1 Work Requirement: 412 of 1,000 Tasks done
+2026-11-09 09:50:12 : Worker Pools:
+    ...
+2026-11-09 09:50:12 : 2 Worker Pools: 14 Nodes, 30 of 56 Workers claimed
+2026-11-09 09:50:12 : Compute Requirements:
+    ...
+2026-11-09 09:50:12 : 2 Compute Requirements: 14 of 14 Instances alive
+2026-11-09 09:50:12 : WARNING : 1 Worker Pool unhealthy
+```
+
+Key options:
+- `--namespace`/`-n` and `--tag`/`-t` — show another namespace or tag; `-t ''` shows the whole namespace. Worker Pools, which have no tag, are shown when the tag is in their names, as `yd list` selects them. A namespace pattern such as `team-*` is refused
+- `--active-only`/`-l` — show only what is active, as `yd list --active-only` does: Work Requirements not yet finished, Worker Pools not shut down or terminated, and Compute Requirements not terminated
+- `--json`/`-J` — print one JSON document holding the three lists, as `yd list --json` gives each, and the searches that failed:
+
+```json
+{"namespace": "image-processing", "tag": "nightly", "workRequirements": [...], "workerPools": [...], "computeRequirements": [...], "failures": []}
+```
+
+The Namespace and Tag columns are left out, since the first line names them, and a Provisioned Worker Pool's Compute Requirement appears in both its sections, as in `yd list`. A section with nothing to show says so. A warning closes the report when anything is unhealthy (`1 Worker Pool unhealthy`); being unhealthy does not change the exit code. A section whose search fails, a missing permission say, says why (in `failures` under `--json`) and the others are still shown; the command then exits with that failure's [exit code](json-output.md), or 1 for failures of different kinds. `--quiet` prints the tables alone, as `yd list --quiet` does, with a failed search still said on stderr.
 
 ### yd application
 

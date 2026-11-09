@@ -1,8 +1,9 @@
 """
 Live: the actions pool resized from 2 to 3 nodes; its Nodes and Workers
-listed and shown; node actions run and read back; one Node shut down, one
-deprovisioned and one terminated. (Not restarted: a Worker Pool takes a
-restarted node's instance away, so 'yd node restart' is in NOT_EXERCISED.)
+listed and shown, and the pool found by 'yd status'; node actions run and
+read back; one Node shut down, one deprovisioned and one terminated. (Not
+restarted: a Worker Pool takes a restarted node's instance away, so
+'yd node restart' is in NOT_EXERCISED.)
 """
 
 import pytest
@@ -39,6 +40,9 @@ def test_resize_nodes_and_workers(live_run, actions_pool):
     assert actions_pool.pool_id in {
         p["id"] for p in yd("wp", "list", *selection).records
     }
+    status = yd("status", *selection).document
+    assert actions_pool.pool_id in {p["id"] for p in status["workerPools"]}
+    assert status["failures"] == []
     listed = {n["id"] for n in yd("node", "list", *selection).records}
     assert {n["id"] for n in nodes} <= listed
     assert (
