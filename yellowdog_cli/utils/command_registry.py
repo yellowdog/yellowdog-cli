@@ -4593,6 +4593,15 @@ FORMAT_JSON_FILES = option(
     ),
     completes=Completes.FILE,
 )
+FORMAT_JSON_STDOUT = option(
+    "--stdout",
+    action="store_true",
+    required=False,
+    help=(
+        "print the one file given reformatted to stdout, coloured in a"
+        " terminal, leaving the file as it is"
+    ),
+)
 FORMAT_JSON_CHECK = option(
     "--check",
     action="store_true",
@@ -4607,11 +4616,16 @@ COMMANDS["yd-format-json"] = Command(
     purpose=(
         "reformatting JSON files in place with the CLI's compact layout (small"
         " containers on one line), changing nothing but the layout, or standard"
-        " input to stdout"
+        " input or one file to stdout"
     ),
     summary="Format JSON files using a compact encoder",
     kind=CommandKind.STANDALONE,
-    options=(FORMAT_JSON_FILES, FORMAT_JSON_CHECK),
+    options=(
+        FORMAT_JSON_FILES,
+        FORMAT_JSON_STDOUT,
+        FORMAT_JSON_CHECK,
+        NO_FORMAT.variant(help="print the JSON to stdout without colouring"),
+    ),
     tool=ToolKind.NONE,
 )
 HELP_JSON = ACTIONS_JSON.variant(

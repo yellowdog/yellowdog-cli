@@ -133,7 +133,7 @@ Help is available for every command with the `--help` or `-h` option. The two ta
 
 ## Universal Options
 
-These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson`, `yd jsonnet factor` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version` and `yd jsonnet tojson` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
+These options are accepted by every `yd` command except `yd commander`, `yd mcp`, `yd completion`, `yd init`, `yd help`, `yd version`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson`, `yd jsonnet factor` and `yd schema`, none of which requires a configuration file or YellowDog credentials; of those, `yd init`, `yd help`, `yd schema`, `yd version`, `yd format-json` and `yd jsonnet tojson` accept `--no-format`. They are not repeated in the individual command sections below. A command's `--help` lists them last, under `universal options`, and its usage line shows them as `[universal options]`.
 
 The five [`yd data`](#yd-data) verbs are a partial exception: they accept all of these except `--key`, `--secret`, `--url` and `--pac`, because they talk only to the remote data store and never to the YellowDog Platform API.
 
@@ -2120,16 +2120,18 @@ The `yd format-json` command reformats JSON files in place using the CLI's compa
 
 ```shell
 yd format-json [--check] <file.json> [<file.json> ...]
+yd format-json --stdout <file.json>
 yd format-json [--check] -
 ```
 
 Only the layout changes: numbers are written back exactly as they were written (`1.10` stays `1.10`), non-ASCII text is kept rather than escaped, and a file that repeats a key is refused, and left as it is, rather than losing all but one of them. A file is replaced only once its new text is complete, keeping its permissions, so an interruption leaves the original; a file already in this layout is left untouched. `--check` writes nothing, reporting the files that would be reformatted, and exits 1 if there are any, for use in CI. A file that cannot be read, parsed or written is reported on stderr, saying why (`it is not JSON (…)` with where the JSON goes wrong, `it is empty`, `it repeats the key 'a'`), the others are still processed, and the command exits 1.
 
-`-` reformats standard input to stdout, alone; with `--check`, it writes nothing, saying only whether standard input would change, and exits 1 if it would.
+`--stdout` prints one file reformatted to stdout and leaves the file as it is, so it reads a file of any name; several files, a glob pattern or `--check` with it are refused (exit 2). `-` reformats standard input to stdout, alone; with `--check`, it writes nothing, saying only whether standard input would change, and exits 1 if it would. Either way the JSON is coloured in a terminal, unless `--no-format`/`--nf` is given, and printed as a file would hold it otherwise, so a pipe or a redirect gets the reformatted text exactly.
 
 ```shell
 yd format-json my_file.json my_other_file.json
 yd format-json 'specs/*.json'
+yd format-json --stdout my_file.json
 yd list compute-source-templates --json | yd format-json -
 ```
 

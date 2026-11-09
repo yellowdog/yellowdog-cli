@@ -4,8 +4,8 @@ written back as written, non-ASCII text kept, a repeated key refused with
 the file untouched -- the file is replaced whole or not at all, an
 unchanged file is left alone, --check writes nothing and exits 1 if
 anything would change, and a failure exits 1 with its message on stderr;
-a quoted glob pattern is expanded, and '-' reformats standard input to
-stdout.
+a quoted glob pattern is expanded, and '-' reformats standard input, and
+--stdout one file, to stdout, coloured only on a terminal.
 """
 
 import os
@@ -158,3 +158,80 @@ def test_standard_input_that_is_not_json_is_an_error(monkeypatch, capsys):
 def test_standard_input_goes_alone(monkeypatch, capsys):
     _, err, code = _run(monkeypatch, capsys, "-", "a.json")
     assert code == 2 and "alone" in err
+
+
+def test_stdout_prints_one_file_and_leaves_it(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "spec.txt"  # any name: nothing is written
+    path.write_text('{"v":1.10}', encoding="utf-8")
+    out, _, code = _run(monkeypatch, capsys, "--stdout", str(path))
+    assert (out, code) == ('{"v": 1.10}\n', 0)
+    assert path.read_text(encoding="utf-8") == '{"v":1.10}'
+
+
+def test_stdout_with_a_file_that_is_not_json_is_an_error(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "a.json"
+    path.write_text("{nope", encoding="utf-8")
+    out, err, code = _run(monkeypatch, capsys, "--stdout", str(path))
+    assert (out, code) == ("", 1)
+    assert f"Cannot format '{path}': it is not JSON (" in err
+
+
+@pytest.mark.parametrize(
+    "argv, refusal",
+    [
+        (["--stdout", "a.json", "b.json"], "prints one file"),
+        (["--stdout", "*.json"], "prints one file"),
+        (["--stdout", "--check", "a.json"], "--check writes nothing"),
+    ],
+)
+def test_stdout_refuses_several_files_a_pattern_or_check(
+    monkeypatch, capsys, argv, refusal
+):
+    _, err, code = _run(monkeypatch, capsys, *argv)
+    assert code == 2 and refusal in err
+
+
+@pytest.mark.parametrize(
+    "argv, coloured",
+    [
+        (["--stdout"], True),
+        (["--stdout", "--no-format"], False),
+        (["-"], True),
+        (["--no-format", "-"], False),
+    ],
+)
+def test_stdout_is_coloured_on_a_terminal_unless_no_format(
+    tmp_path, monkeypatch, capsys, argv, coloured
+):
+    from io import StringIO
+
+    from rich.console import Console
+    from rich.highlighter import JSONHighlighter
+
+    from yellowdog_cli.utils import printing
+
+    terminal = StringIO()
+    monkeypatch.setattr(
+        printing,
+        "CONSOLE_JSON",
+        Console(
+            file=terminal,
+            force_terminal=True,
+            color_system="256",
+            highlighter=JSONHighlighter(),
+            emoji=False,
+        ),
+    )
+    path = tmp_path / "a.json"
+    path.write_text('{"name":"café"}', encoding="utf-8")
+    if argv[-1] == "-":
+        _stdin(monkeypatch, path.read_text(encoding="utf-8"))
+    else:
+        argv = [*argv, str(path)]
+    out, _, code = _run(monkeypatch, capsys, *argv)
+    assert code == 0
+    if coloured:
+        assert out == "" and "\x1b[" in terminal.getvalue()
+        assert "café" in terminal.getvalue()
+    else:
+        assert terminal.getvalue() == "" and out == '{"name": "café"}\n'

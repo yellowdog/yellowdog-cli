@@ -85,7 +85,7 @@ class TestNounsAndVerbs:
     @pytest.mark.parametrize(
         "words, options",
         [
-            (["format-json"], ["--check", "--help"]),
+            (["format-json"], ["--check", "--help", "--no-format", "--stdout"]),
             (["jsonnet", "tojson"], ["--write", "--no-format", "--yes", "--help"]),
             (["jsonnet", "fromjson"], ["--write", "--yes", "--help"]),
             (["jsonnet", "factor"], ["--write", "--yes", "--help"]),

@@ -517,7 +517,7 @@ The `<` and `>` buttons step back and forth through your command history.
 
 **An unrecognised `yd` command.** A `yd` command Commander does not recognise is still run as the CLI's, which reports it. It is never handed to the shell, where another `yd` on your `PATH` could run.
 
-**Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd format-json`, `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
+**Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
 
 **The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
 

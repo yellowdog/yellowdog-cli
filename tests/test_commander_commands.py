@@ -1064,13 +1064,13 @@ def test_a_standalone_command_in_the_yd_form_is_given_nf_alone(window, command):
 
 def test_a_standalone_command_in_the_yd_form_without_nf_is_given_nothing(window):
     assert window._build_command_args(
-        "yd format-json", ["a.json"], yd_command=False
+        "yd jsonnet fromjson", ["a.json"], yd_command=False
     ) == ["a.json"]
 
 
 def test_a_standalone_command_without_nf_is_given_nothing(window):
     assert window._build_command_args(
-        "yd-format-json", ["a.json"], yd_command=False
+        "yd-jsonnet-fromjson", ["a.json"], yd_command=False
     ) == ["a.json"]
 
 
