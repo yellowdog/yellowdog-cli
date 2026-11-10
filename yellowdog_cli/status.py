@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
 """
-yd status: the Work Requirements, Worker Pools and Compute Requirements in
-the namespace and tag, on one screen, the active alone with
-'--active-only'. Each section lists what 'yd list' lists for its type, with
-the same option (utils/active_entities.py), in the 'yd list' tables less
-their Namespace and Tag columns, which the scope line above them names,
-with a total beneath; a closing warning counts what is unhealthy. A search that fails is said in its section and
-the others are still shown, the command then exiting with that failure's
-code; an authentication or connection failure stops it at once. '--json'
-prints one document holding the three lists and the failures.
+yd status: the Work Requirements, Worker Pools and Compute Requirements in the
+namespace and tag, on one screen, the active alone with '--active-only'. Each
+section lists what 'yd list' lists for its type, with the same option
+(utils/active_entities.py), in the 'yd list' tables less their Namespace and
+Tag columns, which the scope line above them names, with a total beneath; a
+closing warning counts what is unhealthy. A search that fails is said in its
+section and the others are still shown, the command then exiting with that
+failure's code; an authentication or connection failure stops it at once.
+'--json' prints one document holding the three lists and the failures.
 """
 
 from collections.abc import Callable, Sequence

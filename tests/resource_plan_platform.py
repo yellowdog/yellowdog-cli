@@ -5,15 +5,15 @@ on which anything that would change the Platform fails the test.
 
 Every client method whose name starts with one of MUTATING_PREFIXES, and
 requests' post() and put() as the resource libraries call them, raise
-AssertionError("the plan changed something"). A resource type is supported
-by a lookup wiring in FakePlatform (_wire_templates() for the Compute
-Source and Requirement Templates, _wire_keyrings(), _wire_namespaces(),
-_wire_image_families(), _wire_accounts()) and, where it is searched, an entry in _NAME_OF;
-another type is added the same way. User Attribute Definitions, which the
-CLI reads with requests' get() rather than the SDK, are the dicts in
-'attribute_definitions', which the fixture's get() serves as the Platform's
-GET /compute/attributes/user lists them. A resource held without an ID is given
-a well-formed YellowDog ID of its type (_TYPE_TOKENS), so the CLI's lookups
+AssertionError("the plan changed something"). A resource type is supported by a
+lookup wiring in FakePlatform (_wire_templates() for the Compute Source and
+Requirement Templates, _wire_keyrings(), _wire_namespaces(),
+_wire_image_families(), _wire_accounts()) and, where it is searched, an entry
+in _NAME_OF; another type is added the same way. User Attribute Definitions,
+which the CLI reads with requests' get() rather than the SDK, are the dicts in
+'attribute_definitions', which the fixture's get() serves as the Platform's GET
+/compute/attributes/user lists them. A resource held without an ID is given a
+well-formed YellowDog ID of its type (_TYPE_TOKENS), so the CLI's lookups
 recognise it as one.
 
 hold() puts on it what 'yd resource create' would make of a specification

@@ -309,8 +309,8 @@ def extension_plan(
     its copied fields, its dependencies kept only where they name a Task
     Group the target has or that is appended) and the Tasks to add, as
     Platform JSON, by Task Group name. A Task Group the target has is left
-    as it is. Raises ValueError for a matched Task Group whose Task template differs
-    from the original's, or that does not allow a Task's type.
+    as it is. Raises ValueError for a matched Task Group whose Task template
+    differs from the original's, or that does not allow a Task's type.
     """
     existing = {group.name: group for group in target.taskGroups or []}
     appended_names = {

@@ -193,12 +193,12 @@ def warn_of_config_violations(sections: frozenset[str]) -> None:
 def warn_of_undefined_config_variables() -> None:
     """
     Warn of undefined variables left in the configuration values resolved one
-    string at a time as the configuration loads -- the namespace, tag and
-    URL, and every '{{dataClient.*}}' value, profiles included -- which the
+    string at a time as the configuration loads -- the namespace, tag and URL,
+    and every '{{dataClient.*}}' value, profiles included -- which the
     substitution passes never walk. Read from the variables they were
-    registered as, which hold them resolved. The credentials are left out: their text is not for
-    a warning, and a wrong one fails on its own. Called by the command
-    wrappers as a command starts.
+    registered as, which hold them resolved. The credentials are left out:
+    their text is not for a warning, and a wrong one fails on its own. Called
+    by the command wrappers as a command starts.
     """
     values = {
         f"{COMMON_SECTION}.{name}": VARIABLE_SUBSTITUTIONS[name]
