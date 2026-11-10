@@ -45,6 +45,8 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
     ET_COMPUTE_SOURCES,
+    ET_CONFIGURED_WORKER_POOLS,
+    ET_CREDENTIALS,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -652,17 +654,64 @@ def non_negative_int(value: str) -> int:
     return number
 
 
+# The resource types as a specification names them ('resource'), and the
+# type word each belongs to, so that a type argument takes either
+_RESOURCE_TYPE_WORDS: dict[str, str] = {
+    RN_ALLOWANCE: ET_ALLOWANCES,
+    RN_APPLICATION: ET_APPLICATIONS,
+    RN_CONFIGURED_POOL: ET_CONFIGURED_WORKER_POOLS,
+    RN_CREDENTIAL: ET_CREDENTIALS,
+    RN_EXTERNAL_USER: ET_USERS,
+    RN_GROUP: ET_GROUPS,
+    RN_IMAGE_FAMILY: ET_IMAGE_FAMILIES,
+    RN_INTERNAL_USER: ET_USERS,
+    RN_KEYRING: ET_KEYRINGS,
+    RN_NAMESPACE: ET_NAMESPACES,
+    RN_NAMESPACE_POLICY: ET_NAMESPACE_POLICIES,
+    RN_NUMERIC_ATTRIBUTE_DEFINITION: ET_ATTRIBUTE_DEFINITIONS,
+    RN_REQUIREMENT_TEMPLATE: ET_COMPUTE_REQUIREMENT_TEMPLATES,
+    RN_SOURCE_TEMPLATE: ET_COMPUTE_SOURCE_TEMPLATES,
+    RN_STRING_ATTRIBUTE_DEFINITION: ET_ATTRIBUTE_DEFINITIONS,
+}
+
+
+def matching_type_words(value: str, words: Iterable[str]) -> list[str]:
+    """
+    The type words among 'words' that a type argument names, whatever its
+    case: the word itself, a specification's resource name for it
+    ('Keyring', 'ComputeSourceTemplate'), its singular ('keyring',
+    'image-family'), else every word it is a prefix of. The first of these
+    that matches anything decides, so an exact word or a singular is never
+    ambiguous with the longer words it is a prefix of.
+    """
+    words = list(words)
+    lowered = value.lower()
+    if lowered in words:
+        return [lowered]
+    by_name = {name.lower(): word for name, word in _RESOURCE_TYPE_WORDS.items()}
+    if by_name.get(lowered) in words:
+        return [by_name[lowered]]
+    plurals = {f"{lowered}s"}
+    if lowered.endswith("y"):
+        plurals.add(f"{lowered[:-1]}ies")
+    singular = [word for word in words if word in plurals]
+    if singular:
+        return singular
+    return [word for word in words if word.startswith(lowered)]
+
+
 def resolve_entity_type(value: str) -> str:
     """
     Resolve an entity type string to its canonical form.
 
-    Checks single-letter uppercase synonyms first, then falls back to
-    unambiguous prefix matching. Raises argparse.ArgumentTypeError if the
+    A single capital letter is a synonym (SYNONYMS); anything else is
+    matched whatever its case by matching_type_words(), so a single
+    lower-case letter is a prefix. Raises argparse.ArgumentTypeError if the
     value is ambiguous or unrecognised.
     """
     if value in SYNONYMS:
         return SYNONYMS[value]
-    matches = [e for e in ENTITY_TYPES if e.startswith(value)]
+    matches = matching_type_words(value, ENTITY_TYPES)
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
@@ -1064,6 +1113,9 @@ CREATE_JSON = ACTIONS_JSON.variant(
         "emit the resources created, updated, removed or skipped as a JSON"
         " array; with --dry-run, the processed specifications"
     )
+)
+PLAN_JSON = ACTIONS_JSON.variant(
+    help="print the plan as a JSON array, one record per specification"
 )
 ENTITY_JSON = ACTIONS_JSON.variant(
     help=(
@@ -2334,6 +2386,12 @@ REGENERATE_APP_KEYS = option(
     required=False,
     help="regenerate the application key & secret when updating an application",
 )
+FORCE_UPDATE = option(
+    "--force-update",
+    action="store_true",
+    required=False,
+    help="update every existing resource, even one the plan finds unchanged",
+)
 NO_RESEQUENCE = option(
     "--no-resequence",
     action="store_true",
@@ -2343,6 +2401,13 @@ NO_RESEQUENCE = option(
         " order (e.g., source templates before requirement templates when"
         " creating, after them when removing)"
     ),
+)
+
+FAIL_ON_CHANGES = option(
+    "--fail-on-changes",
+    action="store_true",
+    required=False,
+    help="exit 1 if anything would be created or updated, or can't be compared",
 )
 
 COMMANDS["yd-create"] = Command(
@@ -2366,6 +2431,7 @@ COMMANDS["yd-create"] = Command(
         MATCH_ALLOWANCES_BY_DESCRIPTION,
         SHOW_KEYRING_PASSWORDS,
         REGENERATE_APP_KEYS,
+        FORCE_UPDATE,
         NO_RESEQUENCE,
     ),
     requires_namespace_and_tag=True,
@@ -2374,9 +2440,38 @@ COMMANDS["yd-create"] = Command(
     tool_description=(
         "Create or update resources from specifications (each a file path,"
         " or the specification itself). Returns {resource, name, id, action}"
-        " per resource created, updated or skipped; yd_schema resources"
-        " gives the schema to compose against."
+        " per resource created, updated, unchanged or skipped; yd_schema"
+        " resources gives the schema to compose against."
     ),
+)
+
+COMMANDS["yd-resource-plan"] = Command(
+    name="yd-resource-plan",
+    purpose="showing what creating resources would change",
+    summary="Show what creating resources would change",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        TAG,
+        RESOURCE_SPECIFICATIONS,
+        RESOURCE_TYPE,
+        RESOURCE_SET,
+        MATCH_ALLOWANCES_BY_DESCRIPTION,
+        REGENERATE_APP_KEYS,
+        NO_RESEQUENCE,
+        PLAN_JSON,
+        FAIL_ON_CHANGES,
+    ),
+    requires_namespace_and_tag=True,
+    validators=(check_resource_inputs,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Show what creating or updating resources from specifications would"
+        " change, without changing anything: per resource, whether it would be"
+        " created, updated or left unchanged."
+    ),
+    script=False,
 )
 
 IDS = option(
@@ -3105,9 +3200,10 @@ ENTITY_TYPE = option(
     type=resolve_entity_type,
     metavar="ENTITY_TYPE",
     help=(
-        "type of entity to list; accepts a full name, an unambiguous "
-        "prefix (e.g. 'work-r'), or a single uppercase synonym "
-        "(e.g. 'W'). Valid types: " + _ENTITY_TYPE_HELP
+        "type of entity to list, in any case; accepts a full name, a "
+        "singular (e.g. 'keyring'), a specification's resource name (e.g. "
+        "'ComputeSourceTemplate'), an unambiguous prefix (e.g. 'work-r'), "
+        "or a single uppercase synonym (e.g. 'W'). Valid types: " + _ENTITY_TYPE_HELP
     ),
 )
 ACTIVE_ONLY = option(
@@ -3315,6 +3411,147 @@ def check_list_options(args: Namespace, parser: ArgumentParser) -> None:
                 parser.error(f"--public-ips-only cannot be used with {flag}")
 
 
+EXPORT_TYPES_OPTION = option(
+    "export_types",
+    nargs="*",
+    default=[],
+    metavar="<type>",
+    type=str,
+    help=(
+        "the types of resource to export (e.g. 'keyrings'), in any case; a"
+        " singular, a specification's resource name (e.g. 'Keyring') or an"
+        " unambiguous prefix (e.g. 'key') is accepted; with none, the Compute Source and"
+        " Compute Requirement Templates, Image Families and Namespace Policy"
+        " of the namespace"
+    ),
+)
+EXPORT_ALL = option(
+    "--all",
+    dest="all_types",
+    action="store_true",
+    required=False,
+    help=(
+        "export every type of resource but Credentials, including the"
+        " account-wide ones; not with types"
+    ),
+)
+EXPORT_NAME = NAME.variant(
+    help=(
+        "export only resources whose name matches the given glob pattern"
+        " (e.g. 'render-*'), the name without its namespace (use -n for that)"
+    )
+)
+EXPORT_INTERACTIVE = INTERACTIVE.variant(
+    help="list, and interactively select, the resources to export"
+)
+EXPORT_WITH_DEPENDENCIES = option(
+    "--with-dependencies",
+    action="store_true",
+    required=False,
+    help=(
+        "also export what each resource refers to (the Compute Source"
+        " Templates of a Compute Requirement Template, the Keyring of a"
+        " Credential)"
+    ),
+)
+EXPORT_INCLUDE_CREDENTIALS = option(
+    "--include-credentials",
+    action="store_true",
+    required=False,
+    help=(
+        "also export Credentials, each field the Platform does not return"
+        " written as a variable"
+    ),
+)
+# Its own 'dest': the universal OUTPUT_FILE's, 'output_file', sends what the
+# command prints to a file (OutputSettings), which would replace the
+# specifications written there with the '--json' records
+EXPORT_OUTPUT_FILE = option(
+    "--output-file",
+    "-o",
+    dest="export_file",
+    type=str,
+    required=False,
+    help=(
+        "write the resource specifications to the nominated file instead of"
+        " stdout, in the Jsonnet style for a '.jsonnet' file"
+    ),
+    completes=Completes.FILE,
+    metavar="<output-file>",
+)
+EXPORT_JSON = ACTIONS_JSON.variant(
+    help="print the resources exported as a JSON array of records"
+)
+
+
+def check_export_options(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-resource-export: each type word a type, as matching_type_words()
+    reads it (any case, a specification's resource name, a singular or an
+    unambiguous prefix), resolved in place to the full word; '--all' not
+    with types; a '--name' holding no namespace, which is given with -n;
+    and a namespace, if given, not empty.
+    """
+    from yellowdog_cli.utils.noun_registry import EXPORT_TYPES
+
+    resolved: list[str] = []
+    for word in args.export_types or []:
+        matches = matching_type_words(word, EXPORT_TYPES)
+        if len(matches) == 1:
+            resolved.append(matches[0])
+        elif matches:
+            parser.error(f"'{word}' is ambiguous; it matches: {', '.join(matches)}")
+        else:
+            suggestion = did_you_mean(word, EXPORT_TYPES)
+            parser.error(
+                f"'{word}' is not a resource type"
+                + (f"; did you mean '{suggestion}'?" if suggestion else "")
+                + f" Choose from: {', '.join(EXPORT_TYPES)}"
+            )
+    args.export_types = resolved
+    if args.all_types and resolved:
+        parser.error("--all cannot be given with resource types")
+    if args.name_glob and "/" in args.name_glob:
+        parser.error(
+            f"--name '{args.name_glob}' holds a '/': give the namespace with -n,"
+            " and --name the name alone"
+        )
+    if getattr(args, "namespace", None) == "":
+        parser.error(
+            "the namespace is empty: give one with -n, or leave -n out to use"
+            " the configured namespace"
+        )
+
+
+COMMANDS["yd-resource-export"] = Command(
+    name="yd-resource-export",
+    purpose="exporting resources as specifications",
+    summary="Write existing resources out as resource specifications",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        EXPORT_TYPES_OPTION,
+        EXPORT_ALL,
+        EXPORT_NAME,
+        EXPORT_INTERACTIVE,
+        EXPORT_WITH_DEPENDENCIES,
+        EXPORT_INCLUDE_CREDENTIALS,
+        EXPORT_OUTPUT_FILE,
+        EXPORT_JSON,
+    ),
+    requires_namespace_and_tag=False,
+    validators=(check_export_options,),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Write existing resources out as resource specifications that"
+        " yd_resource_create reads back, as a JSON array, changing nothing."
+        " With no types, the Compute Source and Compute Requirement Templates,"
+        " Image Families and Namespace Policy of the namespace."
+    ),
+    script=False,
+)
+
 COMMANDS["yd-list"] = Command(
     name="yd-list",
     purpose="listing all kinds of YellowDog items",
@@ -3362,6 +3599,51 @@ COMMANDS["yd-list"] = Command(
         " task-groups, nodes, workers, images, ...). Returns an array of"
         " summary objects; details adds each entity's full object."
     ),
+)
+
+# --- yd-status -----------------------------------------------------------
+
+COMMANDS["yd-status"] = Command(
+    name="yd-status",
+    purpose=(
+        "showing the Work Requirements, Worker Pools and Compute Requirements"
+        " in the namespace, with their progress and health"
+    ),
+    summary="Show the work and compute in the namespace",
+    kind=CommandKind.API,
+    options=(
+        SORT,
+        REVERSE,
+        VARIABLE,
+        NAMESPACE.variant(help="the namespace to show"),
+        ACTIVE_ONLY.variant(
+            help=(
+                "show only the active Work Requirements, Worker Pools and"
+                " Compute Requirements, as 'yd list --active-only' lists them"
+            )
+        ),
+        TAG.variant(
+            help=(
+                "the tag to show by ('' for the whole namespace): Work"
+                " Requirements and Compute Requirements with it, and Worker"
+                " Pools with it in their names"
+            )
+        ),
+        JSON.variant(
+            help=(
+                "print one JSON document holding the three lists, and any"
+                " searches that failed"
+            )
+        ),
+    ),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Show the Work Requirements, Worker Pools and Compute Requirements in"
+        " the namespace (and tag), active_only keeping the active alone, as"
+        " one object holding the three lists of summaries and any searches"
+        " that failed."
+    ),
+    script=False,
 )
 
 # --- yd-cloud-info -------------------------------------------------------
@@ -4295,6 +4577,167 @@ COMMANDS["yd-submit"] = Command(
         " yd_data_download; yd_schema work-requirement gives the schema to"
         " compose against."
     ),
+)
+
+# --- yd-resubmit ---------------------------------------------------------
+
+RESUBMIT_FAILED = option(
+    "--failed",
+    action="store_true",
+    required=False,
+    help="resubmit the FAILED Tasks (the default if neither option is given)",
+)
+RESUBMIT_ABORTED = option(
+    "--aborted",
+    action="store_true",
+    required=False,
+    help="resubmit the ABORTED Tasks, alone or with '--failed'",
+)
+RESUBMIT_TASK_GROUP = option(
+    "--task-group",
+    dest="task_group_patterns",
+    action="append",
+    metavar="<pattern>",
+    required=False,
+    help=(
+        "resubmit only Tasks of Task Groups whose names match this name or"
+        " glob (repeatable; several are alternatives)"
+    ),
+)
+RESUBMIT_TASK = option(
+    "--task",
+    dest="task_patterns",
+    action="append",
+    metavar="<pattern>",
+    required=False,
+    help=(
+        "resubmit only Tasks whose names match this name or glob (repeatable;"
+        " several are alternatives); only FAILED or ABORTED Tasks are resubmitted"
+    ),
+)
+RESUBMIT_TASK_ID = option(
+    "--task-id",
+    dest="task_ids",
+    action="append",
+    metavar="<task-ID>",
+    required=False,
+    help=(
+        "a Task to resubmit by its ID, in any finished state; repeat for more;"
+        " the Work Requirement may then be left out; not with '--task-group',"
+        " '--task', '--failed' or '--aborted'"
+    ),
+)
+RESUBMIT_TARGET = option(
+    "resubmit_target",
+    metavar="<work-requirement-name-or-ID>",
+    type=str,
+    nargs="?",
+    help=(
+        "the name or YellowDog ID of the Work Requirement whose Tasks are"
+        " resubmitted; may be left out with '--task-id'"
+    ),
+)
+
+
+def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-resubmit's options that cannot apply together, refused rather than
+    ignored: '--add-to' extends a Work Requirement that already has its own
+    name and state, and writes nothing to a file; '--output-file' submits
+    nothing, so there is nothing to follow or hold; '--task-id' names the
+    Tasks exactly, so the options that choose them otherwise do not apply,
+    and a Work Requirement is given, or Tasks to work it out from.
+    """
+    if args.resubmit_target is None and not args.task_ids:
+        parser.error("give a Work Requirement, or Tasks with --task-id")
+    if args.task_ids:
+        for dest, flag in (
+            ("task_group_patterns", "--task-group"),
+            ("task_patterns", "--task"),
+            ("failed", "--failed"),
+            ("aborted", "--aborted"),
+        ):
+            if getattr(args, dest, None):
+                parser.error(f"--task-id cannot be used with {flag}")
+    if args.add_to is not None:
+        for dest, flag in (
+            ("resubmit_name", "--name"),
+            ("export_file", "--output-file"),
+            ("hold", "--hold"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--add-to cannot be used with {flag}")
+    if args.export_file is not None:
+        for dest, flag in (
+            ("follow", "--follow"),
+            ("progress", "--progress"),
+            ("hold", "--hold"),
+        ):
+            if getattr(args, dest, False):
+                parser.error(f"--output-file cannot be used with {flag}")
+
+
+COMMANDS["yd-resubmit"] = Command(
+    name="yd-resubmit",
+    purpose="resubmitting failed, aborted or named Tasks",
+    summary="Resubmit a Work Requirement's failed, aborted or named Tasks",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        RESUBMIT_FAILED,
+        RESUBMIT_ABORTED,
+        RESUBMIT_TASK_GROUP,
+        RESUBMIT_TASK,
+        RESUBMIT_TASK_ID,
+        ADD_TO.variant(
+            help=(
+                "add the Tasks to this existing Work Requirement (a name or"
+                " YellowDog ID) instead of creating a new one"
+            )
+        ),
+        NAME.variant(
+            dest="resubmit_name",
+            metavar="<name>",
+            help="the new Work Requirement's name, by default '<name>-resubmit-<n>'",
+        ),
+        EXPORT_OUTPUT_FILE.variant(
+            help=(
+                "write the new Work Requirement to this file, as"
+                " 'yd wr submit --json-raw' takes it, and submit nothing"
+            )
+        ),
+        FOLLOW,
+        PROGRESS.variant(
+            help=(
+                "display a live progress bar showing Task completion; "
+                "implies following the Work Requirement to completion"
+            )
+        ),
+        HOLD,
+        TASK_BATCH_SIZE,
+        PARALLEL_BATCHES,
+        PAUSE_BETWEEN_BATCHES,
+        DRY_RUN_ACTION,
+        ENTITY_JSON.variant(
+            help=(
+                "emit the created entity as JSON; with --dry-run, the Work"
+                " Requirement that would be submitted; not with --progress"
+            )
+        ),
+        RESUBMIT_TARGET,
+    ),
+    requires_namespace_and_tag=True,
+    validators=(check_json_excludes_streaming, check_resubmit_combinations),
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Resubmit a Work Requirement's FAILED (and, with aborted, ABORTED)"
+        " Tasks as a new Work Requirement, or into an existing one with"
+        " add_to. Returns {id, name, namespace, type, resubmittedFrom,"
+        " taskCount} of the Work Requirement; with dry_run, the document"
+        " instead."
+    ),
+    script=False,
 )
 
 # --- yd-terminate --------------------------------------------------------

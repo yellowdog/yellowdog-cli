@@ -53,6 +53,11 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.active_entities import (
+    ACTIVE_COMPUTE_REQUIREMENT_STATUSES,
+    INACTIVE_WORK_REQUIREMENT_STATUSES,
+    INACTIVE_WORKER_POOL_STATUSES,
+)
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
@@ -620,13 +625,7 @@ def list_work_requirements(ctx: RunContext):
         print_info("Listing Tasks with errors only")
 
     exclude_filter = (
-        [
-            WorkRequirementStatus.COMPLETED,
-            WorkRequirementStatus.CANCELLED,
-            WorkRequirementStatus.FAILED,
-        ]
-        if ctx.args.active_only
-        else []
+        list(INACTIVE_WORK_REQUIREMENT_STATUSES) if ctx.args.active_only else []
     )
     work_requirement_summaries: list[WorkRequirementSummary]
     if ctx.args.name_glob and ctx.args.entity_type == ET_WORK_REQUIREMENTS:
@@ -1198,11 +1197,7 @@ def list_worker_pools(ctx: RunContext):
         )
         searched_namespace = ctx.config.namespace
 
-    excluded_states = (
-        [WorkerPoolStatus.TERMINATED, WorkerPoolStatus.SHUTDOWN]
-        if ctx.args.active_only
-        else []
-    )
+    excluded_states = INACTIVE_WORKER_POOL_STATUSES if ctx.args.active_only else ()
 
     # Only the namespaces searched, matched exactly: the search matches a
     # substring, which would let 'dev' take in 'dev-team'
@@ -1270,18 +1265,6 @@ def list_worker_pools(ctx: RunContext):
         print_numbered_object_list(ctx.client, sorted_objects(worker_pool_summaries))
 
 
-# A Compute Requirement still provisioning counts as active
-_ACTIVE_CR_STATUSES: tuple[ComputeRequirementStatus, ...] = (
-    ComputeRequirementStatus.NEW,
-    ComputeRequirementStatus.PROVISIONING,
-    ComputeRequirementStatus.STARTING,
-    ComputeRequirementStatus.RUNNING,
-    ComputeRequirementStatus.STOPPING,
-    ComputeRequirementStatus.STOPPED,
-    ComputeRequirementStatus.TERMINATING,
-)
-
-
 def _compute_requirement_within(ctx: RunContext, target: str) -> tuple[str, str | None]:
     """
     The Compute Requirement a '--within' target names, as its ID and name:
@@ -1313,7 +1296,7 @@ def _compute_requirement_within(ctx: RunContext, target: str) -> tuple[str, str 
         ctx.client,
         target,
         ctx.config.namespace,
-        _ACTIVE_CR_STATUSES,
+        ACTIVE_COMPUTE_REQUIREMENT_STATUSES,
     )
     return cast(str, found.id), found.name
 
@@ -1430,7 +1413,7 @@ def list_compute_requirements(ctx: RunContext):
 
     if ctx.args.active_only:
         included_statuses: list[ComputeRequirementStatus] | None = list(
-            _ACTIVE_CR_STATUSES
+            ACTIVE_COMPUTE_REQUIREMENT_STATUSES
         )
     else:
         included_statuses = None

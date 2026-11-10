@@ -372,6 +372,19 @@ class TestToArgv:
         )
         assert argv == ["--variable=a=1", "--", "ydid:x"]
 
+    def test_an_append_array_is_repeated_and_a_flag_stays_a_value(self, tmp_path):
+        from yellowdog_cli.utils.args import CLIParser
+
+        task = "ydid:task:000000:00000000-0000-0000-0000-000000000001:0:1"
+        argv, _ = to_argv(
+            TOOLS["yd_workrequirement_resubmit"],
+            {"task_ids": [task, "--show-secrets"]},
+            str(tmp_path),
+        )
+        assert argv == [f"--task-id={task}", "--task-id=--show-secrets"]
+        parser = CLIParser(command="yd wr resubmit", argv=argv)
+        assert parser.task_ids == [task, "--show-secrets"]
+
     def test_a_flag_as_a_value_stays_a_value(self, tmp_path):
         # A value is one argv entry joined to its long flag, so argparse
         # cannot take a value that looks like a flag as that flag: as two

@@ -57,6 +57,8 @@ from yellowdog_cli.utils.entity_names import (
     ET_COMPUTE_REQUIREMENT_TEMPLATES,
     ET_COMPUTE_REQUIREMENTS,
     ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_CONFIGURED_WORKER_POOLS,
+    ET_CREDENTIALS,
     ET_GROUPS,
     ET_IMAGE_FAMILIES,
     ET_INSTANCES,
@@ -118,6 +120,25 @@ RESOURCE_LIST_TYPES = frozenset(
         ET_ROLES,
         ET_USERS,
     }
+)
+
+# The type words 'yd resource export' takes, in the order of resource
+# creation: what 'create' makes, less the built-in Permissions and Roles, with
+# the Configured Worker Pools and Credentials, which 'list' has no type for
+EXPORT_TYPES: tuple[str, ...] = (
+    ET_NAMESPACES,
+    ET_KEYRINGS,
+    ET_CREDENTIALS,
+    ET_IMAGE_FAMILIES,
+    ET_ATTRIBUTE_DEFINITIONS,
+    ET_COMPUTE_SOURCE_TEMPLATES,
+    ET_COMPUTE_REQUIREMENT_TEMPLATES,
+    ET_ALLOWANCES,
+    ET_NAMESPACE_POLICIES,
+    ET_CONFIGURED_WORKER_POOLS,
+    ET_GROUPS,
+    ET_APPLICATIONS,
+    ET_USERS,
 )
 
 # The YDID types 'yd resource show' shows
@@ -496,6 +517,12 @@ NOUNS: tuple[Noun, ...] = (
                 "yd-submit",
                 "Submit a Work Requirement",
                 "submitting a Work Requirement",
+            ),
+            Verb(
+                "resubmit",
+                "yd-resubmit",
+                "Resubmit a Work Requirement's failed, aborted or named Tasks",
+                "resubmitting failed, aborted or named Tasks",
             ),
             Verb(
                 "cancel",
@@ -891,6 +918,18 @@ NOUNS: tuple[Noun, ...] = (
                 "Create and update resources",
                 "creating and updating resources",
             ),
+            Verb(
+                "plan",
+                "yd-resource-plan",
+                "Show what creating resources would change",
+                "showing what creating resources would change",
+            ),
+            Verb(
+                "export",
+                "yd-resource-export",
+                "Write existing resources out as specifications",
+                "exporting resources as specifications",
+            ),
             Verb("remove", "yd-remove", "Remove resources", "removing resources"),
             Verb(
                 "list",
@@ -902,7 +941,9 @@ NOUNS: tuple[Noun, ...] = (
                     "entity_type": {
                         "help": "the type of resource to list: "
                         + ", ".join(sorted(RESOURCE_LIST_TYPES))
-                        + "; an unambiguous prefix (e.g. 'key') is accepted"
+                        + ", in any case; a singular, a specification's"
+                        " resource name (e.g. 'Keyring') or an unambiguous"
+                        " prefix (e.g. 'key') is accepted"
                     }
                 },
                 validators=(_check_resource_type,),

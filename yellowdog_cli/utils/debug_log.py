@@ -17,11 +17,11 @@ for. Off, nothing is formatted and nothing is written.
 
 A line is '<date> <time> : DEBUG : [+<seconds since start>s] <module>:
 <message>', the module named by its path in the package less 'yellowdog_cli'
-and 'utils' ('submit', 'load_config', 'dataclient.operations'), plain text, prefixed as an info line is (printing.print_string(),
-the process ID too under '--print-pid'), and a traceback logged with it
-('exc_info=True') follows it. Never log a
-credential: no request headers, no key or secret, no variable's value, a
-remote only through shown_remote().
+and 'utils' ('submit', 'load_config', 'dataclient.operations'), plain text,
+prefixed as an info line is (printing.print_string(), the process ID too under
+'--print-pid'), and a traceback logged with it ('exc_info=True') follows it.
+Never log a credential: no request headers, no key or secret, no variable's
+value, a remote only through shown_remote().
 
 Stdlib only: every command imports it, before any SDK.
 """

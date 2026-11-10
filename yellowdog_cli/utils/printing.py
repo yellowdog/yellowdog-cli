@@ -11,6 +11,8 @@ import logging
 import re
 import sys
 from bisect import bisect_left
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from json import dumps as json_dumps
 from os import get_terminal_size, getpid
@@ -215,6 +217,26 @@ def print_simple(
         CONSOLE.print(escape(log_message), soft_wrap=True)
 
 
+# Set while info_silenced() holds: print_info() prints nothing, unless told
+# to override, while warnings and errors still print
+_INFO_SILENCED = False
+
+
+@contextmanager
+def info_silenced() -> Iterator[None]:
+    """
+    print_info() silenced for a 'with' block, warnings and errors still
+    printed: for code run for its result whose progress messages are not the
+    command's (yd resource plan's use of the creators' preparation).
+    """
+    global _INFO_SILENCED
+    previous, _INFO_SILENCED = _INFO_SILENCED, True
+    try:
+        yield
+    finally:
+        _INFO_SILENCED = previous
+
+
 def print_info(
     log_message: str = "",
     override_quiet: bool = False,
@@ -229,7 +251,11 @@ def print_info(
     other colouring.
     """
     if (
-        OUTPUT.quiet or OUTPUT.json_output or OUTPUT.ids_only or OUTPUT.count_only
+        OUTPUT.quiet
+        or OUTPUT.json_output
+        or OUTPUT.ids_only
+        or OUTPUT.count_only
+        or _INFO_SILENCED
     ) and override_quiet is False:
         return
 
@@ -443,12 +469,20 @@ def _sdk_json(yd_object: object) -> Any:
     return Json.dump(yd_object)
 
 
+def objects_as_json(objects: list) -> list:
+    """
+    A list of SDK model objects (or plain dicts) as JSON data, each object
+    serialised as '--json' serialises it.
+    """
+    return [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
+
+
 def print_objects_as_json(objects: list) -> None:
     """
     Serialise a list of SDK model objects (or plain dicts) as a JSON array
     and print to stdout with no Rich formatting.  Used by --json mode.
     """
-    data = [obj if isinstance(obj, dict) else _sdk_json(obj) for obj in objects]
+    data = objects_as_json(objects)
     if OUTPUT.strip_ids:
         stripped = []
         for item in data:

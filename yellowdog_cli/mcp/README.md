@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov  3 09:40:56 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 09:30:44 GMT 2026 -->
 
 <!--te-->
 
@@ -158,9 +158,12 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_node_stop` | destructive | `yd node stop` | Stop the Instances of Nodes |
 | `yd_node_terminate` | destructive | `yd node terminate` | Terminate the Instances of Nodes |
 | `yd_resource_create` | acting | `yd resource create` | Create and update resources |
+| `yd_resource_export` | read-only | `yd resource export` | Write existing resources out as specifications |
+| `yd_resource_plan` | read-only | `yd resource plan` | Show what creating resources would change |
 | `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
 | `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |
 | `yd_show` | read-only | `yd show` | Show the JSON details of entities referenced by their YDIDs |
+| `yd_status` | read-only | `yd status` | Show the work and compute in the namespace |
 | `yd_task_abort` | destructive | `yd task abort` | Abort running Tasks |
 | `yd_task_cancel` | destructive | `yd task cancel` | Cancel Tasks |
 | `yd_taskgroup_compare` | read-only | `yd taskgroup compare` | Compare a Task Group against Worker Pool(s) |
@@ -177,6 +180,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_workrequirement_finish` | destructive | `yd workrequirement finish` | Finish Work Requirements |
 | `yd_workrequirement_hold` | destructive | `yd workrequirement hold` | Hold (pause) running Work Requirements |
 | `yd_workrequirement_priority` | destructive | `yd workrequirement priority` | Change the priority of Work Requirements and Task Groups |
+| `yd_workrequirement_resubmit` | acting | `yd workrequirement resubmit` | Resubmit a Work Requirement's failed, aborted or named Tasks |
 | `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
 | `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
 

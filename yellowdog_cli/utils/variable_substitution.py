@@ -100,7 +100,7 @@ _RAW_CLOSING = "\ue002"
 # checked, whatever the pass's own, so that the Platform's '{{provider}}' or
 # '{{node.details.hostname}}' is neither substituted nor reported: User Data,
 # and a Worker Pool's Node Actions ('nodeEvents', everything under it)
-_PLATFORM_MUSTACHE_PROPERTIES = frozenset({USERDATA, PROP_NODE_EVENTS})
+PLATFORM_MUSTACHE_PROPERTIES = frozenset({USERDATA, PROP_NODE_EVENTS})
 
 # Whether an expression left unsubstituted is reported as an undefined
 # variable. Off until a command's own processing begins (the command
@@ -751,7 +751,7 @@ def _substitute_insitu_pass(
     """
     One substitution pass over 'data', in-situ, returning the paths of the
     properties it changed or removed (e.g. 'taskGroups[0].name'). Within the
-    _PLATFORM_MUSTACHE_PROPERTIES, the Worker Pool delimiters are used.
+    PLATFORM_MUSTACHE_PROPERTIES, the Worker Pool delimiters are used.
     """
     changed: list[str] = []
 
@@ -777,7 +777,7 @@ def _substitute_insitu_pass(
             keys_to_delete = []
             for key_, value_ in data.items():
                 key_path = f"{path}.{key_}" if path else str(key_)
-                key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
+                key_mustache = mustache or key_ in PLATFORM_MUSTACHE_PROPERTIES
                 if isinstance(value_, str):
                     result = _substitute(value_, key_path, key_mustache)
                     if result is _UNSET:
@@ -1060,7 +1060,7 @@ def _unsubstituted_references(
     """
     The (expression, variable reference, property path) of every variable
     reference left in 'data' in the delimiters being substituted -- the
-    Worker Pool ones within the _PLATFORM_MUSTACHE_PROPERTIES, as the passes
+    Worker Pool ones within the PLATFORM_MUSTACHE_PROPERTIES, as the passes
     use. The reference is the
     expression's variable name, or 'env:' and the environment variable's,
     without delimiters or type tag. An expression that is not a reference
@@ -1102,7 +1102,7 @@ def _unsubstituted_references(
             else ((None, f"{path}[{index}]", item) for index, item in enumerate(data))
         )
         for key_, item_path, value_ in items:
-            key_mustache = mustache or key_ in _PLATFORM_MUSTACHE_PROPERTIES
+            key_mustache = mustache or key_ in PLATFORM_MUSTACHE_PROPERTIES
             if isinstance(value_, str):
                 if key_mustache:
                     opening, closing = WP_VARIABLES_PREFIX, WP_VARIABLES_POSTFIX

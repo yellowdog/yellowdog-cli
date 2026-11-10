@@ -30,6 +30,7 @@ from yellowdog_cli.utils.exit_codes import MISSING_PERMISSION_TEXT, UNAUTHORIZED
 from yellowdog_cli.utils.interactive import wait_for_enter
 from yellowdog_cli.utils.limits import (
     BATCH_SUBMIT_RETRY_DELAY,
+    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     MAX_BATCH_SUBMIT_ATTEMPTS,
 )
 from yellowdog_cli.utils.printing import print_error, print_info, print_warning
@@ -95,6 +96,17 @@ class Batches:
         if failure is not None:
             raise failure
         return total
+
+
+def parallel_batch_count(ctx: RunContext, configured: int | None) -> int:
+    """
+    The number of Task batches to upload in parallel: the command line's,
+    else the configuration's ('configured'), else the default.
+    """
+    for parallel_batches in (ctx.args.parallel_batches, configured):
+        if parallel_batches is not None:
+            return parallel_batches
+    return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
 
 
 def run_batches(

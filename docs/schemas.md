@@ -9,7 +9,7 @@
    * [The Compiled-Schema Cache](#the-compiled-schema-cache)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov  6 10:15:13 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov  9 12:22:01 GMT 2026 -->
 
 <!--te-->
 

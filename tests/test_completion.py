@@ -598,6 +598,18 @@ class TestAnOptionsValueTypedWithIt:
         shown = complete(["yd", "allowance", "show"], "").lookup
         assert shown is not None and shown.lookup.resource == "Allowance"
 
+    def test_after_a_task_id_the_work_requirement_completes(self):
+        from yellowdog_cli.utils.args import CLIParser
+
+        task = "ydid:task:000000:0a1b2c3d-0000-4000-8000-000000000001:0:0"
+        words = ["yd", "wr", "resubmit", "--task-id", task]
+        result = complete(words, "")
+        assert result.lookup is not None
+        assert result.lookup.lookup.entity == ET_WORK_REQUIREMENTS
+        parser = CLIParser(command="yd wr resubmit", argv=["--task-id", task, "my-run"])
+        assert parser.resubmit_target == "my-run"
+        assert parser.task_ids == [task]
+
     def test_a_task_groups_priority_completes_its_names(self):
         from yellowdog_cli.utils.completion_targets import LOOKUPS
 

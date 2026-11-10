@@ -110,6 +110,35 @@ def work_requirement_id_of_task_group(task_group_id: str) -> str:
     return task_group_id.rsplit(":", 1)[0].replace(TYPE_TASKGRP, TYPE_WORKREQ, 1)
 
 
+def task_group_id_of_task(task_id: str) -> str:
+    """
+    The ID of the Task Group a Task belongs to: a Task's YDID is its Task
+    Group's, retyped, with the Task's index appended.
+    """
+    return task_id.rsplit(":", 1)[0].replace(TYPE_TASK, TYPE_TASKGRP, 1)
+
+
+# A Task's YDID ends with its Task Group's index and its own
+_TASK_ID_INDICES = re.compile(r":\d+:\d+$")
+
+
+def is_task_id(value: str) -> bool:
+    """
+    Whether 'value' has the shape of a Task's YDID, which ends with the
+    indices of its Task Group and of the Task.
+    """
+    return get_ydid_type(value) == YDIDType.TASK and bool(
+        _TASK_ID_INDICES.search(value)
+    )
+
+
+def work_requirement_id_of_task(task_id: str) -> str:
+    """
+    The ID of the Work Requirement a Task belongs to.
+    """
+    return work_requirement_id_of_task_group(task_group_id_of_task(task_id))
+
+
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _HEX = r"[0-9a-fA-F]+"
 

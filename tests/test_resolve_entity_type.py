@@ -4,6 +4,7 @@ Unit tests for resolve_entity_type() in yellowdog_cli.utils.command_registry.
 Tests cover:
   - exact full names
   - single uppercase synonyms (all 21)
+  - any case, a specification's resource name, a singular
   - unambiguous prefix matching
   - ambiguous prefix → error
   - unknown value → error
@@ -82,10 +83,12 @@ class TestPrefixMatching:
         assert "worker-pools" in msg
         assert "workers" in msg
 
-    @pytest.mark.parametrize("prefix", ["compute-s", "compute-source"])
-    def test_compute_source_templates_and_compute_sources_share_a_prefix(self, prefix):
+    def test_compute_source_templates_and_compute_sources_share_a_prefix(self):
         with pytest.raises(argparse.ArgumentTypeError, match="ambiguous"):
-            resolve_entity_type(prefix)
+            resolve_entity_type("compute-s")
+
+    def test_a_singular_is_not_ambiguous_with_the_longer_words(self):
+        assert resolve_entity_type("compute-source") == "compute-sources"
 
     def test_unknown_value_raises(self):
         with pytest.raises(argparse.ArgumentTypeError, match="unknown entity type"):
@@ -99,8 +102,9 @@ class TestPrefixMatching:
             assert entity_type in msg
 
     def test_prefix_does_not_match_synonym_namespace(self):
-        # 'W' is a synonym, but 'WO' is not — falls through to prefix matching
-        with pytest.raises(argparse.ArgumentTypeError, match="unknown entity type"):
+        # 'W' is a synonym, but 'WO' is not — it is the prefix 'wo', whatever
+        # its case, of three types
+        with pytest.raises(argparse.ArgumentTypeError, match="ambiguous"):
             resolve_entity_type("WO")
 
     @pytest.mark.parametrize(
@@ -132,3 +136,53 @@ class TestPrefixMatching:
         else:
             with pytest.raises(argparse.ArgumentTypeError):
                 resolve_entity_type(prefix)
+
+
+# ---------------------------------------------------------------------------
+# Case, resource names and singulars
+# ---------------------------------------------------------------------------
+
+
+class TestCaseAndResourceNames:
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("Keyrings", "keyrings"),
+            ("KEYRINGS", "keyrings"),
+            ("Image-Families", "image-families"),
+            ("Key", "keyrings"),
+            ("keyring", "keyrings"),
+            ("Namespace", "namespaces"),
+            ("image-family", "image-families"),
+            ("worker", "workers"),
+        ],
+    )
+    def test_any_case_and_a_singular_resolve(self, value: str, expected: str):
+        assert resolve_entity_type(value) == expected
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("Keyring", "keyrings"),
+            ("ComputeSourceTemplate", "compute-source-templates"),
+            ("ComputeRequirementTemplate", "compute-requirement-templates"),
+            ("MachineImageFamily", "image-families"),
+            ("NamespacePolicy", "namespace-policies"),
+            ("StringAttributeDefinition", "attribute-definitions"),
+            ("NumericAttributeDefinition", "attribute-definitions"),
+            ("InternalUser", "users"),
+            ("ExternalUser", "users"),
+            ("Allowance", "allowances"),
+            ("computesourcetemplate", "compute-source-templates"),
+        ],
+    )
+    def test_a_specification_resource_name_resolves(self, name: str, expected: str):
+        assert resolve_entity_type(name) == expected
+
+    def test_a_resource_name_with_no_list_type_is_unknown(self):
+        # Credentials are exported, never listed
+        with pytest.raises(argparse.ArgumentTypeError, match="unknown entity type"):
+            resolve_entity_type("Credential")
+
+    def test_a_capital_synonym_is_not_lower_cased(self):
+        assert resolve_entity_type("W") == "work-requirements"

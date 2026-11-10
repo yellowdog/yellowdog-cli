@@ -783,8 +783,18 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def fail_on_changes(self) -> bool | None:
+        return self.args.fail_on_changes
+
+    @property
+    @allow_missing_attribute
     def regenerate_app_keys(self) -> bool | None:
         return self.args.regenerate_app_keys
+
+    @property
+    @allow_missing_attribute
+    def force_update(self) -> bool | None:
+        return self.args.force_update
 
     # -----------------------------------------------------------------------
     # yd-remove
@@ -996,6 +1006,74 @@ class CLIParser:
     @allow_missing_attribute
     def output_file(self) -> str | None:
         return self.args.output_file
+
+    # -----------------------------------------------------------------------
+    # yd-resource-export
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def export_types(self) -> list[str] | None:
+        return self.args.export_types
+
+    @property
+    @allow_missing_attribute
+    def all_types(self) -> bool | None:
+        return self.args.all_types
+
+    @property
+    @allow_missing_attribute
+    def with_dependencies(self) -> bool | None:
+        return self.args.with_dependencies
+
+    @property
+    @allow_missing_attribute
+    def include_credentials(self) -> bool | None:
+        return self.args.include_credentials
+
+    @property
+    @allow_missing_attribute
+    def export_file(self) -> str | None:
+        return self.args.export_file
+
+    # -----------------------------------------------------------------------
+    # yd-resubmit
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def failed(self) -> bool | None:
+        return self.args.failed
+
+    @property
+    @allow_missing_attribute
+    def aborted(self) -> bool | None:
+        return self.args.aborted
+
+    @property
+    @allow_missing_attribute
+    def task_group_patterns(self) -> list[str] | None:
+        return self.args.task_group_patterns
+
+    @property
+    @allow_missing_attribute
+    def task_patterns(self) -> list[str] | None:
+        return self.args.task_patterns
+
+    @property
+    @allow_missing_attribute
+    def task_ids(self) -> list[str] | None:
+        return self.args.task_ids
+
+    @property
+    @allow_missing_attribute
+    def resubmit_name(self) -> str | None:
+        return self.args.resubmit_name
+
+    @property
+    @allow_missing_attribute
+    def resubmit_target(self) -> str | None:
+        return self.args.resubmit_target
 
     # -----------------------------------------------------------------------
     # yd-compare

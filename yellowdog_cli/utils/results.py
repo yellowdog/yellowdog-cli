@@ -46,6 +46,21 @@ def record(item: dict | Any) -> None:
     _ITEMS.append(item)
 
 
+def record_count() -> int:
+    """
+    How many items have been recorded: where a run starts, for
+    records_since().
+    """
+    return len(_ITEMS)
+
+
+def records_since(start: int) -> list[Any]:
+    """
+    The items recorded since record_count() was 'start'.
+    """
+    return _ITEMS[start:]
+
+
 def record_action(
     entity: Any,
     entity_type: str,
@@ -105,8 +120,8 @@ def record_resource(
 
     'resource_type' is the specification's 'resource' ('Keyring'); 'name'
     the name the command reports it by; 'id' its YellowDog ID, or None when
-    unknown; 'action' one of 'created', 'updated', 'removed', 'skipped' or
-    'failed'.
+    unknown; 'action' one of 'created', 'updated', 'unchanged', 'removed',
+    'skipped' or 'failed'.
     """
     item: dict[str, Any] = {
         "resource": resource_type,
@@ -121,15 +136,26 @@ def record_resource(
 
 
 def record_entity(
-    entity_id: str | None, name: str | None, namespace: str | None, entity_type: str
+    entity_id: str | None,
+    name: str | None,
+    namespace: str | None,
+    entity_type: str,
+    **extra: Any,
 ) -> None:
     """
     Record the entity a yd-submit, yd-provision or yd-instantiate run
     created, as {"id", "name", "namespace", "type"}, 'entity_type' spelled
-    as yd-list spells it ('work-requirements'). See record_document_part().
+    as yd-list spells it ('work-requirements'), and any 'extra' fields. See
+    record_document_part().
     """
     record_document_part(
-        {"id": entity_id, "name": name, "namespace": namespace, "type": entity_type}
+        {
+            "id": entity_id,
+            "name": name,
+            "namespace": namespace,
+            "type": entity_type,
+            **extra,
+        }
     )
 
 

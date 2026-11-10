@@ -17,9 +17,9 @@ from yellowdog_client.model import (
     Task,
     TaskGroup,
     WorkRequirement,
-    WorkRequirementStatus,
 )
 
+from yellowdog_cli.utils.add_target import work_requirement_to_add_to
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.csv_data import (
@@ -28,13 +28,8 @@ from yellowdog_cli.utils.csv_data import (
 from yellowdog_cli.utils.dataclient.rclone import upgrade_rclone, which_rclone
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.entity_utils import (
-    AmbiguousNameError,
     count_tasks_in_task_group,
-    find_work_requirement_by_name,
     task_name_taken,
-)
-from yellowdog_cli.utils.exit_codes import (
-    NotFoundError,
 )
 from yellowdog_cli.utils.follow_utils import (
     follow_events,
@@ -44,7 +39,6 @@ from yellowdog_cli.utils.follow_utils import (
 from yellowdog_cli.utils.json_raw import submit_json_raw
 from yellowdog_cli.utils.lazy import lazy, value
 from yellowdog_cli.utils.limits import (
-    DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS,
     TASK_COUNT_UPDATE_POLL_INTERVAL,
     TASK_COUNT_UPDATE_WAIT,
 )
@@ -56,7 +50,6 @@ from yellowdog_cli.utils.load_config import (
 from yellowdog_cli.utils.misc_utils import (
     format_yd_name,
     generate_id,
-    is_http_not_found,
     link_entity,
 )
 from yellowdog_cli.utils.paths import relative_if_possible
@@ -99,6 +92,7 @@ from yellowdog_cli.utils.submit_utils import (
     update_config_work_requirement_object,
 )
 from yellowdog_cli.utils.task_batches import (
+    parallel_batch_count,
     run_batches,
     submit_with_retries,
 )
@@ -110,6 +104,7 @@ from yellowdog_cli.utils.task_generation import (
 from yellowdog_cli.utils.task_group_position import TaskGroupPosition
 from yellowdog_cli.utils.task_groups import (
     check_task_groups,
+    check_task_types_allowed,
     create_task_group,
     expand_task_groups,
     promote_task_type,
@@ -131,7 +126,7 @@ from yellowdog_cli.utils.variable_syntax import (
     L_WR_NAME,
 )
 from yellowdog_cli.utils.wrapper import main_wrapper
-from yellowdog_cli.utils.ydid_utils import YDIDType, get_ydid_type
+from yellowdog_cli.utils.ydid_utils import YDIDType
 
 _LOG = logging.getLogger(__name__)
 
@@ -425,7 +420,9 @@ def add_to_existing_work_requirement(
     specification named as one already there takes its Tasks, numbered on
     from those it has, and any other is appended to the Work Requirement.
     """
-    work_requirement = _work_requirement_to_add_to(run, cast(str, run.ctx.args.add_to))
+    work_requirement = work_requirement_to_add_to(
+        run.ctx, cast(str, run.ctx.args.add_to)
+    )
     existing_tgs: list[TaskGroup] = work_requirement.taskGroups or []
     wr_data = _specification(run, wr_data)
     _name_the_run(run, cast(str, work_requirement.name))
@@ -706,20 +703,7 @@ def _plan_extension(
     # and fail fast with a clear error, rather than letting the platform
     # reject those Tasks downstream.
     for _, spec_tg, _, existing_tg in matched:
-        existing_types = set(existing_tg.runSpecification.taskTypes)
-        spec_types = set(spec_tg.runSpecification.taskTypes)
-        missing_types = spec_types - existing_types
-        if missing_types:
-            raise ValueError(
-                f"Cannot add Tasks to existing Task Group '{existing_tg.name}':"
-                f" their {plural('Task Type', len(missing_types))}"
-                f" {sorted(missing_types)} {'is' if len(missing_types) == 1 else 'are'}"
-                " not in the"
-                f" Task Group's taskTypes allowlist {sorted(existing_types)}."
-                " A Task Group's taskTypes cannot be modified after creation;"
-                " either change the Tasks to use a supported Task Type, or"
-                " add them under a new Task Group name."
-            )
+        check_task_types_allowed(existing_tg, set(spec_tg.runSpecification.taskTypes))
 
     # New TGs take no task offset, numbered by where they were appended;
     # matched (existing) TGs are numbered by their own position, their task
@@ -1101,16 +1085,10 @@ def add_tasks_to_task_group(
 
 def _parallel_batches(run: _Submission) -> int:
     """
-    The number of Task batches to upload in parallel: the command line's,
-    else the configuration's, else the default.
+    The number of Task batches to upload in parallel, as
+    task_batches.parallel_batch_count() decides.
     """
-    for parallel_batches in (
-        run.ctx.args.parallel_batches,
-        run.config_wr.parallel_batches,
-    ):
-        if parallel_batches is not None:
-            return parallel_batches
-    return DEFAULT_PARALLEL_TASK_BATCH_UPLOAD_THREADS
+    return parallel_batch_count(run.ctx, run.config_wr.parallel_batches)
 
 
 def submit_batch_of_tasks_to_task_group(
@@ -1231,45 +1209,6 @@ def cleanup_on_failure(run: _Submission, work_requirement: WorkRequirement) -> N
         run.uploaded_files.delete()  # type: ignore[union-attr]
     except Exception as e:
         print_error(f"Unable to delete the files uploaded for its Tasks: {e}")
-
-
-# The states of a Work Requirement that can still take Tasks: a FINISHING one
-# takes no new ones, and the rest have finished or are being cancelled
-_ADDABLE_STATUSES = (WorkRequirementStatus.RUNNING, WorkRequirementStatus.HELD)
-
-
-def _work_requirement_to_add_to(run: _Submission, target: str) -> WorkRequirement:
-    """
-    The Work Requirement '--add-to' names, fetched in full: by its YDID,
-    whatever its namespace, or by its name, preferring the one that can still
-    take Tasks. Raises NotFoundError if there is none, and ValueError if it
-    cannot take Tasks (or the name is ambiguous).
-    """
-    if get_ydid_type(target) == YDIDType.WORK_REQUIREMENT:
-        work_requirement_id = target
-    else:
-        try:
-            summary = find_work_requirement_by_name(
-                run.ctx.client, target, run.ctx.config.namespace, _ADDABLE_STATUSES
-            )
-        except AmbiguousNameError as e:
-            raise ValueError(str(e)) from e
-        work_requirement_id = cast(str, summary.id)
-    try:
-        work_requirement = run.ctx.client.work_client.get_work_requirement_by_id(
-            work_requirement_id
-        )
-    except Exception as e:
-        if is_http_not_found(e):
-            raise NotFoundError(f"Cannot find Work Requirement {target}") from e
-        raise
-    if work_requirement.status not in _ADDABLE_STATUSES:
-        raise ValueError(
-            f"Work Requirement '{work_requirement.namespace}/{work_requirement.name}'"
-            f" is {work_requirement.status}, and cannot take Tasks: only a"
-            " RUNNING or HELD one can"
-        )
-    return work_requirement
 
 
 # Entry point

@@ -24,6 +24,7 @@ from yellowdog_cli.utils.results import (
     flush_results,
     record,
     record_document,
+    record_entity,
     record_failure_cause,
     reset_results,
 )
@@ -321,3 +322,18 @@ class TestPromptAtEndOfInput:
         out, err = capsys.readouterr()
         assert out == ""
         assert "Proceed?" in err
+
+
+class TestRecordEntity:
+    def test_extra_fields_join_the_record(self, json_mode, capsys):
+        json_mode(True)
+        record_entity("ydid:x", "wr", "ns", "work-requirements", taskCount=3)
+        flush_results()
+        document = json_loads(capsys.readouterr().out)
+        assert document == {
+            "id": "ydid:x",
+            "name": "wr",
+            "namespace": "ns",
+            "type": "work-requirements",
+            "taskCount": 3,
+        }

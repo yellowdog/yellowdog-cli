@@ -7,6 +7,7 @@
    * [Naming What a Command Acts On](#naming-what-a-command-acts-on)
    * [yd workrequirement](#yd-workrequirement)
       * [yd workrequirement submit](#yd-workrequirement-submit)
+      * [yd workrequirement resubmit](#yd-workrequirement-resubmit)
       * [yd workrequirement cancel](#yd-workrequirement-cancel)
       * [yd workrequirement hold](#yd-workrequirement-hold)
       * [yd workrequirement start](#yd-workrequirement-start)
@@ -52,6 +53,8 @@
    * [yd worker](#yd-worker)
    * [yd resource](#yd-resource)
       * [yd resource create](#yd-resource-create)
+      * [yd resource plan](#yd-resource-plan)
+      * [yd resource export](#yd-resource-export)
       * [yd resource remove](#yd-resource-remove)
    * [yd allowance](#yd-allowance)
       * [yd allowance boost](#yd-allowance-boost)
@@ -79,6 +82,7 @@
       * [yd show](#yd-show)
       * [yd follow](#yd-follow)
       * [yd wait](#yd-wait)
+      * [yd status](#yd-status)
       * [yd application](#yd-application)
       * [yd variables](#yd-variables)
       * [yd init](#yd-init)
@@ -92,7 +96,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov  6 10:15:10 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 12:34:35 GMT 2026 -->
 
 <!--te-->
 
@@ -253,6 +257,7 @@ Work Requirements: `yd workrequirement`, or `yd wr` for short.
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`submit`](#yd-workrequirement-submit) | Submit a Work Requirement, or add to one | `yd-submit` |
+| [`resubmit`](#yd-workrequirement-resubmit) | Resubmit a Work Requirement's failed, aborted or named Tasks |  |
 | [`cancel`](#yd-workrequirement-cancel) | Cancel Work Requirements | `yd-cancel` |
 | [`hold`](#yd-workrequirement-hold) | Hold (pause) running Work Requirements | `yd-hold` |
 | [`start`](#yd-workrequirement-start) | Start held Work Requirements | `yd-start` |
@@ -311,6 +316,37 @@ The specification file may also be supplied using the deprecated `--work-require
 
 See [Work Requirements](work-requirements.md) for the full specification reference, [Specifying Work Requirements using CSV Data](work-requirements.md#specifying-work-requirements-using-csv-data) for the CSV options, and [Adding Task Groups and Tasks to an Existing Work Requirement](work-requirements.md#adding-task-groups-and-tasks-to-an-existing-work-requirement) for `--add-to`.
 
+### yd workrequirement resubmit
+
+The `yd workrequirement resubmit` command runs a Work Requirement's failed Tasks again: it reads them from the Platform and submits copies of them as a new Work Requirement, in Task Groups with the original run specifications.
+
+```shell
+yd workrequirement resubmit [options] [<work-requirement-name-or-ID>]
+```
+
+The Work Requirement is a name (in the configured namespace, or as `namespace/name`) or a YellowDog ID; it may be left out when the Tasks are named with `--task-id`. Each Task keeps its name, tag, Task Type, arguments, task data, environment, data and timeout; nothing is substituted in the copies, so an argument holding `{{x}}` on the Platform is submitted as `{{x}}`.
+
+```shell
+yd workrequirement resubmit my-run --follow
+```
+
+Key options:
+- `--failed` — resubmit the `FAILED` Tasks; this is the default when neither `--failed` nor `--aborted` is given
+- `--aborted` — resubmit the `ABORTED` Tasks, alone or with `--failed`
+- `--task-group <pattern>` — resubmit only Tasks of Task Groups whose names match the name or glob; repeatable, several patterns being alternatives; a pattern matching no Task Group is an error (exit 6), raised before any Task is read
+- `--task <pattern>` — resubmit only Tasks whose names match the name or glob; repeatable, several patterns being alternatives; combined with `--task-group` a Task must satisfy both; only `FAILED` or `ABORTED` Tasks are resubmitted, so a `COMPLETED` Task is never copied; a pattern matching no Task is warned of, and no warning about Tasks left in `CANCELLED` or `DISCARDED` is made
+- `--task-id <task-ID>` — resubmit exactly this Task, in any finished state (`COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED`, `RESUBMITTED`); one ID per flag, repeated for more Tasks; the Work Requirement is worked out from the IDs, so `<work-requirement-name-or-ID>` is optional with it, and if given must be the one the Tasks belong to; refused with `--task-group`, `--task`, `--failed` and `--aborted`; a Task that does not exist is an error (exit 6) and one that has not finished is refused, both before anything is created
+- `--add-to`/`-A <name-or-id>` — add the Tasks to an existing Work Requirement instead of creating one; refused with `--name`, `--output-file` and `--hold`
+- `--name <name>` — the new Work Requirement's name; by default `<name>-resubmit-<n>`, `n` the lowest number from 1 not already taken in the namespace
+- `--output-file`/`-o <file>` — write the new Work Requirement to the file, in the format `yd workrequirement submit --json-raw` takes, and submit nothing; refused with `--follow`, `--progress` and `--hold`
+- `--follow`/`-f`, `--progress` — follow the new Work Requirement, as `yd workrequirement submit` does
+- `--hold`/`-H` — create the new Work Requirement held
+- `--task-batch-size`/`-b <n>`, `--parallel-batches`/`-l <n>`, `--pause-between-batches`/`-P [<seconds>]` — the batching of the Tasks' submission, as for `yd workrequirement submit`
+- `--dry-run`/`-D` — print the new Work Requirement as `--output-file` would write it, creating nothing
+- `--json` — emit a JSON object naming the new Work Requirement (`id`, `name`, `namespace`, `type`), with `resubmittedFrom` (the original's ID) and `taskCount`; with `--output-file`, the file, `resubmittedFrom` and `taskCount`; with `--dry-run`, the Work Requirement that would be submitted
+
+If no Task is selected, the command says so and exits 0 without creating anything (`--json` printing `[]`). A Work Requirement that has not finished is warned of, since Tasks still running may yet fail and are not resubmitted, and so are the Tasks of a Task Group left in `CANCELLED` or `DISCARDED`, which are never resubmitted (under `--task-group` alone, only for the chosen Task Groups; under `--task` or `--task-id`, no such warning is printed). The Platform purges a finished Work Requirement 24 hours after it ends, after which it cannot be found (exit 6).
+
 ### yd workrequirement cancel
 
 The `yd workrequirement cancel` command cancels any active Work Requirements, including any pending Task Groups and the Tasks they contain.
@@ -325,7 +361,7 @@ Names, IDs and glob patterns are taken as [Naming What a Command Acts On](#namin
 
 Explicit names and IDs are resolved in the order given, and are confirmed together; the Work Requirements are then cancelled before the Tasks. One that has already finished, or a Task that has, is skipped with a warning. If a request fails because the Application's credentials are not accepted, or the platform cannot be reached, nothing further is attempted, the remaining items are reported as skipped, and the command exits with that failure's code (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-Glob patterns cannot be mixed with literal names or YDIDs in the same command. Use `yd list work-requirements --name 'myproject-*'` to preview the matches first.
+Use `yd list work-requirements --name 'myproject-*'` to preview what a pattern matches first.
 
 By default, any Tasks that are currently running on Workers will continue to run to completion or until they fail. A Work Requirement that is already `CANCELLING` is left alone unless `--abort` is given, in which case it is cancelled again to abort its executing Tasks.
 
@@ -1214,13 +1250,15 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
+| [`plan`](#yd-resource-plan) | Show what creating resources would change | `yd-resource-plan` |
+| [`export`](#yd-resource-export) | Write existing resources out as specifications | `yd-resource-export` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
 | `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
 | `show` | `yd show`, for resource IDs, or names with `--type`, with `--show-members` |  |
 
 ### yd resource create
 
-The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON, Jsonnet or TOML files supplied on the command line, or `-` for one read from standard input as JSON. Each file can contain one or more resources. A resource can also be given on the command line, with `--type` and `--set`, in place of a file or as well as files (see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line)).
+The `yd resource create` command creates or updates YellowDog resources, specified in one or more JSON, Jsonnet or TOML files supplied on the command line, or `-` for one read from standard input as JSON. Each file can contain one or more resources. An existing resource that already matches its specification is left as it is, and a summary line counts the resources created, updated, unchanged, skipped and failed (see [Resource Update](resources.md#resource-update)). A resource can also be given on the command line, with `--type` and `--set`, in place of a file or as well as files (see [Specifying a Resource on the Command Line](resources.md#specifying-a-resource-on-the-command-line)).
 
 ```shell
 yd resource create [options] <resource-specification> [<resource-specification> ...]
@@ -1233,12 +1271,13 @@ Key options:
 - `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
+- `--force-update` — update every existing resource, even one that `yd resource plan` finds unchanged
 - `--no-resequence` — process the resources strictly in the order supplied, rather than in dependency order
 - `--dry-run`/`-D` — report what would be created or updated, without applying any changes; a template named in an Allowance or Compute Requirement Template that does not exist yet is left as named, since an earlier specification in the same run may create it
 - `--hide-user-data` — with `--dry-run`, show the User Data of Compute Source Templates and Compute Requirement Templates as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--jsonnet-dry-run`/`-J` — print each Jsonnet resource file as evaluated, its variables substituted, creating nothing
 - `--validate` — check every resource specification against its schema and stop, reporting every violation, rather than creating or updating anything (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
-- `--json` — emit the resources created, updated or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
+- `--json` — emit the resources created, updated, unchanged or skipped as a JSON array; with `--dry-run`, the processed specifications (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
 yd resource create my_keyring.json my_compute_templates.jsonnet
@@ -1246,6 +1285,59 @@ yd resource create --type Keyring --set name=team-keys --set description="Team k
 ```
 
 See [Creating, Updating and Removing YellowDog Resources](resources.md) for the full resource specification reference.
+
+### yd resource plan
+
+The `yd resource plan` command shows what `yd resource create` would do with the same specifications, without changing anything or asking anything: for each specification, whether its resource would be created, updated (with each property that would change, from what to what), left unchanged, or can't be compared (a Credential that exists, whose secrets can't be read back). It takes the specifications `yd resource create` takes: JSON, Jsonnet or TOML files, `-` for one read from standard input as JSON, or a resource given with `--type` and `--set`. The specifications are planned in the order `yd resource create` would process them, and a summary line follows (see [Seeing What a Run Would Change](resources.md#seeing-what-a-run-would-change)).
+
+```shell
+yd resource plan [options] <resource-specification> [<resource-specification> ...]
+yd resource plan [options] --type <resource-type> --set <property=value> [--set ...]
+```
+
+Key options:
+- `--json` — print the plan as a JSON array, one record per specification (see [Machine-readable Output and Exit Codes](json-output.md))
+- `--fail-on-changes` — exit 1 once the plan is printed if anything would be created or updated, or can't be compared; a failed specification's own exit code takes precedence
+- `--regenerate-app-keys` — plan as `yd resource create --regenerate-app-keys` would act: an existing Application's line says its key would be regenerated
+- `--match-allowances-by-description`/`-M` — plan as `yd resource create -M` would act: an Allowance's line lists the Allowances of the same description it would replace
+- `--type <resource-type>` and `--set <property=value>` — a resource given on the command line, as for `yd resource create`
+- `--no-resequence` — plan the specifications in the order given, as `yd resource create --no-resequence` would process them
+
+```shell
+yd resource plan templates.jsonnet
+yd resource plan --fail-on-changes --json resources/*.jsonnet
+```
+
+### yd resource export
+
+The `yd resource export` command writes existing resources out as resource specifications, the files `yd resource create` reads, changing nothing on the Platform. Every reference is written as a name (one that cannot be named, such as a deleted resource's, is kept as its ID, with a warning), no server-assigned property is written, and a `{{...}}` in a value is written so that `yd resource create` reads it back unchanged, so the output can be given to `yd resource create` in another namespace or account. The output is a JSON array on standard output, or in the file given with `--output-file`; the specifications are in the order `yd resource create` processes them, and by name within a type, so two exports of the same Platform state are identical.
+
+```shell
+yd resource export [options] [<type> ...]
+```
+
+With no type, the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy are exported. YellowDog's public Image Families are never exported, nor followed by `--with-dependencies`. The account-wide types (Namespaces, Keyrings, Attribute Definitions, Groups, Applications, Users and Allowances) are exported when named or with `--all`, as are Configured Worker Pools. A type can be given in the singular (`keyring`) or as an unambiguous prefix (`key` for `keyrings`).
+
+A Group is written with its roles, each role and the namespaces of its scope by name; an Application and a User with their Groups by name, a User by its `username` (Internal Users) or `name` (External Users). An Application's Keyring access is not written, since granting it to an existing Application needs `--regenerate-app-keys`; a warning names each Application that has any. Only the account's own Attribute Definitions, named `user.…`, are exported, the Platform's own being read-only. A Namespace Policy is named by its namespace, which `--name` matches; `--name` matches an Allowance's description, a Credential's Keyring's name and a User's `name`. Each Credential's required fields other than its name and description are written as variables, since the Platform does not return them: `{{<keyring>_<credential>_<field>}}`, numbered where two Credentials' would share a name, which a warning lists, to be supplied with `-v` or `YD_VAR_*` to `yd resource create`. A resource that can't be read is reported and left out, the rest are written, and the command exits with that failure's exit code; an authentication or connection failure writes nothing.
+
+Key options:
+- `<type> ...` — the types of resource to export: `namespaces`, `keyrings`, `credentials`, `image-families`, `attribute-definitions`, `compute-source-templates`, `compute-requirement-templates`, `allowances`, `namespace-policies`, `configured-worker-pools`, `groups`, `applications` and `users`, in any case, as a singular (`keyring`), as a specification's resource name (`Keyring`) or as an unambiguous prefix
+- `--all` — export every type but Credentials; not with types
+- `--name <glob>` — export only resources whose name matches the glob, the name without its namespace (give the namespace with `-n`)
+- `--interactive`/`-i` — list, and select interactively, the resources to export
+- `--with-dependencies` — also export what each resource refers to: a template's Compute Source Templates and Image Families, an Allowance's template, a Credential's Keyring, and an Application's or a User's Groups
+- `--include-credentials` — also export Credentials, each field the Platform does not return written as a variable; `--all` alone leaves them out
+- `--output-file <file>`/`-o <file>` — write the specifications to the file instead of standard output, in the Jsonnet style for a `.jsonnet` file
+- `--json` — with `--output-file`, print a JSON array of records, one per resource exported or skipped (see [Machine-readable Output and Exit Codes](json-output.md)); without it, standard output is already the specifications
+- `--namespace`/`-n <namespace>` — the namespace to export from; a namespace pattern or an empty namespace is refused
+
+```shell
+yd resource export -o templates.json
+yd resource export --all -o account.json
+yd resource export compute-requirement-templates --name 'render-*' --with-dependencies
+```
+
+See [Exporting Resources as Specifications](resources.md#exporting-resources-as-specifications) for the round trip with `yd resource plan`, Credentials and the other details.
 
 ### yd resource remove
 
@@ -1728,7 +1820,7 @@ A Task Group's status in the listing is followed by `/STARVED` when it can't cla
 
 The interactive selections noted above are made only for the readable listing: with `--json`, `--count` or `--ids-only`, every matching parent's items are listed without asking. To list the items of a parent directly — the Task Groups or Tasks of a Work Requirement, the Instances of a Compute Requirement, the Nodes or Workers of a Worker Pool — name it with `--within` (below), repeated for several.
 
-Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`.
+Unambiguous prefix matching is supported — for example `yd list work-r` resolves to `yd list work-requirements`, and `yd list key` resolves to `yd list keyrings`. Single uppercase synonyms also work, e.g. `yd list W` and `yd list K`. A type is taken in any case (`yd list Keyrings`), as its singular (`yd list keyring`), or as the resource name a specification uses for it (`yd list ComputeSourceTemplate`); a single letter is the exception, a capital being a synonym and a lower-case letter a prefix.
 
 `yd list` has more options than are listed here; use `yd list --help` to inspect the full set. Commonly used options are:
 
@@ -1787,7 +1879,7 @@ An option that does not apply to the entity type listed — `--name`, `--status`
 
 Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-file` turns `--details` on, saying so. `--output-file` writes the details to the file instead of stdout (to both under `--json`), asks before replacing an existing file, which `--yes`/`-y` skips, and writes a file named `.jsonnet` in the Jsonnet style (keys unquoted, strings in single quotes), which evaluates to the same JSON. A `--status` value the entity type has no status of is warned of, the warning listing those it has.
 
-The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list).
+The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Taking Resources One at a Time with `yd list` or `yd show`](resources.md#taking-resources-one-at-a-time-with-yd-list-or-yd-show). To capture a namespace's or an account's resources in one file, use [`yd resource export`](#yd-resource-export).
 
 ### yd show
 
@@ -1833,7 +1925,7 @@ Key options:
 - `--show-exhaustion` — follow a Compute Requirement with `{"computeRequirementId", "exhaustedAllowances"}`, the Allowances that are exhausted for it, each with its `allowanceId`, `allowanceDescription` and `exhaustedSourceIds`; an empty list means no Allowance is holding it back (see [`yd allowance boost`](#yd-allowance-boost))
 - `--show-members` — follow a Group with `{"groupId", "users", "applications"}`, its Users (each `{"id", "username", "name"}`, `username` being `null` for an external User) and its Applications (each `{"id", "name"}`), or a Role with `{"roleId", "groups"}`, the Groups that hold it (each `{"id", "name"}`); a Group's own roles are already in its details. It is refused unless at least one of the IDs is a Group's or a Role's
 - `--hide-user-data` — show each `userData` value (in Compute Source Templates, Compute Requirement Templates, Compute Requirements and Compute Sources) as a summary of its size rather than the script in full, as for `yd list`, `--output-file` included
-- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`, a `.jsonnet` file included; see [Generating Resource Specifications using `yd list`](resources.md#generating-resource-specifications-using-yd-list). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
+- `--substitute-ids`/`-U`, `--strip-ids`, `--output-file <file>` — as for `yd list`, a `.jsonnet` file included; see [Taking Resources One at a Time with `yd list` or `yd show`](resources.md#taking-resources-one-at-a-time-with-yd-list-or-yd-show). `--substitute-ids` is refused unless at least one of the IDs is a Compute Source Template's, a Compute Requirement Template's or an Allowance's
 
 A User is always shown with `groups`, the names of the Groups it belongs to, as an Application is and as `yd list users --details` shows them.
 
@@ -1904,6 +1996,47 @@ Key options:
 WR_ID=$(yd workrequirement submit mywork.json --quiet)
 yd wait "$WR_ID" && yd data download results/
 ```
+
+### yd status
+
+The `yd status` command shows the work and compute in the configured `namespace` and `tag` on one screen: the Work Requirements with their Task progress, the Worker Pools with their Nodes and Workers, and the Compute Requirements with their Instances. Each section lists what `yd list` lists for its type, and ends with a total. Give `--active-only` to leave out what has finished, shut down or terminated.
+
+```shell
+yd status [options]
+```
+
+```shell
+yd status -n image-processing -t nightly --active-only
+```
+
+```
+2026-11-09 09:50:12 : Active items in namespace 'image-processing' with tags including 'nightly'
+2026-11-09 09:50:12 : Work Requirements:
+    ┌─────┬─────────────────────────┬──────────┬──────────┬───────────┬──────────────────────────────────────────────────────────┐
+    │ #   │ Work Requirement Name   │ Status   │ Tasks    │ Healthy   │ Work Requirement ID                                      │
+    ├─────┼─────────────────────────┼──────────┼──────────┼───────────┼──────────────────────────────────────────────────────────┤
+    │ 1   │ nightly-render          │ RUNNING  │ 412/1000 │ Yes       │ ydid:workreq:000000:1d0a6a5c-3f9e-4d1e-8a2e-3a2f1b0c9d8e │
+    └─────┴─────────────────────────┴──────────┴──────────┴───────────┴──────────────────────────────────────────────────────────┘
+2026-11-09 09:50:12 : 1 Work Requirement: 412 of 1,000 Tasks done
+2026-11-09 09:50:12 : Worker Pools:
+    ...
+2026-11-09 09:50:12 : 2 Worker Pools: 14 Nodes, 30 of 56 Workers claimed
+2026-11-09 09:50:12 : Compute Requirements:
+    ...
+2026-11-09 09:50:12 : 2 Compute Requirements: 14 of 14 Instances alive
+2026-11-09 09:50:12 : WARNING : 1 Worker Pool unhealthy
+```
+
+Key options:
+- `--namespace`/`-n` and `--tag`/`-t` — show another namespace or tag; `-t ''` shows the whole namespace. Worker Pools, which have no tag, are shown when the tag is in their names, as `yd list` selects them. A namespace pattern such as `team-*` is refused
+- `--active-only`/`-l` — show only what is active, as `yd list --active-only` does: Work Requirements not yet finished, Worker Pools not shut down or terminated, and Compute Requirements not terminated
+- `--json`/`-J` — print one JSON document holding the three lists, as `yd list --json` gives each, and the searches that failed:
+
+```json
+{"namespace": "image-processing", "tag": "nightly", "workRequirements": [...], "workerPools": [...], "computeRequirements": [...], "failures": []}
+```
+
+The Namespace and Tag columns are left out, since the first line names them, and a Provisioned Worker Pool's Compute Requirement appears in both its sections, as in `yd list`. A section with nothing to show says so. A warning closes the report when anything is unhealthy (`1 Worker Pool unhealthy`); being unhealthy does not change the exit code. A section whose search fails, a missing permission say, says why (in `failures` under `--json`) and the others are still shown; the command then exits with that failure's [exit code](json-output.md), or 1 for failures of different kinds. `--quiet` prints the tables alone, as `yd list --quiet` does, with a failed search still said on stderr.
 
 ### yd application
 

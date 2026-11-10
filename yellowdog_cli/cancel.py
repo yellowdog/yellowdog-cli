@@ -5,14 +5,14 @@ A script to cancel Work Requirements and Tasks, optionally aborting their
 executing Tasks.
 
 Work Requirements are selected by the namespace and tag, by glob patterns
-matched against their names, or explicitly by name or ID, with Task IDs
-and patterns alongside (each pattern replaced by the IDs it matches). As
-'yd task cancel' (named_target_type TASK), the targets are Tasks alone, by
-ID or as 'wr/tg/task', a pattern in the last part matching the unfinished. A Work Requirement that is already CANCELLING is a target only
-with '--abort', which cancels it again to abort its executing Tasks; without
-it, it is left out of a listing and skipped when named. Explicit targets are
-resolved first, in the order given, then confirmed once and acted on, under
-action_runner.py's rules.
+matched against their names, or explicitly by name or ID, with Task IDs and
+patterns alongside (each pattern replaced by the IDs it matches). As 'yd task
+cancel' (named_target_type TASK), the targets are Tasks alone, by ID or as
+'wr/tg/task', a pattern in the last part matching the unfinished. A Work
+Requirement that is already CANCELLING is a target only with '--abort', which
+cancels it again to abort its executing Tasks; without it, it is left out of a
+listing and skipped when named. Explicit targets are resolved first, in the
+order given, then confirmed once and acted on, under action_runner.py's rules.
 """
 
 from typing import Any, TypeAlias, cast
