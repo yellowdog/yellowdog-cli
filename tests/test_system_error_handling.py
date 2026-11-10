@@ -102,11 +102,12 @@ class TestSoftFailures:
     """
 
     def test_show_unrecognised_ydid_format(self):
-        # No platform needed — YDID type lookup is client-side
-        result = shell("yd show not-a-valid-ydid")
+        # No platform needed — YDID type lookup is client-side; a malformed
+        # ID is reported as the run reaches it (a plain word is a usage error)
+        result = shell("yd show ydid:not-a-valid-ydid")
         assert result.exit_code == ExitCode.FAILURE
         assert _has_error(result)
-        assert "not-a-valid-ydid" in _output(result)
+        assert "ydid:not-a-valid-ydid" in _output(result)
 
     def test_show_nonexistent_ydid(self):
         # Needs platform — resource lookup returns 404
@@ -119,7 +120,7 @@ class TestSoftFailures:
     def test_show_mixed_valid_and_invalid_ydids(self):
         # Needs platform — verifies that one bad YDID doesn't abort the rest
         fake = f"{YDID}:{TYPE_KEYRING}:000000:00000000-0000-0000-0000-000000000000"
-        bad_format = "not-a-ydid"
+        bad_format = "ydid:not-a-ydid"
         result = shell(f"yd show {fake} {bad_format}")
         # A not-found and an invalid YDID: different causes, so 1
         assert result.exit_code == ExitCode.FAILURE
