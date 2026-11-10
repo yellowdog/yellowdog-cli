@@ -1052,6 +1052,21 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def task_group_patterns(self) -> list[str] | None:
+        return self.args.task_group_patterns
+
+    @property
+    @allow_missing_attribute
+    def task_patterns(self) -> list[str] | None:
+        return self.args.task_patterns
+
+    @property
+    @allow_missing_attribute
+    def task_ids(self) -> list[str] | None:
+        return self.args.task_ids
+
+    @property
+    @allow_missing_attribute
     def resubmit_name(self) -> str | None:
         return self.args.resubmit_name
 

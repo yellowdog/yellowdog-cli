@@ -96,7 +96,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 09:30:39 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 12:34:35 GMT 2026 -->
 
 <!--te-->
 
@@ -257,7 +257,7 @@ Work Requirements: `yd workrequirement`, or `yd wr` for short.
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`submit`](#yd-workrequirement-submit) | Submit a Work Requirement, or add to one | `yd-submit` |
-| [`resubmit`](#yd-workrequirement-resubmit) | Resubmit a Work Requirement's failed or aborted Tasks |  |
+| [`resubmit`](#yd-workrequirement-resubmit) | Resubmit a Work Requirement's failed, aborted or named Tasks |  |
 | [`cancel`](#yd-workrequirement-cancel) | Cancel Work Requirements | `yd-cancel` |
 | [`hold`](#yd-workrequirement-hold) | Hold (pause) running Work Requirements | `yd-hold` |
 | [`start`](#yd-workrequirement-start) | Start held Work Requirements | `yd-start` |
@@ -321,10 +321,10 @@ See [Work Requirements](work-requirements.md) for the full specification referen
 The `yd workrequirement resubmit` command runs a Work Requirement's failed Tasks again: it reads them from the Platform and submits copies of them as a new Work Requirement, in Task Groups with the original run specifications.
 
 ```shell
-yd workrequirement resubmit [options] <work-requirement-name-or-ID>
+yd workrequirement resubmit [options] [<work-requirement-name-or-ID>]
 ```
 
-The Work Requirement is a name (in the configured namespace, or as `namespace/name`) or a YellowDog ID. Each Task keeps its name, tag, Task Type, arguments, task data, environment, data and timeout; nothing is substituted in the copies, so an argument holding `{{x}}` on the Platform is submitted as `{{x}}`.
+The Work Requirement is a name (in the configured namespace, or as `namespace/name`) or a YellowDog ID; it may be left out when the Tasks are named with `--task-id`. Each Task keeps its name, tag, Task Type, arguments, task data, environment, data and timeout; nothing is substituted in the copies, so an argument holding `{{x}}` on the Platform is submitted as `{{x}}`.
 
 ```shell
 yd workrequirement resubmit my-run --follow
@@ -333,6 +333,9 @@ yd workrequirement resubmit my-run --follow
 Key options:
 - `--failed` — resubmit the `FAILED` Tasks; this is the default when neither `--failed` nor `--aborted` is given
 - `--aborted` — resubmit the `ABORTED` Tasks, alone or with `--failed`
+- `--task-group <pattern>` — resubmit only Tasks of Task Groups whose names match the name or glob; repeatable, several patterns being alternatives; a pattern matching no Task Group is an error (exit 6), raised before any Task is read
+- `--task <pattern>` — resubmit only Tasks whose names match the name or glob; repeatable, several patterns being alternatives; combined with `--task-group` a Task must satisfy both; only `FAILED` or `ABORTED` Tasks are resubmitted, so a `COMPLETED` Task is never copied; a pattern matching no Task is warned of, and no warning about Tasks left in `CANCELLED` or `DISCARDED` is made
+- `--task-id <task-ID>` — resubmit exactly this Task, in any finished state (`COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED`, `RESUBMITTED`); one ID per flag, repeated for more Tasks; the Work Requirement is worked out from the IDs, so `<work-requirement-name-or-ID>` is optional with it, and if given must be the one the Tasks belong to; refused with `--task-group`, `--task`, `--failed` and `--aborted`; a Task that does not exist is an error (exit 6) and one that has not finished is refused, both before anything is created
 - `--add-to`/`-A <name-or-id>` — add the Tasks to an existing Work Requirement instead of creating one; refused with `--name`, `--output-file` and `--hold`
 - `--name <name>` — the new Work Requirement's name; by default `<name>-resubmit-<n>`, `n` the lowest number from 1 not already taken in the namespace
 - `--output-file`/`-o <file>` — write the new Work Requirement to the file, in the format `yd workrequirement submit --json-raw` takes, and submit nothing; refused with `--follow`, `--progress` and `--hold`
@@ -342,7 +345,7 @@ Key options:
 - `--dry-run`/`-D` — print the new Work Requirement as `--output-file` would write it, creating nothing
 - `--json` — emit a JSON object naming the new Work Requirement (`id`, `name`, `namespace`, `type`), with `resubmittedFrom` (the original's ID) and `taskCount`; with `--output-file`, the file, `resubmittedFrom` and `taskCount`; with `--dry-run`, the Work Requirement that would be submitted
 
-If no Task is selected, the command says so and exits 0 without creating anything (`--json` printing `[]`). A Work Requirement that has not finished is warned of, since Tasks still running may yet fail and are not resubmitted, and so are the Tasks of a Task Group left in `CANCELLED` or `DISCARDED`, which are never resubmitted. The Platform purges a finished Work Requirement 24 hours after it ends, after which it cannot be found (exit 6).
+If no Task is selected, the command says so and exits 0 without creating anything (`--json` printing `[]`). A Work Requirement that has not finished is warned of, since Tasks still running may yet fail and are not resubmitted, and so are the Tasks of a Task Group left in `CANCELLED` or `DISCARDED`, which are never resubmitted (under `--task-group` alone, only for the chosen Task Groups; under `--task` or `--task-id`, no such warning is printed). The Platform purges a finished Work Requirement 24 hours after it ends, after which it cannot be found (exit 6).
 
 ### yd workrequirement cancel
 

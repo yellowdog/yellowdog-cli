@@ -4593,11 +4593,49 @@ RESUBMIT_ABORTED = option(
     required=False,
     help="resubmit the ABORTED Tasks, alone or with '--failed'",
 )
+RESUBMIT_TASK_GROUP = option(
+    "--task-group",
+    dest="task_group_patterns",
+    action="append",
+    metavar="<pattern>",
+    required=False,
+    help=(
+        "resubmit only Tasks of Task Groups whose names match this name or"
+        " glob (repeatable; several are alternatives)"
+    ),
+)
+RESUBMIT_TASK = option(
+    "--task",
+    dest="task_patterns",
+    action="append",
+    metavar="<pattern>",
+    required=False,
+    help=(
+        "resubmit only Tasks whose names match this name or glob (repeatable;"
+        " several are alternatives); only FAILED or ABORTED Tasks are resubmitted"
+    ),
+)
+RESUBMIT_TASK_ID = option(
+    "--task-id",
+    dest="task_ids",
+    action="append",
+    metavar="<task-ID>",
+    required=False,
+    help=(
+        "a Task to resubmit by its ID, in any finished state; repeat for more;"
+        " the Work Requirement may then be left out; not with '--task-group',"
+        " '--task', '--failed' or '--aborted'"
+    ),
+)
 RESUBMIT_TARGET = option(
     "resubmit_target",
     metavar="<work-requirement-name-or-ID>",
     type=str,
-    help="the name or YellowDog ID of the Work Requirement whose Tasks are resubmitted",
+    nargs="?",
+    help=(
+        "the name or YellowDog ID of the Work Requirement whose Tasks are"
+        " resubmitted; may be left out with '--task-id'"
+    ),
 )
 
 
@@ -4606,8 +4644,21 @@ def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None
     yd-resubmit's options that cannot apply together, refused rather than
     ignored: '--add-to' extends a Work Requirement that already has its own
     name and state, and writes nothing to a file; '--output-file' submits
-    nothing, so there is nothing to follow or hold.
+    nothing, so there is nothing to follow or hold; '--task-id' names the
+    Tasks exactly, so the options that choose them otherwise do not apply,
+    and a Work Requirement is given, or Tasks to work it out from.
     """
+    if args.resubmit_target is None and not args.task_ids:
+        parser.error("give a Work Requirement, or Tasks with --task-id")
+    if args.task_ids:
+        for dest, flag in (
+            ("task_group_patterns", "--task-group"),
+            ("task_patterns", "--task"),
+            ("failed", "--failed"),
+            ("aborted", "--aborted"),
+        ):
+            if getattr(args, dest, None):
+                parser.error(f"--task-id cannot be used with {flag}")
     if args.add_to is not None:
         for dest, flag in (
             ("resubmit_name", "--name"),
@@ -4628,14 +4679,17 @@ def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None
 
 COMMANDS["yd-resubmit"] = Command(
     name="yd-resubmit",
-    purpose="resubmitting failed or aborted Tasks",
-    summary="Resubmit a Work Requirement's failed or aborted Tasks",
+    purpose="resubmitting failed, aborted or named Tasks",
+    summary="Resubmit a Work Requirement's failed, aborted or named Tasks",
     kind=CommandKind.API,
     options=(
         VARIABLE,
         NAMESPACE,
         RESUBMIT_FAILED,
         RESUBMIT_ABORTED,
+        RESUBMIT_TASK_GROUP,
+        RESUBMIT_TASK,
+        RESUBMIT_TASK_ID,
         ADD_TO.variant(
             help=(
                 "add the Tasks to this existing Work Requirement (a name or"

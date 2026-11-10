@@ -180,7 +180,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_workrequirement_finish` | destructive | `yd workrequirement finish` | Finish Work Requirements |
 | `yd_workrequirement_hold` | destructive | `yd workrequirement hold` | Hold (pause) running Work Requirements |
 | `yd_workrequirement_priority` | destructive | `yd workrequirement priority` | Change the priority of Work Requirements and Task Groups |
-| `yd_workrequirement_resubmit` | acting | `yd workrequirement resubmit` | Resubmit a Work Requirement's failed or aborted Tasks |
+| `yd_workrequirement_resubmit` | acting | `yd workrequirement resubmit` | Resubmit a Work Requirement's failed, aborted or named Tasks |
 | `yd_workrequirement_start` | destructive | `yd workrequirement start` | Start held (paused) Work Requirements |
 | `yd_workrequirement_submit` | acting | `yd workrequirement submit` | Submit a Work Requirement |
 

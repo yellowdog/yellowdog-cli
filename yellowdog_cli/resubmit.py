@@ -47,8 +47,10 @@ from yellowdog_cli.utils.resubmission import (
     refuse_task_name_clashes,
     resubmission_document,
     resubmission_name,
+    select_named_tasks,
     select_tasks,
     selected_statuses,
+    work_requirement_id_of_tasks,
 )
 from yellowdog_cli.utils.results import record, record_entity
 from yellowdog_cli.utils.task_batches import parallel_batch_count
@@ -68,13 +70,24 @@ def resubmit(ctx: RunContext, config_wr: ConfigWorkRequirement) -> None:
     Resubmit the Tasks the command line selects, as it asks, with the batch
     size and parallelism of the '[workRequirement]' configuration.
     """
-    work_requirement = _original(ctx)
-    statuses = selected_statuses(bool(ctx.args.failed), bool(ctx.args.aborted))
-    selection = select_tasks(ctx, work_requirement, statuses)
+    if ctx.args.task_ids:
+        work_requirement, selection = _named(ctx)
+        statuses: tuple[str, ...] = ()
+        status_words = "by ID"
+    else:
+        work_requirement = _original(ctx)
+        statuses = selected_statuses(bool(ctx.args.failed), bool(ctx.args.aborted))
+        selection = select_tasks(
+            ctx,
+            work_requirement,
+            statuses,
+            tuple(ctx.args.task_group_patterns or ()),
+            tuple(ctx.args.task_patterns or ()),
+        )
+        status_words = " and ".join(statuses)
     print_selection_warnings(selection)
 
     where = f"'{work_requirement.namespace}/{work_requirement.name}'"
-    status_words = " and ".join(statuses)
     if selection.task_count == 0:
         print_info(f"No {status_words} Tasks to resubmit in Work Requirement {where}")
         return
@@ -117,6 +130,37 @@ def resubmit(ctx: RunContext, config_wr: ConfigWorkRequirement) -> None:
     )
 
 
+def _named(ctx: RunContext) -> tuple[WorkRequirement, Selection]:
+    """
+    The Work Requirement the Tasks named with '--task-id' belong to, worked
+    out from their IDs, and those Tasks. A Work Requirement given as well
+    must be that one, which is checked before any Task is read.
+    """
+    task_ids = list(ctx.args.task_ids or ())
+    work_requirement_id = work_requirement_id_of_tasks(task_ids)
+    if ctx.args.resubmit_target is None:
+        work_requirement = _work_requirement_by_id(ctx, work_requirement_id)
+    else:
+        work_requirement = _original(ctx)
+        if work_requirement.id != work_requirement_id:
+            raise ValueError(
+                f"Task '{task_ids[0]}' is not in Work Requirement {work_requirement.id}"
+            )
+    return work_requirement, select_named_tasks(ctx, work_requirement, task_ids)
+
+
+def _work_requirement_by_id(ctx: RunContext, target: str) -> WorkRequirement:
+    """
+    The Work Requirement with this ID, in full.
+    """
+    try:
+        return ctx.client.work_client.get_work_requirement_by_id(target)
+    except Exception as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find Work Requirement '{target}'") from e
+        raise
+
+
 def _original(ctx: RunContext) -> WorkRequirement:
     """
     The Work Requirement whose Tasks are resubmitted, in full, found by name
@@ -124,12 +168,7 @@ def _original(ctx: RunContext) -> WorkRequirement:
     """
     target = cast(str, ctx.args.resubmit_target)
     if get_ydid_type(target) == YDIDType.WORK_REQUIREMENT:
-        try:
-            return ctx.client.work_client.get_work_requirement_by_id(target)
-        except Exception as e:
-            if is_http_not_found(e):
-                raise NotFoundError(f"Cannot find Work Requirement '{target}'") from e
-            raise
+        return _work_requirement_by_id(ctx, target)
     try:
         summary = get_work_requirement_summary_by_name_or_id(
             ctx.client, target, ctx.config.namespace

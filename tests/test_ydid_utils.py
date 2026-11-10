@@ -29,7 +29,10 @@ from yellowdog_cli.utils.ydid_utils import (
     YDID_HIGHLIGHT_RE,
     YDIDType,
     get_ydid_type,
+    is_task_id,
     split_instance_specification,
+    task_group_id_of_task,
+    work_requirement_id_of_task,
 )
 
 _UUID = "00000000-0000-0000-0000-000000000000"
@@ -153,3 +156,29 @@ class TestSplitInstanceSpecification:
 
     def test_compute_requirement_name_containing_dots_returns_none(self):
         assert split_instance_specification("my.compute.requirement") is None
+
+
+def test_task_group_and_work_requirement_of_a_task():
+    wr = "ydid:workreq:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    task = "ydid:task:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1:2"
+    assert task_group_id_of_task(task) == (
+        "ydid:taskgrp:000000:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1"
+    )
+    assert work_requirement_id_of_task(task) == wr
+
+
+class TestIsTaskId:
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (f"{YDID}:{TYPE_TASK}:{_HEX}:{_UUID}:0:1", True),
+            (f"{YDID}:{TYPE_TASK}:{_HEX}:{_UUID}", False),
+            (f"{YDID}:{TYPE_TASK}:{_HEX}:{_UUID}:0", False),
+            (f"{YDID}:{TYPE_TASKGRP}:{_HEX}:{_UUID}:0", False),
+            (f"{YDID}:{TYPE_WORKREQ}:{_HEX}:{_UUID}", False),
+            ("my-task", False),
+            ("", False),
+        ],
+    )
+    def test_the_shape_of_a_task_ydid(self, value, expected):
+        assert is_task_id(value) is expected

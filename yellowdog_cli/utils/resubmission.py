@@ -15,6 +15,7 @@ lost.
 
 import re
 from dataclasses import dataclass, replace
+from fnmatch import fnmatchcase
 from typing import Any, cast
 
 from yellowdog_client.common.json import Json
@@ -23,6 +24,7 @@ from yellowdog_client.model import (
     RunSpecification,
     Task,
     TaskGroup,
+    TaskStatus,
     WorkRequirement,
     WorkRequirementStatus,
 )
@@ -32,10 +34,17 @@ from yellowdog_cli.utils.entity_utils import (
     FINISHED_WORK_REQUIREMENT_STATUSES,
     iterate_tasks_in_task_group,
 )
+from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.glob_utils import glob_literal_hint
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.printing import counted, print_warning
 from yellowdog_cli.utils.settings import RESUBMIT_SUFFIX
 from yellowdog_cli.utils.task_groups import check_task_types_allowed
+from yellowdog_cli.utils.ydid_utils import (
+    is_task_id,
+    task_group_id_of_task,
+    work_requirement_id_of_task,
+)
 
 FAILED = "FAILED"
 ABORTED = "ABORTED"
@@ -119,12 +128,17 @@ class Selection:
     The Tasks to resubmit from a Work Requirement, by Task Group in the
     original's order, and the Tasks left behind: 'left_behind' is Task Group
     name -> status -> count, for the statuses never resubmitted.
+    'unmatched_task_patterns' are the '--task' patterns that matched no Task,
+    for the warning; 'by_id' says the Tasks were named by ID, not chosen by
+    status.
     """
 
     work_requirement: WorkRequirement
     statuses: tuple[str, ...]
     groups: list[SelectedGroup]
     left_behind: dict[str, dict[str, int]]
+    unmatched_task_patterns: tuple[str, ...] = ()
+    by_id: bool = False
 
     @property
     def task_count(self) -> int:
@@ -155,28 +169,151 @@ def _count_tasks(ctx: RunContext, task_group_id: str, status: str) -> int:
     )
 
 
+def _matches(name: str | None, patterns: tuple[str, ...]) -> bool:
+    """
+    Whether 'name' matches any of the glob 'patterns', whole-name and
+    case-sensitively; an unnamed Task matches none.
+    """
+    return name is not None and any(fnmatchcase(name, p) for p in patterns)
+
+
+def _chosen_task_groups(
+    work_requirement: WorkRequirement, patterns: tuple[str, ...]
+) -> list[TaskGroup]:
+    """
+    The Task Groups whose names match any of 'patterns' (all of them where
+    there are none), in the original's order. A pattern matching no Task
+    Group raises NotFoundError, before any search is made.
+    """
+    task_groups = work_requirement.taskGroups or []
+    if not patterns:
+        return task_groups
+    for pattern in patterns:
+        if not any(fnmatchcase(group.name, pattern) for group in task_groups):
+            raise NotFoundError(
+                f"No Task Group of Work Requirement"
+                f" '{work_requirement.namespace}/{work_requirement.name}'"
+                f" matches '{pattern}'"
+            )
+    return [group for group in task_groups if _matches(group.name, patterns)]
+
+
 def select_tasks(
-    ctx: RunContext, work_requirement: WorkRequirement, statuses: tuple[str, ...]
+    ctx: RunContext,
+    work_requirement: WorkRequirement,
+    statuses: tuple[str, ...],
+    task_group_patterns: tuple[str, ...] = (),
+    task_patterns: tuple[str, ...] = (),
 ) -> Selection:
     """
     The Tasks of a Work Requirement in 'statuses': one status-filtered search
     per Task Group, read a page at a time. Task Groups without any are
-    omitted. The CANCELLED and DISCARDED Tasks are counted, for the warnings.
+    omitted. 'task_group_patterns' leave out the Task Groups whose names
+    match none of them, unsearched; 'task_patterns' keep the Tasks whose
+    names match one (a single pattern also sends its literal part as the
+    search's name filter). The CANCELLED and DISCARDED Tasks are counted, for
+    the warnings, in the Task Groups read, and not at all under
+    'task_patterns'.
     """
+    task_groups = _chosen_task_groups(work_requirement, task_group_patterns)
+    name_hint = None
+    if len(task_patterns) == 1:
+        name_hint = glob_literal_hint(task_patterns[0]) or None
     groups: list[SelectedGroup] = []
     left_behind: dict[str, dict[str, int]] = {}
-    for task_group in work_requirement.taskGroups or []:
+    matched: set[str] = set()
+    for task_group in task_groups:
         assert task_group.id is not None
         tasks = list(
-            iterate_tasks_in_task_group(ctx.client, task_group.id, statuses=statuses)
+            iterate_tasks_in_task_group(
+                ctx.client,
+                task_group.id,
+                statuses=statuses,
+                name_contains=name_hint,
+            )
         )
+        if task_patterns:
+            tasks = [t for t in tasks if _matches(t.name, task_patterns)]
+            matched.update(
+                p for p in task_patterns if any(_matches(t.name, (p,)) for t in tasks)
+            )
         if tasks:
             groups.append(SelectedGroup(task_group, tasks))
+        if task_patterns:
+            continue
         for status in LEFT_BEHIND_STATUSES:
             count = _count_tasks(ctx, task_group.id, status)
             if count > 0:
                 left_behind.setdefault(task_group.name, {})[status] = count
-    return Selection(work_requirement, statuses, groups, left_behind)
+    unmatched = tuple(p for p in task_patterns if p not in matched)
+    return Selection(
+        work_requirement,
+        statuses,
+        groups,
+        left_behind,
+        unmatched_task_patterns=unmatched,
+    )
+
+
+def work_requirement_id_of_tasks(task_ids: list[str]) -> str:
+    """
+    The ID of the Work Requirement that holds every one of 'task_ids', worked
+    out from the IDs alone, before any request. A ValueError for an ID that
+    is not a Task's, or that belongs to a different Work Requirement from the
+    first's.
+    """
+    for task_id in task_ids:
+        if not is_task_id(task_id):
+            raise ValueError(f"'{task_id}' is not a Task ID")
+    work_requirement_id = work_requirement_id_of_task(task_ids[0])
+    for task_id in task_ids[1:]:
+        if work_requirement_id_of_task(task_id) != work_requirement_id:
+            raise ValueError(
+                f"Task '{task_id}' is not in Work Requirement {work_requirement_id}"
+            )
+    return work_requirement_id
+
+
+def _named_task(ctx: RunContext, task_id: str) -> Task:
+    """
+    The Task 'task_id', which must exist and have finished.
+    """
+    try:
+        task = ctx.client.work_client.get_task_by_id(task_id)
+    except Exception as e:
+        if is_http_not_found(e):
+            raise NotFoundError(f"Cannot find Task {task_id}") from e
+        raise
+    if task.status is None:
+        raise ValueError(f"Task '{task_id}' has no status and has not finished")
+    status = TaskStatus(task.status)
+    if not status.finished:
+        raise ValueError(f"Task '{task_id}' is {status.value} and has not finished")
+    return task
+
+
+def select_named_tasks(
+    ctx: RunContext, work_requirement: WorkRequirement, task_ids: list[str]
+) -> Selection:
+    """
+    The Tasks named by 'task_ids', each read once whatever its state, so long
+    as it has finished, grouped under the Work Requirement's own Task
+    Groups, in its order, the named order kept within a Task Group. Every
+    Task is read, and so found and checked, before the Selection is made. A
+    Task that does not exist raises NotFoundError, one that has not finished
+    a ValueError.
+    """
+    tasks = [_named_task(ctx, task_id) for task_id in dict.fromkeys(task_ids)]
+    by_group: dict[str, list[Task]] = {}
+    for task in tasks:
+        group_id = task.taskGroupId or task_group_id_of_task(cast(str, task.id))
+        by_group.setdefault(group_id, []).append(task)
+    groups = [
+        SelectedGroup(group, by_group[group.id])
+        for group in work_requirement.taskGroups or []
+        if group.id in by_group
+    ]
+    return Selection(work_requirement, (), groups, {}, by_id=True)
 
 
 def _copied(obj: Any, copied: frozenset[str]) -> dict[str, Any]:
@@ -412,6 +549,9 @@ def print_selection_warnings(selection: Selection) -> None:
     may yet have more to resubmit.
     """
     original = selection.work_requirement
+    status_words = " or ".join(selection.statuses)
+    for pattern in selection.unmatched_task_patterns:
+        print_warning(f"No {status_words} Task matches '{pattern}'")
     for group_name, by_status in selection.left_behind.items():
         for status, count in by_status.items():
             print_warning(

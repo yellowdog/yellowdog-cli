@@ -25435,6 +25435,45 @@
       "choices": null,
       "const": null,
       "default": null,
+      "dest": "task_group_patterns",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task-group"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "task_patterns",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "task_ids",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task-id"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
       "dest": "add_to",
       "kind": "_StoreAction",
       "nargs": null,
@@ -25588,7 +25627,7 @@
       "default": null,
       "dest": "resubmit_target",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "?",
       "option_strings": [],
       "required": null,
       "type": "str"
@@ -37734,6 +37773,45 @@
       "choices": null,
       "const": null,
       "default": null,
+      "dest": "task_group_patterns",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task-group"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "task_patterns",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "task_ids",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--task-id"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
       "dest": "add_to",
       "kind": "_StoreAction",
       "nargs": null,
@@ -37887,7 +37965,7 @@
       "default": null,
       "dest": "resubmit_target",
       "kind": "_StoreAction",
-      "nargs": null,
+      "nargs": "?",
       "option_strings": [],
       "required": null,
       "type": "str"

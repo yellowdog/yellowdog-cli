@@ -91,6 +91,7 @@ class _Run:
         work.get_work_requirement_by_id.return_value = self.wr
         work.get_work_requirement_by_name.side_effect = _http_error(404)
         work.get_tasks.side_effect = self._get_tasks
+        work.get_task_by_id.side_effect = self._get_task
         self.target: WorkRequirement | None = None
         self.held: list[Task] = []
         work.get_work_requirement_by_id.side_effect = self._by_id
@@ -103,6 +104,12 @@ class _Run:
         if self.target is not None and wr_id == TARGET_ID:
             return self.target
         return self.wr
+
+    def _get_task(self, task_id):
+        for task in [*self.tasks, *self.held]:
+            if task.id == task_id:
+                return task
+        raise _http_error(404)
 
     def _get_tasks(self, search):
         wanted = {s.value for s in search.statuses} if search.statuses else None
@@ -129,6 +136,9 @@ class _Run:
         values = dict(
             failed=False,
             aborted=False,
+            task_group_patterns=None,
+            task_patterns=None,
+            task_ids=None,
             add_to=None,
             resubmit_name=None,
             export_file=None,
@@ -602,11 +612,186 @@ class TestAddTo:
         assert capsys.readouterr().out.strip() == TARGET_ID
 
 
+def _two_group_run(**kwargs) -> _Run:
+    wr = _wr()
+    other = TaskGroup(name="post", runSpecification=RunSpecification(["bash"]))
+    other.id = "g2"
+    wr.taskGroups = [*wr.taskGroups, other]
+    tasks = [
+        _task("frame-01", "FAILED", "g1"),
+        _task("frame-02", "FAILED", "g1"),
+        _task("mask-01", "FAILED", "g1"),
+        _task("frame-03", "FAILED", "g2"),
+    ]
+    return _Run(tasks, wr)
+
+
+class TestFilters:
+    def test_filters_reach_select_tasks_and_the_copy(self, tmp_path):
+        run = _two_group_run()
+        assert (
+            run.run(task_group_patterns=["render"], task_patterns=["frame-*"]) is None
+        )
+        creation = run.bodies()[0]
+        assert [g["name"] for g in creation["taskGroups"]] == ["render"]
+        assert [t["name"] for t in run.bodies()[1]] == ["frame-01", "frame-02"]
+
+        path = tmp_path / "wr.json"
+        run = _two_group_run()
+        assert run.run(task_patterns=["mask-01"], export_file=str(path)) is None
+        document = json.loads(path.read_text(encoding="utf-8"))
+        [group] = document["taskGroups"]
+        assert [t["name"] for t in group["tasks"]] == ["mask-01"]
+
+    def test_filters_with_add_to(self):
+        run = _two_group_run()
+        run.target = _target({"render": ["bash"], "post": ["bash"]})
+        assert run.run(add_to=TARGET_ID, task_patterns=["frame-03"]) is None
+        [(url, body)] = _task_posts(run)
+        assert url.endswith("/taskGroups/post/tasks")
+        assert [t["name"] for t in body] == ["frame-03"]
+
+    def test_unmatched_task_group_exits_6_and_creates_nothing(self):
+        run = _two_group_run()
+        error = run.run(task_group_patterns=["rendr"])
+        assert isinstance(error, NotFoundError)
+        assert classify(error) == ExitCode.NOT_FOUND
+        assert run.posts == []
+        assert not run.client.work_client.get_tasks.called
+
+
 def _refusal(capsys, *argv: str) -> str:
     with pytest.raises(SystemExit) as exit_:
         CLIParser(command="yd wr resubmit", argv=list(argv))
     assert exit_.value.code == ExitCode.USAGE
     return capsys.readouterr().err
+
+
+GROUP_1 = "ydid:taskgrp:000000:00000000-0000-0000-0000-000000000001:0"
+GROUP_2 = "ydid:taskgrp:000000:00000000-0000-0000-0000-000000000001:1"
+TASK_1 = "ydid:task:000000:00000000-0000-0000-0000-000000000001:0:1"
+TASK_2 = "ydid:task:000000:00000000-0000-0000-0000-000000000001:0:2"
+TASK_3 = "ydid:task:000000:00000000-0000-0000-0000-000000000001:1:3"
+FOREIGN = "ydid:task:000000:00000000-0000-0000-0000-000000000009:0:1"
+
+
+def _id_run(statuses=("COMPLETED", "CANCELLED", "FAILED")) -> _Run:
+    wr = _wr()
+    wr.taskGroups[0].id = GROUP_1
+    other = TaskGroup(name="post", runSpecification=RunSpecification(["bash"]))
+    other.id = GROUP_2
+    wr.taskGroups = [*wr.taskGroups, other]
+    tasks = []
+    for task_id, group, status in zip(
+        (TASK_1, TASK_2, TASK_3), (GROUP_1, GROUP_1, GROUP_2), statuses
+    ):
+        task = _task(task_id[-1], status, group)
+        task.id = task_id
+        tasks.append(task)
+    return _Run(tasks, wr)
+
+
+class TestTaskIds:
+    def test_task_ids_without_wr_work_out_the_work_requirement(self):
+        run = _id_run()
+        assert run.run(target=None, task_ids=[TASK_1, TASK_3]) is None
+        work = run.client.work_client
+        work.get_work_requirement_by_id.assert_called_once_with(WR_ID)
+        assert work.get_task_by_id.call_count == 2
+        creation = run.bodies()[0]
+        assert [g["name"] for g in creation["taskGroups"]] == ["render", "post"]
+        assert [t["name"] for t in run.bodies()[1]] == ["1"]
+        assert [t["name"] for t in run.bodies()[2]] == ["3"]
+
+    def test_task_ids_with_wr_of_another_work_requirement_refused_before_task_reads(
+        self,
+    ):
+        run = _id_run()
+        error = run.run(task_ids=[FOREIGN])
+        assert isinstance(error, ValueError)
+        assert str(error) == f"Task '{FOREIGN}' is not in Work Requirement {WR_ID}"
+        assert not run.client.work_client.get_task_by_id.called
+        assert run.posts == []
+
+    def test_task_ids_with_wr_of_its_own_work_requirement(self):
+        run = _id_run()
+        assert run.run(task_ids=[TASK_1]) is None
+        assert [t["name"] for t in run.bodies()[1]] == ["1"]
+
+    def test_by_id_opening_line_and_no_left_behind_warnings(self, capsys):
+        run = _id_run()
+        run.held = [_task("gone", "CANCELLED", GROUP_1)]
+        assert run.run(target=None, task_ids=[TASK_1, TASK_3]) is None
+        out = capsys.readouterr()
+        assert _flat(out.out + out.err).count("(by ID)") == 1
+        assert (
+            "Resubmitting 2 Tasks (by ID) from 2 Task Groups of Work Requirement"
+            f" 'ns/x' ({WR_ID})" in _flat(out.out)
+        )
+        assert "not resubmitted" not in out.out + out.err
+        assert not run.client.work_client.get_tasks.called
+
+    def test_task_ids_with_add_to(self):
+        run = _id_run()
+        run.target = _target({"render": ["bash"], "post": ["bash"]})
+        assert run.run(add_to=TARGET_ID, target=None, task_ids=[TASK_1, TASK_3]) is None
+        posts = _task_posts(run)
+        assert [(u.rsplit("/", 2)[-2], [t["name"] for t in b]) for u, b in posts] == [
+            ("render", ["1"]),
+            ("post", ["3"]),
+        ]
+
+    def test_nothing_created_when_a_task_is_missing_or_unfinished(self):
+        missing = TASK_1[:-1] + "7"
+        run = _id_run()
+        error = run.run(target=None, task_ids=[TASK_1, missing])
+        assert isinstance(error, NotFoundError)
+        assert classify(error) == ExitCode.NOT_FOUND
+        assert run.posts == []
+        run = _id_run(statuses=("COMPLETED", "EXECUTING", "FAILED"))
+        error = run.run(target=None, task_ids=[TASK_1, TASK_2])
+        assert isinstance(error, ValueError)
+        assert str(error) == f"Task '{TASK_2}' is EXECUTING and has not finished"
+        assert run.posts == []
+
+    @pytest.mark.parametrize(
+        "extra, flag",
+        [
+            (["--task-group", "a"], "--task-group"),
+            (["--task", "a"], "--task"),
+            (["--failed"], "--failed"),
+            (["--aborted"], "--aborted"),
+        ],
+    )
+    def test_task_id_clashes_refused_as_parsed(self, capsys, extra, flag):
+        err = _refusal(capsys, "--task-id", TASK_1, *extra)
+        assert f"--task-id cannot be used with {flag}" in err
+
+    def test_neither_wr_nor_task_id_is_an_argument_error(self, capsys):
+        err = _refusal(capsys)
+        assert "give a Work Requirement, or Tasks with --task-id" in err
+
+    def test_one_id_per_flag_repeated(self):
+        parser = CLIParser(
+            command="yd wr resubmit",
+            argv=["--task-id", TASK_1, "--task-id", TASK_2],
+        )
+        assert parser.task_ids == [TASK_1, TASK_2]
+        assert parser.resubmit_target is None
+
+    def test_the_word_after_a_task_id_is_the_work_requirement(self):
+        parser = CLIParser(
+            command="yd wr resubmit", argv=["--task-id", TASK_1, "my-run"]
+        )
+        assert parser.task_ids == [TASK_1]
+        assert parser.resubmit_target == "my-run"
+
+    def test_the_work_requirement_may_come_before_a_task_id(self):
+        parser = CLIParser(
+            command="yd wr resubmit", argv=["my-run", "--task-id", TASK_1]
+        )
+        assert parser.task_ids == [TASK_1]
+        assert parser.resubmit_target == "my-run"
 
 
 class TestParsing:

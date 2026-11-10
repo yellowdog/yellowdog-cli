@@ -268,7 +268,7 @@ def _property_schema(option: Option) -> tuple[dict[str, Any], bool]:
     else:
         nargs = kwargs.get("nargs")
         item = _item_schema(option)
-        if kwargs.get("action") == "append" or nargs in ("*", "+"):
+        if action == "append" or nargs in ("*", "+"):
             schema["type"] = "array"
             schema["items"] = item
         else:
@@ -684,7 +684,8 @@ def _to_argv(
             if value:
                 options.append(option.flags[-1])
         elif isinstance(value, list):
-            # An array is an 'append' option: the flag repeated, one per item
+            # An array is an 'append' option: the flag repeated, one entry per
+            # item
             options += [_joined(option, item) for item in value]
         else:
             options.append(_joined(option, value))

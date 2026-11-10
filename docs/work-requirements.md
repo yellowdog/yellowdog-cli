@@ -88,7 +88,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 09:41:38 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 12:34:39 GMT 2026 -->
 
 <!--te-->
 
@@ -1235,6 +1235,18 @@ To resubmit the aborted Tasks as well, add `--aborted`; with `--aborted` alone, 
 yd workrequirement resubmit thumbnails --failed --aborted
 ```
 
+To resubmit only some of the Tasks, choose them by Task Group with `--task-group` and by name with `--task`. Each takes a name or a glob and is repeatable. This resubmits the failed Tasks of the `render` Task Group whose names start `frame-01`:
+
+```bash
+yd workrequirement resubmit thumbnails --task-group render --task 'frame-01*'
+```
+
+To resubmit exact Tasks, name them with `--task-id`, one flag per Task. The Work Requirement is worked out from the IDs, so it can be left out, and a Task in any finished state can be named, a `COMPLETED` Task whose output turned out wrong included:
+
+```bash
+yd workrequirement resubmit --task-id ydid:task:000000:0a1b2c3d-0000-4000-8000-000000000001:0:0 --task-id ydid:task:000000:0a1b2c3d-0000-4000-8000-000000000002:0:1
+```
+
 To put the Tasks into a Work Requirement that is already running, rather than creating a new one, name it with `--add-to` (`-A`). A Task Group the target lacks is added to it, with its Tasks:
 
 ```bash
@@ -1255,6 +1267,10 @@ With `--dry-run` (`-D`), the new Work Requirement is printed as `--output-file` 
 **Only Work Requirements that still exist.** The Platform purges a finished Work Requirement 24 hours after it ends. After that, `yd workrequirement resubmit` cannot find it and exits 6.
 
 **What is selected.** The selection is by status: `FAILED` Tasks, and with `--aborted` `ABORTED` ones. A Task that was `CANCELLED` or `DISCARDED` is never selected: a Task Group that finished before reaching its Tasks leaves them `DISCARDED`, and so does a failed dependency of a Task Group that never ran. The command warns of them, one line per Task Group and status (`Task Group 'render' has 120 DISCARDED Tasks, not resubmitted`), so that a dependent Task Group that never ran is not missed. `RESUBMITTED` Tasks, already copied by a failure policy, are not selected either; their copies are, if they failed in turn. Only Task Groups with selected Tasks are copied, and a dependency on a Task Group that is not copied is dropped, as is a failure policy destination naming one (the Platform refuses it), with a warning: `Task Group 'render': failure policy destination 'on-demand' was not resubmitted, and is dropped`.
+
+**Choosing Task Groups and Tasks.** `--task-group` and `--task` match the whole name, case-sensitively, as a name or a glob (`*`, `?`, `[...]`); several patterns of one option are alternatives, and given together a Task must satisfy both. A Task without a name never matches `--task`. The options only narrow the status selection: through them, only `FAILED` Tasks (and `ABORTED` ones with `--aborted`) are copied, so a `COMPLETED` Task matching `--task` is not. A `--task-group` pattern that matches no Task Group of the Work Requirement is an error, raised before any Task is read (exit 6): `No Task Group of Work Requirement 'image-processing/thumbnails' matches 'rendr'`. A `--task` pattern that matches no selected Task is a warning, and the run continues with the Tasks the other patterns matched: `No FAILED Task matches 'frame-9*'` (with `--aborted` too, `No FAILED or ABORTED Task matches 'frame-9*'`: the selected statuses are joined by `or`). Under `--task-group` alone, the warnings about `CANCELLED` and `DISCARDED` Tasks are made for the chosen Task Groups only; under `--task` or `--task-id`, none is printed.
+
+**Naming Tasks by ID.** `--task-id` takes one or more Task IDs, and may be repeated. It is refused with `--task-group`, `--task`, `--failed` and `--aborted`. The IDs must be Task IDs, all of one Work Requirement, which is checked before any request; if `<wr>` is given, an ID of another Work Requirement is refused once that Work Requirement is found, before any Task is read: `'ydid:taskgrp:...' is not a Task ID`, `Task 'ydid:task:...' is not in Work Requirement ydid:workreq:...`. Each Task is then read once, however many times its ID is given. A Task that does not exist is an error (exit 6), and a Task that has not finished is refused, `Task 'ydid:task:...' is EXECUTING and has not finished`, both before anything is created. Any finished state is copied: `COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED` and `RESUBMITTED`. The opening line says `(by ID)` in place of the statuses: `Resubmitting 3 Tasks (by ID) from 2 Task Groups of Work Requirement 'image-processing/thumbnails' (ydid:workreq:...)`. Give neither `<wr>` nor `--task-id`, and the command reports an argument error.
 
 **Nothing to resubmit.** If no Task is selected, the command says so, creates nothing and exits 0 (`--json` prints `[]`).
 
