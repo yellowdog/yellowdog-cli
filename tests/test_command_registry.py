@@ -201,6 +201,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-status",
             "yd-resource-plan",
             "yd-resource-export",
+            "yd-resubmit",
         }
 
     def test_every_command_is_registered_under_its_own_name(self):
@@ -504,6 +505,7 @@ class TestToolKinds:
             "yd-copy",
             "yd-wait",
             "yd-follow",
+            "yd-resubmit",
         }
 
     def test_a_command_must_state_its_kind(self):

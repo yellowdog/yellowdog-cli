@@ -4579,6 +4579,113 @@ COMMANDS["yd-submit"] = Command(
     ),
 )
 
+# --- yd-resubmit ---------------------------------------------------------
+
+RESUBMIT_FAILED = option(
+    "--failed",
+    action="store_true",
+    required=False,
+    help="resubmit the FAILED Tasks (the default if neither option is given)",
+)
+RESUBMIT_ABORTED = option(
+    "--aborted",
+    action="store_true",
+    required=False,
+    help="resubmit the ABORTED Tasks, alone or with '--failed'",
+)
+RESUBMIT_TARGET = option(
+    "resubmit_target",
+    metavar="<work-requirement-name-or-ID>",
+    type=str,
+    help="the name or YellowDog ID of the Work Requirement whose Tasks are resubmitted",
+)
+
+
+def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-resubmit's options that cannot apply together, refused rather than
+    ignored: '--add-to' extends a Work Requirement that already has its own
+    name and state, and writes nothing to a file; '--output-file' submits
+    nothing, so there is nothing to follow or hold.
+    """
+    if args.add_to is not None:
+        for dest, flag in (
+            ("resubmit_name", "--name"),
+            ("export_file", "--output-file"),
+            ("hold", "--hold"),
+        ):
+            if getattr(args, dest, None) not in (None, False):
+                parser.error(f"--add-to cannot be used with {flag}")
+    if args.export_file is not None:
+        for dest, flag in (
+            ("follow", "--follow"),
+            ("progress", "--progress"),
+            ("hold", "--hold"),
+        ):
+            if getattr(args, dest, False):
+                parser.error(f"--output-file cannot be used with {flag}")
+
+
+COMMANDS["yd-resubmit"] = Command(
+    name="yd-resubmit",
+    purpose="resubmitting failed or aborted Tasks",
+    summary="Resubmit a Work Requirement's failed or aborted Tasks",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        RESUBMIT_FAILED,
+        RESUBMIT_ABORTED,
+        ADD_TO.variant(
+            help=(
+                "add the Tasks to this existing Work Requirement (a name or"
+                " YellowDog ID) instead of creating a new one"
+            )
+        ),
+        NAME.variant(
+            dest="resubmit_name",
+            metavar="<name>",
+            help="the new Work Requirement's name, by default '<name>-resubmit-<n>'",
+        ),
+        EXPORT_OUTPUT_FILE.variant(
+            help=(
+                "write the new Work Requirement to this file, as"
+                " 'yd wr submit --json-raw' takes it, and submit nothing"
+            )
+        ),
+        FOLLOW,
+        PROGRESS.variant(
+            help=(
+                "display a live progress bar showing Task completion; "
+                "implies following the Work Requirement to completion"
+            )
+        ),
+        HOLD,
+        TASK_BATCH_SIZE,
+        PARALLEL_BATCHES,
+        PAUSE_BETWEEN_BATCHES,
+        DRY_RUN_ACTION,
+        ENTITY_JSON.variant(
+            help=(
+                "emit the created entity as JSON; with --dry-run, the Work"
+                " Requirement that would be submitted; not with --progress"
+            )
+        ),
+        RESUBMIT_TARGET,
+    ),
+    requires_namespace_and_tag=True,
+    validators=(check_json_excludes_streaming, check_resubmit_combinations),
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Resubmit a Work Requirement's FAILED (and, with aborted, ABORTED)"
+        " Tasks as a new Work Requirement, or into an existing one with"
+        " add_to. Returns {id, name, namespace, type, resubmittedFrom,"
+        " taskCount} of the Work Requirement; with dry_run, the document"
+        " instead."
+    ),
+    script=False,
+)
+
 # --- yd-terminate --------------------------------------------------------
 
 COMMANDS["yd-terminate"] = Command(

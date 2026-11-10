@@ -64,7 +64,7 @@ def test_a_misspelt_verb(monkeypatch, capsys):
 
 def test_an_unknown_verb_with_nothing_close_lists_the_verbs(monkeypatch, capsys):
     err = _refused(monkeypatch, capsys, "wr", "frob")
-    assert "unknown verb 'frob'; choose from: submit, cancel" in err
+    assert "unknown verb 'frob'; choose from: submit, resubmit, cancel" in err
 
 
 def _option_error(capsys, name: str, *argv: str) -> str:

@@ -103,3 +103,7 @@ WINDOWS_RESERVED_CHARACTERS = '<>:"|?*'
 CONFIG_FILE_NAME = "config.toml"
 USER_CONFIG_DIRECTORY = "yellowdog"
 XDG_CONFIG_HOME = "XDG_CONFIG_HOME"
+
+# What a resubmitted Work Requirement's name takes after the original's:
+# '<name>-resubmit-<n>'
+RESUBMIT_SUFFIX = "-resubmit-"

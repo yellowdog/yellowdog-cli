@@ -204,6 +204,7 @@ LOOKUPS: dict[tuple[str, str], Lookup] = {
     (f"{_WR} cancel", "work_requirements"): _names(
         ET_WORK_REQUIREMENTS, frozenset({"RUNNING", "HELD", "FINISHING"})
     ),
+    (f"{_WR} resubmit", "resubmit_target"): _names(ET_WORK_REQUIREMENTS, None),
     (f"{_WR} hold", "work_requirements"): _names(
         ET_WORK_REQUIREMENTS, frozenset({"RUNNING"})
     ),

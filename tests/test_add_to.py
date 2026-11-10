@@ -9,9 +9,15 @@ from typing import Any
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
-from yellowdog_client.model import TaskGroup, WorkRequirement, WorkRequirementStatus
+from yellowdog_client.model import (
+    RunSpecification,
+    TaskGroup,
+    WorkRequirement,
+    WorkRequirementStatus,
+)
 
 import yellowdog_cli.submit as submit_module
+import yellowdog_cli.utils.add_target as add_target_module
 import yellowdog_cli.utils.submit_utils as su
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.args import CLIParser
@@ -21,6 +27,7 @@ from yellowdog_cli.utils.lazy import value as lazy_value
 from yellowdog_cli.utils.limits import TASK_COUNT_UPDATE_WAIT
 from yellowdog_cli.utils.property_names import NAME, TASK_GROUPS, TASK_TYPES, TASKS
 from yellowdog_cli.utils.task_group_position import TaskGroupPosition
+from yellowdog_cli.utils.task_groups import check_task_types_allowed
 from yellowdog_cli.utils.variable_syntax import (
     VAR_CLOSING_DELIMITER,
     VAR_OPENING_DELIMITER,
@@ -172,7 +179,7 @@ class TestAddToNotFound:
 
         with (
             patch.object(
-                submit_module,
+                add_target_module,
                 "find_work_requirement_by_name",
                 side_effect=NotFoundError("Cannot find Work Requirement 'ghost-wr'"),
             ),
@@ -210,7 +217,7 @@ class TestAddToTerminalStatusRejection:
 
         with (
             patch.object(
-                submit_module,
+                add_target_module,
                 "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
@@ -243,7 +250,7 @@ class TestAddToTerminalStatusRejection:
 
         with (
             patch.object(
-                submit_module,
+                add_target_module,
                 "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
@@ -368,7 +375,7 @@ class TestAddToPartitioning:
 
         with (
             patch.object(
-                submit_module,
+                add_target_module,
                 "find_work_requirement_by_name",
                 return_value=wr_summary,
             ),
@@ -868,7 +875,7 @@ class TestAddToById:
         existing.namespace = "elsewhere"
         find = MagicMock()
         with (
-            patch.object(submit_module, "find_work_requirement_by_name", find),
+            patch.object(add_target_module, "find_work_requirement_by_name", find),
             patch.object(
                 wrapper_module.CLIENT.work_client,
                 "get_work_requirement_by_id",
@@ -876,7 +883,7 @@ class TestAddToById:
             ) as get,
         ):
             assert (
-                submit_module._work_requirement_to_add_to(_submission(), wr_id)
+                add_target_module.work_requirement_to_add_to(_submission().ctx, wr_id)
                 is existing
             )
         find.assert_not_called()
@@ -1168,3 +1175,23 @@ class TestSettledSource:
         source, slept = self._settle(monkeypatch, taken=set(), counts=[0], unnamed=True)
         assert source.position.existing_tasks == 7
         assert slept == 0
+
+
+class TestCheckTaskTypesAllowed:
+    def _group(self) -> TaskGroup:
+        return TaskGroup(
+            name="render",
+            runSpecification=RunSpecification(taskTypes=["bash"]),
+        )
+
+    def test_an_allowed_type_passes(self):
+        check_task_types_allowed(self._group(), {"bash"})
+
+    def test_a_missing_type_is_refused_with_the_allowlist(self):
+        with pytest.raises(
+            ValueError,
+            match=r"Cannot add Tasks to existing Task Group 'render': their "
+            r"Task Type \['docker'\] is not in the Task Group's taskTypes "
+            r"allowlist \['bash'\]",
+        ):
+            check_task_types_allowed(self._group(), {"docker"})

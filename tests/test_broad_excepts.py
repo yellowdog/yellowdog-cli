@@ -166,7 +166,7 @@ ALLOWED: dict[str, str] = {
         "Decoding the message of a refused stream; the HTTPError is still"
         " recorded by its status"
     ),
-    "yellowdog_cli/utils/json_raw.py::submit_json_raw#1": (
+    "yellowdog_cli/utils/json_raw.py::submit_platform_document#1": (
         "Best-effort cancellation of a part-populated Work Requirement; the"
         " original failure is re-raised after it"
     ),

@@ -43,6 +43,7 @@ from yellowdog_cli.utils.resource_exporters import (
     Found,
     Reference,
     Selection,
+    written_raw,
 )
 
 NAMESPACE = "render"
@@ -596,3 +597,10 @@ def test_a_type_with_no_exporter_is_passed_over(monkeypatch):
         _ctx(), ExportOptions(types=(ET_COMPUTE_SOURCE_TEMPLATES, ET_KEYRINGS))
     )
     assert _names(specifications) == [(RN_KEYRING, "a")]
+
+
+def test_written_raw_writes_expressions_raw():
+    assert written_raw({"a": "{{x}}", "b": ["__{{y}}__", 1]}) == {
+        "a": "{{raw:x}}",
+        "b": ["__{{raw:y}}__", 1],
+    }

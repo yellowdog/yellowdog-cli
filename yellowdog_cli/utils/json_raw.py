@@ -81,23 +81,53 @@ def submit_json_raw(
     resolve_variables_insitu(wr_data)
     literal_text(wr_data)
 
+    submit_platform_document(
+        ctx,
+        wr_data,
+        batch_size=batch_size,
+        parallel_batches=parallel_batches,
+        follow=follow,
+    )
+
+
+def submit_platform_document(
+    ctx: RunContext,
+    wr_data: dict,
+    *,
+    batch_size: int,
+    parallel_batches: int,
+    follow: Callable[[str], None],
+    record_extra: dict | None = None,
+) -> str | None:
+    """
+    Submit a Work Requirement document that is final, its Tasks inside its
+    Task Groups: no variable is substituted and no literal restored here.
+    Create the Work Requirement and its Task Groups, hold it if asked, add
+    the Tasks in batches, cancel it if that fails part-way, and give 'follow'
+    its ID. 'record_extra' is added to the '--json' record of the new Work
+    Requirement. Return the new ID, or None under '--dry-run', which prints
+    or records the document instead.
+    """
+    wr_name = wr_data["name"]
+
     if ctx.args.dry_run:
         # This will show the results of any variable substitutions
         if ctx.args.json_output:
             record_document(wr_data)
-            return
+            return None
         print_dry_run("Printing JSON Work Requirement specification:")
         print_json(wr_data)
         print_dry_run("Complete")
-        return
+        return None
 
-    # Extract Tasks from Task Groups
+    # Extract Tasks from Task Groups, leaving the caller's document intact
     task_lists = {}
     if TASK_GROUPS not in wr_data:
         raise ValueError(f"Property '{TASK_GROUPS}' is not defined")
     task_groups = check_list(wr_data[TASK_GROUPS], TASK_GROUPS)
     if not task_groups:
         raise ValueError("There must be at least one Task Group")
+    groups_without_tasks = []
     for tg_number, task_group in enumerate(task_groups):
         if not isinstance(task_group, dict) or "name" not in task_group:
             raise ValueError(
@@ -105,13 +135,16 @@ def submit_json_raw(
                 f" '{NAME}' property"
             )
         task_lists[task_group["name"]] = task_group.get(TASKS, [])
-        task_group.pop(TASKS, None)
+        groups_without_tasks.append(
+            {key: value for key, value in task_group.items() if key != TASKS}
+        )
+    wr_body = {**wr_data, TASK_GROUPS: groups_without_tasks}
 
     # Submit the Work Requirement and its Task Groups
     response = requests.post(
         url=f"{ctx.config.url}/work/requirements",
         headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        json=wr_data,
+        json=wr_body,
         timeout=ctx.config.request_timeout,
     )
 
@@ -122,12 +155,17 @@ def submit_json_raw(
     wr_id = json_loads(response.text)["id"]
     namespace = cast(str, wr_data.get("namespace"))
     print_info(f"Created Work Requirement '{namespace}/{wr_name}' ({wr_id})")
-    record_entity(wr_id, wr_name, namespace, ET_WORK_REQUIREMENTS)
+    record_entity(
+        wr_id, wr_name, namespace, ET_WORK_REQUIREMENTS, **(record_extra or {})
+    )
     print_quiet_result(wr_id)
 
     try:
-        _submit_json_raw_tasks(
-            ctx, wr_id, wr_name, namespace, task_lists, batch_size, parallel_batches
+        if ctx.args.hold:
+            ctx.client.work_client.hold_work_requirement_by_id(wr_id)
+            print_info("Work Requirement status set to 'HELD'")
+        add_platform_tasks(
+            ctx, namespace, wr_name, task_lists, batch_size, parallel_batches
         )
     except (Exception, KeyboardInterrupt):
         # As for a Work Requirement built from a specification: one left
@@ -141,27 +179,24 @@ def submit_json_raw(
         raise
 
     follow(wr_id)
+    return wr_id
 
 
-def _submit_json_raw_tasks(
+def add_platform_tasks(
     ctx: RunContext,
-    wr_id: str,
-    wr_name: str,
     namespace: str,
-    task_lists: dict[str, list],
+    wr_name: str,
+    task_lists: dict[str, list[dict]],
     batch_size: int,
     parallel_batches: int,
-) -> None:
+) -> int:
     """
-    Hold the newly created raw Work Requirement if asked, then submit each
-    Task Group's Tasks in batches. A batch that fails raises, once the
-    batches already under way have finished; those not yet started are not.
+    Add each Task Group's Tasks to an existing Work Requirement in batches
+    of 'batch_size' on up to 'parallel_batches' threads. A batch that fails
+    raises, once the batches already under way have finished; those not yet
+    started are not. Return the total number of Tasks added.
     """
-    if ctx.args.hold:
-        ctx.client.work_client.hold_work_requirement_by_id(wr_id)
-        print_info("Work Requirement status set to 'HELD'")
-
-    # Submit Tasks in batches
+    total = 0
     for task_group_name, task_list in task_lists.items():
         if not task_list:
             print_info(f"No Tasks to add to Task Group '{task_group_name}'")
@@ -187,6 +222,8 @@ def _submit_json_raw_tasks(
         print_info(
             f"Added a total of {counted(num_submitted_tasks, 'Task')} to Task Group '{task_group_name}'"
         )
+        total += num_submitted_tasks
+    return total
 
 
 def submit_json_task_batch(

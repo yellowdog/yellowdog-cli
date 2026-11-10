@@ -277,7 +277,7 @@ def _never(_position: int) -> bool:
     return False
 
 
-def _literal(data: Any, mustache: bool = False) -> Any:
+def written_raw(data: Any, mustache: bool = False) -> Any:
     """
     'data' with every string's expressions written raw: in the plain form,
     or, within a Platform Mustache property, in the Worker Pool form alone,
@@ -288,11 +288,11 @@ def _literal(data: Any, mustache: bool = False) -> Any:
         return _raw(data, _WP_DELIMITERS if mustache else _DELIMITERS, _never)
     if isinstance(data, dict):
         return {
-            key: _literal(value, mustache or key in PLATFORM_MUSTACHE_PROPERTIES)
+            key: written_raw(value, mustache or key in PLATFORM_MUSTACHE_PROPERTIES)
             for key, value in data.items()
         }
     if isinstance(data, list):
-        return [_literal(item, mustache) for item in data]
+        return [written_raw(item, mustache) for item in data]
     return data
 
 
@@ -376,7 +376,7 @@ def specification_of(
         sent = {f.name for f in fields(model_class(model_name))}
         properties = {key: value for key, value in properties.items() if key in sent}
     properties.pop(PROP_RESOURCE, None)
-    return {PROP_RESOURCE: resource_type, **_literal(properties)}
+    return {PROP_RESOURCE: resource_type, **written_raw(properties)}
 
 
 @dataclass
@@ -643,7 +643,7 @@ def _specification(resource_type: str, properties: dict) -> dict:
     property left out, each '{{...}}' in a string written raw.
     """
     kept = {key: value for key, value in properties.items() if value is not None}
-    return {PROP_RESOURCE: resource_type, **_literal(kept)}
+    return {PROP_RESOURCE: resource_type, **written_raw(kept)}
 
 
 def _matches(name: str | None, selection: Selection) -> bool:
@@ -729,7 +729,7 @@ def export_keyring(ctx: RunContext, found: Found) -> Exported:
     return Exported(
         {
             PROP_RESOURCE: RN_KEYRING,
-            **_literal(
+            **written_raw(
                 {PROP_NAME: summary.name, PROP_DESCRIPTION: summary.description}
             ),
         }
@@ -1173,7 +1173,9 @@ def export_credential(ctx: RunContext, found: Found) -> Exported:
             )
         links.notes.append(note)
     written = {
-        **_literal({key: value for key, value in given.items() if value is not None}),
+        **written_raw(
+            {key: value for key, value in given.items() if value is not None}
+        ),
         **{
             field: f"{VAR_OPENING_DELIMITER}{variable}{VAR_CLOSING_DELIMITER}"
             for field, variable in variables.items()
@@ -1182,7 +1184,7 @@ def export_credential(ctx: RunContext, found: Found) -> Exported:
     return links.exported(
         {
             PROP_RESOURCE: RN_CREDENTIAL,
-            **_literal({PROP_KEYRING_NAME: keyring_name}),
+            **written_raw({PROP_KEYRING_NAME: keyring_name}),
             PROP_CREDENTIAL: written,
         }
     )

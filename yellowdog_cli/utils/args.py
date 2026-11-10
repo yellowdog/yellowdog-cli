@@ -1037,6 +1037,30 @@ class CLIParser:
         return self.args.export_file
 
     # -----------------------------------------------------------------------
+    # yd-resubmit
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def failed(self) -> bool | None:
+        return self.args.failed
+
+    @property
+    @allow_missing_attribute
+    def aborted(self) -> bool | None:
+        return self.args.aborted
+
+    @property
+    @allow_missing_attribute
+    def resubmit_name(self) -> str | None:
+        return self.args.resubmit_name
+
+    @property
+    @allow_missing_attribute
+    def resubmit_target(self) -> str | None:
+        return self.args.resubmit_target
+
+    # -----------------------------------------------------------------------
     # yd-compare
     # -----------------------------------------------------------------------
 

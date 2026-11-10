@@ -55,12 +55,14 @@
          * [Details](#details-9)
       * [Submitting 'Raw' JSON Work Requirement Specifications](#submitting-raw-json-work-requirement-specifications)
          * [Details](#details-10)
+   * [Resubmitting Failed Tasks](#resubmitting-failed-tasks)
+         * [Details](#details-11)
    * [Submitting Large Numbers of Tasks](#submitting-large-numbers-of-tasks)
    * [Using the YellowDog Data Client](#using-the-yellowdog-data-client)
       * [Specifying Data Client Inputs](#specifying-data-client-inputs)
       * [Using Files Uploaded with yd data](#using-files-uploaded-with-yd-data)
       * [Automatic Upload of Local Files](#automatic-upload-of-local-files)
-         * [Details](#details-11)
+         * [Details](#details-12)
       * [Rclone Authentication](#rclone-authentication)
       * [Specifying Data Client Outputs](#specifying-data-client-outputs)
       * [The rclone Binary](#the-rclone-binary)
@@ -68,25 +70,25 @@
       * [Task Execution Steps](#task-execution-steps)
       * [Where Task Types Come From](#where-task-types-come-from)
       * [The docker Task Type](#the-docker-task-type)
-         * [Details](#details-12)
+         * [Details](#details-13)
       * [The User and Group used for Tasks](#the-user-and-group-used-for-tasks)
       * [Home Directory for yd-agent](#home-directory-for-yd-agent)
       * [Task Execution Directory](#task-execution-directory)
       * [Windows Nodes](#windows-nodes)
    * [Specifying Work Requirements using CSV Data](#specifying-work-requirements-using-csv-data)
       * [Work Requirement CSV Data Example](#work-requirement-csv-data-example)
-         * [Details](#details-13)
-      * [CSV Variable Substitutions](#csv-variable-substitutions)
          * [Details](#details-14)
+      * [CSV Variable Substitutions](#csv-variable-substitutions)
+         * [Details](#details-15)
       * [Property Inheritance](#property-inheritance-1)
       * [Multiple Task Groups using Multiple CSV Files](#multiple-task-groups-using-multiple-csv-files)
-         * [Details](#details-15)
-      * [Using CSV Data with Simple, TOML-Only Work Requirement Specifications](#using-csv-data-with-simple-toml-only-work-requirement-specifications)
          * [Details](#details-16)
+      * [Using CSV Data with Simple, TOML-Only Work Requirement Specifications](#using-csv-data-with-simple-toml-only-work-requirement-specifications)
+         * [Details](#details-17)
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:02 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 09:41:38 GMT 2026 -->
 
 <!--te-->
 
@@ -95,7 +97,7 @@ A **Work Requirement** is the top-level unit of work submitted to the YellowDog 
 
 The `workRequirement` section of the configuration file is optional. It's used only by the `yd workrequirement submit` command, and controls the Work Requirement that is submitted to the Platform.
 
-**Jump to:** [Property Dictionary](work-requirement-property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [All Properties](#all-properties) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data)
+**Jump to:** [Property Dictionary](work-requirement-property-dictionary.md#work-requirement-property-dictionary) · [Task Templates](#task-templates) · [Automatic Properties](#automatic-properties) · [Examples](#examples) · [All Properties](#all-properties) · [Variable Substitutions](#variable-substitutions-in-work-requirement-properties) · [Dry-Running](#dry-running-work-requirement-submissions) · [Data Client](#using-the-yellowdog-data-client) · [Task Execution Context](#task-execution-context) · [CSV Data](#specifying-work-requirements-using-csv-data) · [Resubmitting Failed Tasks](#resubmitting-failed-tasks)
 
 The details of a Work Requirement to be submitted can be captured entirely within the TOML configuration file for simple (single Task Group) examples. More complex examples capture the Work Requirement in a combination of the TOML file plus a JSON document, or in a JSON document only.
 
@@ -1211,6 +1213,64 @@ The Work Requirement is submitted, then its Tasks are added. `--parallel-batches
 **Substitutions but no inheritance.** Variable substitutions can be used in the raw JSON file, as in any other Work Requirement JSON file. There is no property inheritance, though, neither from the `[workRequirement]` section of the TOML configuration nor from Work Requirement properties given on the command line.
 
 **Failures.** A batch of Tasks that fails in a way a retry could cure is retried, as any other submission's are. If the Platform refuses a batch of Tasks, the Work Requirement is cancelled and `yd workrequirement submit` exits with a non-zero status naming the kind of failure.
+
+## Resubmitting Failed Tasks
+
+When some of a Work Requirement's Tasks fail, `yd workrequirement resubmit` (`yd wr resubmit`) runs them again: it reads the failed Tasks from the Platform and submits copies of them as a new Work Requirement, in Task Groups with the original run specifications. Nothing needs to be written by hand, and the original specification need not still exist.
+
+```bash
+yd workrequirement resubmit thumbnails --follow
+```
+
+```
+Resubmitting 40 Tasks (FAILED) from 2 Task Groups of Work Requirement 'image-processing/thumbnails' (ydid:workreq:...)
+Created Work Requirement 'image-processing/thumbnails-resubmit-1' (ydid:workreq:...)
+```
+
+The new Work Requirement is named `<name>-resubmit-<n>`, `n` being the lowest number from 1 that is not yet taken in the namespace, or is given with `--name`. Each Task keeps its name, tag, Task Type, arguments, environment, data and timeout. `--follow` and `--progress` follow the new Work Requirement as they do for `yd workrequirement submit`.
+
+To resubmit the aborted Tasks as well, add `--aborted`; with `--aborted` alone, only the aborted ones are resubmitted. With neither `--failed` nor `--aborted`, the failed Tasks are resubmitted:
+
+```bash
+yd workrequirement resubmit thumbnails --failed --aborted
+```
+
+To put the Tasks into a Work Requirement that is already running, rather than creating a new one, name it with `--add-to` (`-A`). A Task Group the target lacks is added to it, with its Tasks:
+
+```bash
+yd workrequirement resubmit thumbnails --add-to thumbnails-retries
+```
+
+To change the Tasks before they run, for example to fix an argument, write the new Work Requirement to a file with `--output-file` (`-o`), edit the file, and submit it with `--json-raw` (nothing is submitted by `yd workrequirement resubmit` itself):
+
+```bash
+yd workrequirement resubmit thumbnails -o thumbnails-retry.json
+yd workrequirement submit --json-raw thumbnails-retry.json
+```
+
+With `--dry-run` (`-D`), the new Work Requirement is printed as `--output-file` would write it, and nothing is created or written; with `--output-file`, the file that would be written is named; with `--add-to`, what would be added is printed.
+
+#### Details
+
+**Only Work Requirements that still exist.** The Platform purges a finished Work Requirement 24 hours after it ends. After that, `yd workrequirement resubmit` cannot find it and exits 6.
+
+**What is selected.** The selection is by status: `FAILED` Tasks, and with `--aborted` `ABORTED` ones. A Task that was `CANCELLED` or `DISCARDED` is never selected: a Task Group that finished before reaching its Tasks leaves them `DISCARDED`, and so does a failed dependency of a Task Group that never ran. The command warns of them, one line per Task Group and status (`Task Group 'render' has 120 DISCARDED Tasks, not resubmitted`), so that a dependent Task Group that never ran is not missed. `RESUBMITTED` Tasks, already copied by a failure policy, are not selected either; their copies are, if they failed in turn. Only Task Groups with selected Tasks are copied, and a dependency on a Task Group that is not copied is dropped, as is a failure policy destination naming one (the Platform refuses it), with a warning: `Task Group 'render': failure policy destination 'on-demand' was not resubmitted, and is dropped`.
+
+**Nothing to resubmit.** If no Task is selected, the command says so, creates nothing and exits 0 (`--json` prints `[]`).
+
+**Copies are exact.** Each Task is copied from the Platform's record, so the copy is what the original was. No variable is substituted in the copies: an argument holding `{{task_number}}` on the Platform is submitted as `{{task_number}}`. In a file written with `--output-file`, such a value is written as `{{raw:...}}`, since `--json-raw` substitutes variables, so the file submits the same values the command would have.
+
+**Task names are kept.** A Task name must be unique within its Task Group. With `--add-to`, if the target Task Group already holds a Task of a name being added, as when the same Tasks are resubmitted into one target twice, the command refuses before adding any Task, naming the first clash. A Task Group of the target that has a different `taskTemplate` from the original's is refused too, since the copied Tasks could run differently there: resubmit them as a new Work Requirement instead.
+
+**Naming.** A name already ending in `-resubmit-<n>` is not stacked: resubmitting `thumbnails-resubmit-1` gives `thumbnails-resubmit-2`. A name taken by another Work Requirement is skipped. If two resubmissions race for one name, the second is refused by the Platform and is not retried.
+
+**A Work Requirement that is still running.** Its failed Tasks so far are resubmitted, with a warning that Tasks still running may yet fail, and will not be included. Resubmit again when it has finished for the rest.
+
+**Failures part-way.** As for `yd workrequirement submit`, a new Work Requirement whose Tasks fail to be added is cancelled. With `--add-to`, nothing is cancelled, since the target is not the command's own, and the command warns that any Tasks already added remain in the target.
+
+**Option combinations.** `--add-to` cannot be used with `--name`, `--output-file` or `--hold`, and `--output-file` cannot be used with `--follow`, `--progress` or `--hold`.
+
+**Automatic resubmission.** To have a failed Task run again as it fails, rather than after the Work Requirement ends, use a retry policy and a failure policy; see [Task Retries and Failure Policies](#task-retries-and-failure-policies).
 
 ## Submitting Large Numbers of Tasks
 

@@ -6,6 +6,8 @@ cancelled, as one built from a specification is.
 """
 
 from contextlib import ExitStack
+from gzip import decompress
+from json import loads as json_loads
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
@@ -263,3 +265,99 @@ class TestJsonRawMissingProperties:
             pytest.raises(ValueError, match=message),
         ):
             _submit_json_raw()
+
+
+class TestSubmitPlatformDocument:
+    def _run(self, document: dict, posts: list, **kwargs):
+        post = MagicMock(side_effect=posts)
+        follow = MagicMock()
+        with (
+            patch.object(json_raw_module.requests, "post", post),
+            patch.object(
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(url="https://x", request_timeout=REQUEST_TIMEOUT),
+            ),
+            patch.object(wrapper_module, "CLIENT", MagicMock()),
+            patch.object(json_raw_module, "record_entity") as record_entity,
+            patch.object(json_raw_module, "print_quiet_result"),
+            patch.object(
+                CLIParser, "dry_run", new_callable=PropertyMock, return_value=False
+            ),
+            patch.object(
+                CLIParser, "hold", new_callable=PropertyMock, return_value=False
+            ),
+        ):
+            wr_id = json_raw_module.submit_platform_document(
+                _ctx(),
+                document,
+                batch_size=10,
+                parallel_batches=1,
+                follow=follow,
+                **kwargs,
+            )
+        return wr_id, post, follow, record_entity
+
+    def test_the_document_is_posted_unchanged(self):
+        document = {
+            "name": "wr",
+            "namespace": "ns",
+            "taskGroups": [
+                {
+                    "name": "tg",
+                    "tasks": [
+                        {"taskType": "bash", "arguments": ["{{x}}", "__{{y}}__"]}
+                    ],
+                }
+            ],
+        }
+        wr_id, post, follow, record_entity = self._run(
+            document,
+            [_created(), _response(200)],
+            record_extra={"resubmittedFrom": "ydid:old"},
+        )
+        assert wr_id == WR_ID
+        follow.assert_called_once_with(WR_ID)
+        created = post.call_args_list[0].kwargs["json"]
+        assert created == {
+            "name": "wr",
+            "namespace": "ns",
+            "taskGroups": [{"name": "tg"}],
+        }
+        assert document["taskGroups"][0]["tasks"][0]["arguments"] == [
+            "{{x}}",
+            "__{{y}}__",
+        ]
+        sent = json_loads(decompress(post.call_args_list[1].kwargs["data"]))
+        assert sent == [{"taskType": "bash", "arguments": ["{{x}}", "__{{y}}__"]}]
+        record_entity.assert_called_once_with(
+            WR_ID, "wr", "ns", "work-requirements", resubmittedFrom="ydid:old"
+        )
+
+
+class TestAddPlatformTasks:
+    def test_each_task_group_is_posted_to_and_the_total_returned(self):
+        post = MagicMock(return_value=_response(200))
+        with (
+            patch.object(json_raw_module.requests, "post", post),
+            patch.object(
+                wrapper_module,
+                "CONFIG_COMMON",
+                MagicMock(url="https://x", request_timeout=REQUEST_TIMEOUT),
+            ),
+        ):
+            total = json_raw_module.add_platform_tasks(
+                _ctx(),
+                "ns",
+                "wr",
+                {"a": [{"taskType": "bash"}] * 3, "b": [], "c": [{"taskType": "bash"}]},
+                batch_size=2,
+                parallel_batches=1,
+            )
+        assert total == 4
+        urls = sorted(call.kwargs["url"] for call in post.call_args_list)
+        assert urls == [
+            "https://x/work/namespaces/ns/requirements/wr/taskGroups/a/tasks",
+            "https://x/work/namespaces/ns/requirements/wr/taskGroups/a/tasks",
+            "https://x/work/namespaces/ns/requirements/wr/taskGroups/c/tasks",
+        ]

@@ -12,6 +12,7 @@ These changes alter what an existing script or configuration will see:
 
 ### Other
 
+- **`yd workrequirement resubmit`** (`yd wr resubmit`) runs a Work Requirement's failed Tasks again, as a new Work Requirement named `<name>-resubmit-<n>` that keeps each Task's name, arguments, environment and data, with `--aborted` to include aborted Tasks, `--add-to` to add them to an existing Work Requirement, and `--output-file` to write the new Work Requirement for editing and `yd wr submit --json-raw`.
 - `yd resource create` ends with a line counting the resources created, updated, unchanged, skipped and failed (`2 created, 1 updated, 7 unchanged`), except under `--dry-run` or `--json`.
 - `yd status` shows the work and compute in the namespace and tag on one screen: the Work Requirements with their Task progress, the Worker Pools with their Nodes and Workers, and the Compute Requirements with their Instances, each section with a total, and a warning counting anything unhealthy. `--active-only` leaves out what has finished, as it does for `yd list`, and `--json` gives the three lists as one document.
 - `yd resource plan` shows what `yd resource create` would do with the same specifications, changing nothing: for each, whether its resource would be created, updated (each property that would change, from what to what), left unchanged, or can't be compared (an existing Credential). `--json` gives a record per specification, and `--fail-on-changes` exits 1 when anything would change, for a CI check.

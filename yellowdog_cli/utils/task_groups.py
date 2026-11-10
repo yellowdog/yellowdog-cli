@@ -34,7 +34,7 @@ from yellowdog_client.model.instance_pricing_preference import (
 
 from yellowdog_cli.utils.config_types import ConfigWorkRequirement
 from yellowdog_cli.utils.misc_utils import format_yd_name
-from yellowdog_cli.utils.printing import print_info, print_warning
+from yellowdog_cli.utils.printing import plural, print_info, print_warning
 from yellowdog_cli.utils.property_cascade import Cascade
 from yellowdog_cli.utils.property_names import (
     COMPLETED_TASK_TTL,
@@ -123,6 +123,27 @@ def check_task_groups(wr_data: dict) -> None:
                 raise TypeError(
                     f"Task {task_number + 1} in {task_group} should be of type 'Dict'"
                 )
+
+
+def check_task_types_allowed(existing: TaskGroup, task_types: set[str]) -> None:
+    """
+    Raise a ValueError if any of 'task_types' is not in the existing Task
+    Group's taskTypes allowlist, which cannot be modified after creation,
+    rather than letting the Platform reject those Tasks downstream.
+    """
+    existing_types = set(existing.runSpecification.taskTypes)
+    missing_types = task_types - existing_types
+    if missing_types:
+        raise ValueError(
+            f"Cannot add Tasks to existing Task Group '{existing.name}':"
+            f" their {plural('Task Type', len(missing_types))}"
+            f" {sorted(missing_types)} {'is' if len(missing_types) == 1 else 'are'}"
+            " not in the"
+            f" Task Group's taskTypes allowlist {sorted(existing_types)}."
+            " A Task Group's taskTypes cannot be modified after creation;"
+            " either change the Tasks to use a supported Task Type, or"
+            " add them under a new Task Group name."
+        )
 
 
 def promote_task_type(data: dict) -> None:

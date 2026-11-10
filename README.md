@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 16:03:58 GMT 2026 -->
+<!-- Added by: pwt, at: Tue Nov 10 09:41:39 GMT 2026 -->
 
 <!--te-->
 
@@ -32,7 +32,7 @@ This documentation should be read in conjunction with the main **[YellowDog Docu
 
 The CLI is one command, `yd`. Most of what it does names the object acted on, then what to do to it — `yd workrequirement submit`, `yd instance terminate` — and `yd <noun> --help` lists a noun's verbs; `yd` alone, or `yd help`, lists everything. The commands provide the following capabilities:
 
-- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, and comparing them against Worker Pools, with **`yd workrequirement`** (short form `yd wr`)
+- **Work Requirements** — submitting, cancelling, holding, starting, finishing and reprioritising them, resubmitting their failed Tasks, and comparing them against Worker Pools, with **`yd workrequirement`** (short form `yd wr`)
 - **Task Groups and Tasks** — reprioritising Task Groups and comparing them against Worker Pools with **`yd taskgroup`** (`yd tg`), and cancelling or aborting Tasks with **`yd task`**
 - **Worker Pools** — provisioning, resizing and shutting them down, and refreshing or regenerating Configured Worker Pools' tokens, with **`yd workerpool`** (`yd wp`)
 - **Compute Requirements** — instantiating, resizing, stopping, starting, reprovisioning, terminating and setting when they are automatically terminated with **`yd computerequirement`** (`yd cr`)

@@ -136,15 +136,26 @@ def record_resource(
 
 
 def record_entity(
-    entity_id: str | None, name: str | None, namespace: str | None, entity_type: str
+    entity_id: str | None,
+    name: str | None,
+    namespace: str | None,
+    entity_type: str,
+    **extra: Any,
 ) -> None:
     """
     Record the entity a yd-submit, yd-provision or yd-instantiate run
     created, as {"id", "name", "namespace", "type"}, 'entity_type' spelled
-    as yd-list spells it ('work-requirements'). See record_document_part().
+    as yd-list spells it ('work-requirements'), and any 'extra' fields. See
+    record_document_part().
     """
     record_document_part(
-        {"id": entity_id, "name": name, "namespace": namespace, "type": entity_type}
+        {
+            "id": entity_id,
+            "name": name,
+            "namespace": namespace,
+            "type": entity_type,
+            **extra,
+        }
     )
 
 
