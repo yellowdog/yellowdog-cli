@@ -48,7 +48,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov  5 17:20:26 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:55 GMT 2026 -->
 
 <!--te-->
 
@@ -182,7 +182,7 @@ Commander's bulk management actions — cancelling Work Requirements, terminatin
 
 That convention holds automatically when you submit or provision without overriding names, because the CLI derives them from the tag:
 
-- A Work Requirement is named `<tag>_<timestamp>` and tagged with the tag.
+- A Work Requirement is named `<tag>-<timestamp>` and tagged with the tag.
 - A Compute Requirement is tagged with the tag.
 - A Worker Pool's name incorporates the tag.
 - Results are written to an object path beginning with the tag.
@@ -217,14 +217,14 @@ Set the Namespace, Tag, and Path fields deliberately, and read the confirmation 
 
 The **Path** field is the equivalent escape hatch for the object actions, and is more capable than its default suggests. Its value is passed straight through as the remote path argument to `yd data download` / `yd data delete`, so anything those commands accept can be typed into it. There are four ways to widen or narrow the reach of a download or deletion:
 
-- **Wildcards** (`*`, `?`, `[…]`) in the last part of the path, matching files and directories: `render-test_2610*` for one month's runs, or `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
-- **A specific file or subdirectory**, with `/` separators: `render-test_261027-1045001-4f/taskoutput.txt` retrieves a single object rather than a whole tree.
+- **Wildcards** (`*`, `?`, `[…]`) in the last part of the path, matching files and directories: `render-test-2610*` for one month's runs, or `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
+- **A specific file or subdirectory**, with `/` separators: `render-test-261027-1045001-4f/taskoutput.txt` retrieves a single object rather than a whole tree.
 - **Variable substitution** with `{{...}}`: the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. No quoting is needed, unlike on the command line: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
 - **An absolute rclone path**, beginning with the configured remote's name and a colon, such as `s3-results:acme-archive/2025/`. It is used verbatim and bypasses the configured bucket and prefix entirely.
 
 #### Object Path Details
 
-**Why `<tag>*` finds your results.** Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default). The default `<tag>*` matches the per-Work-Requirement directories written beneath that prefix, named `<tag>_<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
+**Why `<tag>*` finds your results.** Paths are interpreted relative to the `prefix` configured in the `[dataClient]` section of the configuration file (`{{namespace}}/{{tag}}` by default). The default `<tag>*` matches the per-Work-Requirement directories written beneath that prefix, named `<tag>-<timestamp>`. The placeholder text shows the default that will be used if you leave the field blank.
 
 **When no tag could be discovered.** The default is built from the discovered tag. So when no tag could be discovered, because the configuration could not be read, Download Matching Objects and Delete Matching Objects refuse an empty Path field and say so, rather than acting on a guess at what you meant. With nothing configured at all, the tag is the CLI's default, your user name, as the placeholder shows.
 
@@ -256,7 +256,7 @@ Directories expand in place, as in the Finder's list view: click the triangle be
 
 **Expanded directories.** Expanding a directory in place saves navigating in and back out, which is what reading a task's output three levels down otherwise costs. The triangle and the double-click each do their own thing, and a file you select inside an expanded directory is the file you get.
 
-**Order.** Every level is listed in name order, including the ones you expand into. Numbered names are ordered by their numbers — `task_2` before `task_10`, not after `task_100` — the way the platform's own file viewer orders them.
+**Order.** Every level is listed in name order, including the ones you expand into. Numbered names are ordered by their numbers — `task-2` before `task-10`, not after `task-100` — the way the platform's own file viewer orders them.
 
 **The sidebar.** The places sidebar down the left — **Computer** and your home directory — opens wide enough to read its entries, rather than at the width Qt would choose, which truncates even *Computer* to *Co...*.
 

@@ -38,7 +38,7 @@
          * [Details](#details-7)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:03 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:54 GMT 2026 -->
 
 <!--te-->
 
@@ -218,7 +218,7 @@ The split is made when `maxNodes` (for `yd workerpool provision`) or `targetInst
 
 ## Automatic Properties
 
-The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)), e.g. `mytag_221024-1555241-4f`.
+The name of the Worker Pool, if not supplied, is automatically generated using a concatenation of the `tag` property, a UTC timestamp and a process discriminator (see [Naming Rules](configuration.md#naming-rules)), e.g. `mytag-221024-1555241-4f`.
 
 ## All Properties in the `workerPool` Section
 

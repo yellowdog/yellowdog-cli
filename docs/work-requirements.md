@@ -88,7 +88,7 @@
       * [Inspecting the Results of CSV Variable Substitution](#inspecting-the-results-of-csv-variable-substitution)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 12:34:39 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:54 GMT 2026 -->
 
 <!--te-->
 
@@ -667,13 +667,13 @@ All three Tasks use the `bash` Task Type and the Task Data from the template. Th
 
 ### Work Requirement, Task Group and Task Naming
 
-- An unnamed **Work Requirement** is named from the `[common]` `tag`, a UTC timestamp and a process discriminator, e.g. `thumbnails_261027-1605404-tz` (see [Naming Rules](configuration.md#naming-rules)).
-- An unnamed **Task Group** is named `task_group_1`, `task_group_2` and so on.
-- An unnamed **Task** is named `task_1`, `task_2` and so on, counting from 1 again in each Task Group.
+- An unnamed **Work Requirement** is named from the `[common]` `tag`, a UTC timestamp and a process discriminator, e.g. `thumbnails-261027-1605404-tz` (see [Naming Rules](configuration.md#naming-rules)).
+- An unnamed **Task Group** is named `task-group-1`, `task-group-2` and so on.
+- An unnamed **Task** is named `task-1`, `task-2` and so on, counting from 1 again in each Task Group.
 
 Your own names can include the numbers with the `{{task_group_number}}` and `{{task_number}}` [substitutions](#task-and-task-group-name-substitutions).
 
-The Work Requirement's name uses the `[common]` `tag`, not the `[workRequirement]` section's. The numbers in the generated names are zero-padded to the width of the count, e.g. `task_01` in a Task Group of 10 to 99 Tasks, and `task_group_01` likewise.
+The Work Requirement's name uses the `[common]` `tag`, not the `[workRequirement]` section's. The numbers in the generated names are zero-padded to the width of the count, e.g. `task-01` in a Task Group of 10 to 99 Tasks, and `task-group-01` likewise.
 
 Setting `setTaskNames` to `false` stops Tasks being named. The `task_name` variable is then `none`.
 
@@ -1026,9 +1026,9 @@ The Task variables work wherever a property a Task takes is set. A property such
 
 #### Details
 
-**Padding.** `{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to. Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100; Task Groups are padded likewise by the number of Task Groups. The automatically generated names (`task_007`, `task_group_02`) are padded the same way.
+**Padding.** `{{task_number}}` and `{{task_group_number}}` are zero-padded to the width of the count they belong to. Task 7 is `7` in a Task Group of 9 Tasks, `07` in one of 50 and `007` in one of 100; Task Groups are padded likewise by the number of Task Groups. The automatically generated names (`task-007`, `task-group-02`) are padded the same way.
 
-**Why the numbers are padded.** Padding makes anything named from the numbers sort in Task order: Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list`. Unpadded, `task_10` would sort before `task_2`.
+**Why the numbers are padded.** Padding makes anything named from the numbers sort in Task order: Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list`. Unpadded, `task-10` would sort before `task-2`.
 
 **Arithmetic on padded numbers.** A padded number is still text with leading zeros, so take care where those mean something. In bash arithmetic, for example, `$((008))` fails because a leading zero means octal; `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
@@ -1078,10 +1078,10 @@ prints:
 ```json
 {
   "namespace": "image-processing",
-  "name": "thumbnails_261027-1608530-fd",
+  "name": "thumbnails-261027-1608530-fd",
   "taskGroups": [
     {
-      "name": "task_group_1",
+      "name": "task-group-1",
       "runSpecification": {
         "taskTypes": ["bash"],
         "workerTags": ["render"]
@@ -1093,12 +1093,12 @@ prints:
       "finishIfAnyTaskFailed": false,
       "tasks": [
         {
-          "name": "task_1",
+          "name": "task-1",
           "taskType": "bash",
           "arguments": ["make-thumbnails.sh", "1"]
         },
         {
-          "name": "task_2",
+          "name": "task-2",
           "taskType": "bash",
           "arguments": ["make-thumbnails.sh", "2"]
         }

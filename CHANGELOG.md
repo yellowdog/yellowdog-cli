@@ -4,6 +4,14 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **Generated names use hyphens, not underscores.** A Work Requirement, Worker Pool or Compute Requirement given no name is named `<tag>-YYMMDD-HHMMSSd-pp` (`render-261027-1618071-ff`, where it was `render_261027-1618071-ff`), an unnamed Task Group `task-group-1` (was `task_group_1`) and an unnamed Task `task-1` (was `task_1`). A script that names a generated entity, waits on a Task Group's `dependencies` by its default name, or reads Task output from an object path holding these names, needs the new form. Tasks or Task Groups added to an existing Work Requirement with `--add-to` take the new form too, beside the old-form names already there.
+
+### Other
+
 - The CLI requires `yellowdog-sdk` 15.11.0 or later, so an Azure compute source (`AzureInstancesComputeSource`, `AzureScaleSetComputeSource`) in a Compute Requirement Template can set `trustedLaunch` (`{"enabled": true, "secureBootEnabled": true, "vTpmEnabled": true}`), to provision Trusted Launch VMs with Secure Boot and a virtual TPM.
 
 ## 15.12.0 — 2026-11-10

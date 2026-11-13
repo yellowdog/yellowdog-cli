@@ -10,7 +10,7 @@
    * [Jsonnet Example](#jsonnet-example)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:00 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:52 GMT 2026 -->
 
 <!--te-->
 
@@ -162,7 +162,7 @@ local Task(frames="1-10", environment={}) = {
 
 # Work Requirement
 {
-  name: "render_{{datetime}}",
+  name: "render-{{datetime}}",
   taskGroups: [
     {
       tasks: [
@@ -180,7 +180,7 @@ When this is inspected using the `--jsonnet-dry-run` option (`yd workrequirement
 
 ```json
 {
-  "name": "render_261027-160753",
+  "name": "render-261027-160753",
   "taskGroups": [
     {
       "tasks": [
@@ -215,10 +215,10 @@ When it is inspected using the `--dry-run` option (`yd workrequirement submit -D
 ```json
 {
   "namespace": "image-processing",
-  "name": "render_261027-160753",
+  "name": "render-261027-160753",
   "taskGroups": [
     {
-      "name": "task_group_1",
+      "name": "task-group-1",
       "runSpecification": {
         "taskTypes": ["bash"]
       },

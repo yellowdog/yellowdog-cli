@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 09:30:44 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:55 GMT 2026 -->
 
 <!--te-->
 
@@ -195,7 +195,7 @@ A successful call returns the command's `--json` document. Its `content` is one 
   "result": [
     {
       "id": "ydid:workreq:000000:83587010-5e26-4174-92a7-c7cc2612638d",
-      "name": "render-test_261027-1045001-4f",
+      "name": "render-test-261027-1045001-4f",
       "type": "work-requirements",
       "action": "cancel",
       "outcome": "cancelled"

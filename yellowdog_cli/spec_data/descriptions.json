@@ -7,7 +7,7 @@
   "completedTaskTtl": "The time (in minutes) to live for completed Tasks. If set, Tasks that have been completed for longer than this period will be deleted. E.g. 10.0.",
   "csvFile": "The name of the CSV file used to derive Task data. An alternative to csvFiles that can be used when there's only a single CSV file. E.g. \"file.csv\".",
   "csvFiles": "A list of CSV files used to derive Task data. E.g. [\"file.csv\", \"file_2.csv:2\"].",
-  "dependencies": "The names of other Task Groups within the same Work Requirement that must be successfully completed before the Task Group is started. E.g. [\"task_group_1\", \"task_group_2\"].",
+  "dependencies": "The names of other Task Groups within the same Work Requirement that must be successfully completed before the Task Group is started. E.g. [\"task-group-1\", \"task-group-2\"].",
   "dependentOn": "Deprecated \u2014 use dependencies instead. Takes a single string rather than a list. Support for dependentOn will be removed in a future release.",
   "disablePreallocation": "If true, tasks are only allocated to nodes as workers become idle and are not queued on the node. Default: false.",
   "environment": "The environment variables to set for a Task when it's executed. E.g. JSON: {\"VAR_1\": \"abc\", \"VAR_2\": \"def\"}, TOML: {VAR_1 = \"abc\", VAR_2 = \"def\"}.",

@@ -110,16 +110,16 @@ class TestTaskGroupNameWithOffset:
     """
 
     def test_first_new_tg_after_two_existing(self):
-        # 2 existing + 1 new = 3 total; spec index 0 → effective index 2 → "task_group_3"
-        assert su.get_task_group_name(None, 2, 3, 1) == "task_group_3"
+        # 2 existing + 1 new = 3 total; spec index 0 → effective index 2 → "task-group-3"
+        assert su.get_task_group_name(None, 2, 3, 1) == "task-group-3"
 
     def test_second_new_tg_after_two_existing(self):
-        # 2 existing + 2 new = 4 total; spec index 1 → effective index 3 → "task_group_4"
-        assert su.get_task_group_name(None, 3, 4, 1) == "task_group_4"
+        # 2 existing + 2 new = 4 total; spec index 1 → effective index 3 → "task-group-4"
+        assert su.get_task_group_name(None, 3, 4, 1) == "task-group-4"
 
     def test_zero_padding_spans_existing_and_new(self):
-        # 10 total groups → width 2; effective index 9 → "task_group_10"
-        assert su.get_task_group_name(None, 9, 10, 1) == "task_group_10"
+        # 10 total groups → width 2; effective index 9 → "task-group-10"
+        assert su.get_task_group_name(None, 9, 10, 1) == "task-group-10"
 
     def test_number_placeholder_uses_effective_index(self):
         # effective index 5 of 6 total groups → width 1 → "g6"
@@ -129,8 +129,8 @@ class TestTaskGroupNameWithOffset:
         assert su.get_task_group_name(f"of{_TGC}", 0, 7, 1) == "of7"
 
     def test_no_offset_unchanged(self):
-        # baseline: spec index 0, 1 total → "task_group_1"
-        assert su.get_task_group_name(None, 0, 1, 1) == "task_group_1"
+        # baseline: spec index 0, 1 total → "task-group-1"
+        assert su.get_task_group_name(None, 0, 1, 1) == "task-group-1"
 
 
 # ---------------------------------------------------------------------------
@@ -145,12 +145,12 @@ class TestTaskNameWithOffset:
     """
 
     def test_first_new_task_after_three_existing(self):
-        # offset=3, task 0 → display 3; total=3+5=8 → width 1; "task_4"
-        assert su.get_task_name(None, True, 3, 8, 0, 1, "grp") == "task_4"
+        # offset=3, task 0 → display 3; total=3+5=8 → width 1; "task-4"
+        assert su.get_task_name(None, True, 3, 8, 0, 1, "grp") == "task-4"
 
     def test_last_task_with_offset(self):
-        # offset=5, task 4 → display 9; total=5+5=10 → width 2; "task_10"
-        assert su.get_task_name(None, True, 9, 10, 0, 1, "grp") == "task_10"
+        # offset=5, task 4 → display 9; total=5+5=10 → width 2; "task-10"
+        assert su.get_task_name(None, True, 9, 10, 0, 1, "grp") == "task-10"
 
     def test_number_placeholder_with_offset(self):
         # display task number 5, total 10 → width 2; "task_06"
@@ -161,11 +161,11 @@ class TestTaskNameWithOffset:
         assert su.get_task_name(f"of{_TC}", True, 3, 8, 0, 1, "grp") == "of8"
 
     def test_no_offset_unchanged(self):
-        assert su.get_task_name(None, True, 0, 3, 0, 1, "grp") == "task_1"
+        assert su.get_task_name(None, True, 0, 3, 0, 1, "grp") == "task-1"
 
     def test_zero_padded_with_large_offset(self):
-        # offset=90, task 0 → display 90; total=100 → width 3; "task_091"
-        assert su.get_task_name(None, True, 90, 100, 0, 1, "grp") == "task_091"
+        # offset=90, task 0 → display 90; total=100 → width 3; "task-091"
+        assert su.get_task_name(None, True, 90, 100, 0, 1, "grp") == "task-091"
 
 
 # ---------------------------------------------------------------------------

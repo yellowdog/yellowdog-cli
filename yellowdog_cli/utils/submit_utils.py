@@ -858,7 +858,7 @@ def get_task_name(
             )
         )
     elif set_task_names:
-        name = "task_" + formatted_number_str(task_number, num_tasks)
+        name = "task-" + formatted_number_str(task_number, num_tasks)
     else:
         name = None
 
@@ -891,7 +891,7 @@ def get_task_group_name(
             )
         )
 
-    return "task_group_" + formatted_number_str(task_group_number, num_task_groups)
+    return "task-group-" + formatted_number_str(task_group_number, num_task_groups)
 
 
 def resolve_task_data(

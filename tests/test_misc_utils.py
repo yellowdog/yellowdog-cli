@@ -200,11 +200,11 @@ class TestGenerateId:
         result = generate_id(prefix="test")
         # format: test_YYMMDD-HHMMSSd-pp (suffix is 18 chars), where 'd' is
         # tenths of a second and 'pp' is the PID in two base 36 digits
-        assert re.match(r"test_\d{6}-\d{7}-[0-9a-z]{2}$", result)
+        assert re.match(r"test-\d{6}-\d{7}-[0-9a-z]{2}$", result)
 
     def test_format_with_empty_prefix(self):
         result = generate_id()
-        assert re.match(r"_\d{6}-\d{7}-[0-9a-z]{2}$", result)
+        assert re.match(r"-\d{6}-\d{7}-[0-9a-z]{2}$", result)
 
     def test_length_fits_within_max(self):
         result = generate_id(prefix="a" * 42, max_length=60)

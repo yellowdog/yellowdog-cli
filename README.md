@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 09:41:39 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:49 GMT 2026 -->
 
 <!--te-->
 
@@ -95,13 +95,13 @@ A `config.toml` holds your Application key and secret, namespace and tag (`yd in
 
 ```text
 % yd workrequirement submit --dry-run
-2026-10-27 16:18:07 : Generated Work Requirement 'render_261027-1618071-ff'
-2026-10-27 16:18:07 : Generated Task Group 'task_group_1'
-2026-10-27 16:18:07 : Expanding number of Tasks in Task Group 'task_group_1' to 'taskCount=3' Tasks
+2026-10-27 16:18:07 : Generated Work Requirement 'render-261027-1618071-ff'
+2026-10-27 16:18:07 : Generated Task Group 'task-group-1'
+2026-10-27 16:18:07 : Expanding number of Tasks in Task Group 'task-group-1' to 'taskCount=3' Tasks
 2026-10-27 16:18:07 : DRY-RUN : Printing JSON Work Requirement specification:
 {
   "namespace": "image-processing",
-  "name": "render_261027-1618071-ff",
+  "name": "render-261027-1618071-ff",
   …
 ```
 

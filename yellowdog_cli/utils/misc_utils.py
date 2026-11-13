@@ -91,7 +91,7 @@ def generate_id(prefix: str = "", max_length: int = 60) -> str:
     # spawned in between. The hyphen marks the last two digits as something
     # other than a continuation of the timestamp.
     generated_id = (
-        prefix + UTCNOW.strftime("_%y%m%d-%H%M%S%f")[:-5] + f"-{PROCESS_DISCRIMINATOR}"
+        prefix + UTCNOW.strftime("-%y%m%d-%H%M%S%f")[:-5] + f"-{PROCESS_DISCRIMINATOR}"
     )
     if len(generated_id) > max_length:
         raise ValueError(

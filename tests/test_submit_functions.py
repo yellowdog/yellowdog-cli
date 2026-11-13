@@ -343,7 +343,7 @@ class TestCreateTaskGroupNaming:
 
     def test_auto_name_generated_when_no_name_given(self):
         tg = _call_create_task_group(self._tg())
-        assert tg.name == "task_group_1"
+        assert tg.name == "task-group-1"
 
     def test_explicit_name_used_when_provided(self):
         tg = _call_create_task_group(self._tg(**{NAME: "my-group"}))
@@ -1260,7 +1260,7 @@ class TestFirstTaskName:
         source = self._source(wr_data, existing_tasks=8)
         name = task_generation_module.first_task_name(source)
         (task,) = task_generation_module.generate_batch_of_tasks(source, 0, 1)
-        assert name == task.name == "task_09"
+        assert name == task.name == "task-09"
 
     def test_it_defines_no_substitution(self, monkeypatch):
         import yellowdog_cli.utils.task_generation as generation
