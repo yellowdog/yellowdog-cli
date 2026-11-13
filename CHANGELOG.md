@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- The CLI requires `yellowdog-sdk` 15.11.0 or later, so an Azure compute source (`AzureInstancesComputeSource`, `AzureScaleSetComputeSource`) in a Compute Requirement Template can set `trustedLaunch` (`{"enabled": true, "secureBootEnabled": true, "vTpmEnabled": true}`), to provision Trusted Launch VMs with Secure Boot and a virtual TPM.
+
 ## 15.12.0 — 2026-11-10
 
 ### Upgrading
