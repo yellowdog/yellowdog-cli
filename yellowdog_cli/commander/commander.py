@@ -119,6 +119,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self.setWindowTitle(WINDOW_TITLE)
 
         self._align_field_labels()
+        self._space_paired_checkboxes()
 
         self._pid = os.getpid()
 
@@ -165,6 +166,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self.add_to_work_requirement.clicked.connect(
             self._add_to_work_requirement_action
         )
+        self.resubmit_failed_tasks.clicked.connect(self._resubmit_failed_tasks_action)
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
         self.copy_command_output.clicked.connect(self._copy_output_action)
@@ -446,6 +448,24 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             widest = max(label.sizeHint().width() for label in labels)
             for label in labels:
                 label.setMinimumWidth(widest)
+
+    def _space_paired_checkboxes(self):
+        """
+        Lay the checkboxes that share a row out by their widget rects, so that
+        the row's spacing is the gap between them as painted.
+
+        Left to the style, a checkbox is laid out by its layout-item rect, which
+        the macOS style reports 11px narrower than the widget it paints: 'Dry
+        Run' is 71px wide and laid out as 60, so the next checkbox in the row is
+        placed 12px after the 60 and drawn 1px after the 71.
+        """
+        for checkbox in (
+            self.dry_run,
+            self.follow_progress,
+            self.dry_run_worker_pool,
+            self.follow_worker_pool,
+        ):
+            checkbox.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
 
     def _align_checkbox_indicators(self):
         """

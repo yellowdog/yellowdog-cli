@@ -87,7 +87,7 @@ def test_working_dir_with_config(window):
 
 
 def test_submit_default_follows_progress(window, captured):
-    # "Follow Work Requirement Progress" is checked by default (set in __init__),
+    # "Follow Progress" is checked by default (set in __init__),
     # so a fresh submit follows progress.
     window._submit_work_requirement_action()
     assert captured == [("yd workrequirement submit", ["-f"])]
@@ -274,7 +274,7 @@ def test_a_file_show_cannot_read_is_reported_not_raised(
 
 
 def test_provision_default_follows(window, captured):
-    # "Follow Worker Pool Progress" is checked by default (set in __init__).
+    # Panel 3's "Follow Progress" is checked by default (set in __init__).
     window._create_worker_pool_action()
     assert captured == [("yd workerpool provision", ["-af"])]
 

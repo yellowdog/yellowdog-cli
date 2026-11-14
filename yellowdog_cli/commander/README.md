@@ -21,6 +21,8 @@
    * [Submitting and Managing Work (Panel 2)](#submitting-and-managing-work-panel-2)
       * [Adding to a Work Requirement](#adding-to-a-work-requirement)
          * [Add To Details](#add-to-details)
+      * [Resubmitting Failed Tasks](#resubmitting-failed-tasks)
+         * [Resubmit Details](#resubmit-details)
    * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
       * [Resizing a Worker Pool](#resizing-a-worker-pool)
          * [Resize Details](#resize-details)
@@ -48,7 +50,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 13 15:40:55 GMT 2026 -->
+<!-- Added by: pwt, at: Sat Nov 14 15:34:43 GMT 2026 -->
 
 <!--te-->
 
@@ -272,14 +274,15 @@ The selected file's full path is shown at the top of the right-hand column, leve
 
 ## Submitting and Managing Work (Panel 2)
 
-To submit a Work Requirement, choose its definition with **Select Work Requirement JSON** (or leave it unselected to use the configuration file's), tick **Follow Work Requirement Progress** to watch it run, and press **Submit Work Requirement**.
+To submit a Work Requirement, choose its definition with **Select Work Requirement JSON** (or leave it unselected to use the configuration file's), tick **Follow Progress** to watch it run, and press **Submit Work Requirement**.
 
 - **Submit Work Requirement** — runs `yd workrequirement submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
 - **Add to…** — runs `yd workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one (see [Adding to a Work Requirement](#adding-to-a-work-requirement)).
+- **Dry Run** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
+- **Follow Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. While a file is selected the button's label is `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force. Hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
-- **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
-- **Follow Work Requirement Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Extra Options** — free-text command-line options appended to the `yd workrequirement submit` command, split as described in [Quoting](#quoting).
+- **Resubmit Failed Tasks…** — runs `yd workrequirement resubmit`, submitting the failed Tasks of a Work Requirement you choose as a new Work Requirement (see [Resubmitting Failed Tasks](#resubmitting-failed-tasks)).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
@@ -302,15 +305,32 @@ The Work Requirements listed are those matching the current namespace and tag, o
 
 **No tag.** With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 
+### Resubmitting Failed Tasks
+
+To run the failed Tasks of a Work Requirement again:
+
+1. Press **Resubmit Failed Tasks…**. Commander lists the Work Requirements whose Tasks did not all complete, with the most recently created selected.
+2. Double-click the one to resubmit from, or select it and press **Resubmit**.
+
+Its failed Tasks are copied, as they were submitted, into a new Work Requirement named after the original (`<name>-resubmit-1`, or the next number free). The Work Requirements listed are those matching the current namespace and tag, or the **Name** pattern, in any status, since a running Work Requirement can have failed Tasks too.
+
+#### Resubmit Details
+
+**The Panel 2 settings.** **Dry Run** prints the Work Requirement that would be submitted, and **Follow Progress** follows the new one. **Extra Options** are not passed, since they are written for `yd workrequirement submit`. To resubmit aborted Tasks, or only some Task Groups, type `yd wr resubmit` in the command box (see the [Command List](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/commands.md#yd-workrequirement-resubmit)).
+
+**What is listed.** A Work Requirement whose Tasks all completed has none to resubmit and is left out. One whose unfinished Tasks are still waiting or running, with none failed, is listed, and resubmitting from it reports that no Tasks were selected.
+
+**Nothing to resubmit.** If nothing is listed, or the listing fails, the output window says so and nothing is resubmitted. With **No tag**, as for **Add to…**, nothing is listed.
+
 ## Provisioning and Managing Compute (Panel 3)
 
 To provision a Worker Pool, choose its definition with **Select Worker Pool JSON** (or leave it unselected to use the configuration file's) and press **Provision Worker Pool**.
 
 - **Provision Worker Pool** — runs `yd workerpool provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
 - **Resize…** — runs `yd workerpool resize` on a Worker Pool you choose, setting its number of nodes (see [Resizing a Worker Pool](#resizing-a-worker-pool)).
+- **Dry Run** — when ticked, validates and prints the specification without provisioning.
+- **Follow Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
-- **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
-- **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Extra Options** — free-text command-line options appended to the `yd workerpool provision` command, split as described in [Quoting](#quoting).
 - **Shutdown Worker Pools** — shuts down all matching Worker Pools.
 - **Terminate Compute Requirements** — terminates all matching Compute Requirements.
@@ -335,7 +355,7 @@ The dialog is the confirmation, so no second one follows.
 
 **Pools awaiting nodes.** A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived. If every matching pool is awaiting nodes, the output window says so and no dialog opens.
 
-**The Panel 3 checkboxes.** The **Dry Run** and **Follow** checkboxes apply to creation only.
+**The Panel 3 checkboxes.** The **Dry Run** and **Follow Progress** checkboxes apply to creation only.
 
 **Nothing to resize.** If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
 

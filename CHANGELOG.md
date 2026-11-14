@@ -4,6 +4,11 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commander
+
+- **Resubmit Failed Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, with the panel's Dry Run and Follow Progress.
+- **The Dry Run and Follow Progress checkboxes share a row**, directly below Submit and Provision in the Work and Compute panels, relabelled from *Dry Run Work Requirement Submission*, *Follow Work Requirement Progress* and their Worker Pool counterparts, which makes room for the new button with the window barely taller.
+
 ## 15.13.0 — 2026-11-14
 
 ### Upgrading

@@ -7,6 +7,7 @@ from os.path import abspath
 from PyQt6.QtCore import Qt
 
 from yellowdog_cli.commander.selection import (
+    all_tasks_completed,
     entity_rows,
     newest_entity_id,
     parse_entity_summaries,
@@ -26,7 +27,8 @@ WR_DATA = "workRequirementData"
 class WorkPanel(WindowDialogs):
     """
     Panel 2, Submitting and Managing Work: selecting a Work Requirement file,
-    Submit and Add to, Cancel and Cancel & Abort, and showing the file.
+    Submit and Add to, Resubmit Failed Tasks, Cancel and Cancel & Abort, and
+    showing the file.
     """
 
     def _show_wr_selection(self):
@@ -195,6 +197,92 @@ class WorkPanel(WindowDialogs):
         self._run_command_in_subprocess(
             "yd workrequirement submit", ["-A", target, *submit_args]
         )
+
+    def _resubmit_failed_tasks_action(self):
+        """
+        Resubmit the FAILED Tasks of a Work Requirement chosen from a list, as a
+        new Work Requirement: 'yd workrequirement resubmit <ydid>', with Panel
+        2's Dry Run and Follow Progress. The Extra Options are not passed: they
+        are written for 'yd workrequirement submit', whose options resubmit
+        mostly does not take.
+
+        Lists the Work Requirements in the current namespace and tag, or
+        matching the Name pattern, in any status, since a running Work
+        Requirement can have failed Tasks as well as a finished one. Those
+        whose Tasks have all completed are left out, having none to resubmit;
+        the listing carries no count of failed Tasks, so one with none failed
+        but some still to run is offered, and resubmit says it found nothing.
+
+        Refuses rather than falls back, as Add to does: there is no scope to
+        act over, and the target is passed by YDID. '--yes' resubmits from a
+        sole candidate and refuses between several.
+        """
+        title = "Resubmit Failed Tasks"
+        if self._operation_in_flight(title) or not self._properties_are_usable():
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("tags", name_args)
+
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
+        self._output.log("Checking which Work Requirements have Tasks to resubmit...")
+        self.log_output.repaint()
+        parsed = self._capture_json(
+            "yd list", ["--json"], ["work-requirements", *scope_args]
+        )
+        entities = None if parsed is None else parse_entity_summaries(parsed)
+        if parsed is None or entities is None:
+            self._output.log(
+                "Could not list the Work Requirements to resubmit from;"
+                " nothing resubmitted"
+            )
+            return
+
+        unfinished = {row["id"] for row in parsed if not all_tasks_completed(row)}
+        entities = [entity for entity in entities if entity.id in unfinished]
+        if not entities:
+            self._output.log(
+                f"No Work Requirements{scope} with Tasks that did not complete"
+            )
+            return
+
+        if self._confirmations_disabled:
+            if len(entities) > 1:
+                self._output.log(
+                    f"{len(entities)} Work Requirements{scope} with Tasks that"
+                    " did not complete, and '--yes' leaves no way to choose"
+                    " between them; nothing resubmitted. Narrow the choice with"
+                    " the Name field."
+                )
+                return
+            target = entities[0].id
+            self._output.log(
+                "Selection suppressed by '--yes'; resubmitting from the only"
+                f" Work Requirement{scope} with Tasks that did not complete,"
+                f" '{entities[0].name}'"
+            )
+        else:
+            target = self._choose_one(
+                title,
+                f"Choose the Work Requirement{scope} whose failed Tasks are"
+                " resubmitted, as a new Work Requirement.",
+                "Resubmit",
+                entity_rows(entities),
+                selected=newest_entity_id(parsed, {e.id for e in entities}),
+            )
+            if target is None:
+                return
+
+        args = [target]
+        if self.dry_run.isChecked():
+            args += ["-D"]
+        elif self.follow_progress.isChecked():
+            args += ["-f"]
+        self._run_command_in_subprocess("yd workrequirement resubmit", args)
 
     def _cancel_work_requirements_action(self):
         self._run_destructive_with_listing(

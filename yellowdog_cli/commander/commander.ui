@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1102</width>
-    <height>800</height>
+    <height>776</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -182,6 +182,49 @@ chosen from a list (yd workrequirement submit --add-to)</string>
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_wr_checkboxes" stretch="0,0,1">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <item>
+         <widget class="QCheckBox" name="dry_run">
+          <property name="toolTip">
+           <string>Validate and print the Work Requirement without submitting it</string>
+          </property>
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="text">
+           <string>Dry Run</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="follow_progress">
+          <property name="toolTip">
+           <string>Follow the Work Requirement's progress until it finishes</string>
+          </property>
+          <property name="text">
+           <string>Follow Progress</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalLayout_wr_checkboxes_spacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
        <widget class="QPushButton" name="select_work_requirement">
         <property name="toolTip">
          <string>Choose a Work Requirement definition (.json or .jsonnet) to submit
@@ -195,29 +238,6 @@ instead of the one the configuration file names</string>
         </property>
         <property name="text">
          <string>Select Work Requirement JSON</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="dry_run">
-        <property name="toolTip">
-         <string>Validate and print the Work Requirement without submitting it</string>
-        </property>
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Dry Run Work Requirement Submission</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="follow_progress">
-        <property name="toolTip">
-         <string>Follow the Work Requirement's progress until it finishes</string>
-        </property>
-        <property name="text">
-         <string>Follow Work Requirement Progress</string>
         </property>
        </widget>
       </item>
@@ -280,6 +300,17 @@ instead of the one the configuration file names</string>
          </widget>
         </item>
        </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="resubmit_failed_tasks">
+        <property name="toolTip">
+         <string>Resubmit the failed Tasks of a Work Requirement, chosen from a list,
+as a new Work Requirement (yd workrequirement resubmit)</string>
+        </property>
+        <property name="text">
+         <string>Resubmit Failed Tasks…</string>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="cancel_work_requirements">
@@ -380,6 +411,46 @@ instead of the one the configuration file names</string>
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_wp_checkboxes" stretch="0,0,1">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <item>
+         <widget class="QCheckBox" name="dry_run_worker_pool">
+          <property name="toolTip">
+           <string>Validate and print the Worker Pool without provisioning it</string>
+          </property>
+          <property name="text">
+           <string>Dry Run</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="follow_worker_pool">
+          <property name="toolTip">
+           <string>Follow the Worker Pool's progress after provisioning</string>
+          </property>
+          <property name="text">
+           <string>Follow Progress</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalLayout_wp_checkboxes_spacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
        <widget class="QPushButton" name="select_worker_pool">
         <property name="toolTip">
          <string>Choose a Worker Pool definition (.json or .jsonnet) to provision
@@ -387,26 +458,6 @@ instead of the one the configuration file names</string>
         </property>
         <property name="text">
          <string>Select Worker Pool JSON</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="dry_run_worker_pool">
-        <property name="toolTip">
-         <string>Validate and print the Worker Pool without provisioning it</string>
-        </property>
-        <property name="text">
-         <string>Dry Run Worker Pool Creation</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="follow_worker_pool">
-        <property name="toolTip">
-         <string>Follow the Worker Pool's progress after provisioning</string>
-        </property>
-        <property name="text">
-         <string>Follow Worker Pool Progress</string>
         </property>
        </widget>
       </item>
