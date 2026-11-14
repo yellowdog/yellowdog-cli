@@ -25,7 +25,7 @@ qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QListWidget
+from PyQt6.QtWidgets import QCheckBox, QListWidget
 
 # Which button a driver should press.
 YES = "yes"
@@ -256,6 +256,57 @@ def drive_resize(
         return dialog, resize_btn
 
     monkeypatch.setattr(window, "_build_resize_dialog", build)
+
+
+def resubmit_status_box(dialog, status: str):
+    """
+    The resubmit dialog's checkbox for a Task status ('FAILED', ...).
+    """
+    box = dialog.findChild(QCheckBox, f"resubmit_{status.lower()}")
+    assert box is not None, f"no checkbox for {status}"
+    return box
+
+
+def drive_resubmit(
+    window,
+    monkeypatch,
+    press: str,
+    choose: int | None = None,
+    statuses: set[str] | None = None,
+    inspect=None,
+) -> None:
+    """
+    Arm the next resubmit dialog so that, inside its real exec(), row 'choose'
+    is selected and exactly 'statuses' ticked (each if given), then 'press' is
+    pressed. 'inspect(dialog)' runs after both, for assertions that only hold
+    while it is open.
+    """
+    real_build = window._build_resubmit_dialog
+
+    def build(message, rows, selected=None):
+        dialog, resubmit_btn = real_build(message, rows, selected)
+
+        def interact(open_dialog):
+            if choose is not None:
+                choice_listing(open_dialog).setCurrentRow(choose)
+            if statuses is not None:
+                for status in ("FAILED", "ABORTED", "CANCELLED"):
+                    resubmit_status_box(open_dialog, status).setChecked(
+                        status in statuses
+                    )
+            if inspect is not None:
+                inspect(open_dialog)
+            if press == ACCEPT:
+                resubmit_btn.click()
+            elif press == CANCEL:
+                gui_harness.button_labelled(open_dialog, "Cancel").click()
+            elif press != NOTHING:
+                open_dialog.reject()
+
+        gui_harness.arm_modal(dialog, interact)
+        return dialog, resubmit_btn
+
+    monkeypatch.setattr(window, "_build_resubmit_dialog", build)
 
 
 def drive_notice(window, monkeypatch, inspect=None) -> dict:

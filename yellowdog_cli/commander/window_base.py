@@ -135,7 +135,7 @@ class WindowBase(QMainWindow):
     select_work_requirement: QPushButton
     submit_work_requirement: QPushButton
     add_to_work_requirement: QPushButton
-    resubmit_failed_tasks: QPushButton
+    resubmit_tasks: QPushButton
     download_results: QPushButton
     clear_command_output: QPushButton
     copy_command_output: QPushButton
@@ -316,7 +316,7 @@ class WindowBase(QMainWindow):
         startable while an enumeration is already blocking in a nested event
         loop. Submit and provision are absent deliberately: they launch a command
         and return, without a nested loop or a pre-flight listing to be confused.
-        Add to, Resubmit Failed Tasks and Resize are here, although none of them
+        Add to, Resubmit Tasks and Resize are here, although none of them
         destroys anything, because each lists its targets first.
 
         All nine grey together, including ones unrelated to the action in flight.
@@ -331,7 +331,7 @@ class WindowBase(QMainWindow):
         """
         return (
             self.add_to_work_requirement,
-            self.resubmit_failed_tasks,
+            self.resubmit_tasks,
             self.cancel_work_requirements,
             self.cancel_work_requirements_and_abort,
             self.resize_worker_pool,

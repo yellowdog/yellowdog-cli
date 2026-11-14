@@ -21,7 +21,7 @@
    * [Submitting and Managing Work (Panel 2)](#submitting-and-managing-work-panel-2)
       * [Adding to a Work Requirement](#adding-to-a-work-requirement)
          * [Add To Details](#add-to-details)
-      * [Resubmitting Failed Tasks](#resubmitting-failed-tasks)
+      * [Resubmitting Tasks](#resubmitting-tasks)
          * [Resubmit Details](#resubmit-details)
    * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
       * [Resizing a Worker Pool](#resizing-a-worker-pool)
@@ -50,7 +50,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Nov 14 15:34:43 GMT 2026 -->
+<!-- Added by: pwt, at: Sat Nov 14 15:51:55 GMT 2026 -->
 
 <!--te-->
 
@@ -282,7 +282,7 @@ To submit a Work Requirement, choose its definition with **Select Work Requireme
 - **Follow Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. While a file is selected the button's label is `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force. Hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Extra Options** — free-text command-line options appended to the `yd workrequirement submit` command, split as described in [Quoting](#quoting).
-- **Resubmit Failed Tasks…** — runs `yd workrequirement resubmit`, submitting the failed Tasks of a Work Requirement you choose as a new Work Requirement (see [Resubmitting Failed Tasks](#resubmitting-failed-tasks)).
+- **Resubmit Tasks…** — runs `yd workrequirement resubmit`, submitting the failed, aborted or cancelled Tasks of a Work Requirement you choose as a new Work Requirement (see [Resubmitting Tasks](#resubmitting-tasks)).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
@@ -305,20 +305,23 @@ The Work Requirements listed are those matching the current namespace and tag, o
 
 **No tag.** With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 
-### Resubmitting Failed Tasks
+### Resubmitting Tasks
 
 To run the failed Tasks of a Work Requirement again:
 
-1. Press **Resubmit Failed Tasks…**. Commander lists the Work Requirements whose Tasks did not all complete, with the most recently created selected.
-2. Double-click the one to resubmit from, or select it and press **Resubmit**.
+1. Press **Resubmit Tasks…**. Commander lists the Work Requirements whose Tasks did not all complete, with the most recently created selected.
+2. Under **Resubmit**, tick the statuses of the Tasks to run again: **Failed** (ticked to begin with), **Aborted** and **Cancelled**.
+3. Double-click the Work Requirement to resubmit from, or select it and press **Resubmit**.
 
-Its failed Tasks are copied, as they were submitted, into a new Work Requirement named after the original (`<name>-resubmit-1`, or the next number free). The Work Requirements listed are those matching the current namespace and tag, or the **Name** pattern, in any status, since a running Work Requirement can have failed Tasks too.
+Its Tasks in those statuses are copied, as they were submitted, into a new Work Requirement named after the original (`<name>-resubmit-1`, or the next number free). The Work Requirements listed are those matching the current namespace and tag, or the **Name** pattern, in any status, since a running Work Requirement can have finished Tasks too.
 
 #### Resubmit Details
 
-**The Panel 2 settings.** **Dry Run** prints the Work Requirement that would be submitted, and **Follow Progress** follows the new one. **Extra Options** are not passed, since they are written for `yd workrequirement submit`. To resubmit aborted Tasks, or only some Task Groups, type `yd wr resubmit` in the command box (see the [Command List](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/commands.md#yd-workrequirement-resubmit)).
+**The Panel 2 settings.** **Dry Run** prints the Work Requirement that would be submitted, and **Follow Progress** follows the new one. **Extra Options** are not passed, since they are written for `yd workrequirement submit`. To resubmit only some Task Groups or Tasks, type `yd wr resubmit` in the command box (see the [Command List](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/commands.md#yd-workrequirement-resubmit)).
 
-**What is listed.** A Work Requirement whose Tasks all completed has none to resubmit and is left out. One whose unfinished Tasks are still waiting or running, with none failed, is listed, and resubmitting from it reports that no Tasks were selected.
+**What is listed.** A Work Requirement whose Tasks all completed has none to resubmit and is left out. One whose unfinished Tasks are still waiting or running, with none in the statuses ticked, is listed, and resubmitting from it reports that no Tasks were selected.
+
+**The statuses.** Commander keeps the statuses last ticked until it is closed. **Resubmit** is greyed while none is ticked. With `--yes` there is no dialog, and only the failed Tasks are resubmitted.
 
 **Nothing to resubmit.** If nothing is listed, or the listing fails, the output window says so and nothing is resubmitted. With **No tag**, as for **Add to…**, nothing is listed.
 

@@ -3,17 +3,29 @@ Panel 2 of YellowDogApp (see commander.py).
 """
 
 from os.path import abspath
+from typing import cast
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QVBoxLayout,
+)
 
 from yellowdog_cli.commander.selection import (
+    SelectableRow,
     all_tasks_completed,
     entity_rows,
     newest_entity_id,
     parse_entity_summaries,
 )
 from yellowdog_cli.commander.window_base import CWD, NO_LISTING_TAG
-from yellowdog_cli.commander.window_dialogs import WindowDialogs
+from yellowdog_cli.commander.window_dialogs import DIALOG_SECTION_SPACING, WindowDialogs
 
 SELECTED_WR_PREFIX = "Work Requirement: "
 # The Work Requirement statuses 'yd workrequirement submit --add-to' accepts,
@@ -23,13 +35,34 @@ SELECTED_WR_PREFIX = "Work Requirement: "
 ADDABLE_STATUSES = ("RUNNING", "HELD")
 WR_DATA = "workRequirementData"
 
+RESUBMIT_DIALOG_TITLE = "Resubmit Tasks"
+# The Task statuses the resubmit dialog offers, in the order shown and passed,
+# with their 'yd workrequirement resubmit' options; spelled out because nothing
+# in Commander imports the SDK
+FAILED_STATUS = "FAILED"
+RESUBMIT_STATUS_LABELS = {
+    FAILED_STATUS: "Failed",
+    "ABORTED": "Aborted",
+    "CANCELLED": "Cancelled",
+}
+RESUBMIT_STATUS_FLAGS = {
+    FAILED_STATUS: "--failed",
+    "ABORTED": "--aborted",
+    "CANCELLED": "--cancelled",
+}
+RESUBMIT_STATUS_SPACING = 12
+
 
 class WorkPanel(WindowDialogs):
     """
     Panel 2, Submitting and Managing Work: selecting a Work Requirement file,
-    Submit and Add to, Resubmit Failed Tasks, Cancel and Cancel & Abort, and
-    showing the file.
+    Submit and Add to, Resubmit Tasks, Cancel and Cancel & Abort, and showing
+    the file.
     """
+
+    # The statuses the resubmit dialog last left ticked, kept for the session;
+    # a tuple, so the class default is never changed in place
+    _resubmit_statuses: tuple[str, ...] = (FAILED_STATUS,)
 
     def _show_wr_selection(self):
         self._show_selection_on_button(
@@ -198,26 +231,27 @@ class WorkPanel(WindowDialogs):
             "yd workrequirement submit", ["-A", target, *submit_args]
         )
 
-    def _resubmit_failed_tasks_action(self):
+    def _resubmit_tasks_action(self):
         """
-        Resubmit the FAILED Tasks of a Work Requirement chosen from a list, as a
-        new Work Requirement: 'yd workrequirement resubmit <ydid>', with Panel
-        2's Dry Run and Follow Progress. The Extra Options are not passed: they
-        are written for 'yd workrequirement submit', whose options resubmit
-        mostly does not take.
+        Resubmit the Tasks of a Work Requirement chosen from a list, as a new
+        Work Requirement: 'yd workrequirement resubmit <ydid>' with the
+        statuses ticked in the dialog ('--failed', '--aborted', '--cancelled')
+        and Panel 2's Dry Run and Follow Progress. The Extra Options are not
+        passed: they are written for 'yd workrequirement submit', whose options
+        resubmit mostly does not take.
 
         Lists the Work Requirements in the current namespace and tag, or
         matching the Name pattern, in any status, since a running Work
         Requirement can have failed Tasks as well as a finished one. Those
         whose Tasks have all completed are left out, having none to resubmit;
-        the listing carries no count of failed Tasks, so one with none failed
-        but some still to run is offered, and resubmit says it found nothing.
+        the listing carries no count by status, so one with nothing in the
+        statuses ticked is offered, and resubmit says it found nothing.
 
         Refuses rather than falls back, as Add to does: there is no scope to
-        act over, and the target is passed by YDID. '--yes' resubmits from a
-        sole candidate and refuses between several.
+        act over, and the target is passed by YDID. '--yes' resubmits the
+        FAILED Tasks of a sole candidate and refuses between several.
         """
-        title = "Resubmit Failed Tasks"
+        title = RESUBMIT_DIALOG_TITLE
         if self._operation_in_flight(title) or not self._properties_are_usable():
             return
 
@@ -260,29 +294,132 @@ class WorkPanel(WindowDialogs):
                 )
                 return
             target = entities[0].id
+            statuses: tuple[str, ...] = (FAILED_STATUS,)
             self._output.log(
-                "Selection suppressed by '--yes'; resubmitting from the only"
-                f" Work Requirement{scope} with Tasks that did not complete,"
-                f" '{entities[0].name}'"
+                "Selection suppressed by '--yes'; resubmitting the FAILED Tasks"
+                f" of the only Work Requirement{scope} with Tasks that did not"
+                f" complete, '{entities[0].name}'"
             )
         else:
-            target = self._choose_one(
-                title,
-                f"Choose the Work Requirement{scope} whose failed Tasks are"
-                " resubmitted, as a new Work Requirement.",
-                "Resubmit",
+            chosen = self._choose_resubmission(
+                f"Choose the Work Requirement{scope} whose Tasks are"
+                " resubmitted, as a new Work Requirement, and the statuses of"
+                " the Tasks to resubmit.",
                 entity_rows(entities),
                 selected=newest_entity_id(parsed, {e.id for e in entities}),
             )
-            if target is None:
+            if chosen is None:
                 return
+            target, statuses = chosen
 
-        args = [target]
+        args = [target, *(RESUBMIT_STATUS_FLAGS[status] for status in statuses)]
         if self.dry_run.isChecked():
             args += ["-D"]
         elif self.follow_progress.isChecked():
             args += ["-f"]
         self._run_command_in_subprocess("yd workrequirement resubmit", args)
+
+    def _build_resubmit_dialog(
+        self,
+        message: str,
+        rows: list[SelectableRow],
+        selected: str | None = None,
+    ) -> tuple[QDialog, QPushButton]:
+        """
+        Build (but do not show) the resubmit dialog: the single-choice listing
+        of 'rows', a 'Resubmit:' row of one checkbox per Task status, ticked as
+        last left in this session, and Cancel / Resubmit. Returns the dialog
+        and the Resubmit button, which is greyed while no row is selected or
+        no status ticked. 'rows' must be non-empty.
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(RESUBMIT_DIALOG_TITLE)
+        layout = QVBoxLayout(dialog)
+        self._size_dialog_to_its_text(layout)
+
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        listing = self._new_single_choice_listing(rows)
+        layout.addWidget(listing)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(RESUBMIT_STATUS_SPACING)
+        status_row.addWidget(QLabel("Resubmit:"))
+        boxes: dict[str, QCheckBox] = {}
+        for status, label in RESUBMIT_STATUS_LABELS.items():
+            box = QCheckBox(label)
+            box.setObjectName(f"resubmit_{status.lower()}")
+            box.setChecked(status in self._resubmit_statuses)
+            # Laid out by its painted width, or the row's spacing vanishes on
+            # macOS (see _space_paired_checkboxes)
+            box.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
+            status_row.addWidget(box)
+            boxes[status] = box
+        status_row.addStretch(1)
+        layout.addLayout(status_row)
+        layout.addSpacing(DIALOG_SECTION_SPACING)
+
+        button_box = QDialogButtonBox(dialog)
+        button_box.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        resubmit_btn = cast(
+            QPushButton,
+            button_box.addButton("Resubmit", QDialogButtonBox.ButtonRole.AcceptRole),
+        )
+        resubmit_btn.setDefault(True)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        def refresh() -> None:
+            resubmit_btn.setEnabled(
+                bool(listing.selectedItems())
+                and any(box.isChecked() for box in boxes.values())
+            )
+
+        listing.itemSelectionChanged.connect(refresh)
+        for box in boxes.values():
+            box.toggled.connect(lambda _checked: refresh())
+        # Double-clicking accepts only what Resubmit would
+        listing.itemDoubleClicked.connect(
+            lambda _item: dialog.accept() if resubmit_btn.isEnabled() else None
+        )
+
+        self._select_row(listing, rows, selected)
+        refresh()
+        return dialog, resubmit_btn
+
+    def _choose_resubmission(
+        self, message: str, rows: list[SelectableRow], selected: str | None = None
+    ) -> tuple[str, tuple[str, ...]] | None:
+        """
+        Offer the resubmit dialog and return the handle chosen and the statuses
+        ticked, in RESUBMIT_STATUS_LABELS' order, or None if it was dismissed.
+        The statuses are kept for the next time it opens, in this session.
+        """
+        dialog, _resubmit_btn = self._build_resubmit_dialog(message, rows, selected)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted.value:
+                return None
+            listing = cast(QListWidget, dialog.findChild(QListWidget, "choice_list"))
+            chosen = listing.selectedItems()
+            statuses = tuple(
+                status
+                for status in RESUBMIT_STATUS_LABELS
+                if cast(
+                    QCheckBox,
+                    dialog.findChild(QCheckBox, f"resubmit_{status.lower()}"),
+                ).isChecked()
+            )
+            if not chosen or not statuses:
+                return None
+            self._resubmit_statuses = statuses
+            return chosen[0].data(Qt.ItemDataRole.UserRole), statuses
+        finally:
+            dialog.deleteLater()
 
     def _cancel_work_requirements_action(self):
         self._run_destructive_with_listing(

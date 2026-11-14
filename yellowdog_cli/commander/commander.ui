@@ -302,13 +302,13 @@ instead of the one the configuration file names</string>
        </layout>
       </item>
       <item>
-       <widget class="QPushButton" name="resubmit_failed_tasks">
+       <widget class="QPushButton" name="resubmit_tasks">
         <property name="toolTip">
-         <string>Resubmit the failed Tasks of a Work Requirement, chosen from a list,
-as a new Work Requirement (yd workrequirement resubmit)</string>
+         <string>Resubmit the failed, aborted or cancelled Tasks of a Work Requirement,
+chosen from a list, as a new one (yd workrequirement resubmit)</string>
         </property>
         <property name="text">
-         <string>Resubmit Failed Tasks…</string>
+         <string>Resubmit Tasks…</string>
         </property>
        </widget>
       </item>
