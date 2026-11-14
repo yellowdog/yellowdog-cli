@@ -50,6 +50,7 @@ from yellowdog_cli.utils.resubmission import (
     select_named_tasks,
     select_tasks,
     selected_statuses,
+    status_phrase,
     work_requirement_id_of_tasks,
 )
 
@@ -149,6 +150,9 @@ def test_failed_is_the_default_and_both_options_select_both():
     assert selected_statuses(True, False) == ("FAILED",)
     assert selected_statuses(False, True) == ("ABORTED",)
     assert set(selected_statuses(True, True)) == {"FAILED", "ABORTED"}
+    assert selected_statuses(False, False, True) == ("CANCELLED",)
+    assert selected_statuses(True, False, True) == ("FAILED", "CANCELLED")
+    assert selected_statuses(True, True, True) == ("FAILED", "ABORTED", "CANCELLED")
 
 
 def _two_groups_platform():
@@ -196,6 +200,31 @@ def test_cancelled_and_discarded_tasks_are_counted_as_left_behind():
     wr = _work_requirement([_task_group("one", "g1"), _task_group("two", "g2")])
     selection = select_tasks(_Platform(tasks).ctx(), wr, ("FAILED",))
     assert selection.left_behind == {"one": {"CANCELLED": 1, "DISCARDED": 2}}
+
+
+@pytest.mark.parametrize(
+    "statuses, phrase",
+    [
+        ((), ""),
+        (("FAILED",), "FAILED"),
+        (("FAILED", "ABORTED"), "FAILED or ABORTED"),
+        (("FAILED", "ABORTED", "CANCELLED"), "FAILED, ABORTED or CANCELLED"),
+    ],
+)
+def test_status_phrase(statuses, phrase):
+    assert status_phrase(statuses, "or") == phrase
+
+
+def test_cancelled_tasks_selected_are_not_counted_as_left_behind():
+    tasks = [
+        _task("a", "FAILED", "g1"),
+        _task("b", "CANCELLED", "g1"),
+        _task("c", "DISCARDED", "g1"),
+    ]
+    wr = _work_requirement([_task_group("one", "g1")])
+    selection = select_tasks(_Platform(tasks).ctx(), wr, ("FAILED", "CANCELLED"))
+    assert [t.name for t in selection.groups[0].tasks] == ["a", "b"]
+    assert selection.left_behind == {"one": {"DISCARDED": 1}}
 
 
 def test_warnings_name_what_is_left_behind_and_a_running_original(monkeypatch):

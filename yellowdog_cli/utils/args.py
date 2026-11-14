@@ -1052,6 +1052,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def cancelled(self) -> bool | None:
+        return self.args.cancelled
+
+    @property
+    @allow_missing_attribute
     def task_group_patterns(self) -> list[str] | None:
         return self.args.task_group_patterns
 

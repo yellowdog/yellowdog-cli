@@ -1,8 +1,8 @@
 """
-Resubmitting a Work Requirement's failed or aborted Tasks: choosing the Tasks
-(one status-filtered search per Task Group), the Platform document that
-copies them into a new Work Requirement, that Work Requirement's name, and
-the warnings about what is not copied.
+Resubmitting a Work Requirement's failed, aborted or cancelled Tasks:
+choosing the Tasks (one status-filtered search per Task Group), the Platform
+document that copies them into a new Work Requirement, that Work
+Requirement's name, and the warnings about what is not copied.
 
 The document is the SDK's own serialisation of the original's Task Groups and
 Tasks, kept to the fields a definition is made of, so timeouts and
@@ -48,10 +48,11 @@ from yellowdog_cli.utils.ydid_utils import (
 
 FAILED = "FAILED"
 ABORTED = "ABORTED"
+CANCELLED = "CANCELLED"
 
-# Tasks that finished without running to completion, but are not resubmitted:
-# the user's own decision or the Platform's
-LEFT_BEHIND_STATUSES = ("CANCELLED", "DISCARDED")
+# Tasks that finished without running to completion, and are warned of when
+# not resubmitted: CANCELLED unless '--cancelled' selects them, and DISCARDED
+LEFT_BEHIND_STATUSES = (CANCELLED, "DISCARDED")
 
 # A Task's definition is copied; where it ran and how it fared is not
 TASK_COPIED = frozenset(
@@ -145,16 +146,33 @@ class Selection:
         return sum(len(group.tasks) for group in self.groups)
 
 
-def selected_statuses(failed: bool, aborted: bool) -> tuple[str, ...]:
+def selected_statuses(
+    failed: bool, aborted: bool, cancelled: bool = False
+) -> tuple[str, ...]:
     """
-    The Task statuses to resubmit: FAILED unless only '--aborted' is given,
-    both where both are.
+    The Task statuses to resubmit, in that order: each one asked for, or
+    FAILED alone where none is.
     """
-    if failed and aborted:
-        return (FAILED, ABORTED)
-    if aborted:
-        return (ABORTED,)
-    return (FAILED,)
+    chosen = tuple(
+        status
+        for status, asked in (
+            (FAILED, failed),
+            (ABORTED, aborted),
+            (CANCELLED, cancelled),
+        )
+        if asked
+    )
+    return chosen or (FAILED,)
+
+
+def status_phrase(statuses: tuple[str, ...], conjunction: str) -> str:
+    """
+    'statuses' as a phrase: 'FAILED', 'FAILED and ABORTED', 'FAILED, ABORTED
+    and CANCELLED' (with 'conjunction' in place of 'and').
+    """
+    if len(statuses) < 2:
+        return "".join(statuses)
+    return f"{', '.join(statuses[:-1])} {conjunction} {statuses[-1]}"
 
 
 def _count_tasks(ctx: RunContext, task_group_id: str, status: str) -> int:
@@ -211,8 +229,8 @@ def select_tasks(
     omitted. 'task_group_patterns' leave out the Task Groups whose names
     match none of them, unsearched; 'task_patterns' keep the Tasks whose
     names match one (a single pattern also sends its literal part as the
-    search's name filter). The CANCELLED and DISCARDED Tasks are counted, for
-    the warnings, in the Task Groups read, and not at all under
+    search's name filter). The CANCELLED and DISCARDED Tasks not selected are
+    counted, for the warnings, in the Task Groups read, and not at all under
     'task_patterns'.
     """
     task_groups = _chosen_task_groups(work_requirement, task_group_patterns)
@@ -241,7 +259,7 @@ def select_tasks(
             groups.append(SelectedGroup(task_group, tasks))
         if task_patterns:
             continue
-        for status in LEFT_BEHIND_STATUSES:
+        for status in (s for s in LEFT_BEHIND_STATUSES if s not in statuses):
             count = _count_tasks(ctx, task_group.id, status)
             if count > 0:
                 left_behind.setdefault(task_group.name, {})[status] = count
@@ -549,7 +567,7 @@ def print_selection_warnings(selection: Selection) -> None:
     may yet have more to resubmit.
     """
     original = selection.work_requirement
-    status_words = " or ".join(selection.statuses)
+    status_words = status_phrase(selection.statuses, "or")
     for pattern in selection.unmatched_task_patterns:
         print_warning(f"No {status_words} Task matches '{pattern}'")
     for group_name, by_status in selection.left_behind.items():

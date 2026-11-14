@@ -257,7 +257,7 @@ Work Requirements: `yd workrequirement`, or `yd wr` for short.
 | Verb | What it does | Replaces |
 |---|---|---|
 | [`submit`](#yd-workrequirement-submit) | Submit a Work Requirement, or add to one | `yd-submit` |
-| [`resubmit`](#yd-workrequirement-resubmit) | Resubmit a Work Requirement's failed, aborted or named Tasks |  |
+| [`resubmit`](#yd-workrequirement-resubmit) | Resubmit a Work Requirement's failed, aborted, cancelled or named Tasks |  |
 | [`cancel`](#yd-workrequirement-cancel) | Cancel Work Requirements | `yd-cancel` |
 | [`hold`](#yd-workrequirement-hold) | Hold (pause) running Work Requirements | `yd-hold` |
 | [`start`](#yd-workrequirement-start) | Start held Work Requirements | `yd-start` |
@@ -331,11 +331,12 @@ yd workrequirement resubmit my-run --follow
 ```
 
 Key options:
-- `--failed` — resubmit the `FAILED` Tasks; this is the default when neither `--failed` nor `--aborted` is given
-- `--aborted` — resubmit the `ABORTED` Tasks, alone or with `--failed`
+- `--failed` — resubmit the `FAILED` Tasks; this is the default when none of `--failed`, `--aborted` and `--cancelled` is given
+- `--aborted` — resubmit the `ABORTED` Tasks, alone or with `--failed` or `--cancelled`
+- `--cancelled` — resubmit the `CANCELLED` Tasks, alone or with `--failed` or `--aborted`; the warning about Tasks left `CANCELLED` is then not made
 - `--task-group <pattern>` — resubmit only Tasks of Task Groups whose names match the name or glob; repeatable, several patterns being alternatives; a pattern matching no Task Group is an error (exit 6), raised before any Task is read
-- `--task <pattern>` — resubmit only Tasks whose names match the name or glob; repeatable, several patterns being alternatives; combined with `--task-group` a Task must satisfy both; only `FAILED` or `ABORTED` Tasks are resubmitted, so a `COMPLETED` Task is never copied; a pattern matching no Task is warned of, and no warning about Tasks left in `CANCELLED` or `DISCARDED` is made
-- `--task-id <task-ID>` — resubmit exactly this Task, in any finished state (`COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED`, `RESUBMITTED`); one ID per flag, repeated for more Tasks; the Work Requirement is worked out from the IDs, so `<work-requirement-name-or-ID>` is optional with it, and if given must be the one the Tasks belong to; refused with `--task-group`, `--task`, `--failed` and `--aborted`; a Task that does not exist is an error (exit 6) and one that has not finished is refused, both before anything is created
+- `--task <pattern>` — resubmit only Tasks whose names match the name or glob; repeatable, several patterns being alternatives; combined with `--task-group` a Task must satisfy both; only Tasks in the statuses chosen are resubmitted, so a `COMPLETED` Task is never copied; a pattern matching no Task is warned of, and no warning about Tasks left in `CANCELLED` or `DISCARDED` is made
+- `--task-id <task-ID>` — resubmit exactly this Task, in any finished state (`COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED`, `RESUBMITTED`); one ID per flag, repeated for more Tasks; the Work Requirement is worked out from the IDs, so `<work-requirement-name-or-ID>` is optional with it, and if given must be the one the Tasks belong to; refused with `--task-group`, `--task`, `--failed`, `--aborted` and `--cancelled`; a Task that does not exist is an error (exit 6) and one that has not finished is refused, both before anything is created
 - `--add-to`/`-A <name-or-id>` — add the Tasks to an existing Work Requirement instead of creating one; refused with `--name`, `--output-file` and `--hold`
 - `--name <name>` — the new Work Requirement's name; by default `<name>-resubmit-<n>`, `n` the lowest number from 1 not already taken in the namespace
 - `--output-file`/`-o <file>` — write the new Work Requirement to the file, in the format `yd workrequirement submit --json-raw` takes, and submit nothing; refused with `--follow`, `--progress` and `--hold`

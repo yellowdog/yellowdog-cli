@@ -136,6 +136,7 @@ class _Run:
         values = dict(
             failed=False,
             aborted=False,
+            cancelled=False,
             task_group_patterns=None,
             task_patterns=None,
             task_ids=None,
@@ -362,6 +363,23 @@ class TestMessages:
             f"Resubmitting 2 Tasks (FAILED) from 1 Task Group of Work Requirement"
             f" 'ns/x' ({WR_ID})"
         ) in _flat(capsys.readouterr().out)
+
+    def test_cancelled_resubmits_the_cancelled_tasks_with_the_failed(self, capsys):
+        run = _Run(
+            [
+                *_failed(1),
+                _task("c", "CANCELLED", "g1"),
+                _task("d", "DISCARDED", "g1"),
+                _task("ok", "COMPLETED", "g1"),
+            ]
+        )
+        assert run.run(failed=True, cancelled=True) is None
+        assert [t["name"] for t in run.bodies()[1]] == ["t0", "c"]
+        err = capsys.readouterr()
+        text = _flat(err.out + err.err)
+        assert "Resubmitting 2 Tasks (FAILED and CANCELLED)" in text
+        assert "has 1 DISCARDED Task, not resubmitted" in text
+        assert "CANCELLED Task, not resubmitted" not in text
 
     def test_left_behind_and_running_original_warnings_are_printed(self, capsys):
         run = _Run(
@@ -761,6 +779,7 @@ class TestTaskIds:
             (["--task", "a"], "--task"),
             (["--failed"], "--failed"),
             (["--aborted"], "--aborted"),
+            (["--cancelled"], "--cancelled"),
         ],
     )
     def test_task_id_clashes_refused_as_parsed(self, capsys, extra, flag):

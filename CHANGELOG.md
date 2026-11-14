@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Other
+
+- **`yd workrequirement resubmit --cancelled`** resubmits a Work Requirement's `CANCELLED` Tasks, alone or with `--failed` and `--aborted`.
+
 ### Commander
 
 - **Resubmit Failed Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, with the panel's Dry Run and Follow Progress.
