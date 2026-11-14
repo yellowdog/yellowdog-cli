@@ -127,10 +127,11 @@ def test_the_paired_rows_align_across_the_two_columns(qapp):
     assert not misaligned, "rows do not share a grid row: " + "; ".join(misaligned)
 
 
-def test_the_select_row_is_closed_off_by_one_line_the_divider_starts_below(qapp):
+def test_the_select_row_is_closed_off_by_one_line_the_divider_meets(qapp):
     # The selection row is the whole window's, not the left column's: one
-    # separator runs beneath it from the left margin to the right, unbroken
-    # by the vertical divider, which begins below it
+    # separator runs beneath it from the left margin to the right, and the
+    # vertical divider meets it from below, starting within it rather than
+    # leaving a gap or reaching up into the selection row
     win = gui_harness.shown(YellowDogApp())
     separator = row_rect(win, "line_7")
     divider = row_rect(win, "line_5")
@@ -139,7 +140,7 @@ def test_the_select_row_is_closed_off_by_one_line_the_divider_starts_below(qapp)
 
     assert separator.left() <= select_row.left()
     assert separator.right() >= selection.right()
-    assert divider.top() > separator.bottom()
+    assert separator.top() <= divider.top() <= separator.bottom()
     assert win.findChild(QWidget, "line_9") is None
 
 
