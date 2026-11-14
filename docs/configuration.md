@@ -20,7 +20,7 @@
    * [Which Value Wins](#which-value-wins)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:21:59 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:50 GMT 2026 -->
 
 <!--te-->
 
@@ -108,7 +108,7 @@ Work Requirement, Task Group and Task names supplied to `yd workrequirement subm
 
 So `Trailer Render v2.1` becomes `trailer_render_v2_1`, `Q3/Results (final)` becomes `q3-results_final`, and `2024 Run` becomes `yd_2024_run`.
 
-When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>_YYMMDD-HHMMSSd-pp`, e.g. `render_260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits.
+When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>-YYMMDD-HHMMSSd-pp`, e.g. `render-260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits.
 
 [Variable Substitutions](variables.md) and [Specifying Work Requirements using CSV Data](work-requirements.md#specifying-work-requirements-using-csv-data) describe variable substitutions implemented with user-defined and CSV-file-defined variables. Within these, the `format_name:` type modifier, used like `num:`, `bool:` and the others, converts the substituted string into one that satisfies YellowDog naming. For example, `{{format_name:ligand_name}}`, with the variable `ligand_name` set to `DCCCDE_00000s`, substitutes `dcccde_00000s`, which is acceptable as a component of a YellowDog name.
 

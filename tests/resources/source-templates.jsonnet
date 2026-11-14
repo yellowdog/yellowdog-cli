@@ -204,6 +204,7 @@ local azureInstancesMax = azureInstancesMin {
   useSpot: true,
   spotMaxPrice: 0.05,
   limit: 4,
+  trustedLaunch: { enabled: true, secureBootEnabled: true, vTpmEnabled: true },
 };
 
 // ---------------------------------------------------------------------------

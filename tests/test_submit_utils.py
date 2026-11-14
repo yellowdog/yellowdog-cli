@@ -92,12 +92,12 @@ class TestGetTaskName:
 
     def test_name_none_set_task_names_true_returns_auto_name(self):
         result = su.get_task_name(None, True, 0, 5, 0, 1, "grp")
-        assert result == "task_1"
+        assert result == "task-1"
 
     def test_auto_name_zero_padded(self):
-        # 10 tasks → width 2; task 0 → "task_01"
+        # 10 tasks → width 2; task 0 → "task-01"
         result = su.get_task_name(None, True, 0, 10, 0, 1, "grp")
-        assert result == "task_01"
+        assert result == "task-01"
 
     def test_explicit_name_returned_unchanged_when_no_placeholders(self):
         result = su.get_task_name("my-task", True, 0, 5, 0, 1, "grp")
@@ -220,12 +220,12 @@ class TestDoubleRangeFromList:
 class TestGetTaskGroupName:
     def test_no_name_returns_auto_name(self):
         result = su.get_task_group_name(None, 0, 3, 10)
-        assert result == "task_group_1"
+        assert result == "task-group-1"
 
     def test_auto_name_zero_padded(self):
-        # 10 groups → width 2; group 0 → "task_group_01"
+        # 10 groups → width 2; group 0 → "task-group-01"
         result = su.get_task_group_name(None, 0, 10, 5)
-        assert result == "task_group_01"
+        assert result == "task-group-01"
 
     def test_explicit_name_no_placeholders(self):
         result = su.get_task_group_name("batch", 0, 3, 10)

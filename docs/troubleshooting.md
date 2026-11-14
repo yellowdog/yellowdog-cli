@@ -14,7 +14,7 @@
          * [What the Trace Shows](#what-the-trace-shows)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:01 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 13 15:40:53 GMT 2026 -->
 
 <!--te-->
 
@@ -141,7 +141,7 @@ yd task list --within nightly-render --status failed
 yd task list --within nightly-render --with-errors
 ```
 
-`--with-errors` also lists the Tasks that hit an error and then completed on a retry. `yd task show nightly-render/render/task_01` shows a Task in full, its errors included; [Finding the Errors Your Tasks Hit](work-requirements.md#finding-the-errors-your-tasks-hit) describes what they mean.
+`--with-errors` also lists the Tasks that hit an error and then completed on a retry. `yd task show nightly-render/render/task-01` shows a Task in full, its errors included; [Finding the Errors Your Tasks Hit](work-requirements.md#finding-the-errors-your-tasks-hit) describes what they mean.
 
 `yd workrequirement follow nightly-render` reports the Work Requirement's progress as it happens.
 

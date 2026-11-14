@@ -388,7 +388,7 @@ class NaturalOrderProxy(QSortFilterProxyModel):
 
     QFileSystemModel sorts the level it is rooted at and nothing beneath it. A
     directory expanded in place therefore arrives in filesystem order — a hash
-    order on APFS and on ext4, so 'task_005, task_002, task_003' — and stays in
+    order on APFS and on ext4, so 'task-005, task-002, task-003' — and stays in
     it: verified that neither sort() on the model nor the header's own sort
     indicator reorders such a level, and that it is still unsorted twelve seconds
     later, so it is not a race that settles. Commander turns expansion on, which
@@ -402,7 +402,7 @@ class NaturalOrderProxy(QSortFilterProxyModel):
 
     The comparison is a QCollator in numeric mode, not the default string
     compare, because that is what QFileSystemModel itself does for the level it
-    sorts: 'task_1, task_2, task_10', never 'task_1, task_10, task_2'. A plain
+    sorts: 'task-1, task-2, task-10', never 'task-1, task-10, task-2'. A plain
     sort would put every expanded level in a different order from the directory
     above it — worse than leaving it unsorted — and would disagree with the
     platform's file viewer, which the browse dialog hands over to.
@@ -444,7 +444,7 @@ _DIGIT_RUNS = re.compile(r"(\d+)")
 def natural_sort_key(name: str) -> list[str | int]:
     """
     A key ordering names as a numeric-mode, case-insensitive collator does:
-    'task_2' before 'task_10'. The split always yields text at even indices and
+    'task-2' before 'task-10'. The split always yields text at even indices and
     numbers at odd ones, so two keys never compare a str against an int.
     """
     return [
