@@ -7,6 +7,7 @@ Qt-version incompatibilities and accidental .ui edits.
 """
 
 import sys
+from collections import Counter
 
 import pytest
 import qt_guard
@@ -15,6 +16,7 @@ qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -23,7 +25,9 @@ from PyQt6.QtWidgets import (
     QLayout,
     QPlainTextEdit,
     QPushButton,
+    QStyle,
     QStyleFactory,
+    QStyleOptionButton,
     QWidget,
 )
 
@@ -347,18 +351,53 @@ DESTRUCTIVE_BUTTONS = {
 }
 
 
-def _red_pixels(button: QPushButton) -> list:
+def _label_ink(button: QPushButton) -> list:
     """
-    The colours of the pixels painted distinctly red in a button: its label,
-    where the label is red, and nothing otherwise.
+    The colours of a button's label as painted: the pixels inside its contents
+    rect (the frame left out) that differ clearly from the commonest colour
+    there, which is the button's face.
     """
+    option = QStyleOptionButton()
+    button.initStyleOption(option)
+    style = button.style()
+    assert style is not None
+    rect = style.subElementRect(
+        QStyle.SubElement.SE_PushButtonContents, option, button
+    ).adjusted(2, 2, -2, -2)
     image = button.grab().toImage()
-    colours = (
+    colours = [
         image.pixelColor(x, y)
-        for x in range(image.width())
-        for y in range(image.height())
-    )
-    return [c for c in colours if c.red() > c.green() + 80 and c.red() > c.blue() + 80]
+        for x in range(rect.left(), rect.right() + 1)
+        for y in range(rect.top(), rect.bottom() + 1)
+    ]
+    face = Counter(c.rgb() for c in colours).most_common(1)[0][0]
+    face_colour = QColor(face)
+
+    def differs(c: QColor) -> bool:
+        return (
+            max(
+                abs(c.red() - face_colour.red()),
+                abs(c.green() - face_colour.green()),
+                abs(c.blue() - face_colour.blue()),
+            )
+            > 60
+        )
+
+    return [c for c in colours if differs(c)]
+
+
+def _is_red(c: QColor) -> bool:
+    return c.red() - max(c.green(), c.blue()) > 40
+
+
+def _label_is_red(button: QPushButton) -> bool:
+    """
+    Whether most of a button's label is painted red. Most, not any: text
+    rendered with subpixel antialiasing, as on a Linux runner, has red and
+    blue fringes around black glyphs, a minority of its ink.
+    """
+    ink = _label_ink(button)
+    return bool(ink) and sum(_is_red(c) for c in ink) > len(ink) / 2
 
 
 def test_the_destructive_buttons_alone_are_labelled_in_red(qapp):
@@ -368,7 +407,7 @@ def test_the_destructive_buttons_alone_are_labelled_in_red(qapp):
     red = {
         button.objectName()
         for button in win.findChildren(QPushButton)
-        if button.isVisible() and _red_pixels(button)
+        if button.isVisible() and _label_is_red(button)
     }
     assert red == DESTRUCTIVE_BUTTONS
 
@@ -383,7 +422,7 @@ def test_a_greyed_destructive_button_is_not_red(qapp):
         still_red = [
             name
             for name in DESTRUCTIVE_BUTTONS
-            if _red_pixels(win.findChild(QPushButton, name))
+            if _label_is_red(win.findChild(QPushButton, name))
         ]
     finally:
         win._set_action_buttons_enabled(True)
@@ -395,8 +434,8 @@ def test_dark_mode_labels_the_destructive_buttons_in_a_lighter_red(qapp):
     win = gui_harness.shown(YellowDogApp())
 
     def lightness() -> float:
-        pixels = _red_pixels(win.delete_objects)
-        assert pixels, "the label is not red"
+        assert _label_is_red(win.delete_objects), "the label is not red"
+        pixels = [c for c in _label_ink(win.delete_objects) if _is_red(c)]
         return sum(c.lightness() for c in pixels) / len(pixels)
 
     light = lightness()
