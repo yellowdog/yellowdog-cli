@@ -18,10 +18,11 @@ import sys
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial as functools_partial
-from os.path import abspath, dirname, exists, join
+from os.path import abspath, dirname, exists, isfile, join
 from typing import cast
 
 from PyQt6.QtCore import (
+    QByteArray,
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
@@ -59,6 +60,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
+from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.compute_panel import ComputePanel
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
@@ -72,7 +74,11 @@ from yellowdog_cli.commander.host import (
     shell_command,
 )
 from yellowdog_cli.commander.output_model import COMMANDER_RUN
-from yellowdog_cli.commander.output_pane import OutputPane
+from yellowdog_cli.commander.output_pane import (
+    ERROR_RGB_DARK,
+    ERROR_RGB_LIGHT,
+    OutputPane,
+)
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.commander.stderr_filter import install_stderr_filter
@@ -84,7 +90,7 @@ from yellowdog_cli.commander.window_base import (
 from yellowdog_cli.commander.work_panel import WorkPanel
 from yellowdog_cli.utils.noun_registry import typed_command
 from yellowdog_cli.utils.output_style import ERROR_MARKER
-from yellowdog_cli.utils.paths import relative_if_possible
+from yellowdog_cli.utils.paths import default_config_file, relative_if_possible
 
 if WINDOWS:
     import ctypes
@@ -99,9 +105,28 @@ DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
-BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
+# The YellowDog dog in YellowDog yellow (#FAB842), which reads on the light and
+# the dark window alike, so one image serves both
+BRANDING_IMAGE = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_SIZE = 54
+# The destructive actions' label colour, one per appearance: the light one is
+# too dark to read on a dark button, the dark one too pale on a light one
+# What Commander remembers of a session, in its own settings
+# (file_dialogs.dialog_settings()): the window's size and place, Dark Mode as
+# last chosen (only once chosen: until then it follows the system), and the
+# configuration file last selected
+SETTING_WINDOW_GEOMETRY = "session/windowGeometry"
+SETTING_DARK_MODE = "session/darkMode"
+SETTING_CONFIG_FILE = "session/configFile"
+SETTING_OUTPUT_FONT_SIZE = "session/outputFontSize"
+# The output window's text size in points, as it opens and as Cmd/Ctrl+0
+# resets it (displayed sizes differ, so it is smaller off macOS), and the
+# range Cmd/Ctrl+= and Cmd/Ctrl+- zoom it within
+OUTPUT_FONT_SIZE = 12 if MACOS else 8
+MIN_OUTPUT_FONT_SIZE = 6
+MAX_OUTPUT_FONT_SIZE = 32
+DESTRUCTIVE_TEXT_LIGHT = "rgb({}, {}, {})".format(*ERROR_RGB_LIGHT)
+DESTRUCTIVE_TEXT_DARK = "rgb({}, {}, {})".format(*ERROR_RGB_DARK)
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
 
 
@@ -119,19 +144,39 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self.setWindowTitle(WINDOW_TITLE)
 
         self._align_field_labels()
+        self._space_paired_checkboxes()
 
         self._pid = os.getpid()
 
-        # Override the branding pixmap with the SVG for the current style
-        self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
+        # The branding pixmap drawn from the SVG at its size, crisp on any screen
+        self.branding.setPixmap(
+            QIcon(BRANDING_IMAGE).pixmap(
+                QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE)
+            )
+        )
+        self._colour_destructive_buttons(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Actual displayed font sizes differ across platforms;
         # use a smaller point size on Windows and Linux for the output window
         self._font = QFont()
-        self._font.setPointSize(12 if MACOS else 8)
+        self._font.setPointSize(OUTPUT_FONT_SIZE)
         self._font.setFamily("Courier New")
         self._font.setWeight(500)
-        self.log_output.setFont(self._font)
+        # The output's own copy, which zooms, at the size last left; the file
+        # previews and dialog listings keep the shared one
+        self._output_font = QFont(self._font)
+        self._output_font.setPointSize(self._remembered_output_font_size())
+        self.log_output.setFont(self._output_font)
+        for keys, step in (
+            (QKeySequence.StandardKey.ZoomIn, 1),
+            # Cmd/Ctrl+=, the unshifted key, which ZoomIn does not include
+            (QKeySequence("Ctrl+="), 1),
+            (QKeySequence.StandardKey.ZoomOut, -1),
+            (QKeySequence("Ctrl+0"), 0),
+        ):
+            QShortcut(keys, self).activated.connect(
+                functools_partial(self._zoom_output, step)
+            )
 
         # Every file dialog: selecting, saving and browsing
         self._file_dialogs = FileDialogs(self, self._font)
@@ -151,8 +196,11 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(
                 *args, **kwargs
             ),
+            show_ydid=lambda ydid: self._show_ydid(ydid),
+            follow_ydid=lambda ydid: self._follow_ydid(ydid),
             pid=self._pid,
         )
+        self._output.set_dark(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Set up action connections
         self.select_config_file.clicked.connect(self._select_config_file_action)
@@ -164,6 +212,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         )
         self.add_to_work_requirement.clicked.connect(
             self._add_to_work_requirement_action
+        )
+        self.resubmit_tasks.clicked.connect(self._resubmit_tasks_action)
+        self.follow_work_requirement.clicked.connect(
+            self._follow_work_requirement_action
         )
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
@@ -218,7 +270,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._dry_run_worker_pool_set
         )
         self.dark_mode.checkStateChanged.connect(self._dark_mode_action)
-        self.dark_mode.setChecked(self._color_scheme() == Qt.ColorScheme.Dark)
+        self.dark_mode.setChecked(self._initial_dark_mode())
+        # 'clicked', not 'checkStateChanged': only the user's own choice is
+        # remembered, not the system's appearance it starts from
+        self.dark_mode.clicked.connect(self._remember_dark_mode)
 
         # Default the 'follow' checkboxes
         self.follow_progress.setChecked(True)
@@ -301,7 +356,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd variables runs
-        QTimer.singleShot(0, lambda: self._set_config_file(settings.config_file))
+        config_file = settings.config_file or self._remembered_config_file()
+        QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
@@ -355,11 +411,108 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self.properties.setPlainText(" ".join(settings.properties))
             self._set_cursor_to_end(self.properties)
 
-    def _update_branding_icon(self, is_dark: bool):
-        path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
-        self.branding.setPixmap(
-            QIcon(path).pixmap(QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE))
+    @staticmethod
+    def _remembered_config_file() -> str | None:
+        """
+        The configuration file selected last time, to select again when none
+        is named at launch: unless the CLI would find one of its own there
+        (config.toml in the launch directory, else the user's own), which
+        Commander's commands use when none is selected and which a
+        remembered file would silently replace; and only while it exists.
+        """
+        if isfile(default_config_file()):
+            return None
+        remembered = file_dialogs.dialog_settings().value(SETTING_CONFIG_FILE)
+        if isinstance(remembered, str) and isfile(remembered):
+            return remembered
+        return None
+
+    @staticmethod
+    def _remembered_output_font_size() -> int:
+        size = file_dialogs.dialog_settings().value(
+            SETTING_OUTPUT_FONT_SIZE, OUTPUT_FONT_SIZE, type=int
         )
+        return max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, int(size)))
+
+    def _zoom_output(self, step: int) -> None:
+        """
+        Make the output's text a point larger (1) or smaller (-1), within
+        MIN_OUTPUT_FONT_SIZE and MAX_OUTPUT_FONT_SIZE, or put it back to
+        OUTPUT_FONT_SIZE (0), and remember it for the next session.
+        """
+        size = OUTPUT_FONT_SIZE if step == 0 else self._output_font.pointSize() + step
+        size = max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, size))
+        self._output_font.setPointSize(size)
+        self.log_output.setFont(self._output_font)
+        file_dialogs.dialog_settings().setValue(SETTING_OUTPUT_FONT_SIZE, size)
+
+    def _initial_dark_mode(self) -> bool:
+        """
+        Dark Mode as last chosen, or the system's appearance if it never was.
+        """
+        settings = file_dialogs.dialog_settings()
+        if settings.contains(SETTING_DARK_MODE):
+            return bool(settings.value(SETTING_DARK_MODE, type=bool))
+        return self._color_scheme() == Qt.ColorScheme.Dark
+
+    @staticmethod
+    def _remember_dark_mode(checked: bool) -> None:
+        file_dialogs.dialog_settings().setValue(SETTING_DARK_MODE, checked)
+
+    def restore_window_geometry(self) -> None:
+        """
+        Put the window back where, and at the size, it was last closed, if it
+        has been; Qt keeps it on a screen that is still there, and never
+        smaller than its minimum, which run_app() sets first.
+        """
+        geometry = file_dialogs.dialog_settings().value(SETTING_WINDOW_GEOMETRY)
+        if isinstance(geometry, QByteArray) and not geometry.isEmpty():
+            self.restoreGeometry(geometry)
+
+    def _show_ydid(self, ydid: str) -> None:
+        """
+        'yd show' of a YellowDog ID chosen in the output's right-click menu.
+        """
+        if self._properties_are_usable():
+            self._run_command_in_subprocess("yd show", [ydid])
+
+    def _follow_ydid(self, ydid: str) -> None:
+        """
+        'yd follow' of a YellowDog ID chosen in the output's right-click menu,
+        unless a command running in the window follows it already, which
+        would show every event twice.
+        """
+        if not self._properties_are_usable():
+            return
+        following = self._output.run_following(ydid)
+        if following is not None:
+            self._output.log(
+                f"Not following '{ydid}' again:"
+                f" {following.bar_subject} is following it already"
+            )
+            return
+        self._run_command_in_subprocess("yd follow", [ydid])
+
+    def _colour_destructive_buttons(self, is_dark: bool):
+        """
+        Label the buttons whose actions destroy or stop something in red, in
+        the shade for the appearance. A stylesheet holding only a text colour,
+        not the palette: the macOS style ignores a palette's ButtonText in its
+        light appearance, while the stylesheet keeps the native button and
+        colours its label in both. A background colour is not used, since it
+        would replace the native button with a flat one.
+        """
+        colour = DESTRUCTIVE_TEXT_DARK if is_dark else DESTRUCTIVE_TEXT_LIGHT
+        for button in (
+            self.cancel_work_requirements,
+            self.cancel_work_requirements_and_abort,
+            self.shutdown_all_worker_pools,
+            self.terminate_all_compute_requirements,
+            self.delete_objects,
+        ):
+            # Enabled only: a plain 'color' would also hold while the button is
+            # greyed out during a listing, so it would not look disabled
+            button.setStyleSheet(f"QPushButton:enabled {{ color: {colour}; }}")
 
     def _on_config_file_changed(self, _path: str):
         """
@@ -402,6 +555,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._config_file = selected_config_file
         self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")
+        file_dialogs.dialog_settings().setValue(
+            SETTING_CONFIG_FILE, abspath(selected_config_file)
+        )
         self._show_config_selection()
         self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
@@ -446,6 +602,24 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             widest = max(label.sizeHint().width() for label in labels)
             for label in labels:
                 label.setMinimumWidth(widest)
+
+    def _space_paired_checkboxes(self):
+        """
+        Lay the checkboxes that share a row out by their widget rects, so that
+        the row's spacing is the gap between them as painted.
+
+        Left to the style, a checkbox is laid out by its layout-item rect, which
+        the macOS style reports 11px narrower than the widget it paints: 'Dry
+        Run' is 71px wide and laid out as 60, so the next checkbox in the row is
+        placed 12px after the 60 and drawn 1px after the 71.
+        """
+        for checkbox in (
+            self.dry_run,
+            self.follow_progress,
+            self.dry_run_worker_pool,
+            self.follow_worker_pool,
+        ):
+            checkbox.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
 
     def _align_checkbox_indicators(self):
         """
@@ -628,6 +802,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if self._shutting_down:
             return
         self._shutting_down = True
+        # While the window is still whole: by Quit, a close or the Dock alike
+        file_dialogs.dialog_settings().setValue(
+            SETTING_WINDOW_GEOMETRY, self.saveGeometry()
+        )
         self._discovery.stop()
 
         # Release any nested event loop (config parsing, entity enumeration):
@@ -778,6 +956,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
     def _deselect_config_file(self):
         self._set_config_file(None)
+        # Deselected on purpose, so not selected again at the next start
+        file_dialogs.dialog_settings().remove(SETTING_CONFIG_FILE)
         self._output.log("Deselected configuration file")
 
     def _deselect_wr_file(self):
@@ -892,7 +1072,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             )
         else:
             self.setStyleSheet("")
-        self._update_branding_icon(is_dark)
+        self._colour_destructive_buttons(is_dark)
+        self._output.set_dark(is_dark)
 
     def _show_help_action(self):
         """
@@ -1018,6 +1199,7 @@ def run_app(settings: StartupSettings | None = None):
         win.setMinimumHeight(win.minimumSizeHint().height())
         win.setMinimumWidth(win.minimumSizeHint().width())
         win.resize(win.minimumWidth(), win.minimumHeight())
+        win.restore_window_geometry()
 
         win.show()
         sys.exit(app.exec())

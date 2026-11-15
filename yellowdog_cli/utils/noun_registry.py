@@ -521,8 +521,9 @@ NOUNS: tuple[Noun, ...] = (
             Verb(
                 "resubmit",
                 "yd-resubmit",
-                "Resubmit a Work Requirement's failed, aborted or named Tasks",
-                "resubmitting failed, aborted or named Tasks",
+                "Resubmit a Work Requirement's failed, aborted, cancelled or"
+                " named Tasks",
+                "resubmitting failed, aborted, cancelled or named Tasks",
             ),
             Verb(
                 "cancel",

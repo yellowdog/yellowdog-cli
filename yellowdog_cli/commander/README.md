@@ -21,6 +21,10 @@
    * [Submitting and Managing Work (Panel 2)](#submitting-and-managing-work-panel-2)
       * [Adding to a Work Requirement](#adding-to-a-work-requirement)
          * [Add To Details](#add-to-details)
+      * [Resubmitting Tasks](#resubmitting-tasks)
+         * [Resubmit Details](#resubmit-details)
+      * [Following a Work Requirement](#following-a-work-requirement)
+         * [Follow Details](#follow-details)
    * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
       * [Resizing a Worker Pool](#resizing-a-worker-pool)
          * [Resize Details](#resize-details)
@@ -35,20 +39,28 @@
    * [Quoting](#quoting)
    * [Utility Actions](#utility-actions)
       * [Utility Action Details](#utility-action-details)
-   * [Filtering the Command Output](#filtering-the-command-output)
-      * [Filtering by Process](#filtering-by-process)
-      * [Filtering by Text](#filtering-by-text)
-      * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
       * [How Typed Commands Are Run](#how-typed-commands-are-run)
-   * [Sending Input to a Running Command](#sending-input-to-a-running-command)
+   * [The Command Output](#the-command-output)
+      * [Reading the Output](#reading-the-output)
+         * [Reading Details](#reading-details)
+      * [Moving Around](#moving-around)
+      * [Filtering the Command Output](#filtering-the-command-output)
+         * [Filtering by Process](#filtering-by-process)
+         * [Filtering by Text](#filtering-by-text)
+         * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
+      * [Acting on IDs in the Output](#acting-on-ids-in-the-output)
+         * [ID Action Details](#id-action-details)
+      * [Stopping a Command](#stopping-a-command)
+         * [Stop Details](#stop-details)
+      * [Sending Input to a Running Command](#sending-input-to-a-running-command)
    * [A Note on Confirmations](#a-note-on-confirmations)
       * [Choosers and Other Dialogs](#choosers-and-other-dialogs)
       * [Confirmation Details](#confirmation-details)
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 13 15:40:55 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 13:23:48 GMT 2026 -->
 
 <!--te-->
 
@@ -58,7 +70,7 @@ YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CL
 
 Its object actions — downloading, deleting and listing the objects your Tasks write — use the CLI's **data client**, the rclone-backed `yd data download` and `yd data delete`, so they work with whatever storage the configuration's `[dataClient]` section names; see [Objects and the Data Client](#objects-and-the-data-client).
 
-Commander is offered as a useful adjunct to the CLI, but is not formally supported.
+Commander is supported on a best-effort basis: report a problem with it through the same channel as one with the CLI, with the output window's contents if you can (**Save Command Output** writes them to a file). The commands it runs are the CLI's own, and are fully supported.
 
 ![YellowDog Commander on macOS](screenshots/screenshot_macos.png)
 
@@ -80,7 +92,7 @@ Start Commander with the configuration file your `yd` commands use:
 yd commander config.toml
 ```
 
-The configuration file can be given as the first argument, as here, or with `-c`/`--config`, as it is to the `yd` commands. It is optional: without one, Commander starts with no configuration selected (see [How It Works](#how-it-works)).
+The configuration file can be given as the first argument, as here, or with `-c`/`--config`, as it is to the `yd` commands. It is optional: without one, Commander selects the configuration file you last used, or starts with none selected (see [How It Works](#how-it-works)).
 
 Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd` commands. This opens Commander with the Tag field set to `render-test`, a variable defined, and a Work Requirement definition selected:
 
@@ -115,6 +127,8 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 - for the other fields, an empty value or one containing a tab or newline
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
+
+**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 
@@ -272,14 +286,16 @@ The selected file's full path is shown at the top of the right-hand column, leve
 
 ## Submitting and Managing Work (Panel 2)
 
-To submit a Work Requirement, choose its definition with **Select Work Requirement JSON** (or leave it unselected to use the configuration file's), tick **Follow Work Requirement Progress** to watch it run, and press **Submit Work Requirement**.
+To submit a Work Requirement, choose its definition with **Select Work Requirement JSON** (or leave it unselected to use the configuration file's), tick **Follow Progress** to watch it run, and press **Submit Work Requirement**.
 
 - **Submit Work Requirement** — runs `yd workrequirement submit`. If a Work Requirement definition has been chosen with **Select Work Requirement JSON**, it is submitted; otherwise the definition from the configuration file is used.
 - **Add to…** — runs `yd workrequirement submit --add-to`, adding the Task Groups and Tasks of the same definition to a Work Requirement that has already been submitted, rather than submitting a new one (see [Adding to a Work Requirement](#adding-to-a-work-requirement)).
+- **Dry Run** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
+- **Follow Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. While a file is selected the button's label is `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force. Hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
-- **Dry Run Work Requirement Submission** — when ticked, the submission is validated and the generated specification is printed, but nothing is submitted.
-- **Follow Work Requirement Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Extra Options** — free-text command-line options appended to the `yd workrequirement submit` command, split as described in [Quoting](#quoting).
+- **Follow…** — runs `yd workrequirement follow` on an active Work Requirement you choose, showing its events as it runs (see [Following a Work Requirement](#following-a-work-requirement)).
+- **Resubmit Tasks…** — runs `yd workrequirement resubmit`, submitting the failed, aborted or cancelled Tasks of a Work Requirement you choose as a new Work Requirement (see [Resubmitting Tasks](#resubmitting-tasks)).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
 
@@ -302,15 +318,50 @@ The Work Requirements listed are those matching the current namespace and tag, o
 
 **No tag.** With no **Tag** or **Name** entered and no tag discovered from the configuration, it lists nothing rather than every Work Requirement in the namespace.
 
+### Resubmitting Tasks
+
+To run the failed Tasks of a Work Requirement again:
+
+1. Press **Resubmit Tasks…**. Commander lists the Work Requirements whose Tasks did not all complete, with the most recently created selected.
+2. Under **Resubmit**, tick the statuses of the Tasks to run again: **Failed** (ticked to begin with), **Aborted** and **Cancelled**.
+3. Double-click the Work Requirement to resubmit from, or select it and press **Resubmit**.
+
+Its Tasks in those statuses are copied, as they were submitted, into a new Work Requirement named after the original (`<name>-resubmit-1`, or the next number free). The Work Requirements listed are those matching the current namespace and tag, or the **Name** pattern, in any status, since a running Work Requirement can have finished Tasks too.
+
+#### Resubmit Details
+
+**The Panel 2 settings.** **Dry Run** prints the Work Requirement that would be submitted, and **Follow Progress** follows the new one. **Extra Options** are not passed, since they are written for `yd workrequirement submit`. To resubmit only some Task Groups or Tasks, type `yd wr resubmit` in the command box (see the [Command List](https://github.com/yellowdog/yellowdog-cli/blob/main/docs/commands.md#yd-workrequirement-resubmit)).
+
+**What is listed.** A Work Requirement whose Tasks all completed has none to resubmit and is left out. One whose unfinished Tasks are still waiting or running, with none in the statuses ticked, is listed, and resubmitting from it reports that no Tasks were selected.
+
+**The statuses.** Commander keeps the statuses last ticked until it is closed. **Resubmit** is greyed while none is ticked. With `--yes` there is no dialog, and only the failed Tasks are resubmitted.
+
+**Nothing to resubmit.** If nothing is listed, or the listing fails, the output window says so and nothing is resubmitted. With **No tag**, as for **Add to…**, nothing is listed.
+
+### Following a Work Requirement
+
+To watch a Work Requirement already running, one submitted before Commander was started or from elsewhere:
+
+1. Press **Follow…**. Commander lists the active Work Requirements matching the current namespace and tag, or the **Name** pattern, with the most recently created selected.
+2. Double-click the one to follow, or select it and press **Follow**.
+
+#### Follow Details
+
+**Followed already.** A Work Requirement that a command still running in this window is following already, such as the **Submit Work Requirement** that created it with **Follow Progress** ticked, is not followed again, which would show each of its events twice. The output window says when this happens.
+
+**Nothing to follow.** If nothing is active, or the listing fails, the output window says so and nothing is followed. With no **Tag** or **Name** entered and no tag discovered from the configuration, nothing is listed.
+
+**Stopping.** Following ends when the Work Requirement does. To stop sooner, use **Stop Process …** on its output (see [Stopping a Command](#stopping-a-command)).
+
 ## Provisioning and Managing Compute (Panel 3)
 
 To provision a Worker Pool, choose its definition with **Select Worker Pool JSON** (or leave it unselected to use the configuration file's) and press **Provision Worker Pool**.
 
 - **Provision Worker Pool** — runs `yd workerpool provision`. If a Worker Pool definition has been chosen with **Select Worker Pool JSON**, it is used; otherwise the definition from the configuration file is used.
 - **Resize…** — runs `yd workerpool resize` on a Worker Pool you choose, setting its number of nodes (see [Resizing a Worker Pool](#resizing-a-worker-pool)).
+- **Dry Run** — when ticked, validates and prints the specification without provisioning.
+- **Follow Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Select Worker Pool JSON** — pick a Worker Pool definition file (`.json` or `.jsonnet`) to provision. As with the Work Requirement button, the label becomes `Worker Pool: <filename>` while a file is selected.
-- **Dry Run Worker Pool Creation** — when ticked, validates and prints the specification without provisioning.
-- **Follow Worker Pool Progress** — when ticked, follows the Worker Pool's progress after provisioning.
 - **Extra Options** — free-text command-line options appended to the `yd workerpool provision` command, split as described in [Quoting](#quoting).
 - **Shutdown Worker Pools** — shuts down all matching Worker Pools.
 - **Terminate Compute Requirements** — terminates all matching Compute Requirements.
@@ -335,7 +386,7 @@ The dialog is the confirmation, so no second one follows.
 
 **Pools awaiting nodes.** A Worker Pool still awaiting nodes is listed but cannot be chosen, since the platform will not resize it until its nodes have arrived. If every matching pool is awaiting nodes, the output window says so and no dialog opens.
 
-**The Panel 3 checkboxes.** The **Dry Run** and **Follow** checkboxes apply to creation only.
+**The Panel 3 checkboxes.** The **Dry Run** and **Follow Progress** checkboxes apply to creation only.
 
 **Nothing to resize.** If nothing can be resized, or the listing fails, the output window says so and nothing is resized.
 
@@ -345,9 +396,9 @@ To collect your results, press **Download Matching Objects**, untick anything yo
 
 - **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch.
-- **Delete Matching Objects** — deletes matching objects from remote storage. Like the download, it first lists what the path matched and lets you choose which of those items to remove.
-- **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
+- **Dry Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
 - **Browse Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing. A button switches to the platform's file viewer when you need to change the directory's contents rather than look at them.
+- **Delete Matching Objects** — deletes matching objects from remote storage. Like the download, it first lists what the path matched and lets you choose which of those items to remove.
 
 ### Dry Runs and the Selection Dialogs
 
@@ -356,6 +407,8 @@ The dry run overlaps with the selection dialogs, deliberately: both show you wha
 - The dry run skips the dialog and writes its report to the command output window, where you can scroll it, copy it, and save it to a file. The dialog's listing is transient, and shows about a dozen rows before scrolling.
 - The dry run reports what the *pattern* matched, so it also lists objects whose names contain a wildcard character or a `{{` placeholder. The selection dialogs refuse to act on those, and so cannot show you acting on them.
 - Because `-y`/`--yes` suppresses both dialogs, a dry run is the only preview left in a session launched that way.
+
+A path matching nothing reads the same either way: Commander lists what matches first, dry run or not, and says `No objects match '…'` instead of running anything.
 
 ### Results Details
 
@@ -449,11 +502,79 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
-## Filtering the Command Output
+## Running Arbitrary Commands
+
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. Type a `yd` command as you would in a terminal, and Commander adds the selected configuration file and the Namespace, Tag, User-Defined Variables and Properties fields for you:
+
+```text
+yd list work-requirements --active-only
+```
+
+Any other command runs through the system shell, so wildcards, pipes and redirection work as they would in a terminal:
+
+```text
+ls results | wc -l
+```
+
+The **←** and **→** buttons step back and forth through your command history.
+
+### How Typed Commands Are Run
+
+**What is added to a `yd` command.** If the command begins with `yd` (or a deprecated `yd-*` name), the selected configuration file, the namespace and tag overrides, the user-defined variables and the properties are added to it automatically. Each is added only where the command takes it: `yd show` takes no tag, and `yd cloudinfo` none of them.
+
+**Where the additions go.** A noun and its verb, such as `yd wr submit`, are one command, as is a command such as `yd list`. The additions come after it.
+
+**Your own configuration options.** If you type your own `-c`/`--config` or `--no-config`, Commander does not add the selected configuration file.
+
+**Splitting.** A `yd` command is split into arguments as described in [Quoting](#quoting).
+
+**An unrecognised `yd` command.** A `yd` command Commander does not recognise is still run as the CLI's, which reports it. It is never handed to the shell, where another `yd` on your `PATH` could run.
+
+**Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
+
+**The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
+
+## The Command Output
+
+Everything Commander runs reports in the Command Output window: each command's `Executing:` line, its output as it arrives, and a last line saying how it ended. Right-click any line for more: to show only one command's output, to act on an ID in it, or to stop the command that printed it.
+
+### Reading the Output
+
+The output is coloured so that what matters stands out in a long run, much as the CLI colours it in a terminal. Only the colour changes: Copy and Save take the text as it is.
+
+| You see | Meaning |
+|---|---|
+| A line in red | The CLI's `ERROR :` lines, and `✗ … failed (exit N)` or `✗ … crashed` at the end of a command that failed |
+| A line in amber | The CLI's `WARNING :` lines, and `■ … stopped` at the end of a command that was stopped |
+| A line in violet | A message that nothing was found or acted on, such as `No objects match 'render*'`: often a mistaken tag or path |
+| A line in green | `✓ … finished (exit 0)`, at the end of a command that succeeded |
+| A word in red, green, blue, grey or orange | A status: `FAILED`, `COMPLETED`, `RUNNING` or `EXECUTING`, `CANCELLED`, and transitional ones such as `STARVED` |
+| Orange text | A YellowDog ID, which you can right-click (see [Acting on IDs in the Output](#acting-on-ids-in-the-output)) |
+| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output |
+| A bold line | `Executing:`, announcing each command: a heading for its output |
+
+#### Reading Details
+
+**How each command ended.** When a command finishes, its last line says how: `✓`, `✗` or `■`, with its exit code. Like the `Executing:` line, it belongs to the command's output and to Commander's own messages.
+
+**The grey prefix.** The time and process ID starting each message are grey, so the message stands out; a line coloured whole keeps its colour throughout.
+
+**Tables.** A table's outline is a muted blue, so its content stands out from the grid.
+
+**JSON, line by line.** Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too. `true`, `false` and `null` are magenta, where the CLI makes `false` red, which here would read as an error.
+
+**What counts as nothing found.** A message starting `No `, after its prefix; a task's own output starting so is not one.
+
+### Moving Around
+
+- **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
+- **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
+
+### Filtering the Command Output
 
 When several commands are running at once their output is interleaved, each message prefixed with the PID of the process that printed it. To follow just one of them, right-click any line of its output and choose **Show Only Output from Process 012345 (yd workrequirement submit)**. To see only the lines containing some text, such as `error`, type it in the *Filter lines* field at the right of the *Command Output* heading. Press Esc in the output window to see everything again.
 
-### Filtering by Process
+#### Filtering by Process
 
 The line you right-click need not carry the PID: continuation lines, tables and JSON belong to the command that printed them. Right-clicking one of Commander's own messages offers **Show Only Commander's Own Messages** instead.
 
@@ -475,7 +596,7 @@ A command whose output has been cleared is not listed unless it is still running
 
 With several processes shown, their output is interleaved as it arrived and the bar names each of them. Right-clicking a line of one of them offers to narrow the view to that one alone.
 
-### Filtering by Text
+#### Filtering by Text
 
 Type text in the *Filter lines* field, or press Cmd+F (Ctrl+F on Windows and Linux) to get there. The output is filtered a moment after you stop typing, or at once if you press Return. Press Esc in the field to empty it and see every line again.
 
@@ -485,49 +606,35 @@ Case is ignored, and the text can fall anywhere in the line. Two characters are 
 
 The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
 
-### Copying and Saving Filtered Output
+#### Copying and Saving Filtered Output
 
 **Copy Command Output** and **Save Command Output** take what is shown, so filtering is also how to copy or save one command's output, or just its errors, on their own. The filters last until you lift them, and are not remembered between sessions.
 
-## Running Arbitrary Commands
+### Acting on IDs in the Output
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. Type a `yd` command as you would in a terminal, and Commander adds the selected configuration file and the Namespace, Tag, User-Defined Variables and Properties fields for you:
+To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**.
 
-```text
-yd list work-requirements --active-only
-```
+#### ID Action Details
 
-Any other command runs through the system shell, so wildcards, pipes and redirection work as they would in a terminal:
+**Several IDs on a line.** Each gets a submenu of its own, titled by its kind and the ID shortened in the middle, with **Copy ID**, **Show** and **Follow**. The ID you clicked on comes first, and at most five are offered.
 
-```text
-ls results | wc -l
-```
+**Followed already.** As with **Follow…**, an ID that a command still running in this window is following already is not followed again; the output window says so.
 
-The `<` and `>` buttons step back and forth through your command history.
+### Stopping a Command
 
-### How Typed Commands Are Run
+To stop one command while others carry on, right-click any line of its output and choose **Stop Process …**, which names the process and its command. It is asked to finish, and made to if it has not within two seconds; the output window says so, and the process chooser lists it as *stopped*. Stopping a submission part-way leaves what the YellowDog platform has already accepted in place, as quitting does.
 
-**What is added to a `yd` command.** If the command begins with `yd` (or a deprecated `yd-*` name), the selected configuration file, the namespace and tag overrides, the user-defined variables and the properties are added to it automatically. Each is added only where the command takes it: `yd show` takes no tag, and `yd cloudinfo` none of them.
+#### Stop Details
 
-**Where the additions go.** A noun and its verb, such as `yd wr submit`, are one command, as is a command such as `yd list`. The additions come after it.
+**Commands typed in the command box.** A command that is not a `yd` command runs through the shell (`/bin/sh -c`, or `cmd /c` on Windows). Stopping it stops the shell, and a program the shell started alongside it, as in a pipeline, may carry on. `yd` commands, Commander's own included, run directly, so stopping one stops the command itself.
 
-**Your own configuration options.** If you type your own `-c`/`--config` or `--no-config`, Commander does not add the selected configuration file.
-
-**Splitting.** A `yd` command is split into arguments as described in [Quoting](#quoting).
-
-**An unrecognised `yd` command.** A `yd` command Commander does not recognise is still run as the CLI's, which reports it. It is never handed to the shell, where another `yd` on your `PATH` could run.
-
-**Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
-
-**The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
-
-## Sending Input to a Running Command
+### Sending Input to a Running Command
 
 If a running command prompts for input, type into the **Command Input** field and press Enter to send a line to the process's standard input.
 
 ## A Note on Confirmations
 
-Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination cannot be undone, so each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything.
+Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination cannot be undone, so their buttons are labelled in red, and each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything.
 
 For all five destructive actions that listing is **checkable**:
 

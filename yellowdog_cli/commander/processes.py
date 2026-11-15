@@ -8,6 +8,10 @@ from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment
 
 from yellowdog_cli.commander.host import CHILD_ENVIRONMENT
 
+# How long a child is given to exit once asked to (QProcess.terminate()) before
+# it is forced to (kill()): by Quit, which waits, and by Stop, which does not
+TERMINATE_TIMEOUT_MS = 2000
+
 
 def child_process(working_dir: str, parent: QObject | None = None) -> QProcess:
     """

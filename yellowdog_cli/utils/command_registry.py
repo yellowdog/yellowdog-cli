@@ -4585,13 +4585,22 @@ RESUBMIT_FAILED = option(
     "--failed",
     action="store_true",
     required=False,
-    help="resubmit the FAILED Tasks (the default if neither option is given)",
+    help=(
+        "resubmit the FAILED Tasks (the default if none of '--failed',"
+        " '--aborted' and '--cancelled' is given)"
+    ),
 )
 RESUBMIT_ABORTED = option(
     "--aborted",
     action="store_true",
     required=False,
-    help="resubmit the ABORTED Tasks, alone or with '--failed'",
+    help="resubmit the ABORTED Tasks, alone or with '--failed' or '--cancelled'",
+)
+RESUBMIT_CANCELLED = option(
+    "--cancelled",
+    action="store_true",
+    required=False,
+    help="resubmit the CANCELLED Tasks, alone or with '--failed' or '--aborted'",
 )
 RESUBMIT_TASK_GROUP = option(
     "--task-group",
@@ -4612,7 +4621,8 @@ RESUBMIT_TASK = option(
     required=False,
     help=(
         "resubmit only Tasks whose names match this name or glob (repeatable;"
-        " several are alternatives); only FAILED or ABORTED Tasks are resubmitted"
+        " several are alternatives); only Tasks in the statuses chosen are"
+        " resubmitted"
     ),
 )
 RESUBMIT_TASK_ID = option(
@@ -4624,7 +4634,7 @@ RESUBMIT_TASK_ID = option(
     help=(
         "a Task to resubmit by its ID, in any finished state; repeat for more;"
         " the Work Requirement may then be left out; not with '--task-group',"
-        " '--task', '--failed' or '--aborted'"
+        " '--task', '--failed', '--aborted' or '--cancelled'"
     ),
 )
 RESUBMIT_TARGET = option(
@@ -4656,6 +4666,7 @@ def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None
             ("task_patterns", "--task"),
             ("failed", "--failed"),
             ("aborted", "--aborted"),
+            ("cancelled", "--cancelled"),
         ):
             if getattr(args, dest, None):
                 parser.error(f"--task-id cannot be used with {flag}")
@@ -4679,14 +4690,15 @@ def check_resubmit_combinations(args: Namespace, parser: ArgumentParser) -> None
 
 COMMANDS["yd-resubmit"] = Command(
     name="yd-resubmit",
-    purpose="resubmitting failed, aborted or named Tasks",
-    summary="Resubmit a Work Requirement's failed, aborted or named Tasks",
+    purpose="resubmitting failed, aborted, cancelled or named Tasks",
+    summary="Resubmit a Work Requirement's failed, aborted, cancelled or named Tasks",
     kind=CommandKind.API,
     options=(
         VARIABLE,
         NAMESPACE,
         RESUBMIT_FAILED,
         RESUBMIT_ABORTED,
+        RESUBMIT_CANCELLED,
         RESUBMIT_TASK_GROUP,
         RESUBMIT_TASK,
         RESUBMIT_TASK_ID,
@@ -4731,8 +4743,9 @@ COMMANDS["yd-resubmit"] = Command(
     validators=(check_json_excludes_streaming, check_resubmit_combinations),
     tool=ToolKind.ACTING,
     tool_description=(
-        "Resubmit a Work Requirement's FAILED (and, with aborted, ABORTED)"
-        " Tasks as a new Work Requirement, or into an existing one with"
+        "Resubmit a Work Requirement's FAILED Tasks (or, with aborted and"
+        " cancelled, its ABORTED and CANCELLED ones, alone or with failed)"
+        " as a new Work Requirement, or into an existing one with"
         " add_to. Returns {id, name, namespace, type, resubmittedFrom,"
         " taskCount} of the Work Requirement; with dry_run, the document"
         " instead."

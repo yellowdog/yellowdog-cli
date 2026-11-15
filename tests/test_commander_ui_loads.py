@@ -7,6 +7,7 @@ Qt-version incompatibilities and accidental .ui edits.
 """
 
 import sys
+from collections import Counter
 
 import pytest
 import qt_guard
@@ -15,6 +16,7 @@ qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -23,12 +25,18 @@ from PyQt6.QtWidgets import (
     QLayout,
     QPlainTextEdit,
     QPushButton,
+    QStyle,
     QStyleFactory,
+    QStyleOptionButton,
     QWidget,
 )
 
 from yellowdog_cli._version import __version__
-from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.commander import (
+    DESTRUCTIVE_TEXT_DARK,
+    DESTRUCTIVE_TEXT_LIGHT,
+    YellowDogApp,
+)
 
 
 def test_ui_loads_and_binds_expected_widgets(qapp):
@@ -127,10 +135,11 @@ def test_the_paired_rows_align_across_the_two_columns(qapp):
     assert not misaligned, "rows do not share a grid row: " + "; ".join(misaligned)
 
 
-def test_the_select_row_is_closed_off_by_one_line_the_divider_starts_below(qapp):
+def test_the_select_row_is_closed_off_by_one_line_the_divider_meets(qapp):
     # The selection row is the whole window's, not the left column's: one
-    # separator runs beneath it from the left margin to the right, unbroken
-    # by the vertical divider, which begins below it
+    # separator runs beneath it from the left margin to the right, and the
+    # vertical divider meets it from below, starting within it rather than
+    # leaving a gap or reaching up into the selection row
     win = gui_harness.shown(YellowDogApp())
     separator = row_rect(win, "line_7")
     divider = row_rect(win, "line_5")
@@ -139,7 +148,7 @@ def test_the_select_row_is_closed_off_by_one_line_the_divider_starts_below(qapp)
 
     assert separator.left() <= select_row.left()
     assert separator.right() >= selection.right()
-    assert divider.top() > separator.bottom()
+    assert separator.top() <= divider.top() <= separator.bottom()
     assert win.findChild(QWidget, "line_9") is None
 
 
@@ -335,6 +344,131 @@ def test_dark_mode_draws_every_separator_alike(qapp):
     assert len(set(heights.values())) == 1, (
         f"separators are drawn at different thicknesses in Dark Mode: {heights}"
     )
+
+
+DESTRUCTIVE_BUTTONS = {
+    "cancel_work_requirements",
+    "cancel_work_requirements_and_abort",
+    "shutdown_all_worker_pools",
+    "terminate_all_compute_requirements",
+    "delete_objects",
+}
+
+
+def _coloured(win, colour: str) -> set[str]:
+    """
+    The buttons whose stylesheet gives their label 'colour'.
+    """
+    return {
+        button.objectName()
+        for button in win.findChildren(QPushButton)
+        if colour in button.styleSheet()
+    }
+
+
+def test_the_destructive_buttons_alone_are_given_the_red(qapp):
+    win = gui_harness.shown(YellowDogApp())
+    assert _coloured(win, DESTRUCTIVE_TEXT_LIGHT) == DESTRUCTIVE_BUTTONS
+
+
+def test_the_red_is_for_the_enabled_state_only(qapp):
+    # A plain 'color' would hold while a listing greys the buttons out, so
+    # they would not look disabled: the rule is scoped to ':enabled'
+    win = gui_harness.shown(YellowDogApp())
+    for name in DESTRUCTIVE_BUTTONS:
+        sheet = win.findChild(QPushButton, name).styleSheet()
+        assert sheet.replace(" ", "").startswith("QPushButton:enabled{"), sheet
+
+
+def test_dark_mode_swaps_in_the_lighter_red_and_back(qapp):
+    win = gui_harness.shown(YellowDogApp())
+    try:
+        win._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert _coloured(win, DESTRUCTIVE_TEXT_DARK) == DESTRUCTIVE_BUTTONS
+        assert _coloured(win, DESTRUCTIVE_TEXT_LIGHT) == set()
+    finally:
+        win._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+    assert _coloured(win, DESTRUCTIVE_TEXT_LIGHT) == DESTRUCTIVE_BUTTONS
+
+
+def _ink_colour(button: QPushButton) -> QColor | None:
+    """
+    The average colour of a button's label as painted: the pixels inside its
+    contents rect that differ from the commonest colour there, its face; None
+    where nothing is drawn on it.
+    """
+    option = QStyleOptionButton()
+    button.initStyleOption(option)
+    style = button.style()
+    assert style is not None
+    rect = style.subElementRect(
+        QStyle.SubElement.SE_PushButtonContents, option, button
+    ).adjusted(2, 2, -2, -2)
+    image = button.grab().toImage()
+    colours = [
+        image.pixelColor(x, y)
+        for x in range(rect.left(), rect.right() + 1)
+        for y in range(rect.top(), rect.bottom() + 1)
+    ]
+    face = QColor(Counter(c.rgb() for c in colours).most_common(1)[0][0])
+    ink = [
+        c
+        for c in colours
+        if max(
+            abs(c.red() - face.red()),
+            abs(c.green() - face.green()),
+            abs(c.blue() - face.blue()),
+        )
+        > 40
+    ]
+    if not ink:
+        return None
+    return QColor(
+        sum(c.red() for c in ink) // len(ink),
+        sum(c.green() for c in ink) // len(ink),
+        sum(c.blue() for c in ink) // len(ink),
+    )
+
+
+def _painted_red(button: QPushButton) -> bool:
+    colour = _ink_colour(button)
+    return colour is not None and colour.red() - max(colour.green(), colour.blue()) > 30
+
+
+# What is painted, on the one platform where the reading of it has proved
+# dependable: Linux's subpixel fringes and Windows 11's style each misled it,
+# and the stylesheet tests above hold the colour on every platform
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="the painted colour is read on macOS only"
+)
+def test_the_style_paints_the_destructive_labels_red(qapp):
+    win = gui_harness.shown(YellowDogApp())
+    painted = {
+        button.objectName()
+        for button in win.findChildren(QPushButton)
+        if button.isVisible() and _painted_red(button)
+    }
+    assert painted == DESTRUCTIVE_BUTTONS
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="the painted colour is read on macOS only"
+)
+def test_a_greyed_destructive_button_is_not_painted_red(qapp):
+    win = gui_harness.shown(YellowDogApp())
+    win._set_action_buttons_enabled(False)
+    QApplication.processEvents()
+    try:
+        still_red = [
+            name
+            for name in DESTRUCTIVE_BUTTONS
+            if _painted_red(win.findChild(QPushButton, name))
+        ]
+    finally:
+        win._set_action_buttons_enabled(True)
+    assert still_red == []
 
 
 # The output window is excluded: a tooltip there would pop up over the text

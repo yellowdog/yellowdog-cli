@@ -54,6 +54,18 @@ def parse_entity_summaries(parsed: list) -> list[EntitySummary] | None:
     return summaries
 
 
+def all_tasks_completed(row: dict) -> bool:
+    """
+    Whether a Work Requirement row from 'yd list --json' says every one of its
+    Tasks completed, so that none can have failed. False when the counts are
+    missing or not numbers: a row that cannot say is offered, not hidden.
+    """
+    completed, total = row.get("completedTaskCount"), row.get("totalTaskCount")
+    if not isinstance(completed, int) or not isinstance(total, int):
+        return False
+    return total > 0 and completed >= total
+
+
 def newest_entity_id(parsed: list, offered: set[str] | None = None) -> str | None:
     """
     The 'id' of the row with the latest 'createdTime' in a parsed 'yd list

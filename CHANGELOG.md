@@ -2,6 +2,37 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.14.0 — 2026-11-15
+
+### Other
+
+- **`yd workrequirement resubmit --cancelled`** resubmits a Work Requirement's `CANCELLED` Tasks, alone or with `--failed` and `--aborted`.
+
+### Commander
+
+- **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
+- **Follow…** in the Work panel follows an active Work Requirement chosen from those in scope (`yd workrequirement follow`), unless a command in the window is following it already.
+- **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
+- **Act on IDs in the output**: right-click a line holding a YellowDog ID to copy it, `yd show` it, or `yd follow` a Work Requirement, Worker Pool or Compute Requirement.
+- **Error and warning lines are coloured** in the Command Output window: red for the CLI's `ERROR :` lines, amber for its `WARNING :` lines, in shades for each appearance.
+- **"Nothing found" messages are violet** in the Command Output window (`No objects match …`, `No Work Requirements cancelled`), since finding nothing is often a mistaken tag or path.
+- **Each command's output ends with how it ended**: `✓ … finished (exit 0)` in green, `✗ … failed (exit N)` or `crashed` in red, `■ … stopped` in amber.
+- **Status words in the Command Output are coloured** as the CLI colours them in a terminal: `FAILED` red, `COMPLETED` green, active states blue, cancelled ones grey, transitional ones orange.
+- **YellowDog IDs in the Command Output are orange**, as in a terminal.
+- **JSON in the Command Output is coloured** as the CLI colours it in a terminal: keys blue, strings green, numbers cyan, `true`, `false` and `null` magenta.
+- **Table outlines in the Command Output are a muted blue**, so a table's content stands out.
+- **Each command's `Executing:` line is bold**, a heading for its output.
+- **Message prefixes in the Command Output are grey**, so the time and process ID give way to the message.
+- **Jump to the end of the Command Output**: scrolled up, a **↓** button in the window's bottom-right corner, or **Jump to End** in its right-click menu, returns to the end and follows new output again.
+- **Zoom the Command Output**: Cmd+= and Cmd+− (Ctrl on Windows and Linux) change its text size, Cmd+0 resets it, and the size is remembered.
+- **Commander remembers the session**: it reopens at the size and place it was closed at, in Dark Mode if you chose it, and, started without a configuration file, with the one last selected (unless a `config.toml` where it is launched, or your own user configuration, would be used).
+- **A dry run download or deletion matching nothing says so calmly**, as the action does without Dry Run: `No objects match '…'`, where it reported a failure (exit 1). The checkbox is now **Dry Run Download/Deletion**.
+- **The Dry Run and Follow Progress checkboxes share a row**, directly below Submit and Provision in the Work and Compute panels, relabelled from *Dry Run Work Requirement Submission*, *Follow Work Requirement Progress* and their Worker Pool counterparts, which makes room for the new button with the window barely taller.
+- **The destructive actions' buttons are labelled in red**: Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, Terminate Compute Requirements and Delete Matching Objects, in a lighter red in Dark Mode. Delete Matching Objects moves to the bottom of the Results panel, below Browse Results Directory, and the Dry Run Download/Deletion checkbox sits directly below Download Matching Objects.
+- **The command history's buttons are labelled ← and →**, in place of `<` and `>`.
+- **The YellowDog logo is in YellowDog yellow**, in both appearances.
+- **Commander is supported on a best-effort basis**: report a problem with it as you would one with the CLI. The commands it runs are the CLI's own, and are fully supported.
+
 ## 15.13.0 — 2026-11-14
 
 ### Upgrading

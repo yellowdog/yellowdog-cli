@@ -1,0 +1,509 @@
+"""
+Tests for colouring the CLI's error and warning lines in Commander's output
+window: the colour each line is displayed in, read from the document's
+layout, in both appearances and through the filters.
+"""
+
+import pytest
+import qt_guard
+
+qt_guard.require_qt()
+
+import gui_harness
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QTextDocument
+from PyQt6.QtWidgets import QApplication
+
+from yellowdog_cli.commander.commander import YellowDogApp
+from yellowdog_cli.commander.output_model import (
+    JSON_BRACKET,
+    JSON_KEY,
+    JSON_LITERAL,
+    JSON_NUMBER,
+    JSON_STRING,
+    MESSAGE_PREFIX,
+    json_tokens,
+)
+from yellowdog_cli.commander.output_pane import (
+    ERROR_RGB_DARK,
+    ERROR_RGB_LIGHT,
+    JSON_STYLES,
+    NOTHING_RGB_DARK,
+    NOTHING_RGB_LIGHT,
+    PREFIX_RGB_DARK,
+    PREFIX_RGB_LIGHT,
+    STATE_STYLES,
+    TABLE_OUTLINE_RGB_DARK,
+    TABLE_OUTLINE_RGB_LIGHT,
+    WARNING_RGB_DARK,
+    WARNING_RGB_LIGHT,
+    YDID_RGB_DARK,
+    YDID_RGB_LIGHT,
+)
+
+PLAIN = "2026-11-15 11:30:01 (012345) : Generated Work Requirement 'render'"
+WARNING = "2026-11-15 11:30:01 (012345) : WARNING : 2 DISCARDED Tasks"
+ERROR = "2026-11-15 11:30:02 (012345) : ERROR : Cannot find 'rendr'"
+
+
+@pytest.fixture
+def window(qapp):
+    window = YellowDogApp()
+    gui_harness.shown(window)
+    for line in (PLAIN, WARNING, ERROR):
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    yield window
+    window.shutdown()
+    window.close()
+
+
+def colour_of(window, text: str) -> tuple[int, int, int] | None:
+    """
+    The colour the whole of the line holding 'text' is displayed in, or None
+    where it is given none of its own.
+    """
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    assert block.isValid(), f"{text!r} is not shown"
+    layout = block.layout()
+    assert layout is not None
+    ranges = layout.formats()
+    if not ranges:
+        return None
+    (whole,) = ranges
+    assert (whole.start, whole.length) == (0, len(block.text()))
+    colour: QColor = whole.format.foreground().color()
+    return colour.red(), colour.green(), colour.blue()
+
+
+def message_is_plain(window, text: str) -> bool:
+    """
+    Whether the line holding 'text' has nothing coloured but its muted
+    time-and-PID prefix.
+    """
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    layout = block.layout()
+    assert layout is not None
+    prefix_length = len(block.text()) - len(
+        MESSAGE_PREFIX.sub("", block.text(), count=1)
+    )
+    return all(
+        piece.start + piece.length <= prefix_length for piece in layout.formats()
+    )
+
+
+def test_error_and_warning_lines_are_coloured(window):
+    assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
+    assert colour_of(window, WARNING) == WARNING_RGB_LIGHT
+    assert message_is_plain(window, PLAIN)
+
+
+def test_dark_mode_recolours_them_and_back(window):
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colour_of(window, ERROR) == ERROR_RGB_DARK
+        assert colour_of(window, WARNING) == WARNING_RGB_DARK
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+    assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
+
+
+def test_the_colour_survives_filtering(window):
+    window.output_text_filter.setText("ERROR")
+    window._output._apply_text_filter()
+    QApplication.processEvents()
+    assert window.log_output.toPlainText() == ERROR
+    assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
+
+
+def test_the_text_itself_stays_plain(window):
+    # What Copy and Save take, and the filters read
+    assert window.log_output.toPlainText().splitlines() == [PLAIN, WARNING, ERROR]
+
+
+def test_a_marker_only_counts_at_the_start_of_the_message(window):
+    # An 'Executing:' line echoing a command, or a task's output, holding the
+    # marker's text is not an error line; one without a prefix is
+    echo = "2026-11-15 11:30:03 (012345) : Executing: 'echo ERROR : not really'"
+    bare = "WARNING : a message without a prefix"
+    for line in (echo, bare):
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert ERROR_RGB_LIGHT not in colours_of(window, echo).values()
+    assert colour_of(window, bare) == WARNING_RGB_LIGHT
+
+
+# --- JSON ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, pieces",
+    [
+        ("{", [("{", JSON_BRACKET)]),
+        (
+            '  "namespace": "yd-demo",',
+            [('"namespace"', JSON_KEY), ('"yd-demo"', JSON_STRING)],
+        ),
+        ('  "priority": 0,', [('"priority"', JSON_KEY), ("0", JSON_NUMBER)]),
+        (
+            '  "maxRetries": -1.5e3',
+            [('"maxRetries"', JSON_KEY), ("-1.5e3", JSON_NUMBER)],
+        ),
+        ('  "starved": false,', [('"starved"', JSON_KEY), ("false", JSON_LITERAL)]),
+        (
+            '  "dependencies": null',
+            [('"dependencies"', JSON_KEY), ("null", JSON_LITERAL)],
+        ),
+        ('  "taskGroups": [', [('"taskGroups"', JSON_KEY), ("[", JSON_BRACKET)]),
+        ('    "bash",', [('"bash"', JSON_STRING)]),
+        ("  ],", [("]", JSON_BRACKET)]),
+        ("[]", [("[", JSON_BRACKET), ("]", JSON_BRACKET)]),
+        (
+            '{"id": "x", "n": 3}',
+            [
+                ("{", JSON_BRACKET),
+                ('"id"', JSON_KEY),
+                ('"x"', JSON_STRING),
+                ('"n"', JSON_KEY),
+                ("3", JSON_NUMBER),
+                ("}", JSON_BRACKET),
+            ],
+        ),
+        # Brackets and numbers inside a string are the string's
+        (
+            '  "x": "a {b} [c] 42",',
+            [('"x"', JSON_KEY), ('"a {b} [c] 42"', JSON_STRING)],
+        ),
+        # Not JSON: a message, prose, a table, YAML-like text
+        ("2026-11-15 11:30:01 (012345) : Generated {x}", []),
+        ("Generated Work Requirement 'render'", []),
+        ("| name | status |", []),
+        ("name: value", []),
+    ],
+)
+def test_json_pieces(line, pieces):
+    assert [(line[s : s + n], kind) for s, n, kind in json_tokens(line)] == pieces
+
+
+def colours_of(window, text: str) -> dict[str, tuple[int, int, int]]:
+    """
+    The colour of each coloured piece of the line holding 'text', by piece.
+    """
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    assert block.isValid(), f"{text!r} is not shown"
+    layout = block.layout()
+    assert layout is not None
+    result = {}
+    for piece in layout.formats():
+        colour = piece.format.foreground().color()
+        segment = block.text()[piece.start : piece.start + piece.length]
+        result[segment] = (colour.red(), colour.green(), colour.blue())
+    return result
+
+
+def json_colour(kind: str, dark: bool = False) -> tuple[int, int, int] | None:
+    light_colour, dark_colour, _bold, _italic = JSON_STYLES[kind]
+    return dark_colour if dark else light_colour
+
+
+JSON_LINE = '  "starved": false, "priority": 3, "name": "render"'
+
+
+@pytest.fixture
+def with_json(window):
+    for line in ("{", JSON_LINE, "}"):
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    return window
+
+
+def test_json_is_coloured_as_the_cli_colours_it(with_json):
+    colours = colours_of(with_json, JSON_LINE)
+    assert colours['"starved"'] == json_colour(JSON_KEY)
+    assert colours["false"] == json_colour(JSON_LITERAL)
+    assert colours["3"] == json_colour(JSON_NUMBER)
+    assert colours['"render"'] == json_colour(JSON_STRING)
+
+
+def test_json_in_dark_mode(with_json):
+    try:
+        with_json._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        colours = colours_of(with_json, JSON_LINE)
+        assert colours['"starved"'] == json_colour(JSON_KEY, dark=True)
+        assert colours['"render"'] == json_colour(JSON_STRING, dark=True)
+    finally:
+        with_json._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+def test_a_json_line_shown_alone_by_the_filter_is_still_coloured(with_json):
+    # Judged by its shape, not by the document around it
+    with_json.output_text_filter.setText("starved")
+    with_json._output._apply_text_filter()
+    QApplication.processEvents()
+    assert with_json.log_output.toPlainText() == JSON_LINE
+    assert colours_of(with_json, JSON_LINE)['"starved"'] == json_colour(JSON_KEY)
+
+
+def test_false_is_not_the_error_red(qapp):
+    assert json_colour(JSON_LITERAL) != ERROR_RGB_LIGHT
+    assert json_colour(JSON_LITERAL, dark=True) != ERROR_RGB_DARK
+
+
+# --- Status words ----------------------------------------------------------
+
+
+def state_colour(style: str, dark: bool = False) -> tuple[int, int, int]:
+    light_colour, dark_colour, _bold, _italic = STATE_STYLES[style]
+    return dark_colour if dark else light_colour
+
+
+def test_status_words_are_coloured_as_the_cli_colours_them(window):
+    events = (
+        "2026-11-15 12:01:20 (089570) : Work Requirement 'render' is RUNNING",
+        "2026-11-15 12:01:52 (089570) :   Task 'frame-0003' is FAILED",
+        "│   3 │ render-261113 │ COMPLETED │",
+        "2026-11-15 12:01:53 (089570) :   Task 'frame-0004' is CANCELLED",
+    )
+    for line in events:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, events[0])["RUNNING"] == state_colour("active")
+    assert colours_of(window, events[1])["FAILED"] == ERROR_RGB_LIGHT
+    assert colours_of(window, events[2])["COMPLETED"] == state_colour("completed")
+    assert colours_of(window, events[3])["CANCELLED"] == state_colour("cancelled")
+
+
+def test_every_style_the_cli_highlights_has_a_colour():
+    from yellowdog_cli.utils.output_style import HIGHLIGHTED_STATES
+
+    styles = {name for p in HIGHLIGHTED_STATES for name in p.groupindex}
+    assert styles <= set(STATE_STYLES)
+
+
+def test_a_status_word_in_a_json_string_takes_its_colour(window):
+    line = '  "status": "RUNNING",'
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    colours = colours_of(window, line)
+    assert colours["RUNNING"] == state_colour("active")
+    assert colours['"'] == json_colour(JSON_STRING), "its quotes stay the string's"
+
+
+def test_lower_case_words_are_not_status_words(window):
+    line = "2026-11-15 12:02:00 (089570) : the upload failed and was cancelled"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert message_is_plain(window, line)
+
+
+def test_dark_mode_status_colours(window):
+    line = "2026-11-15 12:01:20 (089570) : Work Requirement 'render' is RUNNING"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, line)["RUNNING"] == state_colour("active", True)
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+# --- YellowDog IDs ---------------------------------------------------------
+
+WR_ID = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
+
+
+def test_ids_are_orange_in_messages_tables_and_json(window):
+    lines = (
+        f"2026-11-15 12:01:00 (089570) : Created Work Requirement {WR_ID}",
+        f"│   1 │ render │ RUNNING │ {WR_ID} │",
+        f'  "id": "{WR_ID}",',
+    )
+    for line in lines:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    for line in lines:
+        assert colours_of(window, line)[WR_ID] == YDID_RGB_LIGHT, line
+
+
+def test_ids_in_dark_mode(window):
+    line = f"2026-11-15 12:01:00 (089570) : Created Work Requirement {WR_ID}"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, line)[WR_ID] == YDID_RGB_DARK
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+# --- The prefix ------------------------------------------------------------
+
+
+def test_the_prefix_is_muted_and_the_message_is_not(window):
+    line = "2026-11-15 12:01:11 (089560) : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    colours = colours_of(window, line)
+    assert colours == {"2026-11-15 12:01:11 (089560) : ": PREFIX_RGB_LIGHT}
+
+
+def test_a_prefix_without_a_pid_is_muted_too(window):
+    line = "2026-11-15 12:01:11 : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, line) == {"2026-11-15 12:01:11 : ": PREFIX_RGB_LIGHT}
+
+
+def test_a_whole_line_colour_includes_its_prefix(window):
+    # An error line reads as one unit, prefix and all
+    assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
+
+
+def test_the_prefix_in_dark_mode(window):
+    line = "2026-11-15 12:01:11 (089560) : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert set(colours_of(window, line).values()) == {PREFIX_RGB_DARK}
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+# --- The Executing line ----------------------------------------------------
+
+
+def weights_of(window, text: str) -> dict[str, int]:
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    layout = block.layout()
+    assert layout is not None
+    return {
+        block.text()[p.start : p.start + p.length]: p.format.fontWeight()
+        for p in layout.formats()
+    }
+
+
+def test_the_executing_line_is_a_bold_heading(window):
+    line = "2026-11-15 12:01:10 (089554) : Executing: 'yd list' in directory '/tmp'"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    weights = weights_of(window, line)
+    assert weights["Executing: 'yd list' in directory '/tmp'"] == QFont.Weight.Bold
+    assert colours_of(window, line)["2026-11-15 12:01:10 (089554) : "] == (
+        PREFIX_RGB_LIGHT
+    ), "the prefix stays muted"
+
+
+def test_commanders_own_executing_line_is_the_one_made_bold(qapp, monkeypatch):
+    # The line Commander writes, not a sample of it: the two share EXECUTING
+    import sys
+
+    window = YellowDogApp()
+    gui_harness.shown(window)
+    try:
+        window._run_command_in_subprocess(
+            sys.executable, ["-c", "pass"], yd_command=False
+        )
+        QApplication.processEvents()
+        executing = next(
+            e.text for e in window._output._output_entries if "Executing: " in e.text
+        )
+        assert QFont.Weight.Bold in weights_of(window, executing).values()
+    finally:
+        window.shutdown()
+        window.close()
+
+
+# --- Table outlines --------------------------------------------------------
+
+
+def test_a_tables_outline_is_muted_blue_and_its_content_is_not(window):
+    rows = ("┌─────┬────────┐", "│   1 │ render │", "└─────┴────────┘")
+    for row in rows:
+        window._output.log(row, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, rows[0]) == {rows[0]: TABLE_OUTLINE_RGB_LIGHT}
+    middle = colours_of(window, rows[1])
+    assert middle == {"│": TABLE_OUTLINE_RGB_LIGHT}, "the bars alone, not 'render'"
+
+
+def test_the_outline_in_dark_mode(window):
+    row = "┌─────┬────────┐"
+    window._output.log(row, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, row) == {row: TABLE_OUTLINE_RGB_DARK}
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+def test_the_outline_is_the_one_the_cli_colours():
+    from yellowdog_cli.utils import printing
+    from yellowdog_cli.utils.output_style import TABLE_OUTLINE_CHARS
+
+    assert printing.PrintTableHighlighter.table_outline_chars == TABLE_OUTLINE_CHARS
+
+
+# --- Nothing found ---------------------------------------------------------
+
+
+def test_a_message_that_nothing_was_found_is_coloured_whole(window):
+    lines = (
+        "2026-11-15 13:12:25 (034509) : No objects match 'render*'",
+        "2026-11-15 13:12:31 (034512) : No matching Work Requirements found",
+        "2026-11-15 13:12:41 : No Work Requirements cancelled",
+    )
+    for line in lines:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    for line in lines:
+        assert colour_of(window, line) == NOTHING_RGB_LIGHT, line
+
+
+def test_commanders_own_nothing_found_message_is_coloured(window):
+    # Logged with Commander's prefix, as the results panel logs it
+    window._output.log("No objects match 'render*'")
+    QApplication.processEvents()
+    assert colour_of(window, "No objects match 'render*'") == NOTHING_RGB_LIGHT
+
+
+def test_output_starting_no_without_a_prefix_is_not_a_message(window):
+    # A task's output, or a line of a document, is not the CLI saying so
+    line = "No such file or directory"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colour_of(window, line) is None
+
+
+def test_nothing_found_in_dark_mode(window):
+    line = "2026-11-15 13:12:25 (034509) : No objects match 'render*'"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colour_of(window, line) == NOTHING_RGB_DARK
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()

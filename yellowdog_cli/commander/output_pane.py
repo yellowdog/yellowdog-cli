@@ -1,7 +1,7 @@
 """
 The output window (OutputPane): the widget, its filter bar and right-click menu,
-the process chooser and the text filter, over the entries and runs in
-output_model. The window logs to it and hands it each process it starts;
+the process chooser, the text filter and the Jump to End button, over the
+entries and runs in output_model. The window logs to it and hands it each process it starts;
 everything the filters do is here.
 """
 
@@ -11,9 +11,22 @@ from datetime import datetime
 from functools import partial as functools_partial
 from typing import cast
 
-from PyQt6.QtCore import QPoint, QProcess, Qt, QTimer
-from PyQt6.QtGui import QAction, QKeySequence, QShortcut, QTextBlock, QTextDocument
+from PyQt6.QtCore import QEvent, QObject, QPoint, QProcess, Qt, QTimer
+from PyQt6.QtGui import (
+    QAction,
+    QClipboard,
+    QColor,
+    QFont,
+    QKeySequence,
+    QPalette,
+    QShortcut,
+    QSyntaxHighlighter,
+    QTextBlock,
+    QTextCharFormat,
+    QTextDocument,
+)
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QLabel,
@@ -25,23 +38,44 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollBar,
+    QToolButton,
     QWidget,
 )
 
+from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
+    ENDED_FAILED_MARK,
+    ENDED_OK_MARK,
+    ENDED_STOPPED_MARK,
+    EXECUTING,
+    JSON_BRACKET,
+    JSON_KEY,
+    JSON_LITERAL,
+    JSON_NUMBER,
+    JSON_STRING,
+    MESSAGE_PREFIX,
     LineBuffer,
     OutputEntry,
     OutputRun,
     filter_description,
+    json_tokens,
     line_pattern,
     message_prefix,
 )
+from yellowdog_cli.commander.processes import TERMINATE_TIMEOUT_MS
 from yellowdog_cli.commander.selection import (
     MAX_DIALOG_LIST_ROWS,
     SelectableRow,
     checked_handles,
 )
+from yellowdog_cli.utils.output_style import (
+    ERROR_MARKER,
+    HIGHLIGHTED_STATES,
+    TABLE_OUTLINE_CHARS,
+    WARNING_MARKER,
+)
+from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid_type
 
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
@@ -53,6 +87,264 @@ PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 # How long after the last keystroke the text filter is applied, so that a long
 # output is not rebuilt for every character typed
 TEXT_FILTER_DELAY_MS = 250
+# The most YellowDog IDs on one line the right-click menu offers actions for
+MAX_LINE_YDIDS = 5
+# The kinds of entity 'yd follow' follows (follow_utils._FOLLOWABLE); spelled
+# out, since importing follow_utils would import the SDK
+FOLLOWABLE_YDID_TYPES = frozenset(
+    {YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT}
+)
+JUMP_TO_END = "Jump to End"
+JUMP_ARROW = "↓"
+JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
+JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
+# The colours of the CLI's error and warning lines, one per appearance: the
+# light one too dark to read on a dark background, the dark one too pale on a
+# light one. The error red is the destructive buttons' label colour too.
+ERROR_RGB_LIGHT = (200, 30, 30)
+ERROR_RGB_DARK = (255, 110, 100)
+WARNING_RGB_LIGHT = (170, 100, 0)
+WARNING_RGB_DARK = (240, 180, 70)
+OK_RGB_LIGHT = (30, 130, 50)
+OK_RGB_DARK = (110, 200, 120)
+# A message saying nothing was found or acted on ('No objects match ...',
+# 'No Work Requirements cancelled'), which the CLI and Commander alike start
+# with NOTHING_FOUND: a run that found nothing is often a tag or path
+# mistake, so it is coloured whole, in a colour of its own, apart from the
+# warnings
+NOTHING_FOUND = "No "
+NOTHING_RGB_LIGHT = (115, 70, 195)
+NOTHING_RGB_DARK = (180, 155, 250)
+# JSON's colours, by kind of piece: the CLI's own (Rich's JSON highlighting:
+# keys blue, strings green, numbers bold cyan, brackets bold), as (light,
+# dark), bold or italic; but keys not bold, as Rich makes them, which on every
+# line of a document is heavy, and true, false and null all italic magenta,
+# where Rich makes false red, which here would read as an error
+JSON_STYLES: dict[
+    str, tuple[tuple[int, int, int] | None, tuple[int, int, int] | None, bool, bool]
+] = {
+    JSON_KEY: ((30, 80, 200), (120, 170, 255), False, False),
+    JSON_STRING: ((20, 120, 20), (130, 200, 130), False, False),
+    JSON_NUMBER: ((0, 125, 140), (80, 200, 210), True, False),
+    JSON_LITERAL: ((150, 40, 150), (220, 130, 220), False, True),
+    JSON_BRACKET: (None, None, True, False),
+}
+# The status words the CLI colours in a terminal (output_style's
+# HIGHLIGHTED_STATES, each pattern's group named by its style), coloured as it
+# colours them, in shades for each appearance, but not bold, as the CLI makes
+# them, which in a table's status column is heavy: what failed in the error
+# red, what completed in the success green
+STATE_STYLES: dict[
+    str, tuple[tuple[int, int, int], tuple[int, int, int], bool, bool]
+] = {
+    "active": ((20, 90, 170), (110, 170, 255), False, False),
+    "cancelled": ((115, 115, 115), (155, 155, 155), False, False),
+    "completed": (OK_RGB_LIGHT, OK_RGB_DARK, False, False),
+    "failed": (ERROR_RGB_LIGHT, ERROR_RGB_DARK, False, False),
+    "idle": ((150, 115, 0), (220, 185, 70), False, False),
+    "starved": ((200, 95, 0), (255, 160, 80), False, False),
+    "transitioning": ((200, 95, 0), (255, 160, 80), False, False),
+}
+# YellowDog IDs, in the CLI's orange but not bold, since a column of long IDs
+# in bold would outweigh everything around it
+YDID_RGB_LIGHT = (185, 85, 0)
+YDID_RGB_DARK = (250, 150, 70)
+# A message's time-and-PID prefix, muted so the eye goes to the message: on
+# every line of a long run, the CLI's bold blue for it would be noise
+PREFIX_RGB_LIGHT = (140, 140, 140)
+PREFIX_RGB_DARK = (120, 120, 120)
+# A table's outline, in a muted version of the CLI's blue for it, so the
+# table's content stands out from its grid
+TABLE_OUTLINE_RGB_LIGHT = (95, 130, 170)
+TABLE_OUTLINE_RGB_DARK = (85, 115, 150)
+TABLE_OUTLINE = re.compile(rf"[{TABLE_OUTLINE_CHARS}]+")
+
+
+class OutputHighlighter(QSyntaxHighlighter):
+    """
+    Colours the output window's lines that carry the CLI's ERROR_MARKER or
+    WARNING_MARKER, and Commander's own lines saying how a command ended
+    (OutputRun.ending_text, by its mark), the whole line, as each is
+    displayed; and, as the CLI colours them in a terminal, the pieces of a
+    line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
+    the YellowDog IDs (YDID_HIGHLIGHT_RE); and, muted, every other line's
+    time-and-PID prefix and a table's outline (TABLE_OUTLINE_CHARS), and in
+    bold, the message of the line announcing each command (EXECUTING). A highlighter, not
+    coloured text: the document stays plain, so the filters, Copy and Save
+    are untouched. Only the marked line is coloured: the lines after a
+    warning are often a table or a document, not more of the message, and
+    Commander runs the CLI with '--nf', so a message is not wrapped.
+    """
+
+    def __init__(self, document: QTextDocument):
+        super().__init__(document)
+        self._error = QTextCharFormat()
+        self._warning = QTextCharFormat()
+        self._ok = QTextCharFormat()
+        self._nothing = QTextCharFormat()
+        self._json = self._formats(JSON_STYLES)
+        self._states = self._formats(STATE_STYLES)
+        self._ydid = QTextCharFormat()
+        self._prefix = QTextCharFormat()
+        self._outline = QTextCharFormat()
+        self._heading = QTextCharFormat()
+        self._heading.setFontWeight(QFont.Weight.Bold)
+        self.set_dark(False)
+
+    @staticmethod
+    def _formats(styles: dict) -> dict[str, QTextCharFormat]:
+        """
+        A format for each of 'styles', bold or italic as it says; its colour
+        is set for the appearance by set_dark().
+        """
+        formats = {}
+        for name, (_light, _dark, bold, italic) in styles.items():
+            formats[name] = QTextCharFormat()
+            if bold:
+                formats[name].setFontWeight(QFont.Weight.Bold)
+            formats[name].setFontItalic(italic)
+        return formats
+
+    @staticmethod
+    def _colour(formats: dict[str, QTextCharFormat], styles: dict, is_dark: bool):
+        for name, (light, dark, _bold, _italic) in styles.items():
+            colour = dark if is_dark else light
+            if colour is not None:
+                formats[name].setForeground(QColor(*colour))
+
+    def _overlay(self, start: int, length: int, layer: QTextCharFormat) -> None:
+        """
+        Apply 'layer' over what the range already has (a JSON string's
+        style under a status word in it), rather than in place of it.
+        """
+        merged = QTextCharFormat(self.format(start))
+        merged.merge(layer)
+        self.setFormat(start, length, merged)
+
+    def set_dark(self, is_dark: bool) -> None:
+        """
+        Use the colours for the appearance, and recolour what is shown.
+        """
+        error = ERROR_RGB_DARK if is_dark else ERROR_RGB_LIGHT
+        warning = WARNING_RGB_DARK if is_dark else WARNING_RGB_LIGHT
+        self._error.setForeground(QColor(*error))
+        self._warning.setForeground(QColor(*warning))
+        self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
+        self._nothing.setForeground(
+            QColor(*(NOTHING_RGB_DARK if is_dark else NOTHING_RGB_LIGHT))
+        )
+        self._colour(self._json, JSON_STYLES, is_dark)
+        self._colour(self._states, STATE_STYLES, is_dark)
+        self._ydid.setForeground(
+            QColor(*(YDID_RGB_DARK if is_dark else YDID_RGB_LIGHT))
+        )
+        self._prefix.setForeground(
+            QColor(*(PREFIX_RGB_DARK if is_dark else PREFIX_RGB_LIGHT))
+        )
+        self._outline.setForeground(
+            QColor(*(TABLE_OUTLINE_RGB_DARK if is_dark else TABLE_OUTLINE_RGB_LIGHT))
+        )
+        self.rehighlight()
+
+    def highlightBlock(self, text: str | None) -> None:
+        if not text:
+            return
+        # The message after its prefix, where the CLI puts its marker and
+        # Commander its ending mark; one elsewhere in the line (an 'Executing:'
+        # line echoing a command, or a task's output) is not one
+        message = MESSAGE_PREFIX.sub("", text, count=1)
+        if message.startswith((ERROR_MARKER, f"{ENDED_FAILED_MARK} ")):
+            self.setFormat(0, len(text), self._error)
+        elif message.startswith((WARNING_MARKER, f"{ENDED_STOPPED_MARK} ")):
+            self.setFormat(0, len(text), self._warning)
+        elif message.startswith(f"{ENDED_OK_MARK} "):
+            self.setFormat(0, len(text), self._ok)
+        elif message.startswith(NOTHING_FOUND) and len(message) < len(text):
+            # A message's, after its prefix: a task's output starting 'No '
+            # is not one
+            self.setFormat(0, len(text), self._nothing)
+        else:
+            prefix_length = len(text) - len(message)
+            if prefix_length:
+                self.setFormat(0, prefix_length, self._prefix)
+            if message.startswith(EXECUTING):
+                self.setFormat(prefix_length, len(message), self._heading)
+            for start, length, kind in json_tokens(text):
+                self.setFormat(start, length, self._json[kind])
+            for match in TABLE_OUTLINE.finditer(text):
+                self.setFormat(
+                    match.start(), match.end() - match.start(), self._outline
+                )
+            for pattern in HIGHLIGHTED_STATES:
+                for match in pattern.finditer(text):
+                    style = str(match.lastgroup)
+                    self._overlay(
+                        match.start(),
+                        match.end() - match.start(),
+                        self._states[style],
+                    )
+            for match in YDID_HIGHLIGHT_RE.finditer(text):
+                self._overlay(match.start(), match.end() - match.start(), self._ydid)
+
+
+def ydids_at(text: str, position: int) -> list[str]:
+    """
+    The YellowDog IDs in a line, without repeats, the one at 'position' (a
+    character offset, where the line was clicked) first, at most
+    MAX_LINE_YDIDS of them.
+    """
+    found: list[str] = []
+    under: str | None = None
+    for match in YDID_HIGHLIGHT_RE.finditer(text):
+        ydid = match.group("ydid")
+        if match.start() <= position <= match.end():
+            under = ydid
+        if ydid not in found:
+            found.append(ydid)
+    if under is not None:
+        found.remove(under)
+        found.insert(0, under)
+    return found[:MAX_LINE_YDIDS]
+
+
+def ydid_kind(ydid: str) -> str:
+    """
+    What a YellowDog ID identifies, as the menu names it: 'Work Requirement'.
+    """
+    ydid_type = get_ydid_type(ydid)
+    return ydid_type.value if ydid_type is not None else "YellowDog"
+
+
+def copy_to_clipboard(text: str, *_args) -> None:
+    cast(QClipboard, QApplication.clipboard()).setText(text)
+
+
+class CornerKeeper(QObject):
+    """
+    Keeps a widget in its parent's bottom-right corner, JUMP_BUTTON_MARGIN in,
+    moving it whenever the parent is resized; a scroll area's viewport also
+    needs place() after every scroll, which moves its children with the text.
+    Not a layout on the parent, which neither scroll nor the scroll area's
+    resizing of its viewport reliably brought back to the corner.
+    """
+
+    def __init__(self, parent: QWidget, widget: QWidget):
+        super().__init__(parent)
+        self._parent = parent
+        self._widget = widget
+        parent.installEventFilter(self)
+        self.place()
+
+    def place(self) -> None:
+        self._widget.move(
+            self._parent.width() - self._widget.width() - JUMP_BUTTON_MARGIN,
+            self._parent.height() - self._widget.height() - JUMP_BUTTON_MARGIN,
+        )
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        if a0 is self._parent and a1 is not None and a1.type() == QEvent.Type.Resize:
+            self.place()
+        return False
 
 
 class OutputPane:
@@ -78,6 +370,8 @@ class OutputPane:
         copy_button: QPushButton,
         save_button: QPushButton,
         build_chooser: Callable[..., tuple[QDialog, QPushButton]],
+        show_ydid: Callable[[str], None],
+        follow_ydid: Callable[[str], None],
         pid: int,
     ):
         self._window = window  # its layout is activated before scrolling
@@ -94,6 +388,9 @@ class OutputPane:
             button: button.toolTip() for button in (copy_button, save_button)
         }
         self._build_chooser = build_chooser
+        # The window's 'yd show' and 'yd follow' of an ID in the output
+        self._show_ydid = show_ydid
+        self._follow_ydid = follow_ydid
         self._pid = pid  # Commander's, on its own messages
 
         # The output window's contents and where they came from, so that it can
@@ -110,6 +407,8 @@ class OutputPane:
         self._filter_text = ""
         self._line_pattern: re.Pattern[str] | None = None
         self._hidden_line_count = 0  # arrived while filtered, and not shown
+        # Each command's process, by run, for Stop
+        self._run_processes: dict[int, QProcess] = {}
 
         bar.hide()
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -138,6 +437,90 @@ class OutputPane:
         )
         # Cmd+F on macOS, Ctrl+F elsewhere, from anywhere in the window
         QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
+
+        self._jump_button = self._add_jump_button(view)
+        self._highlighter = OutputHighlighter(cast(QTextDocument, view.document()))
+
+    def set_dark(self, is_dark: bool) -> None:
+        """
+        Colour the error and warning lines for the appearance.
+        """
+        self._highlighter.set_dark(is_dark)
+
+    def _add_jump_button(self, view: QPlainTextEdit) -> QToolButton:
+        """
+        A down-arrow button floating in the output window's bottom-right
+        corner, shown only while the view is scrolled up from its end: new
+        output is followed only at the end, and the read-only view takes no
+        Ctrl+End. It floats over the text rather than taking a row of the
+        window, and CornerKeeper moves it back to the corner whenever the
+        viewport is resized.
+        """
+        button = QToolButton(view.viewport())
+        button.setObjectName("jump_to_end")
+        # The arrow character, as on the command history's ← and → buttons
+        button.setText(JUMP_ARROW)
+        # In the window's font, as theirs are, not the output's fixed-width one
+        # it would inherit from the view; built with its family and size
+        # explicit, since the window's own font marks neither as set, which
+        # would leave the inherited one in force
+        window_font = self._window.font()
+        button.setFont(QFont(window_font.family(), window_font.pointSize()))
+        button.setToolTip(JUMP_TO_END_TOOLTIP)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Out of the Tab order, appearing and vanishing as it does; a click's
+        # focus goes to the output window, as a click anywhere in it would
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Backed in the text's own background, or a long line would run on
+        # under its bezel, which is translucent (light) or absent (dark)
+        button.setBackgroundRole(QPalette.ColorRole.Base)
+        button.setAutoFillBackground(True)
+        button.clicked.connect(self._jump_to_end)
+        button.adjustSize()
+        viewport = cast(QWidget, view.viewport())
+        self._corner_keeper = CornerKeeper(viewport, button)
+        button.hide()
+        scrollbar = cast(QScrollBar, view.verticalScrollBar())
+        # Whether the view was at its end before the range last changed: the
+        # view's own following of new output is not to be relied on, since on
+        # Windows the range can grow after a jump with nothing to follow it
+        self._following = True
+        scrollbar.valueChanged.connect(self._note_following)
+        scrollbar.rangeChanged.connect(self._stay_at_end_if_following)
+        scrollbar.valueChanged.connect(self._show_jump_button_if_scrolled_up)
+        scrollbar.rangeChanged.connect(self._show_jump_button_if_scrolled_up)
+        # Scrolling moves the viewport's children with its text (QWidget.scroll),
+        # so the button is put back in the corner after every scroll, either way;
+        # connected after the view's own handlers, these run after the scroll
+        scrollbar.valueChanged.connect(self._corner_keeper.place)
+        horizontal = cast(QScrollBar, view.horizontalScrollBar())
+        horizontal.valueChanged.connect(self._corner_keeper.place)
+        return button
+
+    def _at_end(self) -> bool:
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        return scrollbar.value() >= scrollbar.maximum()
+
+    def _note_following(self, _value: int) -> None:
+        self._following = self._at_end()
+
+    def _stay_at_end_if_following(self, _minimum: int, maximum: int) -> None:
+        """
+        Keep a view that was at its end there as its range grows, so that
+        new output is followed wherever the view's own following fails.
+        """
+        if self._following:
+            cast(QScrollBar, self._view.verticalScrollBar()).setValue(maximum)
+
+    def _show_jump_button_if_scrolled_up(self, *_args) -> None:
+        self._jump_button.setVisible(not self._at_end())
+
+    def _jump_to_end(self) -> None:
+        """
+        Scroll to the end, from where the view follows new output again.
+        """
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        scrollbar.setValue(scrollbar.maximum())
 
     def start_run(
         self,
@@ -183,6 +566,7 @@ class OutputPane:
         handlers to 'finished', so the last of the output is in the window before
         anything reports the process as done.
         """
+        self._run_processes[run.run_id] = process
         stdout_buffer = LineBuffer()
         stderr_buffer = LineBuffer()
         process.readyReadStandardOutput.connect(
@@ -317,6 +701,19 @@ class OutputPane:
         if self._filtered:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
         menu.addSeparator()
+        ydids = ydids_at(
+            block.text(), self._view.cursorForPosition(position).positionInBlock()
+        )
+        if ydids:
+            self._add_ydid_actions(menu, ydids)
+            menu.addSeparator()
+        for run in self._stoppable_runs(entry):
+            stop = cast(QAction, menu.addAction(run.stop_text))
+            stop.triggered.connect(functools_partial(self.stop_run, run))
+        jump = cast(QAction, menu.addAction(JUMP_TO_END))
+        jump.setEnabled(not self._at_end())
+        jump.triggered.connect(self._jump_to_end)
+        menu.addSeparator()
         for text, slot in actions:
             cast(QAction, menu.addAction(text)).triggered.connect(slot)
         choose = cast(QAction, menu.addAction(SHOW_OUTPUT_FROM_PROCESS))
@@ -329,6 +726,83 @@ class OutputPane:
             )
         )
         return menu
+
+    def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
+        """
+        Copy, Show and (for what 'yd follow' follows) Follow for each YellowDog
+        ID on the clicked line: named by its type where there is one, in a
+        submenu each, titled by type and ID, where there are several.
+        """
+
+        def add(target: QMenu, ydid: str, copy: str, show: str, follow: str) -> None:
+            copy_action = cast(QAction, target.addAction(copy))
+            copy_action.triggered.connect(functools_partial(copy_to_clipboard, ydid))
+            show_action = cast(QAction, target.addAction(show))
+            show_action.triggered.connect(functools_partial(self._show_ydid, ydid))
+            if get_ydid_type(ydid) in FOLLOWABLE_YDID_TYPES:
+                follow_action = cast(QAction, target.addAction(follow))
+                follow_action.triggered.connect(
+                    functools_partial(self._follow_ydid, ydid)
+                )
+
+        if len(ydids) == 1:
+            (ydid,) = ydids
+            kind = ydid_kind(ydid)
+            add(menu, ydid, f"Copy {kind} ID", f"Show {kind}", f"Follow {kind}")
+            return
+        for ydid in ydids:
+            submenu = cast(
+                QMenu, menu.addMenu(f"{ydid_kind(ydid)} {elide_middle(ydid)}")
+            )
+            add(submenu, ydid, "Copy ID", "Show", "Follow")
+
+    def _stoppable_runs(self, entry: OutputEntry | None) -> list[OutputRun]:
+        """
+        The runs of a line that Stop is offered for: commands still running,
+        not already being stopped.
+        """
+        if entry is None:
+            return []
+        runs = [self._output_runs[run_id] for run_id in entry.runs]
+        return [
+            run
+            for run in runs
+            if run.running
+            and not run.stop_requested
+            and run.run_id in self._run_processes
+        ]
+
+    def log_ending(self, run: OutputRun, *_signal_args) -> None:
+        """
+        Log the line saying how a finished command ended, once its outcome
+        is recorded: printed by Commander, about the command, so it belongs
+        to both runs, as the 'Executing:' line does.
+        """
+        text = run.ending_text
+        if text is not None:
+            self.log(text, run=run.run_id, announcement=True)
+
+    def stop_run(self, run: OutputRun, *_args) -> None:
+        """
+        Stop one command: asked to exit (terminate()), and forced to (kill())
+        if it has not within TERMINATE_TIMEOUT_MS. Unlike Quit's stopping, it
+        does not wait, so the window stays responsive, and its output
+        handlers stay connected, so its last output arrives and its ending is
+        recorded, as 'stopped'.
+        """
+        process = self._run_processes.get(run.run_id)
+        if process is None or process.state() == QProcess.ProcessState.NotRunning:
+            return
+        run.stop_requested = True
+        # Printed by Commander, about the command, as the 'Executing:' line is
+        self.log(f"Stopping {run.bar_subject}", run=run.run_id, announcement=True)
+        process.terminate()
+
+        def force() -> None:
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
+
+        QTimer.singleShot(TERMINATE_TIMEOUT_MS, force)
 
     def command_line_of(self, pid: int) -> str | None:
         """

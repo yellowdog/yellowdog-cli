@@ -16,10 +16,11 @@ from PyQt6.QtCore import (
 
 from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.output_model import (
+    EXECUTING,
     OutputRun,
     message_prefix,
 )
-from yellowdog_cli.commander.processes import child_process
+from yellowdog_cli.commander.processes import TERMINATE_TIMEOUT_MS, child_process
 from yellowdog_cli.commander.selection import (
     EntitySummary,
     ObjectSummary,
@@ -29,7 +30,6 @@ from yellowdog_cli.commander.selection import (
 )
 from yellowdog_cli.commander.window_base import WindowBase
 
-TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 
 
@@ -284,11 +284,14 @@ class CommandRunning(WindowBase):
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
         process.finished.connect(functools_partial(self._record_outcome, run))
+        # After the outcome, which it reports, and after the output pane's own
+        # handler (connected by attach()), so it is the command's last line
+        process.finished.connect(functools_partial(self._output.log_ending, run))
 
         # Part of the command's run, although printed by Commander with its own
         # PID, since it is the line saying what the command was
         self._output.log(
-            f"Executing: '{run.command_line}' in directory '{self._working_dir()}'",
+            f"{EXECUTING}'{run.command_line}' in directory '{self._working_dir()}'",
             run=run.run_id,
             announcement=True,
         )
@@ -315,6 +318,10 @@ class CommandRunning(WindowBase):
     def _record_outcome(
         run: OutputRun, exit_code: int, exit_status: QProcess.ExitStatus
     ):
+        if run.stop_requested:
+            # Stopped on request, which a terminate() or kill() makes a crash
+            run.outcome = "stopped"
+            return
         run.outcome = (
             "crashed"
             if exit_status == QProcess.ExitStatus.CrashExit

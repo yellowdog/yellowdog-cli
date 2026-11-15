@@ -236,7 +236,8 @@ def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
     assert two_runs.output_filter_bar.isVisible()
     label = two_runs.output_filter_label.text()
     assert "process 654321" in label
-    assert f"2 of {everything.count(chr(10)) + 1} lines" in label
+    # Its 'Executing:' line, its message and the line saying how it ended
+    assert f"3 of {everything.count(chr(10)) + 1} lines" in label
     assert "hidden" not in label, "nothing new has arrived"
 
     two_runs.output_filter_show_all.click()
@@ -283,7 +284,8 @@ def test_output_arriving_while_filtered(two_runs):
     assert two_runs.output_filter_label.text().endswith(" · 1 new line hidden")
 
     run_child(two_runs, "a third command's message", "and another line")
-    assert two_runs.output_filter_label.text().endswith(" · 4 new lines hidden")
+    # Its 'Executing:' line, its two lines and the line saying how it ended
+    assert two_runs.output_filter_label.text().endswith(" · 5 new lines hidden")
 
     two_runs.output_filter_show_all.click()
     assert "more from Commander" in shown(two_runs)
@@ -472,9 +474,13 @@ def test_the_chooser_lists_commander_then_the_commands_in_order(two_runs, monkey
     assert rows[1].startswith("123456"), "the PID the command printed"
     assert rows[2].startswith("654321")
     assert all("exit 0" in row for row in rows[1:])
-    assert rows[1].rstrip().endswith("4 lines"), "Executing line + three printed"
-    assert rows[2].rstrip().endswith("2 lines")
-    assert rows[0].rstrip().endswith("3 lines"), "its message and two Executing lines"
+    assert rows[1].rstrip().endswith("5 lines"), (
+        "Executing line + three printed + how it ended"
+    )
+    assert rows[2].rstrip().endswith("3 lines")
+    assert rows[0].rstrip().endswith("5 lines"), (
+        "its message, two Executing lines and two ending lines"
+    )
 
 
 def test_the_chooser_shows_the_command_line_as_the_user_gave_it(window, monkeypatch):
@@ -897,8 +903,8 @@ def test_lines_arriving_are_matched_one_by_one(two_runs):
     run_child(two_runs, "keep this", "drop this", "and keep this")
 
     assert shown(two_runs) == "keep this\nand keep this"
-    assert two_runs.output_filter_label.text().endswith(" · 2 new lines hidden"), (
-        "the dropped line and the 'Executing:' line"
+    assert two_runs.output_filter_label.text().endswith(" · 3 new lines hidden"), (
+        "the dropped line, the 'Executing:' line and the line saying how it ended"
     )
 
 

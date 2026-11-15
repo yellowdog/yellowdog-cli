@@ -28,6 +28,8 @@ WIRING = [
     ("select_work_requirement", "_select_work_requirement_action"),
     ("submit_work_requirement", "_submit_work_requirement_action"),
     ("add_to_work_requirement", "_add_to_work_requirement_action"),
+    ("resubmit_tasks", "_resubmit_tasks_action"),
+    ("follow_work_requirement", "_follow_work_requirement_action"),
     ("cancel_work_requirements", "_cancel_work_requirements_action"),
     (
         "cancel_work_requirements_and_abort",

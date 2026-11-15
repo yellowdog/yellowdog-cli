@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-A script to resubmit a Work Requirement's failed (and optionally aborted)
-Tasks: submitted as a new Work Requirement, or written to a file that
+A script to resubmit a Work Requirement's failed (or, as asked, aborted and
+cancelled) Tasks: submitted as a new Work Requirement, or written to a file that
 'yd workrequirement submit --json-raw' takes. The Tasks are read from the
 Platform and copied as they are, by utils/resubmission.py; the new Work
 Requirement is submitted by utils/json_raw.py's submit_platform_document(),
@@ -50,6 +50,7 @@ from yellowdog_cli.utils.resubmission import (
     select_named_tasks,
     select_tasks,
     selected_statuses,
+    status_phrase,
     work_requirement_id_of_tasks,
 )
 from yellowdog_cli.utils.results import record, record_entity
@@ -76,7 +77,9 @@ def resubmit(ctx: RunContext, config_wr: ConfigWorkRequirement) -> None:
         status_words = "by ID"
     else:
         work_requirement = _original(ctx)
-        statuses = selected_statuses(bool(ctx.args.failed), bool(ctx.args.aborted))
+        statuses = selected_statuses(
+            bool(ctx.args.failed), bool(ctx.args.aborted), bool(ctx.args.cancelled)
+        )
         selection = select_tasks(
             ctx,
             work_requirement,
@@ -84,7 +87,7 @@ def resubmit(ctx: RunContext, config_wr: ConfigWorkRequirement) -> None:
             tuple(ctx.args.task_group_patterns or ()),
             tuple(ctx.args.task_patterns or ()),
         )
-        status_words = " and ".join(statuses)
+        status_words = status_phrase(statuses, "and")
     print_selection_warnings(selection)
 
     where = f"'{work_requirement.namespace}/{work_requirement.name}'"

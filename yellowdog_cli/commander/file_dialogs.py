@@ -98,8 +98,9 @@ def format_file_size(size: int) -> str:
 
 def dialog_settings() -> QSettings:
     """
-    Where Commander keeps the file-dialog choices that outlive a dialog: the width
-    of the places sidebar and which of Qt's two views to list files in.
+    Where Commander keeps what outlives a dialog or a session: the file
+    dialogs' places-sidebar width and view, and the session's window
+    geometry, Dark Mode and configuration file (commander.py's SETTING_*).
 
     Commander's own, rather than the ones Qt keeps under FileDialog/*. Qt writes
     those whenever one of these dialogs closes, so every machine that has ever

@@ -39,6 +39,13 @@ def block_count(text: str) -> int:
     return len(BLOCK_SEPARATORS.split(text))
 
 
+# The marks starting the line that says how a command ended, after the
+# message prefix; OutputHighlighter colours each line by its mark
+ENDED_OK_MARK = "✓"
+ENDED_FAILED_MARK = "✗"
+ENDED_STOPPED_MARK = "■"
+
+
 @dataclass
 class OutputRun:
     """
@@ -63,9 +70,12 @@ class OutputRun:
     user_command_line: str = ""
     started_at: datetime | None = None
     pid: int | None = None  # as QProcess reports it, once started
-    # 'exit N' or 'crashed' once finished, 'did not start' if it never did;
-    # None while running
+    # 'exit N', 'crashed' or 'stopped' once finished, 'did not start' if it
+    # never did; None while running
     outcome: str | None = None
+    # Whether Stop has been chosen for it, so that its ending is recorded as
+    # 'stopped' rather than as the crash a terminate() or kill() looks like
+    stop_requested: bool = False
     # The PID the command printed in its own message prefixes, preferred for
     # display because it is the one the user sees in the output; QProcess's can
     # differ where a console-script launcher stands between the two.
@@ -137,6 +147,29 @@ class OutputRun:
         if self.run_id == COMMANDER_RUN:
             return "Show Only Commander's Own Messages"
         return f"Show Only Output from {self._subject('Process')}"
+
+    @property
+    def ending_text(self) -> str | None:
+        """
+        The line saying how the command ended, marked with how it went, or
+        None while it runs or if it never started (which is said already).
+        """
+        subject = self._subject("Process")
+        match self.outcome:
+            case None | "did not start":
+                return None
+            case "exit 0":
+                return f"{ENDED_OK_MARK} {subject} finished (exit 0)"
+            case "stopped":
+                return f"{ENDED_STOPPED_MARK} {subject} stopped"
+            case "crashed":
+                return f"{ENDED_FAILED_MARK} {subject} crashed"
+            case outcome:
+                return f"{ENDED_FAILED_MARK} {subject} failed ({outcome})"
+
+    @property
+    def stop_text(self) -> str:
+        return f"Stop {self._subject('Process')}"
 
     @property
     def bar_subject(self) -> str:
@@ -282,3 +315,56 @@ def message_prefix(pid: int) -> str:
     the process printing it.
     """
     return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
+
+
+# How the line announcing each command Commander runs begins: the output
+# window shows its message in bold, so each command's output has a heading
+EXECUTING = "Executing: "
+
+# The prefix of a message, with or without the PID ('--pp')
+MESSAGE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:\(\d+\) )?: ")
+
+# The pieces of a JSON line the output window colours, by kind
+JSON_KEY = "key"
+JSON_STRING = "string"
+JSON_NUMBER = "number"
+JSON_LITERAL = "literal"  # true, false, null
+JSON_BRACKET = "bracket"
+
+_JSON_STRING = r'"(?:[^"\\]|\\.)*"'
+_JSON_NUMBER = r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
+_JSON_VALUE_START = rf"(?:{_JSON_STRING}|{_JSON_NUMBER}|true|false|null|[{{\[])"
+# A line of indented JSON: a key and the start of its value, an element of a
+# list, or brackets alone (with a trailing comma, or '{}'/'[]'); or a whole
+# document on one line, from an opening to a closing bracket
+_JSON_LINE = re.compile(
+    rf"^\s*(?:"
+    rf"{_JSON_STRING}\s*:\s*{_JSON_VALUE_START}.*"
+    rf"|(?:{_JSON_STRING}|{_JSON_NUMBER}|true|false|null),?"
+    rf"|[{{\[\]}}]{{1,2}},?"
+    rf"|[{{\[].*[}}\]],?"
+    rf")\s*$"
+)
+_JSON_TOKEN = re.compile(
+    rf"(?P<key>{_JSON_STRING})(?=\s*:)"
+    rf"|(?P<string>{_JSON_STRING})"
+    rf"|(?P<number>(?<![\w.]){_JSON_NUMBER}(?![\w.]))"
+    rf"|(?P<literal>\b(?:true|false|null)\b)"
+    rf"|(?P<bracket>[{{}}\[\]])"
+)
+
+
+def json_tokens(text: str) -> list[tuple[int, int, str]]:
+    """
+    The pieces of a line of JSON to colour, as (start, length, kind), or none
+    for a line that is not JSON. Judged by the line's shape alone, with no
+    memory of the lines before it, so that it holds when the text filter
+    shows only some of a document's lines; a line with a message prefix (a
+    message, not output) is never JSON.
+    """
+    if not _JSON_LINE.match(text) or MESSAGE_PREFIX.match(text):
+        return []
+    return [
+        (match.start(), match.end() - match.start(), str(match.lastgroup))
+        for match in _JSON_TOKEN.finditer(text)
+    ]
