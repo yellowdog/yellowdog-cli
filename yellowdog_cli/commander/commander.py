@@ -170,6 +170,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             build_chooser=lambda *args, **kwargs: self._build_chooser_dialog(
                 *args, **kwargs
             ),
+            show_ydid=lambda ydid: self._show_ydid(ydid),
+            follow_ydid=lambda ydid: self._follow_ydid(ydid),
             pid=self._pid,
         )
         self._output.set_dark(self._color_scheme() == Qt.ColorScheme.Dark)
@@ -421,6 +423,30 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         geometry = file_dialogs.dialog_settings().value(SETTING_WINDOW_GEOMETRY)
         if isinstance(geometry, QByteArray) and not geometry.isEmpty():
             self.restoreGeometry(geometry)
+
+    def _show_ydid(self, ydid: str) -> None:
+        """
+        'yd show' of a YellowDog ID chosen in the output's right-click menu.
+        """
+        if self._properties_are_usable():
+            self._run_command_in_subprocess("yd show", [ydid])
+
+    def _follow_ydid(self, ydid: str) -> None:
+        """
+        'yd follow' of a YellowDog ID chosen in the output's right-click menu,
+        unless a command running in the window follows it already, which
+        would show every event twice.
+        """
+        if not self._properties_are_usable():
+            return
+        following = self._output.run_following(ydid)
+        if following is not None:
+            self._output.log(
+                f"Not following '{ydid}' again:"
+                f" {following.bar_subject} is following it already"
+            )
+            return
+        self._run_command_in_subprocess("yd follow", [ydid])
 
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT

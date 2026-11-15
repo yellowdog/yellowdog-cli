@@ -14,6 +14,7 @@ from typing import cast
 from PyQt6.QtCore import QEvent, QObject, QPoint, QProcess, Qt, QTimer
 from PyQt6.QtGui import (
     QAction,
+    QClipboard,
     QColor,
     QFont,
     QKeySequence,
@@ -25,6 +26,7 @@ from PyQt6.QtGui import (
     QTextDocument,
 )
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QLabel,
@@ -40,6 +42,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
     ENDED_FAILED_MARK,
@@ -59,6 +62,7 @@ from yellowdog_cli.commander.selection import (
     checked_handles,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
+from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid_type
 
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
@@ -72,6 +76,13 @@ PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 # How long after the last keystroke the text filter is applied, so that a long
 # output is not rebuilt for every character typed
 TEXT_FILTER_DELAY_MS = 250
+# The most YellowDog IDs on one line the right-click menu offers actions for
+MAX_LINE_YDIDS = 5
+# The kinds of entity 'yd follow' follows (follow_utils._FOLLOWABLE); spelled
+# out, since importing follow_utils would import the SDK
+FOLLOWABLE_YDID_TYPES = frozenset(
+    {YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT}
+)
 JUMP_TO_END = "Jump to End"
 JUMP_ARROW = "↓"
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
@@ -132,6 +143,38 @@ class OutputHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), self._ok)
 
 
+def ydids_at(text: str, position: int) -> list[str]:
+    """
+    The YellowDog IDs in a line, without repeats, the one at 'position' (a
+    character offset, where the line was clicked) first, at most
+    MAX_LINE_YDIDS of them.
+    """
+    found: list[str] = []
+    under: str | None = None
+    for match in YDID_HIGHLIGHT_RE.finditer(text):
+        ydid = match.group("ydid")
+        if match.start() <= position <= match.end():
+            under = ydid
+        if ydid not in found:
+            found.append(ydid)
+    if under is not None:
+        found.remove(under)
+        found.insert(0, under)
+    return found[:MAX_LINE_YDIDS]
+
+
+def ydid_kind(ydid: str) -> str:
+    """
+    What a YellowDog ID identifies, as the menu names it: 'Work Requirement'.
+    """
+    ydid_type = get_ydid_type(ydid)
+    return ydid_type.value if ydid_type is not None else "YellowDog"
+
+
+def copy_to_clipboard(text: str, *_args) -> None:
+    cast(QClipboard, QApplication.clipboard()).setText(text)
+
+
 class CornerKeeper(QObject):
     """
     Keeps a widget in its parent's bottom-right corner, JUMP_BUTTON_MARGIN in,
@@ -183,6 +226,8 @@ class OutputPane:
         copy_button: QPushButton,
         save_button: QPushButton,
         build_chooser: Callable[..., tuple[QDialog, QPushButton]],
+        show_ydid: Callable[[str], None],
+        follow_ydid: Callable[[str], None],
         pid: int,
     ):
         self._window = window  # its layout is activated before scrolling
@@ -199,6 +244,9 @@ class OutputPane:
             button: button.toolTip() for button in (copy_button, save_button)
         }
         self._build_chooser = build_chooser
+        # The window's 'yd show' and 'yd follow' of an ID in the output
+        self._show_ydid = show_ydid
+        self._follow_ydid = follow_ydid
         self._pid = pid  # Commander's, on its own messages
 
         # The output window's contents and where they came from, so that it can
@@ -509,6 +557,12 @@ class OutputPane:
         if self._filtered:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
         menu.addSeparator()
+        ydids = ydids_at(
+            block.text(), self._view.cursorForPosition(position).positionInBlock()
+        )
+        if ydids:
+            self._add_ydid_actions(menu, ydids)
+            menu.addSeparator()
         for run in self._stoppable_runs(entry):
             stop = cast(QAction, menu.addAction(run.stop_text))
             stop.triggered.connect(functools_partial(self.stop_run, run))
@@ -528,6 +582,35 @@ class OutputPane:
             )
         )
         return menu
+
+    def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
+        """
+        Copy, Show and (for what 'yd follow' follows) Follow for each YellowDog
+        ID on the clicked line: named by its type where there is one, in a
+        submenu each, titled by type and ID, where there are several.
+        """
+
+        def add(target: QMenu, ydid: str, copy: str, show: str, follow: str) -> None:
+            copy_action = cast(QAction, target.addAction(copy))
+            copy_action.triggered.connect(functools_partial(copy_to_clipboard, ydid))
+            show_action = cast(QAction, target.addAction(show))
+            show_action.triggered.connect(functools_partial(self._show_ydid, ydid))
+            if get_ydid_type(ydid) in FOLLOWABLE_YDID_TYPES:
+                follow_action = cast(QAction, target.addAction(follow))
+                follow_action.triggered.connect(
+                    functools_partial(self._follow_ydid, ydid)
+                )
+
+        if len(ydids) == 1:
+            (ydid,) = ydids
+            kind = ydid_kind(ydid)
+            add(menu, ydid, f"Copy {kind} ID", f"Show {kind}", f"Follow {kind}")
+            return
+        for ydid in ydids:
+            submenu = cast(
+                QMenu, menu.addMenu(f"{ydid_kind(ydid)} {elide_middle(ydid)}")
+            )
+            add(submenu, ydid, "Copy ID", "Show", "Follow")
 
     def _stoppable_runs(self, entry: OutputEntry | None) -> list[OutputRun]:
         """

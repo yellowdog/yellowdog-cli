@@ -45,6 +45,8 @@
       * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
       * [How Typed Commands Are Run](#how-typed-commands-are-run)
+   * [Acting on IDs in the Output](#acting-on-ids-in-the-output)
+      * [ID Action Details](#id-action-details)
    * [Stopping a Command](#stopping-a-command)
       * [Stop Details](#stop-details)
    * [Sending Input to a Running Command](#sending-input-to-a-running-command)
@@ -54,7 +56,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 11:30:38 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 11:33:11 GMT 2026 -->
 
 <!--te-->
 
@@ -568,6 +570,16 @@ The **←** and **→** buttons step back and forth through your command history
 **Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
 
 **The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
+
+## Acting on IDs in the Output
+
+To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**.
+
+### ID Action Details
+
+**Several IDs on a line.** Each gets a submenu of its own, titled by its kind and the ID shortened in the middle, with **Copy ID**, **Show** and **Follow**. The ID you clicked on comes first, and at most five are offered.
+
+**Followed already.** As with **Follow…**, an ID that a command still running in this window is following already is not followed again; the output window says so.
 
 ## Stopping a Command
 
