@@ -1,7 +1,7 @@
 """
 The output window (OutputPane): the widget, its filter bar and right-click menu,
-the process chooser and the text filter, over the entries and runs in
-output_model. The window logs to it and hands it each process it starts;
+the process chooser, the text filter and the Jump to End button, over the
+entries and runs in output_model. The window logs to it and hands it each process it starts;
 everything the filters do is here.
 """
 
@@ -11,8 +11,15 @@ from datetime import datetime
 from functools import partial as functools_partial
 from typing import cast
 
-from PyQt6.QtCore import QPoint, QProcess, Qt, QTimer
-from PyQt6.QtGui import QAction, QKeySequence, QShortcut, QTextBlock, QTextDocument
+from PyQt6.QtCore import QEvent, QObject, QPoint, QProcess, Qt, QTimer
+from PyQt6.QtGui import (
+    QAction,
+    QKeySequence,
+    QPalette,
+    QShortcut,
+    QTextBlock,
+    QTextDocument,
+)
 from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
@@ -25,6 +32,7 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollBar,
+    QToolButton,
     QWidget,
 )
 
@@ -53,6 +61,37 @@ PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 # How long after the last keystroke the text filter is applied, so that a long
 # output is not rebuilt for every character typed
 TEXT_FILTER_DELAY_MS = 250
+JUMP_TO_END = "Jump to End"
+JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
+JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
+
+
+class CornerKeeper(QObject):
+    """
+    Keeps a widget in its parent's bottom-right corner, JUMP_BUTTON_MARGIN in,
+    moving it whenever the parent is resized; a scroll area's viewport also
+    needs place() after every scroll, which moves its children with the text.
+    Not a layout on the parent, which neither scroll nor the scroll area's
+    resizing of its viewport reliably brought back to the corner.
+    """
+
+    def __init__(self, parent: QWidget, widget: QWidget):
+        super().__init__(parent)
+        self._parent = parent
+        self._widget = widget
+        parent.installEventFilter(self)
+        self.place()
+
+    def place(self) -> None:
+        self._widget.move(
+            self._parent.width() - self._widget.width() - JUMP_BUTTON_MARGIN,
+            self._parent.height() - self._widget.height() - JUMP_BUTTON_MARGIN,
+        )
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        if a0 is self._parent and a1 is not None and a1.type() == QEvent.Type.Resize:
+            self.place()
+        return False
 
 
 class OutputPane:
@@ -138,6 +177,59 @@ class OutputPane:
         )
         # Cmd+F on macOS, Ctrl+F elsewhere, from anywhere in the window
         QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
+
+        self._jump_button = self._add_jump_button(view)
+
+    def _add_jump_button(self, view: QPlainTextEdit) -> QToolButton:
+        """
+        A down-arrow button floating in the output window's bottom-right
+        corner, shown only while the view is scrolled up from its end: new
+        output is followed only at the end, and the read-only view takes no
+        Ctrl+End. It floats over the text rather than taking a row of the
+        window, and CornerKeeper moves it back to the corner whenever the
+        viewport is resized.
+        """
+        button = QToolButton(view.viewport())
+        button.setObjectName("jump_to_end")
+        button.setArrowType(Qt.ArrowType.DownArrow)
+        button.setToolTip(JUMP_TO_END_TOOLTIP)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Out of the Tab order, appearing and vanishing as it does; a click's
+        # focus goes to the output window, as a click anywhere in it would
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Backed in the text's own background, or a long line would run on
+        # under its bezel, which is translucent (light) or absent (dark)
+        button.setBackgroundRole(QPalette.ColorRole.Base)
+        button.setAutoFillBackground(True)
+        button.clicked.connect(self._jump_to_end)
+        button.adjustSize()
+        viewport = cast(QWidget, view.viewport())
+        self._corner_keeper = CornerKeeper(viewport, button)
+        button.hide()
+        scrollbar = cast(QScrollBar, view.verticalScrollBar())
+        scrollbar.valueChanged.connect(self._show_jump_button_if_scrolled_up)
+        scrollbar.rangeChanged.connect(self._show_jump_button_if_scrolled_up)
+        # Scrolling moves the viewport's children with its text (QWidget.scroll),
+        # so the button is put back in the corner after every scroll, either way;
+        # connected after the view's own handlers, these run after the scroll
+        scrollbar.valueChanged.connect(self._corner_keeper.place)
+        horizontal = cast(QScrollBar, view.horizontalScrollBar())
+        horizontal.valueChanged.connect(self._corner_keeper.place)
+        return button
+
+    def _at_end(self) -> bool:
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        return scrollbar.value() >= scrollbar.maximum()
+
+    def _show_jump_button_if_scrolled_up(self, *_args) -> None:
+        self._jump_button.setVisible(not self._at_end())
+
+    def _jump_to_end(self) -> None:
+        """
+        Scroll to the end, from where the view follows new output again.
+        """
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        scrollbar.setValue(scrollbar.maximum())
 
     def start_run(
         self,
@@ -316,6 +408,10 @@ class OutputPane:
         ]
         if self._filtered:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
+        menu.addSeparator()
+        jump = cast(QAction, menu.addAction(JUMP_TO_END))
+        jump.setEnabled(not self._at_end())
+        jump.triggered.connect(self._jump_to_end)
         menu.addSeparator()
         for text, slot in actions:
             cast(QAction, menu.addAction(text)).triggered.connect(slot)
