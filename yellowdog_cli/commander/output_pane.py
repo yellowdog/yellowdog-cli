@@ -42,6 +42,9 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
+    ENDED_FAILED_MARK,
+    ENDED_OK_MARK,
+    ENDED_STOPPED_MARK,
     LineBuffer,
     OutputEntry,
     OutputRun,
@@ -80,12 +83,16 @@ ERROR_RGB_LIGHT = (200, 30, 30)
 ERROR_RGB_DARK = (255, 110, 100)
 WARNING_RGB_LIGHT = (170, 100, 0)
 WARNING_RGB_DARK = (240, 180, 70)
+OK_RGB_LIGHT = (30, 130, 50)
+OK_RGB_DARK = (110, 200, 120)
 
 
 class OutputHighlighter(QSyntaxHighlighter):
     """
     Colours the output window's lines that carry the CLI's ERROR_MARKER or
-    WARNING_MARKER, the whole line, as each is displayed. A highlighter, not
+    WARNING_MARKER, and Commander's own lines saying how a command ended
+    (OutputRun.ending_text, by its mark), the whole line, as each is
+    displayed. A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -96,6 +103,7 @@ class OutputHighlighter(QSyntaxHighlighter):
         super().__init__(document)
         self._error = QTextCharFormat()
         self._warning = QTextCharFormat()
+        self._ok = QTextCharFormat()
         self.set_dark(False)
 
     def set_dark(self, is_dark: bool) -> None:
@@ -106,19 +114,22 @@ class OutputHighlighter(QSyntaxHighlighter):
         warning = WARNING_RGB_DARK if is_dark else WARNING_RGB_LIGHT
         self._error.setForeground(QColor(*error))
         self._warning.setForeground(QColor(*warning))
+        self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
         if not text:
             return
-        # The message after its prefix, where the CLI puts its marker; one
-        # elsewhere in the line (an 'Executing:' line echoing a command, or a
-        # task's output) is not one
+        # The message after its prefix, where the CLI puts its marker and
+        # Commander its ending mark; one elsewhere in the line (an 'Executing:'
+        # line echoing a command, or a task's output) is not one
         message = MESSAGE_PREFIX.sub("", text, count=1)
-        if message.startswith(ERROR_MARKER):
+        if message.startswith((ERROR_MARKER, f"{ENDED_FAILED_MARK} ")):
             self.setFormat(0, len(text), self._error)
-        elif message.startswith(WARNING_MARKER):
+        elif message.startswith((WARNING_MARKER, f"{ENDED_STOPPED_MARK} ")):
             self.setFormat(0, len(text), self._warning)
+        elif message.startswith(f"{ENDED_OK_MARK} "):
+            self.setFormat(0, len(text), self._ok)
 
 
 class CornerKeeper(QObject):
@@ -533,6 +544,16 @@ class OutputPane:
             and not run.stop_requested
             and run.run_id in self._run_processes
         ]
+
+    def log_ending(self, run: OutputRun, *_signal_args) -> None:
+        """
+        Log the line saying how a finished command ended, once its outcome
+        is recorded: printed by Commander, about the command, so it belongs
+        to both runs, as the 'Executing:' line does.
+        """
+        text = run.ending_text
+        if text is not None:
+            self.log(text, run=run.run_id, announcement=True)
 
     def stop_run(self, run: OutputRun, *_args) -> None:
         """

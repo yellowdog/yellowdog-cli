@@ -39,6 +39,13 @@ def block_count(text: str) -> int:
     return len(BLOCK_SEPARATORS.split(text))
 
 
+# The marks starting the line that says how a command ended, after the
+# message prefix; OutputHighlighter colours each line by its mark
+ENDED_OK_MARK = "✓"
+ENDED_FAILED_MARK = "✗"
+ENDED_STOPPED_MARK = "■"
+
+
 @dataclass
 class OutputRun:
     """
@@ -140,6 +147,25 @@ class OutputRun:
         if self.run_id == COMMANDER_RUN:
             return "Show Only Commander's Own Messages"
         return f"Show Only Output from {self._subject('Process')}"
+
+    @property
+    def ending_text(self) -> str | None:
+        """
+        The line saying how the command ended, marked with how it went, or
+        None while it runs or if it never started (which is said already).
+        """
+        subject = self._subject("Process")
+        match self.outcome:
+            case None | "did not start":
+                return None
+            case "exit 0":
+                return f"{ENDED_OK_MARK} {subject} finished (exit 0)"
+            case "stopped":
+                return f"{ENDED_STOPPED_MARK} {subject} stopped"
+            case "crashed":
+                return f"{ENDED_FAILED_MARK} {subject} crashed"
+            case outcome:
+                return f"{ENDED_FAILED_MARK} {subject} failed ({outcome})"
 
     @property
     def stop_text(self) -> str:

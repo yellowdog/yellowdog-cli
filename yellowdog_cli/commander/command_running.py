@@ -283,6 +283,9 @@ class CommandRunning(WindowBase):
         self._processes.append(process)
         process.finished.connect(functools_partial(self._forget_process, process))
         process.finished.connect(functools_partial(self._record_outcome, run))
+        # After the outcome, which it reports, and after the output pane's own
+        # handler (connected by attach()), so it is the command's last line
+        process.finished.connect(functools_partial(self._output.log_ending, run))
 
         # Part of the command's run, although printed by Commander with its own
         # PID, since it is the line saying what the command was
