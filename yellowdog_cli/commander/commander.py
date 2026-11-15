@@ -102,6 +102,10 @@ SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
 BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
+# The destructive actions' label colour, one per appearance: the light one is
+# too dark to read on a dark button, the dark one too pale on a light one
+DESTRUCTIVE_TEXT_LIGHT = "rgb(200, 30, 30)"
+DESTRUCTIVE_TEXT_DARK = "rgb(255, 110, 100)"
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
 
 
@@ -125,6 +129,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         # Override the branding pixmap with the SVG for the current style
         self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
+        self._colour_destructive_buttons(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Actual displayed font sizes differ across platforms;
         # use a smaller point size on Windows and Linux for the output window
@@ -362,6 +367,27 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self.branding.setPixmap(
             QIcon(path).pixmap(QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE))
         )
+
+    def _colour_destructive_buttons(self, is_dark: bool):
+        """
+        Label the buttons whose actions destroy or stop something in red, in
+        the shade for the appearance. A stylesheet holding only a text colour,
+        not the palette: the macOS style ignores a palette's ButtonText in its
+        light appearance, while the stylesheet keeps the native button and
+        colours its label in both. A background colour is not used, since it
+        would replace the native button with a flat one.
+        """
+        colour = DESTRUCTIVE_TEXT_DARK if is_dark else DESTRUCTIVE_TEXT_LIGHT
+        for button in (
+            self.cancel_work_requirements,
+            self.cancel_work_requirements_and_abort,
+            self.shutdown_all_worker_pools,
+            self.terminate_all_compute_requirements,
+            self.delete_objects,
+        ):
+            # Enabled only: a plain 'color' would also hold while the button is
+            # greyed out during a listing, so it would not look disabled
+            button.setStyleSheet(f"QPushButton:enabled {{ color: {colour}; }}")
 
     def _on_config_file_changed(self, _path: str):
         """
@@ -913,6 +939,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         else:
             self.setStyleSheet("")
         self._update_branding_icon(is_dark)
+        self._colour_destructive_buttons(is_dark)
 
     def _show_help_action(self):
         """

@@ -338,6 +338,78 @@ def test_dark_mode_draws_every_separator_alike(qapp):
     )
 
 
+DESTRUCTIVE_BUTTONS = {
+    "cancel_work_requirements",
+    "cancel_work_requirements_and_abort",
+    "shutdown_all_worker_pools",
+    "terminate_all_compute_requirements",
+    "delete_objects",
+}
+
+
+def _red_pixels(button: QPushButton) -> list:
+    """
+    The colours of the pixels painted distinctly red in a button: its label,
+    where the label is red, and nothing otherwise.
+    """
+    image = button.grab().toImage()
+    colours = (
+        image.pixelColor(x, y)
+        for x in range(image.width())
+        for y in range(image.height())
+    )
+    return [c for c in colours if c.red() > c.green() + 80 and c.red() > c.blue() + 80]
+
+
+def test_the_destructive_buttons_alone_are_labelled_in_red(qapp):
+    # Read from what is painted, not from the stylesheet, so a colour the
+    # style ignores fails rather than passing on the text alone
+    win = gui_harness.shown(YellowDogApp())
+    red = {
+        button.objectName()
+        for button in win.findChildren(QPushButton)
+        if button.isVisible() and _red_pixels(button)
+    }
+    assert red == DESTRUCTIVE_BUTTONS
+
+
+def test_a_greyed_destructive_button_is_not_red(qapp):
+    # The colour is for the enabled state only, or a button greyed out during a
+    # listing would still be labelled in red and not look disabled
+    win = gui_harness.shown(YellowDogApp())
+    win._set_action_buttons_enabled(False)
+    QApplication.processEvents()
+    try:
+        still_red = [
+            name
+            for name in DESTRUCTIVE_BUTTONS
+            if _red_pixels(win.findChild(QPushButton, name))
+        ]
+    finally:
+        win._set_action_buttons_enabled(True)
+    assert still_red == []
+
+
+def test_dark_mode_labels_the_destructive_buttons_in_a_lighter_red(qapp):
+    # The light appearance's red is too dark to read on a dark button
+    win = gui_harness.shown(YellowDogApp())
+
+    def lightness() -> float:
+        pixels = _red_pixels(win.delete_objects)
+        assert pixels, "the label is not red"
+        return sum(c.lightness() for c in pixels) / len(pixels)
+
+    light = lightness()
+    try:
+        win._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        dark = lightness()
+    finally:
+        win._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+    assert dark > light
+
+
 # The output window is excluded: a tooltip there would pop up over the text
 # every time the pointer rested on it, which is most of the time.
 NO_TOOLTIP = {"log_output"}

@@ -368,9 +368,9 @@ To collect your results, press **Download Matching Objects**, untick anything yo
 
 - **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch.
-- **Delete Matching Objects** — deletes matching objects from remote storage. Like the download, it first lists what the path matched and lets you choose which of those items to remove.
 - **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
 - **Browse Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing. A button switches to the platform's file viewer when you need to change the directory's contents rather than look at them.
+- **Delete Matching Objects** — deletes matching objects from remote storage. Like the download, it first lists what the path matched and lets you choose which of those items to remove.
 
 ### Dry Runs and the Selection Dialogs
 
@@ -550,7 +550,7 @@ If a running command prompts for input, type into the **Command Input** field an
 
 ## A Note on Confirmations
 
-Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination cannot be undone, so each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything.
+Cancellation (with or without abort), object deletion, Worker Pool shutdown, and Compute Requirement termination cannot be undone, so their buttons are labelled in red, and each asks for confirmation before running. The confirmation dialog lists the specific items that would be affected — the Work Requirements, Worker Pools, or Compute Requirements, or the objects and top-level directories that would be deleted — determined in advance without changing anything.
 
 For all five destructive actions that listing is **checkable**:
 

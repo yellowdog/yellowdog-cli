@@ -662,16 +662,6 @@ file, choosing which ones first</string>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="delete_objects">
-        <property name="toolTip">
-         <string>Delete the matching objects from remote storage, choosing which ones first</string>
-        </property>
-        <property name="text">
-         <string>Delete Matching Objects</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QCheckBox" name="dry_run_objects">
         <property name="toolTip">
          <string>Report what would be downloaded or deleted, without doing either</string>
@@ -688,6 +678,16 @@ file, choosing which ones first</string>
         </property>
         <property name="text">
          <string>Browse Results Directory</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="delete_objects">
+        <property name="toolTip">
+         <string>Delete the matching objects from remote storage, choosing which ones first</string>
+        </property>
+        <property name="text">
+         <string>Delete Matching Objects</string>
         </property>
        </widget>
       </item>
