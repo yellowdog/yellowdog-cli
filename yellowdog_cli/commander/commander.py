@@ -105,8 +105,9 @@ DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-BRANDING_IMAGE_LIGHT = join(_PKG_DIR, "images", "IconYellowDog.svg")
-BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
+# The YellowDog dog in YellowDog yellow (#FAB842), which reads on the light and
+# the dark window alike, so one image serves both
+BRANDING_IMAGE = join(_PKG_DIR, "images", "IconYellowDog.svg")
 BRANDING_IMAGE_SIZE = 54
 # The destructive actions' label colour, one per appearance: the light one is
 # too dark to read on a dark button, the dark one too pale on a light one
@@ -147,8 +148,12 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         self._pid = os.getpid()
 
-        # Override the branding pixmap with the SVG for the current style
-        self._update_branding_icon(self._color_scheme() == Qt.ColorScheme.Dark)
+        # The branding pixmap drawn from the SVG at its size, crisp on any screen
+        self.branding.setPixmap(
+            QIcon(BRANDING_IMAGE).pixmap(
+                QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE)
+            )
+        )
         self._colour_destructive_buttons(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Actual displayed font sizes differ across platforms;
@@ -487,12 +492,6 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             )
             return
         self._run_command_in_subprocess("yd follow", [ydid])
-
-    def _update_branding_icon(self, is_dark: bool):
-        path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
-        self.branding.setPixmap(
-            QIcon(path).pixmap(QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE))
-        )
 
     def _colour_destructive_buttons(self, is_dark: bool):
         """
@@ -1073,7 +1072,6 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             )
         else:
             self.setStyleSheet("")
-        self._update_branding_icon(is_dark)
         self._colour_destructive_buttons(is_dark)
         self._output.set_dark(is_dark)
 
