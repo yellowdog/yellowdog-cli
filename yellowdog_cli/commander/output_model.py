@@ -63,9 +63,12 @@ class OutputRun:
     user_command_line: str = ""
     started_at: datetime | None = None
     pid: int | None = None  # as QProcess reports it, once started
-    # 'exit N' or 'crashed' once finished, 'did not start' if it never did;
-    # None while running
+    # 'exit N', 'crashed' or 'stopped' once finished, 'did not start' if it
+    # never did; None while running
     outcome: str | None = None
+    # Whether Stop has been chosen for it, so that its ending is recorded as
+    # 'stopped' rather than as the crash a terminate() or kill() looks like
+    stop_requested: bool = False
     # The PID the command printed in its own message prefixes, preferred for
     # display because it is the one the user sees in the output; QProcess's can
     # differ where a console-script launcher stands between the two.
@@ -137,6 +140,10 @@ class OutputRun:
         if self.run_id == COMMANDER_RUN:
             return "Show Only Commander's Own Messages"
         return f"Show Only Output from {self._subject('Process')}"
+
+    @property
+    def stop_text(self) -> str:
+        return f"Stop {self._subject('Process')}"
 
     @property
     def bar_subject(self) -> str:

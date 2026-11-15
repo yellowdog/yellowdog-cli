@@ -19,7 +19,7 @@ from yellowdog_cli.commander.output_model import (
     OutputRun,
     message_prefix,
 )
-from yellowdog_cli.commander.processes import child_process
+from yellowdog_cli.commander.processes import TERMINATE_TIMEOUT_MS, child_process
 from yellowdog_cli.commander.selection import (
     EntitySummary,
     ObjectSummary,
@@ -29,7 +29,6 @@ from yellowdog_cli.commander.selection import (
 )
 from yellowdog_cli.commander.window_base import WindowBase
 
-TERMINATE_TIMEOUT_MS = 2000  # grace period for a child to exit on terminate()
 KILL_TIMEOUT_MS = 1000  # further wait after resorting to kill()
 
 
@@ -315,6 +314,10 @@ class CommandRunning(WindowBase):
     def _record_outcome(
         run: OutputRun, exit_code: int, exit_status: QProcess.ExitStatus
     ):
+        if run.stop_requested:
+            # Stopped on request, which a terminate() or kill() makes a crash
+            run.outcome = "stopped"
+            return
         run.outcome = (
             "crashed"
             if exit_status == QProcess.ExitStatus.CrashExit

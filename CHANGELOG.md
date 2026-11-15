@@ -11,6 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
+- **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
 - **Jump to the end of the Command Output**: scrolled up, a **↓** button in the window's bottom-right corner, or **Jump to End** in its right-click menu, returns to the end and follows new output again.
 - **The command history's buttons are labelled ← and →**, in place of `<` and `>`.
 - **The destructive actions' buttons are labelled in red**: Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, Terminate Compute Requirements and Delete Matching Objects, in a lighter red in Dark Mode. Delete Matching Objects moves to the bottom of the Results panel, below Browse Results Directory, and the Dry-Run Download/Deletion checkbox sits directly below Download Matching Objects.

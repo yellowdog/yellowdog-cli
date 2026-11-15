@@ -43,6 +43,8 @@
       * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
       * [How Typed Commands Are Run](#how-typed-commands-are-run)
+   * [Stopping a Command](#stopping-a-command)
+      * [Stop Details](#stop-details)
    * [Sending Input to a Running Command](#sending-input-to-a-running-command)
    * [A Note on Confirmations](#a-note-on-confirmations)
       * [Choosers and Other Dialogs](#choosers-and-other-dialogs)
@@ -50,7 +52,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Nov 14 15:51:55 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 11:17:16 GMT 2026 -->
 
 <!--te-->
 
@@ -544,6 +546,14 @@ The **←** and **→** buttons step back and forth through your command history
 **Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
 
 **The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
+
+## Stopping a Command
+
+To stop one command while others carry on, right-click any line of its output and choose **Stop Process …**, which names the process and its command. It is asked to finish, and made to if it has not within two seconds; the output window says so, and the process chooser lists it as *stopped*. Stopping a submission part-way leaves what the YellowDog platform has already accepted in place, as quitting does.
+
+### Stop Details
+
+**Commands typed in the command box.** A command that is not a `yd` command runs through the shell (`/bin/sh -c`, or `cmd /c` on Windows). Stopping it stops the shell, and a program the shell started alongside it, as in a pipeline, may carry on. `yd` commands, Commander's own included, run directly, so stopping one stops the command itself.
 
 ## Sending Input to a Running Command
 

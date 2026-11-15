@@ -46,6 +46,7 @@ from yellowdog_cli.commander.output_model import (
     line_pattern,
     message_prefix,
 )
+from yellowdog_cli.commander.processes import TERMINATE_TIMEOUT_MS
 from yellowdog_cli.commander.selection import (
     MAX_DIALOG_LIST_ROWS,
     SelectableRow,
@@ -151,6 +152,8 @@ class OutputPane:
         self._filter_text = ""
         self._line_pattern: re.Pattern[str] | None = None
         self._hidden_line_count = 0  # arrived while filtered, and not shown
+        # Each command's process, by run, for Stop
+        self._run_processes: dict[int, QProcess] = {}
 
         bar.hide()
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -301,6 +304,7 @@ class OutputPane:
         handlers to 'finished', so the last of the output is in the window before
         anything reports the process as done.
         """
+        self._run_processes[run.run_id] = process
         stdout_buffer = LineBuffer()
         stderr_buffer = LineBuffer()
         process.readyReadStandardOutput.connect(
@@ -435,6 +439,9 @@ class OutputPane:
         if self._filtered:
             actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
         menu.addSeparator()
+        for run in self._stoppable_runs(entry):
+            stop = cast(QAction, menu.addAction(run.stop_text))
+            stop.triggered.connect(functools_partial(self.stop_run, run))
         jump = cast(QAction, menu.addAction(JUMP_TO_END))
         jump.setEnabled(not self._at_end())
         jump.triggered.connect(self._jump_to_end)
@@ -451,6 +458,44 @@ class OutputPane:
             )
         )
         return menu
+
+    def _stoppable_runs(self, entry: OutputEntry | None) -> list[OutputRun]:
+        """
+        The runs of a line that Stop is offered for: commands still running,
+        not already being stopped.
+        """
+        if entry is None:
+            return []
+        runs = [self._output_runs[run_id] for run_id in entry.runs]
+        return [
+            run
+            for run in runs
+            if run.running
+            and not run.stop_requested
+            and run.run_id in self._run_processes
+        ]
+
+    def stop_run(self, run: OutputRun, *_args) -> None:
+        """
+        Stop one command: asked to exit (terminate()), and forced to (kill())
+        if it has not within TERMINATE_TIMEOUT_MS. Unlike Quit's stopping, it
+        does not wait, so the window stays responsive, and its output
+        handlers stay connected, so its last output arrives and its ending is
+        recorded, as 'stopped'.
+        """
+        process = self._run_processes.get(run.run_id)
+        if process is None or process.state() == QProcess.ProcessState.NotRunning:
+            return
+        run.stop_requested = True
+        # Printed by Commander, about the command, as the 'Executing:' line is
+        self.log(f"Stopping {run.bar_subject}", run=run.run_id, announcement=True)
+        process.terminate()
+
+        def force() -> None:
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
+
+        QTimer.singleShot(TERMINATE_TIMEOUT_MS, force)
 
     def command_line_of(self, pid: int) -> str | None:
         """
