@@ -107,6 +107,14 @@ WARNING_RGB_LIGHT = (170, 100, 0)
 WARNING_RGB_DARK = (240, 180, 70)
 OK_RGB_LIGHT = (30, 130, 50)
 OK_RGB_DARK = (110, 200, 120)
+# A message saying nothing was found or acted on ('No objects match ...',
+# 'No Work Requirements cancelled'), which the CLI and Commander alike start
+# with NOTHING_FOUND: a run that found nothing is often a tag or path
+# mistake, so it is coloured whole, in a colour of its own, apart from the
+# warnings
+NOTHING_FOUND = "No "
+NOTHING_RGB_LIGHT = (115, 70, 195)
+NOTHING_RGB_DARK = (180, 155, 250)
 # JSON's colours, by kind of piece: the CLI's own (Rich's JSON highlighting:
 # keys blue, strings green, numbers bold cyan, brackets bold), as (light,
 # dark), bold or italic; but keys not bold, as Rich makes them, which on every
@@ -173,6 +181,7 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error = QTextCharFormat()
         self._warning = QTextCharFormat()
         self._ok = QTextCharFormat()
+        self._nothing = QTextCharFormat()
         self._json = self._formats(JSON_STYLES)
         self._states = self._formats(STATE_STYLES)
         self._ydid = QTextCharFormat()
@@ -221,6 +230,9 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error.setForeground(QColor(*error))
         self._warning.setForeground(QColor(*warning))
         self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
+        self._nothing.setForeground(
+            QColor(*(NOTHING_RGB_DARK if is_dark else NOTHING_RGB_LIGHT))
+        )
         self._colour(self._json, JSON_STYLES, is_dark)
         self._colour(self._states, STATE_STYLES, is_dark)
         self._ydid.setForeground(
@@ -247,6 +259,10 @@ class OutputHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), self._warning)
         elif message.startswith(f"{ENDED_OK_MARK} "):
             self.setFormat(0, len(text), self._ok)
+        elif message.startswith(NOTHING_FOUND) and len(message) < len(text):
+            # A message's, after its prefix: a task's output starting 'No '
+            # is not one
+            self.setFormat(0, len(text), self._nothing)
         else:
             prefix_length = len(text) - len(message)
             if prefix_length:

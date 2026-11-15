@@ -28,6 +28,8 @@ from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
     ERROR_RGB_LIGHT,
     JSON_STYLES,
+    NOTHING_RGB_DARK,
+    NOTHING_RGB_LIGHT,
     PREFIX_RGB_DARK,
     PREFIX_RGB_LIGHT,
     STATE_STYLES,
@@ -461,3 +463,47 @@ def test_the_outline_is_the_one_the_cli_colours():
     from yellowdog_cli.utils.output_style import TABLE_OUTLINE_CHARS
 
     assert printing.PrintTableHighlighter.table_outline_chars == TABLE_OUTLINE_CHARS
+
+
+# --- Nothing found ---------------------------------------------------------
+
+
+def test_a_message_that_nothing_was_found_is_coloured_whole(window):
+    lines = (
+        "2026-11-15 13:12:25 (034509) : No objects match 'render*'",
+        "2026-11-15 13:12:31 (034512) : No matching Work Requirements found",
+        "2026-11-15 13:12:41 : No Work Requirements cancelled",
+    )
+    for line in lines:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    for line in lines:
+        assert colour_of(window, line) == NOTHING_RGB_LIGHT, line
+
+
+def test_commanders_own_nothing_found_message_is_coloured(window):
+    # Logged with Commander's prefix, as the results panel logs it
+    window._output.log("No objects match 'render*'")
+    QApplication.processEvents()
+    assert colour_of(window, "No objects match 'render*'") == NOTHING_RGB_LIGHT
+
+
+def test_output_starting_no_without_a_prefix_is_not_a_message(window):
+    # A task's output, or a line of a document, is not the CLI saying so
+    line = "No such file or directory"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colour_of(window, line) is None
+
+
+def test_nothing_found_in_dark_mode(window):
+    line = "2026-11-15 13:12:25 (034509) : No objects match 'render*'"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colour_of(window, line) == NOTHING_RGB_DARK
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()

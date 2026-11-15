@@ -22,6 +22,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **Follow…** in the Work panel follows an active Work Requirement chosen from those in scope (`yd workrequirement follow`), unless a command in the window is following it already.
 - **Commander remembers the session**: it reopens at the size and place it was closed at, in Dark Mode if you chose it, and, started without a configuration file, with the one last selected (unless a `config.toml` where it is launched, or your own user configuration, would be used).
 - **Each command's output ends with how it ended**: `✓ … finished (exit 0)` in green, `✗ … failed (exit N)` or `crashed` in red, `■ … stopped` in amber.
+- **"Nothing found" messages are violet** in the Command Output window (`No objects match …`, `No Work Requirements cancelled`), since finding nothing is often a mistaken tag or path.
 - **Error and warning lines are coloured** in the Command Output window: red for the CLI's `ERROR :` lines, amber for its `WARNING :` lines, in shades for each appearance.
 - **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
 - **Jump to the end of the Command Output**: scrolled up, a **↓** button in the window's bottom-right corner, or **Jump to End** in its right-click menu, returns to the end and follows new output again.
