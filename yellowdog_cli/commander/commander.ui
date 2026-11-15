@@ -302,15 +302,30 @@ instead of the one the configuration file names</string>
        </layout>
       </item>
       <item>
-       <widget class="QPushButton" name="resubmit_tasks">
-        <property name="toolTip">
-         <string>Resubmit the failed, aborted or cancelled Tasks of a Work Requirement,
+       <layout class="QHBoxLayout" name="horizontalLayout_resubmit_follow" stretch="1,1">
+        <item>
+         <widget class="QPushButton" name="resubmit_tasks">
+          <property name="toolTip">
+           <string>Resubmit the failed, aborted or cancelled Tasks of a Work Requirement,
 chosen from a list, as a new one (yd workrequirement resubmit)</string>
-        </property>
-        <property name="text">
-         <string>Resubmit Tasks…</string>
-        </property>
-       </widget>
+          </property>
+          <property name="text">
+           <string>Resubmit Tasks…</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="follow_work_requirement">
+          <property name="toolTip">
+           <string>Follow the events of an active Work Requirement, chosen from a list
+(yd workrequirement follow)</string>
+          </property>
+          <property name="text">
+           <string>Follow…</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item>
        <widget class="QPushButton" name="cancel_work_requirements">

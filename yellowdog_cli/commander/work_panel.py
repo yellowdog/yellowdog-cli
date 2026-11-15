@@ -36,6 +36,7 @@ ADDABLE_STATUSES = ("RUNNING", "HELD")
 WR_DATA = "workRequirementData"
 
 RESUBMIT_DIALOG_TITLE = "Resubmit Tasks"
+FOLLOW_DIALOG_TITLE = "Follow Work Requirement"
 # The Task statuses the resubmit dialog offers, in the order shown and passed,
 # with their 'yd workrequirement resubmit' options; spelled out because nothing
 # in Commander imports the SDK
@@ -56,8 +57,8 @@ RESUBMIT_STATUS_SPACING = 12
 class WorkPanel(WindowDialogs):
     """
     Panel 2, Submitting and Managing Work: selecting a Work Requirement file,
-    Submit and Add to, Resubmit Tasks, Cancel and Cancel & Abort, and showing
-    the file.
+    Submit and Add to, Resubmit Tasks and Follow, Cancel and Cancel & Abort,
+    and showing the file.
     """
 
     # The statuses the resubmit dialog last left ticked, kept for the session;
@@ -318,6 +319,78 @@ class WorkPanel(WindowDialogs):
         elif self.follow_progress.isChecked():
             args += ["-f"]
         self._run_command_in_subprocess("yd workrequirement resubmit", args)
+
+    def _follow_work_requirement_action(self):
+        """
+        Follow the events of an active Work Requirement, chosen from a list:
+        'yd workrequirement follow <ydid>'.
+
+        Lists them with 'yd list work-requirements --active-only --json', in
+        the current namespace and tag or matching the Name pattern, the newest
+        selected. Refuses rather than falls back, as Add to does, and follows
+        nothing a command still running in the window follows already, which
+        would show every event twice. '--yes' follows a sole candidate and
+        refuses between several.
+        """
+        title = FOLLOW_DIALOG_TITLE
+        if self._operation_in_flight(title) or not self._properties_are_usable():
+            return
+
+        name_args = self._name_glob_args()
+        scope = self._listing_scope("tags", name_args)
+        scope_args = self._yd_list_scope_args(name_args)
+        if scope_args is None:
+            self._output.log(NO_LISTING_TAG)
+            return
+
+        self._output.log("Checking which Work Requirements are active...")
+        self.log_output.repaint()
+        parsed = self._capture_json(
+            "yd list", ["--json"], ["work-requirements", "--active-only", *scope_args]
+        )
+        entities = None if parsed is None else parse_entity_summaries(parsed)
+        if parsed is None or entities is None:
+            self._output.log(
+                "Could not list the Work Requirements to follow; nothing followed"
+            )
+            return
+        if not entities:
+            self._output.log(f"No active Work Requirements{scope} to follow")
+            return
+
+        if self._confirmations_disabled:
+            if len(entities) > 1:
+                self._output.log(
+                    f"{len(entities)} active Work Requirements{scope}, and"
+                    " '--yes' leaves no way to choose between them; nothing"
+                    " followed. Narrow the choice with the Name field."
+                )
+                return
+            target = entities[0].id
+            self._output.log(
+                "Selection suppressed by '--yes'; following the only active"
+                f" Work Requirement{scope}, '{entities[0].name}'"
+            )
+        else:
+            target = self._choose_one(
+                title,
+                f"Choose the active Work Requirement{scope} to follow.",
+                "Follow",
+                entity_rows(entities),
+                selected=newest_entity_id(parsed),
+            )
+            if target is None:
+                return
+
+        following = self._output.run_following(target)
+        if following is not None:
+            name = next((e.name for e in entities if e.id == target), target)
+            self._output.log(
+                f"Not following Work Requirement '{name}' again:"
+                f" {following.bar_subject} is following it already"
+            )
+            return
+        self._run_command_in_subprocess("yd workrequirement follow", [target])
 
     def _build_resubmit_dialog(
         self,

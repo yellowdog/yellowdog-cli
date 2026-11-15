@@ -23,6 +23,8 @@
          * [Add To Details](#add-to-details)
       * [Resubmitting Tasks](#resubmitting-tasks)
          * [Resubmit Details](#resubmit-details)
+      * [Following a Work Requirement](#following-a-work-requirement)
+         * [Follow Details](#follow-details)
    * [Provisioning and Managing Compute (Panel 3)](#provisioning-and-managing-compute-panel-3)
       * [Resizing a Worker Pool](#resizing-a-worker-pool)
          * [Resize Details](#resize-details)
@@ -52,7 +54,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 11:17:16 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 11:30:38 GMT 2026 -->
 
 <!--te-->
 
@@ -286,6 +288,7 @@ To submit a Work Requirement, choose its definition with **Select Work Requireme
 - **Follow Progress** — when ticked, the command follows the Work Requirement's progress until it concludes.
 - **Select Work Requirement JSON** — pick a Work Requirement definition file (`.json` or `.jsonnet`) to submit. While a file is selected the button's label is `Work Requirement: <filename>`, so you can see at a glance whether a definition is in force. Hover for the full path, and use **Deselect...** to revert to the configuration file's definition.
 - **Extra Options** — free-text command-line options appended to the `yd workrequirement submit` command, split as described in [Quoting](#quoting).
+- **Follow…** — runs `yd workrequirement follow` on an active Work Requirement you choose, showing its events as it runs (see [Following a Work Requirement](#following-a-work-requirement)).
 - **Resubmit Tasks…** — runs `yd workrequirement resubmit`, submitting the failed, aborted or cancelled Tasks of a Work Requirement you choose as a new Work Requirement (see [Resubmitting Tasks](#resubmitting-tasks)).
 - **Cancel Work Requirements** — cancels all matching Work Requirements.
 - **Cancel Work Requirements & Abort Tasks** — cancels all matching Work Requirements and aborts their running tasks.
@@ -328,6 +331,21 @@ Its Tasks in those statuses are copied, as they were submitted, into a new Work 
 **The statuses.** Commander keeps the statuses last ticked until it is closed. **Resubmit** is greyed while none is ticked. With `--yes` there is no dialog, and only the failed Tasks are resubmitted.
 
 **Nothing to resubmit.** If nothing is listed, or the listing fails, the output window says so and nothing is resubmitted. With **No tag**, as for **Add to…**, nothing is listed.
+
+### Following a Work Requirement
+
+To watch a Work Requirement already running, one submitted before Commander was started or from elsewhere:
+
+1. Press **Follow…**. Commander lists the active Work Requirements matching the current namespace and tag, or the **Name** pattern, with the most recently created selected.
+2. Double-click the one to follow, or select it and press **Follow**.
+
+#### Follow Details
+
+**Followed already.** A Work Requirement that a command still running in this window is following already, such as the **Submit Work Requirement** that created it with **Follow Progress** ticked, is not followed again, which would show each of its events twice. The output window says when this happens.
+
+**Nothing to follow.** If nothing is active, or the listing fails, the output window says so and nothing is followed. With no **Tag** or **Name** entered and no tag discovered from the configuration, nothing is listed.
+
+**Stopping.** Following ends when the Work Requirement does. To stop sooner, use **Stop Process …** on its output (see [Stopping a Command](#stopping-a-command)).
 
 ## Provisioning and Managing Compute (Panel 3)
 

@@ -186,6 +186,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._add_to_work_requirement_action
         )
         self.resubmit_tasks.clicked.connect(self._resubmit_tasks_action)
+        self.follow_work_requirement.clicked.connect(
+            self._follow_work_requirement_action
+        )
         self.download_results.clicked.connect(self._download_results_action)
         self.clear_command_output.clicked.connect(self._clear_output_action)
         self.copy_command_output.clicked.connect(self._copy_output_action)
