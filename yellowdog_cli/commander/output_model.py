@@ -315,3 +315,52 @@ def message_prefix(pid: int) -> str:
     the process printing it.
     """
     return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
+
+
+# The prefix of a message, with or without the PID ('--pp')
+MESSAGE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:\(\d+\) )?: ")
+
+# The pieces of a JSON line the output window colours, by kind
+JSON_KEY = "key"
+JSON_STRING = "string"
+JSON_NUMBER = "number"
+JSON_LITERAL = "literal"  # true, false, null
+JSON_BRACKET = "bracket"
+
+_JSON_STRING = r'"(?:[^"\\]|\\.)*"'
+_JSON_NUMBER = r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
+_JSON_VALUE_START = rf"(?:{_JSON_STRING}|{_JSON_NUMBER}|true|false|null|[{{\[])"
+# A line of indented JSON: a key and the start of its value, an element of a
+# list, or brackets alone (with a trailing comma, or '{}'/'[]'); or a whole
+# document on one line, from an opening to a closing bracket
+_JSON_LINE = re.compile(
+    rf"^\s*(?:"
+    rf"{_JSON_STRING}\s*:\s*{_JSON_VALUE_START}.*"
+    rf"|(?:{_JSON_STRING}|{_JSON_NUMBER}|true|false|null),?"
+    rf"|[{{\[\]}}]{{1,2}},?"
+    rf"|[{{\[].*[}}\]],?"
+    rf")\s*$"
+)
+_JSON_TOKEN = re.compile(
+    rf"(?P<key>{_JSON_STRING})(?=\s*:)"
+    rf"|(?P<string>{_JSON_STRING})"
+    rf"|(?P<number>(?<![\w.]){_JSON_NUMBER}(?![\w.]))"
+    rf"|(?P<literal>\b(?:true|false|null)\b)"
+    rf"|(?P<bracket>[{{}}\[\]])"
+)
+
+
+def json_tokens(text: str) -> list[tuple[int, int, str]]:
+    """
+    The pieces of a line of JSON to colour, as (start, length, kind), or none
+    for a line that is not JSON. Judged by the line's shape alone, with no
+    memory of the lines before it, so that it holds when the text filter
+    shows only some of a document's lines; a line with a message prefix (a
+    message, not output) is never JSON.
+    """
+    if not _JSON_LINE.match(text) or MESSAGE_PREFIX.match(text):
+        return []
+    return [
+        (match.start(), match.end() - match.start(), str(match.lastgroup))
+        for match in _JSON_TOKEN.finditer(text)
+    ]

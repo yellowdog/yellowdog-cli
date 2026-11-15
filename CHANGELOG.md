@@ -11,6 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
+- **JSON in the Command Output is coloured** as the CLI colours it in a terminal: keys blue, strings green, numbers cyan, `true`, `false` and `null` magenta.
 - **Act on IDs in the output**: right-click a line holding a YellowDog ID to copy it, `yd show` it, or `yd follow` a Work Requirement, Worker Pool or Compute Requirement.
 - **Follow…** in the Work panel follows an active Work Requirement chosen from those in scope (`yd workrequirement follow`), unless a command in the window is following it already.
 - **Commander remembers the session**: it reopens at the size and place it was closed at, in Dark Mode if you chose it, and, started without a configuration file, with the one last selected (unless a `config.toml` where it is launched, or your own user configuration, would be used).

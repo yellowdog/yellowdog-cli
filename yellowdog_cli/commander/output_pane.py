@@ -48,10 +48,17 @@ from yellowdog_cli.commander.output_model import (
     ENDED_FAILED_MARK,
     ENDED_OK_MARK,
     ENDED_STOPPED_MARK,
+    JSON_BRACKET,
+    JSON_KEY,
+    JSON_LITERAL,
+    JSON_NUMBER,
+    JSON_STRING,
+    MESSAGE_PREFIX,
     LineBuffer,
     OutputEntry,
     OutputRun,
     filter_description,
+    json_tokens,
     line_pattern,
     message_prefix,
 )
@@ -67,8 +74,6 @@ from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
 PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-# The prefix of a message, with or without the PID ('--pp')
-MESSAGE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:\(\d+\) )?: ")
 SHOW_ALL_OUTPUT = "Show All Output"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
@@ -96,6 +101,20 @@ WARNING_RGB_LIGHT = (170, 100, 0)
 WARNING_RGB_DARK = (240, 180, 70)
 OK_RGB_LIGHT = (30, 130, 50)
 OK_RGB_DARK = (110, 200, 120)
+# JSON's colours, by kind of piece: the CLI's own (Rich's JSON highlighting:
+# keys blue, strings green, numbers bold cyan, brackets bold), as (light,
+# dark), bold or italic; but keys not bold, as Rich makes them, which on every
+# line of a document is heavy, and true, false and null all italic magenta,
+# where Rich makes false red, which here would read as an error
+JSON_STYLES: dict[
+    str, tuple[tuple[int, int, int] | None, tuple[int, int, int] | None, bool, bool]
+] = {
+    JSON_KEY: ((30, 80, 200), (120, 170, 255), False, False),
+    JSON_STRING: ((20, 120, 20), (130, 200, 130), False, False),
+    JSON_NUMBER: ((0, 125, 140), (80, 200, 210), True, False),
+    JSON_LITERAL: ((150, 40, 150), (220, 130, 220), False, True),
+    JSON_BRACKET: (None, None, True, False),
+}
 
 
 class OutputHighlighter(QSyntaxHighlighter):
@@ -103,7 +122,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     Colours the output window's lines that carry the CLI's ERROR_MARKER or
     WARNING_MARKER, and Commander's own lines saying how a command ended
     (OutputRun.ending_text, by its mark), the whole line, as each is
-    displayed. A highlighter, not
+    displayed; and the pieces of a line of JSON (json_tokens()), as the CLI
+    colours them in a terminal. A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -115,6 +135,11 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error = QTextCharFormat()
         self._warning = QTextCharFormat()
         self._ok = QTextCharFormat()
+        self._json = {kind: QTextCharFormat() for kind in JSON_STYLES}
+        for kind, (_light, _dark, bold, italic) in JSON_STYLES.items():
+            if bold:
+                self._json[kind].setFontWeight(QFont.Weight.Bold)
+            self._json[kind].setFontItalic(italic)
         self.set_dark(False)
 
     def set_dark(self, is_dark: bool) -> None:
@@ -126,6 +151,10 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error.setForeground(QColor(*error))
         self._warning.setForeground(QColor(*warning))
         self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
+        for kind, (light, dark, _bold, _italic) in JSON_STYLES.items():
+            colour = dark if is_dark else light
+            if colour is not None:
+                self._json[kind].setForeground(QColor(*colour))
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
@@ -141,6 +170,9 @@ class OutputHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), self._warning)
         elif message.startswith(f"{ENDED_OK_MARK} "):
             self.setFormat(0, len(text), self._ok)
+        else:
+            for start, length, kind in json_tokens(text):
+                self.setFormat(start, length, self._json[kind])
 
 
 def ydids_at(text: str, position: int) -> list[str]:
