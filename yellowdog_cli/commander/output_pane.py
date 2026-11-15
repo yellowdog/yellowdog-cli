@@ -139,6 +139,10 @@ STATE_STYLES: dict[
 # in bold would outweigh everything around it
 YDID_RGB_LIGHT = (185, 85, 0)
 YDID_RGB_DARK = (250, 150, 70)
+# A message's time-and-PID prefix, muted so the eye goes to the message: on
+# every line of a long run, the CLI's bold blue for it would be noise
+PREFIX_RGB_LIGHT = (140, 140, 140)
+PREFIX_RGB_DARK = (120, 120, 120)
 
 
 class OutputHighlighter(QSyntaxHighlighter):
@@ -148,7 +152,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     (OutputRun.ending_text, by its mark), the whole line, as each is
     displayed; and, as the CLI colours them in a terminal, the pieces of a
     line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
-    the YellowDog IDs (YDID_HIGHLIGHT_RE). A highlighter, not
+    the YellowDog IDs (YDID_HIGHLIGHT_RE); and, muted, every other line's
+    time-and-PID prefix. A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -163,6 +168,7 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._json = self._formats(JSON_STYLES)
         self._states = self._formats(STATE_STYLES)
         self._ydid = QTextCharFormat()
+        self._prefix = QTextCharFormat()
         self.set_dark(False)
 
     @staticmethod
@@ -209,6 +215,9 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._ydid.setForeground(
             QColor(*(YDID_RGB_DARK if is_dark else YDID_RGB_LIGHT))
         )
+        self._prefix.setForeground(
+            QColor(*(PREFIX_RGB_DARK if is_dark else PREFIX_RGB_LIGHT))
+        )
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
@@ -225,6 +234,8 @@ class OutputHighlighter(QSyntaxHighlighter):
         elif message.startswith(f"{ENDED_OK_MARK} "):
             self.setFormat(0, len(text), self._ok)
         else:
+            if len(message) < len(text):
+                self.setFormat(0, len(text) - len(message), self._prefix)
             for start, length, kind in json_tokens(text):
                 self.setFormat(start, length, self._json[kind])
             for pattern in HIGHLIGHTED_STATES:

@@ -21,12 +21,15 @@ from yellowdog_cli.commander.output_model import (
     JSON_LITERAL,
     JSON_NUMBER,
     JSON_STRING,
+    MESSAGE_PREFIX,
     json_tokens,
 )
 from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
     ERROR_RGB_LIGHT,
     JSON_STYLES,
+    PREFIX_RGB_DARK,
+    PREFIX_RGB_LIGHT,
     STATE_STYLES,
     WARNING_RGB_DARK,
     WARNING_RGB_LIGHT,
@@ -71,10 +74,28 @@ def colour_of(window, text: str) -> tuple[int, int, int] | None:
     return colour.red(), colour.green(), colour.blue()
 
 
+def message_is_plain(window, text: str) -> bool:
+    """
+    Whether the line holding 'text' has nothing coloured but its muted
+    time-and-PID prefix.
+    """
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    layout = block.layout()
+    assert layout is not None
+    prefix_length = len(block.text()) - len(
+        MESSAGE_PREFIX.sub("", block.text(), count=1)
+    )
+    return all(
+        piece.start + piece.length <= prefix_length for piece in layout.formats()
+    )
+
+
 def test_error_and_warning_lines_are_coloured(window):
     assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
     assert colour_of(window, WARNING) == WARNING_RGB_LIGHT
-    assert colour_of(window, PLAIN) is None
+    assert message_is_plain(window, PLAIN)
 
 
 def test_dark_mode_recolours_them_and_back(window):
@@ -110,7 +131,7 @@ def test_a_marker_only_counts_at_the_start_of_the_message(window):
     for line in (echo, bare):
         window._output.log(line, prefix=False)
     QApplication.processEvents()
-    assert colour_of(window, echo) is None
+    assert message_is_plain(window, echo)
     assert colour_of(window, bare) == WARNING_RGB_LIGHT
 
 
@@ -278,7 +299,7 @@ def test_lower_case_words_are_not_status_words(window):
     line = "2026-11-15 12:02:00 (089570) : the upload failed and was cancelled"
     window._output.log(line, prefix=False)
     QApplication.processEvents()
-    assert colour_of(window, line) is None
+    assert message_is_plain(window, line)
 
 
 def test_dark_mode_status_colours(window):
@@ -320,6 +341,42 @@ def test_ids_in_dark_mode(window):
         window._dark_mode_action(Qt.CheckState.Checked)
         QApplication.processEvents()
         assert colours_of(window, line)[WR_ID] == YDID_RGB_DARK
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+# --- The prefix ------------------------------------------------------------
+
+
+def test_the_prefix_is_muted_and_the_message_is_not(window):
+    line = "2026-11-15 12:01:11 (089560) : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    colours = colours_of(window, line)
+    assert colours == {"2026-11-15 12:01:11 (089560) : ": PREFIX_RGB_LIGHT}
+
+
+def test_a_prefix_without_a_pid_is_muted_too(window):
+    line = "2026-11-15 12:01:11 : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, line) == {"2026-11-15 12:01:11 : ": PREFIX_RGB_LIGHT}
+
+
+def test_a_whole_line_colour_includes_its_prefix(window):
+    # An error line reads as one unit, prefix and all
+    assert colour_of(window, ERROR) == ERROR_RGB_LIGHT
+
+
+def test_the_prefix_in_dark_mode(window):
+    line = "2026-11-15 12:01:11 (089560) : Listing Work Requirements"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert set(colours_of(window, line).values()) == {PREFIX_RGB_DARK}
     finally:
         window._dark_mode_action(Qt.CheckState.Unchecked)
         QApplication.processEvents()
