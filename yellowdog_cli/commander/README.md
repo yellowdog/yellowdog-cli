@@ -70,7 +70,7 @@ YellowDog Commander is a cross-platform desktop GUI for driving the YellowDog CL
 
 Its object actions — downloading, deleting and listing the objects your Tasks write — use the CLI's **data client**, the rclone-backed `yd data download` and `yd data delete`, so they work with whatever storage the configuration's `[dataClient]` section names; see [Objects and the Data Client](#objects-and-the-data-client).
 
-Commander is offered as a useful adjunct to the CLI, but is not formally supported.
+Commander is supported on a best-effort basis: report a problem with it through the same channel as one with the CLI, with the output window's contents if you can (**Save Command Output** writes them to a file). The commands it runs are the CLI's own, and are fully supported.
 
 ![YellowDog Commander on macOS](screenshots/screenshot_macos.png)
 

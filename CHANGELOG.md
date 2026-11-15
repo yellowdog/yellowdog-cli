@@ -14,6 +14,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **YellowDog IDs in the Command Output are orange**, as in a terminal.
 - **A dry run download or deletion matching nothing says so calmly**, as the action does without Dry Run: `No objects match '…'`, where it reported a failure (exit 1). The checkbox is now **Dry Run Download/Deletion**.
 - **The YellowDog logo is in YellowDog yellow**, in both appearances.
+- **Commander is supported on a best-effort basis**: report a problem with it as you would one with the CLI. The commands it runs are the CLI's own, and are fully supported.
 - **Zoom the Command Output**: Cmd+= and Cmd+− (Ctrl on Windows and Linux) change its text size, Cmd+0 resets it, and the size is remembered.
 - **Table outlines in the Command Output are a muted blue**, so a table's content stands out.
 - **Each command's `Executing:` line is bold**, a heading for its output.
