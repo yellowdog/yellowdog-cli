@@ -84,7 +84,7 @@ Start Commander with the configuration file your `yd` commands use:
 yd commander config.toml
 ```
 
-The configuration file can be given as the first argument, as here, or with `-c`/`--config`, as it is to the `yd` commands. It is optional: without one, Commander starts with no configuration selected (see [How It Works](#how-it-works)).
+The configuration file can be given as the first argument, as here, or with `-c`/`--config`, as it is to the `yd` commands. It is optional: without one, Commander selects the configuration file you last used, or starts with none selected (see [How It Works](#how-it-works)).
 
 Commander's fields and file selections can be filled in from the command line too, using the same option names as the `yd` commands. This opens Commander with the Tag field set to `render-test`, a variable defined, and a Work Requirement definition selected:
 
@@ -119,6 +119,8 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 - for the other fields, an empty value or one containing a tab or newline
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
+
+**What Commander remembers.** Commander opens at the size and place it was last closed at, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 

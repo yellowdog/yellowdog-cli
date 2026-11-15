@@ -18,10 +18,11 @@ import sys
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial as functools_partial
-from os.path import abspath, dirname, exists, join
+from os.path import abspath, dirname, exists, isfile, join
 from typing import cast
 
 from PyQt6.QtCore import (
+    QByteArray,
     QEvent,
     QEventLoop,
     QFileSystemWatcher,
@@ -59,6 +60,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
+from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.compute_panel import ComputePanel
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
@@ -88,7 +90,7 @@ from yellowdog_cli.commander.window_base import (
 from yellowdog_cli.commander.work_panel import WorkPanel
 from yellowdog_cli.utils.noun_registry import typed_command
 from yellowdog_cli.utils.output_style import ERROR_MARKER
-from yellowdog_cli.utils.paths import relative_if_possible
+from yellowdog_cli.utils.paths import default_config_file, relative_if_possible
 
 if WINDOWS:
     import ctypes
@@ -108,6 +110,13 @@ BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
 # The destructive actions' label colour, one per appearance: the light one is
 # too dark to read on a dark button, the dark one too pale on a light one
+# What Commander remembers of a session, in its own settings
+# (file_dialogs.dialog_settings()): the window's size and place, Dark Mode as
+# last chosen (only once chosen: until then it follows the system), and the
+# configuration file last selected
+SETTING_WINDOW_GEOMETRY = "session/windowGeometry"
+SETTING_DARK_MODE = "session/darkMode"
+SETTING_CONFIG_FILE = "session/configFile"
 DESTRUCTIVE_TEXT_LIGHT = "rgb({}, {}, {})".format(*ERROR_RGB_LIGHT)
 DESTRUCTIVE_TEXT_DARK = "rgb({}, {}, {})".format(*ERROR_RGB_DARK)
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
@@ -230,7 +239,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._dry_run_worker_pool_set
         )
         self.dark_mode.checkStateChanged.connect(self._dark_mode_action)
-        self.dark_mode.setChecked(self._color_scheme() == Qt.ColorScheme.Dark)
+        self.dark_mode.setChecked(self._initial_dark_mode())
+        # 'clicked', not 'checkStateChanged': only the user's own choice is
+        # remembered, not the system's appearance it starts from
+        self.dark_mode.clicked.connect(self._remember_dark_mode)
 
         # Default the 'follow' checkboxes
         self.follow_progress.setChecked(True)
@@ -313,7 +325,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd variables runs
-        QTimer.singleShot(0, lambda: self._set_config_file(settings.config_file))
+        config_file = settings.config_file or self._remembered_config_file()
+        QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
         self._active_process: QProcess | None = None
@@ -366,6 +379,45 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if settings.properties:
             self.properties.setPlainText(" ".join(settings.properties))
             self._set_cursor_to_end(self.properties)
+
+    @staticmethod
+    def _remembered_config_file() -> str | None:
+        """
+        The configuration file selected last time, to select again when none
+        is named at launch: unless the CLI would find one of its own there
+        (config.toml in the launch directory, else the user's own), which
+        Commander's commands use when none is selected and which a
+        remembered file would silently replace; and only while it exists.
+        """
+        if isfile(default_config_file()):
+            return None
+        remembered = file_dialogs.dialog_settings().value(SETTING_CONFIG_FILE)
+        if isinstance(remembered, str) and isfile(remembered):
+            return remembered
+        return None
+
+    def _initial_dark_mode(self) -> bool:
+        """
+        Dark Mode as last chosen, or the system's appearance if it never was.
+        """
+        settings = file_dialogs.dialog_settings()
+        if settings.contains(SETTING_DARK_MODE):
+            return bool(settings.value(SETTING_DARK_MODE, type=bool))
+        return self._color_scheme() == Qt.ColorScheme.Dark
+
+    @staticmethod
+    def _remember_dark_mode(checked: bool) -> None:
+        file_dialogs.dialog_settings().setValue(SETTING_DARK_MODE, checked)
+
+    def restore_window_geometry(self) -> None:
+        """
+        Put the window back where, and at the size, it was last closed, if it
+        has been; Qt keeps it on a screen that is still there, and never
+        smaller than its minimum, which run_app() sets first.
+        """
+        geometry = file_dialogs.dialog_settings().value(SETTING_WINDOW_GEOMETRY)
+        if isinstance(geometry, QByteArray) and not geometry.isEmpty():
+            self.restoreGeometry(geometry)
 
     def _update_branding_icon(self, is_dark: bool):
         path = BRANDING_IMAGE_DARK if is_dark else BRANDING_IMAGE_LIGHT
@@ -435,6 +487,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._config_file = selected_config_file
         self._discovery.invalidate()
         self._output.log(f"Selected configuration file '{selected_config_file}'")
+        file_dialogs.dialog_settings().setValue(
+            SETTING_CONFIG_FILE, abspath(selected_config_file)
+        )
         self._show_config_selection()
         self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
@@ -679,6 +734,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if self._shutting_down:
             return
         self._shutting_down = True
+        # While the window is still whole: by Quit, a close or the Dock alike
+        file_dialogs.dialog_settings().setValue(
+            SETTING_WINDOW_GEOMETRY, self.saveGeometry()
+        )
         self._discovery.stop()
 
         # Release any nested event loop (config parsing, entity enumeration):
@@ -829,6 +888,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
     def _deselect_config_file(self):
         self._set_config_file(None)
+        # Deselected on purpose, so not selected again at the next start
+        file_dialogs.dialog_settings().remove(SETTING_CONFIG_FILE)
         self._output.log("Deselected configuration file")
 
     def _deselect_wr_file(self):
@@ -1071,6 +1132,7 @@ def run_app(settings: StartupSettings | None = None):
         win.setMinimumHeight(win.minimumSizeHint().height())
         win.setMinimumWidth(win.minimumSizeHint().width())
         win.resize(win.minimumWidth(), win.minimumHeight())
+        win.restore_window_geometry()
 
         win.show()
         sys.exit(app.exec())

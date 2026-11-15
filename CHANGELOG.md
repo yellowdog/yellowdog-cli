@@ -11,6 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
+- **Commander remembers the session**: it reopens at the size and place it was closed at, in Dark Mode if you chose it, and, started without a configuration file, with the one last selected (unless a `config.toml` where it is launched, or your own user configuration, would be used).
 - **Each command's output ends with how it ended**: `✓ … finished (exit 0)` in green, `✗ … failed (exit N)` or `crashed` in red, `■ … stopped` in amber.
 - **Error and warning lines are coloured** in the Command Output window: red for the CLI's `ERROR :` lines, amber for its `WARNING :` lines, in shades for each appearance.
 - **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
