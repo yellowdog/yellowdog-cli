@@ -68,7 +68,11 @@ from yellowdog_cli.commander.selection import (
     SelectableRow,
     checked_handles,
 )
-from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
+from yellowdog_cli.utils.output_style import (
+    ERROR_MARKER,
+    HIGHLIGHTED_STATES,
+    WARNING_MARKER,
+)
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid_type
 
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
@@ -115,6 +119,22 @@ JSON_STYLES: dict[
     JSON_LITERAL: ((150, 40, 150), (220, 130, 220), False, True),
     JSON_BRACKET: (None, None, True, False),
 }
+# The status words the CLI colours in a terminal (output_style's
+# HIGHLIGHTED_STATES, each pattern's group named by its style), coloured as it
+# colours them, in shades for each appearance, but not bold, as the CLI makes
+# them, which in a table's status column is heavy: what failed in the error
+# red, what completed in the success green
+STATE_STYLES: dict[
+    str, tuple[tuple[int, int, int], tuple[int, int, int], bool, bool]
+] = {
+    "active": ((20, 90, 170), (110, 170, 255), False, False),
+    "cancelled": ((115, 115, 115), (155, 155, 155), False, False),
+    "completed": (OK_RGB_LIGHT, OK_RGB_DARK, False, False),
+    "failed": (ERROR_RGB_LIGHT, ERROR_RGB_DARK, False, False),
+    "idle": ((150, 115, 0), (220, 185, 70), False, False),
+    "starved": ((200, 95, 0), (255, 160, 80), False, False),
+    "transitioning": ((200, 95, 0), (255, 160, 80), False, False),
+}
 
 
 class OutputHighlighter(QSyntaxHighlighter):
@@ -122,8 +142,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     Colours the output window's lines that carry the CLI's ERROR_MARKER or
     WARNING_MARKER, and Commander's own lines saying how a command ended
     (OutputRun.ending_text, by its mark), the whole line, as each is
-    displayed; and the pieces of a line of JSON (json_tokens()), as the CLI
-    colours them in a terminal. A highlighter, not
+    displayed; and, as the CLI colours them in a terminal, the pieces of a
+    line of JSON (json_tokens()) and the status words (HIGHLIGHTED_STATES). A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -135,12 +155,39 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error = QTextCharFormat()
         self._warning = QTextCharFormat()
         self._ok = QTextCharFormat()
-        self._json = {kind: QTextCharFormat() for kind in JSON_STYLES}
-        for kind, (_light, _dark, bold, italic) in JSON_STYLES.items():
-            if bold:
-                self._json[kind].setFontWeight(QFont.Weight.Bold)
-            self._json[kind].setFontItalic(italic)
+        self._json = self._formats(JSON_STYLES)
+        self._states = self._formats(STATE_STYLES)
         self.set_dark(False)
+
+    @staticmethod
+    def _formats(styles: dict) -> dict[str, QTextCharFormat]:
+        """
+        A format for each of 'styles', bold or italic as it says; its colour
+        is set for the appearance by set_dark().
+        """
+        formats = {}
+        for name, (_light, _dark, bold, italic) in styles.items():
+            formats[name] = QTextCharFormat()
+            if bold:
+                formats[name].setFontWeight(QFont.Weight.Bold)
+            formats[name].setFontItalic(italic)
+        return formats
+
+    @staticmethod
+    def _colour(formats: dict[str, QTextCharFormat], styles: dict, is_dark: bool):
+        for name, (light, dark, _bold, _italic) in styles.items():
+            colour = dark if is_dark else light
+            if colour is not None:
+                formats[name].setForeground(QColor(*colour))
+
+    def _overlay(self, start: int, length: int, layer: QTextCharFormat) -> None:
+        """
+        Apply 'layer' over what the range already has (a JSON string's
+        style under a status word in it), rather than in place of it.
+        """
+        merged = QTextCharFormat(self.format(start))
+        merged.merge(layer)
+        self.setFormat(start, length, merged)
 
     def set_dark(self, is_dark: bool) -> None:
         """
@@ -151,10 +198,8 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._error.setForeground(QColor(*error))
         self._warning.setForeground(QColor(*warning))
         self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
-        for kind, (light, dark, _bold, _italic) in JSON_STYLES.items():
-            colour = dark if is_dark else light
-            if colour is not None:
-                self._json[kind].setForeground(QColor(*colour))
+        self._colour(self._json, JSON_STYLES, is_dark)
+        self._colour(self._states, STATE_STYLES, is_dark)
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
@@ -173,6 +218,14 @@ class OutputHighlighter(QSyntaxHighlighter):
         else:
             for start, length, kind in json_tokens(text):
                 self.setFormat(start, length, self._json[kind])
+            for pattern in HIGHLIGHTED_STATES:
+                for match in pattern.finditer(text):
+                    style = str(match.lastgroup)
+                    self._overlay(
+                        match.start(),
+                        match.end() - match.start(),
+                        self._states[style],
+                    )
 
 
 def ydids_at(text: str, position: int) -> list[str]:

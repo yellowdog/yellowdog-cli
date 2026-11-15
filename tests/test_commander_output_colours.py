@@ -27,6 +27,7 @@ from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
     ERROR_RGB_LIGHT,
     JSON_STYLES,
+    STATE_STYLES,
     WARNING_RGB_DARK,
     WARNING_RGB_LIGHT,
 )
@@ -229,3 +230,63 @@ def test_a_json_line_shown_alone_by_the_filter_is_still_coloured(with_json):
 def test_false_is_not_the_error_red(qapp):
     assert json_colour(JSON_LITERAL) != ERROR_RGB_LIGHT
     assert json_colour(JSON_LITERAL, dark=True) != ERROR_RGB_DARK
+
+
+# --- Status words ----------------------------------------------------------
+
+
+def state_colour(style: str, dark: bool = False) -> tuple[int, int, int]:
+    light_colour, dark_colour, _bold, _italic = STATE_STYLES[style]
+    return dark_colour if dark else light_colour
+
+
+def test_status_words_are_coloured_as_the_cli_colours_them(window):
+    events = (
+        "2026-11-15 12:01:20 (089570) : Work Requirement 'render' is RUNNING",
+        "2026-11-15 12:01:52 (089570) :   Task 'frame-0003' is FAILED",
+        "│   3 │ render-261113 │ COMPLETED │",
+        "2026-11-15 12:01:53 (089570) :   Task 'frame-0004' is CANCELLED",
+    )
+    for line in events:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, events[0])["RUNNING"] == state_colour("active")
+    assert colours_of(window, events[1])["FAILED"] == ERROR_RGB_LIGHT
+    assert colours_of(window, events[2])["COMPLETED"] == state_colour("completed")
+    assert colours_of(window, events[3])["CANCELLED"] == state_colour("cancelled")
+
+
+def test_every_style_the_cli_highlights_has_a_colour():
+    from yellowdog_cli.utils.output_style import HIGHLIGHTED_STATES
+
+    styles = {name for p in HIGHLIGHTED_STATES for name in p.groupindex}
+    assert styles <= set(STATE_STYLES)
+
+
+def test_a_status_word_in_a_json_string_takes_its_colour(window):
+    line = '  "status": "RUNNING",'
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    colours = colours_of(window, line)
+    assert colours["RUNNING"] == state_colour("active")
+    assert colours['"'] == json_colour(JSON_STRING), "its quotes stay the string's"
+
+
+def test_lower_case_words_are_not_status_words(window):
+    line = "2026-11-15 12:02:00 (089570) : the upload failed and was cancelled"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colour_of(window, line) is None
+
+
+def test_dark_mode_status_colours(window):
+    line = "2026-11-15 12:01:20 (089570) : Work Requirement 'render' is RUNNING"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, line)["RUNNING"] == state_colour("active", True)
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
