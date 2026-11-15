@@ -14,6 +14,7 @@ from typing import cast
 from PyQt6.QtCore import QEvent, QObject, QPoint, QProcess, Qt, QTimer
 from PyQt6.QtGui import (
     QAction,
+    QFont,
     QKeySequence,
     QPalette,
     QShortcut,
@@ -62,6 +63,7 @@ PROCESS_ROW_GAP = "  "  # between the process chooser's columns
 # output is not rebuilt for every character typed
 TEXT_FILTER_DELAY_MS = 250
 JUMP_TO_END = "Jump to End"
+JUMP_ARROW = "↓"
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
 JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
 
@@ -191,7 +193,14 @@ class OutputPane:
         """
         button = QToolButton(view.viewport())
         button.setObjectName("jump_to_end")
-        button.setArrowType(Qt.ArrowType.DownArrow)
+        # The arrow character, as on the command history's ← and → buttons
+        button.setText(JUMP_ARROW)
+        # In the window's font, as theirs are, not the output's fixed-width one
+        # it would inherit from the view; built with its family and size
+        # explicit, since the window's own font marks neither as set, which
+        # would leave the inherited one in force
+        window_font = self._window.font()
+        button.setFont(QFont(window_font.family(), window_font.pointSize()))
         button.setToolTip(JUMP_TO_END_TOOLTIP)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Out of the Tab order, appearing and vanishing as it does; a click's

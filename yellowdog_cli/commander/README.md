@@ -459,7 +459,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
-- **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A down-arrow button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
+- **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Dark Mode** — toggle between light and dark appearance.
 - **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. **F1** opens it too (as does **Cmd+?** on macOS).
 
@@ -527,7 +527,7 @@ Any other command runs through the system shell, so wildcards, pipes and redirec
 ls results | wc -l
 ```
 
-The `<` and `>` buttons step back and forth through your command history.
+The **←** and **→** buttons step back and forth through your command history.
 
 ### How Typed Commands Are Run
 

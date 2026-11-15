@@ -1146,7 +1146,7 @@ press Enter to run it</string>
            <string>The previous command in the history</string>
           </property>
           <property name="text">
-           <string>&lt;</string>
+           <string>←</string>
           </property>
          </widget>
         </item>
@@ -1156,7 +1156,7 @@ press Enter to run it</string>
            <string>The next command in the history</string>
           </property>
           <property name="text">
-           <string>&gt;</string>
+           <string>→</string>
           </property>
          </widget>
         </item>
