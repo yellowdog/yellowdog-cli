@@ -39,24 +39,28 @@
    * [Quoting](#quoting)
    * [Utility Actions](#utility-actions)
       * [Utility Action Details](#utility-action-details)
-   * [Filtering the Command Output](#filtering-the-command-output)
-      * [Filtering by Process](#filtering-by-process)
-      * [Filtering by Text](#filtering-by-text)
-      * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
       * [How Typed Commands Are Run](#how-typed-commands-are-run)
-   * [Acting on IDs in the Output](#acting-on-ids-in-the-output)
-      * [ID Action Details](#id-action-details)
-   * [Stopping a Command](#stopping-a-command)
-      * [Stop Details](#stop-details)
-   * [Sending Input to a Running Command](#sending-input-to-a-running-command)
+   * [The Command Output](#the-command-output)
+      * [Reading the Output](#reading-the-output)
+         * [Reading Details](#reading-details)
+      * [Moving Around](#moving-around)
+      * [Filtering the Command Output](#filtering-the-command-output)
+         * [Filtering by Process](#filtering-by-process)
+         * [Filtering by Text](#filtering-by-text)
+         * [Copying and Saving Filtered Output](#copying-and-saving-filtered-output)
+      * [Acting on IDs in the Output](#acting-on-ids-in-the-output)
+         * [ID Action Details](#id-action-details)
+      * [Stopping a Command](#stopping-a-command)
+         * [Stop Details](#stop-details)
+      * [Sending Input to a Running Command](#sending-input-to-a-running-command)
    * [A Note on Confirmations](#a-note-on-confirmations)
       * [Choosers and Other Dialogs](#choosers-and-other-dialogs)
       * [Confirmation Details](#confirmation-details)
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 11:33:11 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 13:23:48 GMT 2026 -->
 
 <!--te-->
 
@@ -482,18 +486,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Show Config** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
-- **Error and warning lines** — in the Command Output window, a line with the CLI's `ERROR :` marker is shown in red, and one with its `WARNING :` marker in amber, so they stand out in a long run. Only the colour changes: Copy and Save take the text as it is.
-- **Nothing found** — a message saying nothing was found or acted on, such as `No objects match 'render*'` or `No Work Requirements cancelled`, is shown in violet: a run that found nothing often means a mistaken tag or path.
-- **Tables** — a table's outline is shown in a muted blue, as the CLI colours it in a terminal, so its content stands out from the grid.
-- **Command headings** — the `Executing:` line announcing each command is shown in bold, so each command's output starts with a heading.
-- **Message prefixes** — the time and process ID starting each message are shown in grey, so the message itself stands out. A line coloured whole, such as an error, keeps its colour throughout.
-- **Status words** — states the CLI colours in a terminal are coloured in the Command Output window too, wherever they appear (tables, followed events, messages): `FAILED` in red, `COMPLETED` in green, `RUNNING`, `EXECUTING` and the other active states in blue, `CANCELLED` and other stopped states in grey, and transitional ones such as `STARVED` in orange.
-- **YellowDog IDs** — shown in orange, as the CLI shows them in a terminal; right-click one to copy, show or follow it (see [Acting on IDs in the Output](#acting-on-ids-in-the-output)).
-- **JSON** — a JSON document in the Command Output window, such as a dry run's or `--json` output, is coloured as the CLI colours it in a terminal: keys blue, strings green, numbers cyan, and `true`, `false` and `null` magenta. Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too.
-- **How each command ended** — when a command finishes, a last line says how: `✓ … finished (exit 0)` in green, `✗ … failed (exit N)` or `✗ … crashed` in red, or `■ … stopped` in amber. Like the `Executing:` line, it belongs to the command's output and to Commander's own messages.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
-- **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
-- **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Dark Mode** — toggle between light and dark appearance.
 - **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. **F1** opens it too (as does **Cmd+?** on macOS).
 
@@ -506,46 +499,6 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 **Saving.** The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another. There is nothing to save when the window is empty.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
-
-## Filtering the Command Output
-
-When several commands are running at once their output is interleaved, each message prefixed with the PID of the process that printed it. To follow just one of them, right-click any line of its output and choose **Show Only Output from Process 012345 (yd workrequirement submit)**. To see only the lines containing some text, such as `error`, type it in the *Filter lines* field at the right of the *Command Output* heading. Press Esc in the output window to see everything again.
-
-### Filtering by Process
-
-The line you right-click need not carry the PID: continuation lines, tables and JSON belong to the command that printed them. Right-clicking one of Commander's own messages offers **Show Only Commander's Own Messages** instead.
-
-The `Executing:` line announcing a command belongs to both. It is about the command, but printed by Commander with Commander's own PID, so right-clicking it offers both options. Each view includes it: the command's, as the line saying what it ran, and Commander's, alongside every other command Commander started.
-
-While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual. Output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*.
-
-To see everything again, in the order it arrived, click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
-
-To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return. The dialog lists Commander's own messages and then each command in the order it started, with:
-
-- its PID
-- its command line as you gave it, without the configuration and formatting options Commander adds (hover a row for the full command line)
-- when it started
-- whether it is still running, or how it ended
-- how many lines of output it has in the window
-
-A command whose output has been cleared is not listed unless it is still running. The rows ticked when the dialog opens are the processes being shown, otherwise the command of the line you right-clicked, otherwise the latest.
-
-With several processes shown, their output is interleaved as it arrived and the bar names each of them. Right-clicking a line of one of them offers to narrow the view to that one alone.
-
-### Filtering by Text
-
-Type text in the *Filter lines* field, or press Cmd+F (Ctrl+F on Windows and Linux) to get there. The output is filtered a moment after you stop typing, or at once if you press Return. Press Esc in the field to empty it and see every line again.
-
-Each line is matched on its own, as `grep` would. A message wrapped onto several lines is shown only where the text falls, and a line of a table or JSON document is shown only if it contains the text itself.
-
-Case is ignored, and the text can fall anywhere in the line. Two characters are wildcards: `*` matches any run of characters and `?` any single one. So `ydid:task:*` finds every line naming a Task, and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
-
-The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
-
-### Copying and Saving Filtered Output
-
-**Copy Command Output** and **Save Command Output** take what is shown, so filtering is also how to copy or save one command's output, or just its errors, on their own. The filters last until you lift them, and are not remembered between sessions.
 
 ## Running Arbitrary Commands
 
@@ -579,25 +532,101 @@ The **←** and **→** buttons step back and forth through your command history
 
 **The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
 
-## Acting on IDs in the Output
+## The Command Output
+
+Everything Commander runs reports in the Command Output window: each command's `Executing:` line, its output as it arrives, and a last line saying how it ended. Right-click any line for more: to show only one command's output, to act on an ID in it, or to stop the command that printed it.
+
+### Reading the Output
+
+The output is coloured so that what matters stands out in a long run, much as the CLI colours it in a terminal. Only the colour changes: Copy and Save take the text as it is.
+
+| You see | Meaning |
+|---|---|
+| A line in red | The CLI's `ERROR :` lines, and `✗ … failed (exit N)` or `✗ … crashed` at the end of a command that failed |
+| A line in amber | The CLI's `WARNING :` lines, and `■ … stopped` at the end of a command that was stopped |
+| A line in violet | A message that nothing was found or acted on, such as `No objects match 'render*'`: often a mistaken tag or path |
+| A line in green | `✓ … finished (exit 0)`, at the end of a command that succeeded |
+| A word in red, green, blue, grey or orange | A status: `FAILED`, `COMPLETED`, `RUNNING` or `EXECUTING`, `CANCELLED`, and transitional ones such as `STARVED` |
+| Orange text | A YellowDog ID, which you can right-click (see [Acting on IDs in the Output](#acting-on-ids-in-the-output)) |
+| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output |
+| A bold line | `Executing:`, announcing each command: a heading for its output |
+
+#### Reading Details
+
+**How each command ended.** When a command finishes, its last line says how: `✓`, `✗` or `■`, with its exit code. Like the `Executing:` line, it belongs to the command's output and to Commander's own messages.
+
+**The grey prefix.** The time and process ID starting each message are grey, so the message stands out; a line coloured whole keeps its colour throughout.
+
+**Tables.** A table's outline is a muted blue, so its content stands out from the grid.
+
+**JSON, line by line.** Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too. `true`, `false` and `null` are magenta, where the CLI makes `false` red, which here would read as an error.
+
+**What counts as nothing found.** A message starting `No `, after its prefix; a task's own output starting so is not one.
+
+### Moving Around
+
+- **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
+- **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
+
+### Filtering the Command Output
+
+When several commands are running at once their output is interleaved, each message prefixed with the PID of the process that printed it. To follow just one of them, right-click any line of its output and choose **Show Only Output from Process 012345 (yd workrequirement submit)**. To see only the lines containing some text, such as `error`, type it in the *Filter lines* field at the right of the *Command Output* heading. Press Esc in the output window to see everything again.
+
+#### Filtering by Process
+
+The line you right-click need not carry the PID: continuation lines, tables and JSON belong to the command that printed them. Right-clicking one of Commander's own messages offers **Show Only Commander's Own Messages** instead.
+
+The `Executing:` line announcing a command belongs to both. It is about the command, but printed by Commander with Commander's own PID, so right-clicking it offers both options. Each view includes it: the command's, as the line saying what it ran, and Commander's, alongside every other command Commander started.
+
+While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual. Output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*.
+
+To see everything again, in the order it arrived, click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
+
+To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return. The dialog lists Commander's own messages and then each command in the order it started, with:
+
+- its PID
+- its command line as you gave it, without the configuration and formatting options Commander adds (hover a row for the full command line)
+- when it started
+- whether it is still running, or how it ended
+- how many lines of output it has in the window
+
+A command whose output has been cleared is not listed unless it is still running. The rows ticked when the dialog opens are the processes being shown, otherwise the command of the line you right-clicked, otherwise the latest.
+
+With several processes shown, their output is interleaved as it arrived and the bar names each of them. Right-clicking a line of one of them offers to narrow the view to that one alone.
+
+#### Filtering by Text
+
+Type text in the *Filter lines* field, or press Cmd+F (Ctrl+F on Windows and Linux) to get there. The output is filtered a moment after you stop typing, or at once if you press Return. Press Esc in the field to empty it and see every line again.
+
+Each line is matched on its own, as `grep` would. A message wrapped onto several lines is shown only where the text falls, and a line of a table or JSON document is shown only if it contains the text itself.
+
+Case is ignored, and the text can fall anywhere in the line. Two characters are wildcards: `*` matches any run of characters and `?` any single one. So `ydid:task:*` finds every line naming a Task, and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
+
+The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
+
+#### Copying and Saving Filtered Output
+
+**Copy Command Output** and **Save Command Output** take what is shown, so filtering is also how to copy or save one command's output, or just its errors, on their own. The filters last until you lift them, and are not remembered between sessions.
+
+### Acting on IDs in the Output
 
 To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**.
 
-### ID Action Details
+#### ID Action Details
 
 **Several IDs on a line.** Each gets a submenu of its own, titled by its kind and the ID shortened in the middle, with **Copy ID**, **Show** and **Follow**. The ID you clicked on comes first, and at most five are offered.
 
 **Followed already.** As with **Follow…**, an ID that a command still running in this window is following already is not followed again; the output window says so.
 
-## Stopping a Command
+### Stopping a Command
 
 To stop one command while others carry on, right-click any line of its output and choose **Stop Process …**, which names the process and its command. It is asked to finish, and made to if it has not within two seconds; the output window says so, and the process chooser lists it as *stopped*. Stopping a submission part-way leaves what the YellowDog platform has already accepted in place, as quitting does.
 
-### Stop Details
+#### Stop Details
 
 **Commands typed in the command box.** A command that is not a `yd` command runs through the shell (`/bin/sh -c`, or `cmd /c` on Windows). Stopping it stops the shell, and a program the shell started alongside it, as in a pipeline, may carry on. `yd` commands, Commander's own included, run directly, so stopping one stops the command itself.
 
-## Sending Input to a Running Command
+### Sending Input to a Running Command
 
 If a running command prompts for input, type into the **Command Input** field and press Enter to send a line to the process's standard input.
 
