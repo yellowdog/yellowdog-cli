@@ -216,6 +216,12 @@ class OutputPane:
         self._corner_keeper = CornerKeeper(viewport, button)
         button.hide()
         scrollbar = cast(QScrollBar, view.verticalScrollBar())
+        # Whether the view was at its end before the range last changed: the
+        # view's own following of new output is not to be relied on, since on
+        # Windows the range can grow after a jump with nothing to follow it
+        self._following = True
+        scrollbar.valueChanged.connect(self._note_following)
+        scrollbar.rangeChanged.connect(self._stay_at_end_if_following)
         scrollbar.valueChanged.connect(self._show_jump_button_if_scrolled_up)
         scrollbar.rangeChanged.connect(self._show_jump_button_if_scrolled_up)
         # Scrolling moves the viewport's children with its text (QWidget.scroll),
@@ -229,6 +235,17 @@ class OutputPane:
     def _at_end(self) -> bool:
         scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
         return scrollbar.value() >= scrollbar.maximum()
+
+    def _note_following(self, _value: int) -> None:
+        self._following = self._at_end()
+
+    def _stay_at_end_if_following(self, _minimum: int, maximum: int) -> None:
+        """
+        Keep a view that was at its end there as its range grows, so that
+        new output is followed wherever the view's own following fails.
+        """
+        if self._following:
+            cast(QScrollBar, self._view.verticalScrollBar()).setValue(maximum)
 
     def _show_jump_button_if_scrolled_up(self, *_args) -> None:
         self._jump_button.setVisible(not self._at_end())

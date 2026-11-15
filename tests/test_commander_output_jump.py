@@ -78,6 +78,25 @@ def test_after_the_jump_new_output_is_followed(window):
     assert at_end(window)
 
 
+def test_at_the_end_the_view_stays_there_as_its_range_grows(window):
+    # The range grown with nothing else following it, as Windows was seen to
+    # leave a view just jumped to its end: Commander keeps it there itself
+    assert at_end(window)
+    bar = scrollbar(window)
+    bar.setRange(bar.minimum(), bar.maximum() + 50)
+    QApplication.processEvents()
+    assert at_end(window)
+
+
+def test_scrolled_up_the_view_stays_put_as_its_range_grows(window):
+    scroll_up(window)
+    bar = scrollbar(window)
+    before = bar.value()
+    bar.setRange(bar.minimum(), bar.maximum() + 50)
+    QApplication.processEvents()
+    assert bar.value() == before
+
+
 def test_scrolled_up_new_output_is_not_followed(window):
     # Which is what the button is for
     scroll_up(window)
