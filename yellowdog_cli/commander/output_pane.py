@@ -135,6 +135,10 @@ STATE_STYLES: dict[
     "starved": ((200, 95, 0), (255, 160, 80), False, False),
     "transitioning": ((200, 95, 0), (255, 160, 80), False, False),
 }
+# YellowDog IDs, in the CLI's orange but not bold, since a column of long IDs
+# in bold would outweigh everything around it
+YDID_RGB_LIGHT = (185, 85, 0)
+YDID_RGB_DARK = (250, 150, 70)
 
 
 class OutputHighlighter(QSyntaxHighlighter):
@@ -143,7 +147,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     WARNING_MARKER, and Commander's own lines saying how a command ended
     (OutputRun.ending_text, by its mark), the whole line, as each is
     displayed; and, as the CLI colours them in a terminal, the pieces of a
-    line of JSON (json_tokens()) and the status words (HIGHLIGHTED_STATES). A highlighter, not
+    line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
+    the YellowDog IDs (YDID_HIGHLIGHT_RE). A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -157,6 +162,7 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._ok = QTextCharFormat()
         self._json = self._formats(JSON_STYLES)
         self._states = self._formats(STATE_STYLES)
+        self._ydid = QTextCharFormat()
         self.set_dark(False)
 
     @staticmethod
@@ -200,6 +206,9 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._ok.setForeground(QColor(*(OK_RGB_DARK if is_dark else OK_RGB_LIGHT)))
         self._colour(self._json, JSON_STYLES, is_dark)
         self._colour(self._states, STATE_STYLES, is_dark)
+        self._ydid.setForeground(
+            QColor(*(YDID_RGB_DARK if is_dark else YDID_RGB_LIGHT))
+        )
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
@@ -226,6 +235,8 @@ class OutputHighlighter(QSyntaxHighlighter):
                         match.end() - match.start(),
                         self._states[style],
                     )
+            for match in YDID_HIGHLIGHT_RE.finditer(text):
+                self._overlay(match.start(), match.end() - match.start(), self._ydid)
 
 
 def ydids_at(text: str, position: int) -> list[str]:

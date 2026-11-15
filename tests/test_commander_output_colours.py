@@ -30,6 +30,8 @@ from yellowdog_cli.commander.output_pane import (
     STATE_STYLES,
     WARNING_RGB_DARK,
     WARNING_RGB_LIGHT,
+    YDID_RGB_DARK,
+    YDID_RGB_LIGHT,
 )
 
 PLAIN = "2026-11-15 11:30:01 (012345) : Generated Work Requirement 'render'"
@@ -287,6 +289,37 @@ def test_dark_mode_status_colours(window):
         window._dark_mode_action(Qt.CheckState.Checked)
         QApplication.processEvents()
         assert colours_of(window, line)["RUNNING"] == state_colour("active", True)
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+# --- YellowDog IDs ---------------------------------------------------------
+
+WR_ID = "ydid:workreq:000000:11111111-1111-1111-1111-111111111111"
+
+
+def test_ids_are_orange_in_messages_tables_and_json(window):
+    lines = (
+        f"2026-11-15 12:01:00 (089570) : Created Work Requirement {WR_ID}",
+        f"│   1 │ render │ RUNNING │ {WR_ID} │",
+        f'  "id": "{WR_ID}",',
+    )
+    for line in lines:
+        window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    for line in lines:
+        assert colours_of(window, line)[WR_ID] == YDID_RGB_LIGHT, line
+
+
+def test_ids_in_dark_mode(window):
+    line = f"2026-11-15 12:01:00 (089570) : Created Work Requirement {WR_ID}"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, line)[WR_ID] == YDID_RGB_DARK
     finally:
         window._dark_mode_action(Qt.CheckState.Unchecked)
         QApplication.processEvents()
