@@ -72,7 +72,11 @@ from yellowdog_cli.commander.host import (
     shell_command,
 )
 from yellowdog_cli.commander.output_model import COMMANDER_RUN
-from yellowdog_cli.commander.output_pane import OutputPane
+from yellowdog_cli.commander.output_pane import (
+    ERROR_RGB_DARK,
+    ERROR_RGB_LIGHT,
+    OutputPane,
+)
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.commander.stderr_filter import install_stderr_filter
@@ -104,8 +108,8 @@ BRANDING_IMAGE_DARK = join(_PKG_DIR, "images", "IconYellowDogDark.svg")
 BRANDING_IMAGE_SIZE = 54
 # The destructive actions' label colour, one per appearance: the light one is
 # too dark to read on a dark button, the dark one too pale on a light one
-DESTRUCTIVE_TEXT_LIGHT = "rgb(200, 30, 30)"
-DESTRUCTIVE_TEXT_DARK = "rgb(255, 110, 100)"
+DESTRUCTIVE_TEXT_LIGHT = "rgb({}, {}, {})".format(*ERROR_RGB_LIGHT)
+DESTRUCTIVE_TEXT_DARK = "rgb({}, {}, {})".format(*ERROR_RGB_DARK)
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
 
 
@@ -159,6 +163,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             ),
             pid=self._pid,
         )
+        self._output.set_dark(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Set up action connections
         self.select_config_file.clicked.connect(self._select_config_file_action)
@@ -940,6 +945,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self.setStyleSheet("")
         self._update_branding_icon(is_dark)
         self._colour_destructive_buttons(is_dark)
+        self._output.set_dark(is_dark)
 
     def _show_help_action(self):
         """

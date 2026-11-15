@@ -14,11 +14,14 @@ from typing import cast
 from PyQt6.QtCore import QEvent, QObject, QPoint, QProcess, Qt, QTimer
 from PyQt6.QtGui import (
     QAction,
+    QColor,
     QFont,
     QKeySequence,
     QPalette,
     QShortcut,
+    QSyntaxHighlighter,
     QTextBlock,
+    QTextCharFormat,
     QTextDocument,
 )
 from PyQt6.QtWidgets import (
@@ -52,10 +55,13 @@ from yellowdog_cli.commander.selection import (
     SelectableRow,
     checked_handles,
 )
+from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
 
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
 PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
+# The prefix of a message, with or without the PID ('--pp')
+MESSAGE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:\(\d+\) )?: ")
 SHOW_ALL_OUTPUT = "Show All Output"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
@@ -67,6 +73,52 @@ JUMP_TO_END = "Jump to End"
 JUMP_ARROW = "↓"
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
 JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
+# The colours of the CLI's error and warning lines, one per appearance: the
+# light one too dark to read on a dark background, the dark one too pale on a
+# light one. The error red is the destructive buttons' label colour too.
+ERROR_RGB_LIGHT = (200, 30, 30)
+ERROR_RGB_DARK = (255, 110, 100)
+WARNING_RGB_LIGHT = (170, 100, 0)
+WARNING_RGB_DARK = (240, 180, 70)
+
+
+class OutputHighlighter(QSyntaxHighlighter):
+    """
+    Colours the output window's lines that carry the CLI's ERROR_MARKER or
+    WARNING_MARKER, the whole line, as each is displayed. A highlighter, not
+    coloured text: the document stays plain, so the filters, Copy and Save
+    are untouched. Only the marked line is coloured: the lines after a
+    warning are often a table or a document, not more of the message, and
+    Commander runs the CLI with '--nf', so a message is not wrapped.
+    """
+
+    def __init__(self, document: QTextDocument):
+        super().__init__(document)
+        self._error = QTextCharFormat()
+        self._warning = QTextCharFormat()
+        self.set_dark(False)
+
+    def set_dark(self, is_dark: bool) -> None:
+        """
+        Use the colours for the appearance, and recolour what is shown.
+        """
+        error = ERROR_RGB_DARK if is_dark else ERROR_RGB_LIGHT
+        warning = WARNING_RGB_DARK if is_dark else WARNING_RGB_LIGHT
+        self._error.setForeground(QColor(*error))
+        self._warning.setForeground(QColor(*warning))
+        self.rehighlight()
+
+    def highlightBlock(self, text: str | None) -> None:
+        if not text:
+            return
+        # The message after its prefix, where the CLI puts its marker; one
+        # elsewhere in the line (an 'Executing:' line echoing a command, or a
+        # task's output) is not one
+        message = MESSAGE_PREFIX.sub("", text, count=1)
+        if message.startswith(ERROR_MARKER):
+            self.setFormat(0, len(text), self._error)
+        elif message.startswith(WARNING_MARKER):
+            self.setFormat(0, len(text), self._warning)
 
 
 class CornerKeeper(QObject):
@@ -184,6 +236,13 @@ class OutputPane:
         QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
 
         self._jump_button = self._add_jump_button(view)
+        self._highlighter = OutputHighlighter(cast(QTextDocument, view.document()))
+
+    def set_dark(self, is_dark: bool) -> None:
+        """
+        Colour the error and warning lines for the appearance.
+        """
+        self._highlighter.set_dark(is_dark)
 
     def _add_jump_button(self, view: QPlainTextEdit) -> QToolButton:
         """

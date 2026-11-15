@@ -460,6 +460,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Show Config** — prints the contents of the selected configuration file to the Command Output window.
 - **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
+- **Error and warning lines** — in the Command Output window, a line with the CLI's `ERROR :` marker is shown in red, and one with its `WARNING :` marker in amber, so they stand out in a long run. Only the colour changes: Copy and Save take the text as it is.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
 - **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Dark Mode** — toggle between light and dark appearance.

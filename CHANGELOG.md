@@ -11,6 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
+- **Error and warning lines are coloured** in the Command Output window: red for the CLI's `ERROR :` lines, amber for its `WARNING :` lines, in shades for each appearance.
 - **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
 - **Jump to the end of the Command Output**: scrolled up, a **↓** button in the window's bottom-right corner, or **Jump to End** in its right-click menu, returns to the end and follows new output again.
 - **The command history's buttons are labelled ← and →**, in place of `<` and `>`.
