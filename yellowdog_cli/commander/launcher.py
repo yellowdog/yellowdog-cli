@@ -116,6 +116,14 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         help="disable destructive-action confirmation dialogs",
     )
     parser.add_argument(
+        "--reset-appearance",
+        action="store_true",
+        help=(
+            "open with the window's default size and place, Dark Mode following"
+            " the system, and the output's default text size"
+        ),
+    )
+    parser.add_argument(
         "--namespace",
         "-n",
         metavar="<namespace>",
@@ -191,6 +199,7 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         properties=tuple(args.property),
         wr_file=args.work_requirement,
         wp_file=args.worker_pool,
+        reset_appearance=args.reset_appearance,
     )
 
 

@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
 )
 
 from yellowdog_cli.commander.elision import elide_middle
+from yellowdog_cli.commander.host import MACOS
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
     ENDED_FAILED_MARK,
@@ -96,6 +97,21 @@ FOLLOWABLE_YDID_TYPES = frozenset(
 )
 JUMP_TO_END = "Jump to End"
 JUMP_ARROW = "↓"
+# How much larger than the window's font the arrow buttons' glyphs (↓ here,
+# ← and → for the command history) are drawn: Windows' and Linux's default
+# fonts are smaller than macOS's, and their arrow glyphs small for their size
+ARROW_FONT_SCALE = 1.0 if MACOS else 1.6
+
+
+def arrow_font(base: QFont) -> QFont:
+    """
+    The font for an arrow button: 'base', the window's, scaled by
+    ARROW_FONT_SCALE, with its family and size explicit, so that it holds
+    over whatever font the button would otherwise inherit.
+    """
+    return QFont(base.family(), round(base.pointSizeF() * ARROW_FONT_SCALE))
+
+
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
 JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
 # The colours of the CLI's error and warning lines, one per appearance: the
@@ -460,12 +476,9 @@ class OutputPane:
         button.setObjectName("jump_to_end")
         # The arrow character, as on the command history's ← and → buttons
         button.setText(JUMP_ARROW)
-        # In the window's font, as theirs are, not the output's fixed-width one
-        # it would inherit from the view; built with its family and size
-        # explicit, since the window's own font marks neither as set, which
-        # would leave the inherited one in force
-        window_font = self._window.font()
-        button.setFont(QFont(window_font.family(), window_font.pointSize()))
+        # The arrow buttons' font, as theirs is, not the output's fixed-width
+        # one it would inherit from the view
+        button.setFont(arrow_font(self._window.font()))
         button.setToolTip(JUMP_TO_END_TOOLTIP)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Out of the Tab order, appearing and vanishing as it does; a click's

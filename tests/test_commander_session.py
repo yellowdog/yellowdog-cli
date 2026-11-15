@@ -250,3 +250,84 @@ def test_only_the_output_zooms(made):
     window = made()
     press(window, Qt.Key.Key_Equal, 4)
     assert window._font.pointSize() == OUTPUT_FONT_SIZE
+
+
+# --- Resetting the appearance ----------------------------------------------
+
+
+def remember_an_appearance(settings: QSettings) -> None:
+    settings.setValue(SETTING_DARK_MODE, True)
+    settings.setValue(SETTING_OUTPUT_FONT_SIZE, OUTPUT_FONT_SIZE + 5)
+    settings.setValue(SETTING_WINDOW_GEOMETRY, b"not a real geometry")
+
+
+def appearance_keys(settings: QSettings) -> set[str]:
+    return {
+        key
+        for key in (
+            SETTING_DARK_MODE,
+            SETTING_OUTPUT_FONT_SIZE,
+            SETTING_WINDOW_GEOMETRY,
+        )
+        if settings.contains(key)
+    }
+
+
+def test_launching_with_reset_appearance_forgets_it(made, commander_dialog_settings):
+    remember_an_appearance(commander_dialog_settings)
+    remembered_config = "/somewhere/config.toml"
+    commander_dialog_settings.setValue(SETTING_CONFIG_FILE, remembered_config)
+    window = made(StartupSettings(reset_appearance=True))
+    assert appearance_keys(commander_dialog_settings) == set()
+    assert output_size(window) == OUTPUT_FONT_SIZE
+    system_dark = window._color_scheme() == Qt.ColorScheme.Dark
+    assert window.dark_mode.isChecked() is system_dark
+    # Not appearance: the configuration file is still remembered
+    assert commander_dialog_settings.value(SETTING_CONFIG_FILE) == remembered_config
+
+
+def test_without_it_the_appearance_is_kept(made, commander_dialog_settings):
+    remember_an_appearance(commander_dialog_settings)
+    window = made()
+    assert output_size(window) == OUTPUT_FONT_SIZE + 5
+    assert window.dark_mode.isChecked()
+
+
+def test_the_shortcut_resets_the_open_window(made, commander_dialog_settings):
+    window = made()
+    window.setMinimumSize(window.minimumSizeHint())
+    press(window, Qt.Key.Key_Equal, 3)
+    window.dark_mode.click()  # a choice, remembered
+    window.resize(window.minimumWidth() + 200, window.minimumHeight() + 100)
+    QApplication.processEvents()
+    assert appearance_keys(commander_dialog_settings) >= {
+        SETTING_DARK_MODE,
+        SETTING_OUTPUT_FONT_SIZE,
+    }
+
+    QTest.keyClick(
+        window,
+        Qt.Key.Key_0,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    QApplication.processEvents()
+
+    assert appearance_keys(commander_dialog_settings) == set()
+    assert output_size(window) == OUTPUT_FONT_SIZE
+    assert window.dark_mode.isChecked() is (
+        window._color_scheme() == Qt.ColorScheme.Dark
+    )
+    assert (window.width(), window.height()) == (
+        window.minimumWidth(),
+        window.minimumHeight(),
+    )
+    assert "Window appearance reset to its defaults" in window.log_output.toPlainText()
+
+
+def test_the_shortcut_also_fires_as_the_character_shift_0_types(made):
+    # A keyboard may report Cmd/Ctrl+Shift+0 as the ')' it types
+    window = made()
+    press(window, Qt.Key.Key_Equal, 2)
+    QTest.keyClick(window, Qt.Key.Key_ParenRight, Qt.KeyboardModifier.ControlModifier)
+    QApplication.processEvents()
+    assert output_size(window) == OUTPUT_FONT_SIZE

@@ -27,6 +27,9 @@ class StartupSettings:
     properties: tuple[str, ...] = ()
     wr_file: str | None = None
     wp_file: str | None = None
+    # Forget the remembered appearance (window size and place, Dark Mode, the
+    # output's text size) before the window opens
+    reset_appearance: bool = False
 
 
 def variable_is_complete(variable: str) -> bool:

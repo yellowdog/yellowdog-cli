@@ -58,6 +58,7 @@ def test_every_option_reaches_the_settings(files):
             "wr.json",
             "-p",
             "wp.jsonnet",
+            "--reset-appearance",
         ]
     )
     assert settings == StartupSettings(
@@ -70,6 +71,7 @@ def test_every_option_reaches_the_settings(files):
         variables=("a=1", "b="),
         wr_file=join(files, "wr.json"),
         wp_file=join(files, "wp.jsonnet"),
+        reset_appearance=True,
     )
 
 

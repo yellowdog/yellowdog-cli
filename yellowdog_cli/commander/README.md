@@ -60,7 +60,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 13:23:48 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 14:25:50 GMT 2026 -->
 
 <!--te-->
 
@@ -111,7 +111,7 @@ yd commander config.toml -t render-test -v frames=120 -r render.json
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
-Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)).
+Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)), and `--reset-appearance` to open with the window's default size and place, Dark Mode following your system, and the default output text size, forgetting what was remembered of them.
 
 ### Launch Details
 
@@ -128,7 +128,7 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
 
-**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it. `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 
@@ -569,6 +569,7 @@ The output is coloured so that what matters stands out in a long run, much as th
 
 - **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
+- **Reset the window's appearance** — Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back as it first opens: its default size, centred, Dark Mode following your system's appearance, and the Command Output text at its default size. To open Commander that way, launch it with `--reset-appearance`.
 
 ### Filtering the Command Output
 

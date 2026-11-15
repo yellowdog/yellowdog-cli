@@ -78,6 +78,7 @@ from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
     ERROR_RGB_LIGHT,
     OutputPane,
+    arrow_font,
 )
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
@@ -136,6 +137,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if settings is None:
             settings = StartupSettings()
         self._confirmations_disabled = settings.disable_confirmations
+        if settings.reset_appearance:
+            # Before anything reads it: the text size and Dark Mode here, the
+            # geometry in run_app()
+            self._forget_appearance()
 
         # Dynamically loads the QT UI definition
         loadUi(join(_PKG_DIR, "commander.ui"), self)
@@ -177,6 +182,13 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             QShortcut(keys, self).activated.connect(
                 functools_partial(self._zoom_output, step)
             )
+        # Cmd/Ctrl+Shift+0: Cmd/Ctrl+0's text-size reset, for the whole window.
+        # One shortcut with both forms, since a keyboard may report the press
+        # as Shift+0 or as the ')' it types; two shortcuts matching the one
+        # press would be ambiguous to Qt, and neither would fire
+        reset = QShortcut(self)
+        reset.setKeys([QKeySequence("Ctrl+Shift+0"), QKeySequence("Ctrl+)")])
+        reset.activated.connect(self._reset_appearance)
 
         # Every file dialog: selecting, saving and browsing
         self._file_dialogs = FileDialogs(self, self._font)
@@ -251,6 +263,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         self.next_command.clicked.connect(self._next_command_action)
         self.prev_command.clicked.connect(self._prev_command_action)
+        for button in (self.prev_command, self.next_command):
+            button.setFont(arrow_font(self.font()))
 
         # Help: the button, the platform's help key (Cmd+? on macOS, F1
         # elsewhere) and F1 everywhere, all opening the one modeless dialog
@@ -445,6 +459,42 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._output_font.setPointSize(size)
         self.log_output.setFont(self._output_font)
         file_dialogs.dialog_settings().setValue(SETTING_OUTPUT_FONT_SIZE, size)
+
+    @staticmethod
+    def _forget_appearance() -> None:
+        """
+        Forget the remembered window size and place, Dark Mode and output
+        text size, so that each is its default again.
+        """
+        settings = file_dialogs.dialog_settings()
+        for key in (
+            SETTING_WINDOW_GEOMETRY,
+            SETTING_DARK_MODE,
+            SETTING_OUTPUT_FONT_SIZE,
+        ):
+            settings.remove(key)
+
+    def _reset_appearance(self) -> None:
+        """
+        Put the window as it first opens: its minimum size, centred on its
+        screen, Dark Mode following the system, and the output's text at its
+        default size; and forget what was remembered of each.
+        """
+        self._forget_appearance()
+        self._output_font.setPointSize(OUTPUT_FONT_SIZE)
+        self.log_output.setFont(self._output_font)
+        # The system's appearance, not the one Dark Mode set the application
+        # to, which the style hints report until handed back to the system;
+        # then setChecked(), not a click, so it is not remembered as a choice
+        cast(QStyleHints, QApplication.styleHints()).unsetColorScheme()
+        self.dark_mode.setChecked(self._color_scheme() == Qt.ColorScheme.Dark)
+        self.resize(self.minimumSize())
+        screen = self.screen()
+        if screen is not None:
+            frame = self.frameGeometry()
+            frame.moveCenter(screen.availableGeometry().center())
+            self.move(frame.topLeft())
+        self._output.log("Window appearance reset to its defaults")
 
     def _initial_dark_mode(self) -> bool:
         """
