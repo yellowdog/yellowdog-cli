@@ -354,8 +354,9 @@ DESTRUCTIVE_BUTTONS = {
 def _label_ink(button: QPushButton) -> list:
     """
     The colours of a button's label as painted: the pixels inside its contents
-    rect (the frame left out) that differ clearly from the commonest colour
-    there, which is the button's face.
+    rect (the frame left out, scaled to the image, which a device pixel ratio
+    above 1 makes larger than the widget) that differ from the commonest
+    colour there, which is the button's face.
     """
     option = QStyleOptionButton()
     button.initStyleOption(option)
@@ -365,39 +366,60 @@ def _label_ink(button: QPushButton) -> list:
         QStyle.SubElement.SE_PushButtonContents, option, button
     ).adjusted(2, 2, -2, -2)
     image = button.grab().toImage()
+    ratio = image.devicePixelRatio()
     colours = [
         image.pixelColor(x, y)
-        for x in range(rect.left(), rect.right() + 1)
-        for y in range(rect.top(), rect.bottom() + 1)
+        for x in range(int(rect.left() * ratio), int((rect.right() + 1) * ratio))
+        for y in range(int(rect.top() * ratio), int((rect.bottom() + 1) * ratio))
+        if x < image.width() and y < image.height()
     ]
-    face = Counter(c.rgb() for c in colours).most_common(1)[0][0]
-    face_colour = QColor(face)
+    face = QColor(Counter(c.rgb() for c in colours).most_common(1)[0][0])
 
     def differs(c: QColor) -> bool:
         return (
             max(
-                abs(c.red() - face_colour.red()),
-                abs(c.green() - face_colour.green()),
-                abs(c.blue() - face_colour.blue()),
+                abs(c.red() - face.red()),
+                abs(c.green() - face.green()),
+                abs(c.blue() - face.blue()),
             )
-            > 60
+            > 40
         )
 
     return [c for c in colours if differs(c)]
 
 
-def _is_red(c: QColor) -> bool:
-    return c.red() - max(c.green(), c.blue()) > 40
+def _ink_colour(button: QPushButton) -> QColor | None:
+    """
+    The average colour of a button's label, or None where nothing is drawn
+    on its face. An average, not a count of red pixels: the red and blue
+    fringes that subpixel antialiasing (a Linux runner's) draws around black
+    glyphs cancel out, and thin red text whose pixels are mostly blended
+    with the face (a Windows runner's) still averages red.
+    """
+    ink = _label_ink(button)
+    if not ink:
+        return None
+    return QColor(
+        sum(c.red() for c in ink) // len(ink),
+        sum(c.green() for c in ink) // len(ink),
+        sum(c.blue() for c in ink) // len(ink),
+    )
 
 
 def _label_is_red(button: QPushButton) -> bool:
+    colour = _ink_colour(button)
+    return colour is not None and colour.red() - max(colour.green(), colour.blue()) > 30
+
+
+def _ink_report(win, names) -> str:
     """
-    Whether most of a button's label is painted red. Most, not any: text
-    rendered with subpixel antialiasing, as on a Linux runner, has red and
-    blue fringes around black glyphs, a minority of its ink.
+    Each named button's average label colour, for a failure's message.
     """
-    ink = _label_ink(button)
-    return bool(ink) and sum(_is_red(c) for c in ink) > len(ink) / 2
+    report = []
+    for name in sorted(names):
+        colour = _ink_colour(win.findChild(QPushButton, name))
+        report.append(f"{name}={colour.name() if colour else None}")
+    return ", ".join(report)
 
 
 def test_the_destructive_buttons_alone_are_labelled_in_red(qapp):
@@ -409,7 +431,10 @@ def test_the_destructive_buttons_alone_are_labelled_in_red(qapp):
         for button in win.findChildren(QPushButton)
         if button.isVisible() and _label_is_red(button)
     }
-    assert red == DESTRUCTIVE_BUTTONS
+    assert red == DESTRUCTIVE_BUTTONS, _ink_report(
+        win,
+        {b.objectName() for b in win.findChildren(QPushButton) if b.isVisible()},
+    )
 
 
 def test_a_greyed_destructive_button_is_not_red(qapp):
@@ -426,17 +451,19 @@ def test_a_greyed_destructive_button_is_not_red(qapp):
         ]
     finally:
         win._set_action_buttons_enabled(True)
-    assert still_red == []
+    assert still_red == [], _ink_report(win, DESTRUCTIVE_BUTTONS)
 
 
 def test_dark_mode_labels_the_destructive_buttons_in_a_lighter_red(qapp):
     # The light appearance's red is too dark to read on a dark button
     win = gui_harness.shown(YellowDogApp())
 
-    def lightness() -> float:
-        assert _label_is_red(win.delete_objects), "the label is not red"
-        pixels = [c for c in _label_ink(win.delete_objects) if _is_red(c)]
-        return sum(c.lightness() for c in pixels) / len(pixels)
+    def lightness() -> int:
+        colour = _ink_colour(win.delete_objects)
+        assert colour is not None and _label_is_red(win.delete_objects), (
+            f"the label is not red: {colour.name() if colour else None}"
+        )
+        return colour.lightness()
 
     light = lightness()
     try:
