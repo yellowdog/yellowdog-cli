@@ -124,7 +124,7 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
 
-**What Commander remembers.** Commander opens at the size and place it was last closed at, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 
@@ -491,6 +491,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **JSON** — a JSON document in the Command Output window, such as a dry run's or `--json` output, is coloured as the CLI colours it in a terminal: keys blue, strings green, numbers cyan, and `true`, `false` and `null` magenta. Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too.
 - **How each command ended** — when a command finishes, a last line says how: `✓ … finished (exit 0)` in green, `✗ … failed (exit N)` or `✗ … crashed` in red, or `■ … stopped` in amber. Like the `Executing:` line, it belongs to the command's output and to Commander's own messages.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
+- **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
 - **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Dark Mode** — toggle between light and dark appearance.
 - **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. **F1** opens it too (as does **Cmd+?** on macOS).

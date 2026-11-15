@@ -12,11 +12,16 @@ qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander.commander import (
+    MAX_OUTPUT_FONT_SIZE,
+    MIN_OUTPUT_FONT_SIZE,
+    OUTPUT_FONT_SIZE,
     SETTING_CONFIG_FILE,
     SETTING_DARK_MODE,
+    SETTING_OUTPUT_FONT_SIZE,
     SETTING_WINDOW_GEOMETRY,
     YellowDogApp,
 )
@@ -187,3 +192,61 @@ def test_with_nothing_remembered_the_window_is_left_alone(made):
     before = window.size()
     window.restore_window_geometry()
     assert window.size() == before
+
+
+# --- The output's text size ------------------------------------------------
+
+
+def press(window: YellowDogApp, key: Qt.Key, times: int = 1) -> None:
+    """
+    Cmd/Ctrl + 'key', 'times' over, as the keyboard would send it.
+    """
+    for _ in range(times):
+        QTest.keyClick(window, key, Qt.KeyboardModifier.ControlModifier)
+    QApplication.processEvents()
+
+
+def output_size(window: YellowDogApp) -> int:
+    return window.log_output.font().pointSize()
+
+
+def test_the_output_zooms_in_out_and_back(made, commander_dialog_settings):
+    window = made()
+    assert output_size(window) == OUTPUT_FONT_SIZE
+    press(window, Qt.Key.Key_Equal, 2)
+    assert output_size(window) == OUTPUT_FONT_SIZE + 2
+    press(window, Qt.Key.Key_Minus, 3)
+    assert output_size(window) == OUTPUT_FONT_SIZE - 1
+    press(window, Qt.Key.Key_0)
+    assert output_size(window) == OUTPUT_FONT_SIZE
+
+
+def test_the_zoom_stays_within_its_range(made):
+    window = made()
+    press(window, Qt.Key.Key_Equal, MAX_OUTPUT_FONT_SIZE)
+    assert output_size(window) == MAX_OUTPUT_FONT_SIZE
+    press(window, Qt.Key.Key_Minus, MAX_OUTPUT_FONT_SIZE)
+    assert output_size(window) == MIN_OUTPUT_FONT_SIZE
+
+
+def test_the_size_is_remembered(made, commander_dialog_settings):
+    first = made()
+    press(first, Qt.Key.Key_Equal, 3)
+    assert commander_dialog_settings.value(SETTING_OUTPUT_FONT_SIZE, type=int) == (
+        OUTPUT_FONT_SIZE + 3
+    )
+    assert output_size(made()) == OUTPUT_FONT_SIZE + 3
+
+
+def test_a_remembered_size_out_of_range_is_brought_into_it(
+    made, commander_dialog_settings
+):
+    commander_dialog_settings.setValue(SETTING_OUTPUT_FONT_SIZE, 400)
+    assert output_size(made()) == MAX_OUTPUT_FONT_SIZE
+
+
+def test_only_the_output_zooms(made):
+    # The file previews and dialog listings keep the shared font
+    window = made()
+    press(window, Qt.Key.Key_Equal, 4)
+    assert window._font.pointSize() == OUTPUT_FONT_SIZE

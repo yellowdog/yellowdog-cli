@@ -12,6 +12,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
 - **YellowDog IDs in the Command Output are orange**, as in a terminal.
+- **Zoom the Command Output**: Cmd+= and Cmd+− (Ctrl on Windows and Linux) change its text size, Cmd+0 resets it, and the size is remembered.
 - **Table outlines in the Command Output are a muted blue**, so a table's content stands out.
 - **Each command's `Executing:` line is bold**, a heading for its output.
 - **Message prefixes in the Command Output are grey**, so the time and process ID give way to the message.

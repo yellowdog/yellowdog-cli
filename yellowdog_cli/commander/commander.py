@@ -117,6 +117,13 @@ BRANDING_IMAGE_SIZE = 54
 SETTING_WINDOW_GEOMETRY = "session/windowGeometry"
 SETTING_DARK_MODE = "session/darkMode"
 SETTING_CONFIG_FILE = "session/configFile"
+SETTING_OUTPUT_FONT_SIZE = "session/outputFontSize"
+# The output window's text size in points, as it opens and as Cmd/Ctrl+0
+# resets it (displayed sizes differ, so it is smaller off macOS), and the
+# range Cmd/Ctrl+= and Cmd/Ctrl+- zoom it within
+OUTPUT_FONT_SIZE = 12 if MACOS else 8
+MIN_OUTPUT_FONT_SIZE = 6
+MAX_OUTPUT_FONT_SIZE = 32
 DESTRUCTIVE_TEXT_LIGHT = "rgb({}, {}, {})".format(*ERROR_RGB_LIGHT)
 DESTRUCTIVE_TEXT_DARK = "rgb({}, {}, {})".format(*ERROR_RGB_DARK)
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
@@ -147,10 +154,24 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # Actual displayed font sizes differ across platforms;
         # use a smaller point size on Windows and Linux for the output window
         self._font = QFont()
-        self._font.setPointSize(12 if MACOS else 8)
+        self._font.setPointSize(OUTPUT_FONT_SIZE)
         self._font.setFamily("Courier New")
         self._font.setWeight(500)
-        self.log_output.setFont(self._font)
+        # The output's own copy, which zooms, at the size last left; the file
+        # previews and dialog listings keep the shared one
+        self._output_font = QFont(self._font)
+        self._output_font.setPointSize(self._remembered_output_font_size())
+        self.log_output.setFont(self._output_font)
+        for keys, step in (
+            (QKeySequence.StandardKey.ZoomIn, 1),
+            # Cmd/Ctrl+=, the unshifted key, which ZoomIn does not include
+            (QKeySequence("Ctrl+="), 1),
+            (QKeySequence.StandardKey.ZoomOut, -1),
+            (QKeySequence("Ctrl+0"), 0),
+        ):
+            QShortcut(keys, self).activated.connect(
+                functools_partial(self._zoom_output, step)
+            )
 
         # Every file dialog: selecting, saving and browsing
         self._file_dialogs = FileDialogs(self, self._font)
@@ -400,6 +421,25 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if isinstance(remembered, str) and isfile(remembered):
             return remembered
         return None
+
+    @staticmethod
+    def _remembered_output_font_size() -> int:
+        size = file_dialogs.dialog_settings().value(
+            SETTING_OUTPUT_FONT_SIZE, OUTPUT_FONT_SIZE, type=int
+        )
+        return max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, int(size)))
+
+    def _zoom_output(self, step: int) -> None:
+        """
+        Make the output's text a point larger (1) or smaller (-1), within
+        MIN_OUTPUT_FONT_SIZE and MAX_OUTPUT_FONT_SIZE, or put it back to
+        OUTPUT_FONT_SIZE (0), and remember it for the next session.
+        """
+        size = OUTPUT_FONT_SIZE if step == 0 else self._output_font.pointSize() + step
+        size = max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, size))
+        self._output_font.setPointSize(size)
+        self.log_output.setFont(self._output_font)
+        file_dialogs.dialog_settings().setValue(SETTING_OUTPUT_FONT_SIZE, size)
 
     def _initial_dark_mode(self) -> bool:
         """
