@@ -396,7 +396,7 @@ To collect your results, press **Download Matching Objects**, untick anything yo
 
 - **Path** — the object path to match for download and deletion. If left blank, all objects matching the current tag are used. Wildcards, `{{variable}}` substitution, and absolute rclone paths are all accepted (see [Naming and Matching Assumptions](#naming-and-matching-assumptions)).
 - **Download Matching Objects** — downloads matching objects into a `results` directory alongside the configuration file. It first lists what the path matched and lets you choose which of those items to fetch.
-- **Dry-Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
+- **Dry Run Download/Deletion** — when ticked, reports what would be downloaded or deleted without transferring or removing anything, and without offering a selection.
 - **Browse Results Directory** — browses the `results` directory in a read-only [file dialog](#file-dialogs), previewing whatever you highlight. Selecting a file opens it in the default application for its type; dismissing the dialog opens nothing. A button switches to the platform's file viewer when you need to change the directory's contents rather than look at them.
 - **Delete Matching Objects** — deletes matching objects from remote storage. Like the download, it first lists what the path matched and lets you choose which of those items to remove.
 
@@ -407,6 +407,8 @@ The dry run overlaps with the selection dialogs, deliberately: both show you wha
 - The dry run skips the dialog and writes its report to the command output window, where you can scroll it, copy it, and save it to a file. The dialog's listing is transient, and shows about a dozen rows before scrolling.
 - The dry run reports what the *pattern* matched, so it also lists objects whose names contain a wildcard character or a `{{` placeholder. The selection dialogs refuse to act on those, and so cannot show you acting on them.
 - Because `-y`/`--yes` suppresses both dialogs, a dry run is the only preview left in a session launched that way.
+
+A path matching nothing reads the same either way: Commander lists what matches first, dry run or not, and says `No objects match '…'` instead of running anything.
 
 ### Results Details
 

@@ -87,8 +87,9 @@ class ResultsPanel(WindowDialogs):
         and do nothing; when the enumeration fails there are no paths to choose
         between, so fall back to downloading the whole pattern.
 
-        The dry-run-checkbox preview fetches nothing, so it runs directly with no
-        enumeration or chooser.
+        The Dry Run checkbox's preview fetches nothing, so it has no chooser; it
+        is listed for first all the same (_nothing_matches()), so that a pattern
+        matching nothing reads as it does without the box ticked.
 
         '--yes' skips the chooser and fetches everything matched, as it does for
         the destructive confirmations. The chooser is not a confirmation, but
@@ -109,6 +110,8 @@ class ResultsPanel(WindowDialogs):
             return
 
         if self.dry_run_objects.isChecked():
+            if self._nothing_matches("yd data download", [path], path):
+                return
             self._run_command_in_subprocess(
                 "yd data download", ["--into", dst, path, "-D"]
             )
@@ -155,6 +158,23 @@ class ResultsPanel(WindowDialogs):
             log_args=self._abbreviated_run_args(["--into", dst], handles, "objects"),
         )
 
+    def _nothing_matches(self, command: str, args: list[str], path: str) -> bool:
+        """
+        Whether 'path' matches nothing, said as the actions say it when they
+        list what to act on: a dry run listing first (as the action does
+        without Dry Run) reports a pattern matching nothing in Commander's
+        words, where the CLI's own dry run calls it a failure ('No matches for
+        wildcard', exit 1). False when something matches, or when the listing
+        fails, so that the dry run itself runs and says why.
+        """
+        self._output.log(f"Checking which objects match '{path}'...")
+        self.log_output.repaint()
+        objects = self._capture_dry_run_objects(command, args)
+        if objects is not None and not objects:
+            self._output.log(f"No objects match '{path}'")
+            return True
+        return False
+
     def _delete_objects_action(self):
         """
         Delete matching objects from remote storage, letting the user select
@@ -164,8 +184,10 @@ class ResultsPanel(WindowDialogs):
         confirm at the scope level (without a list) and delete the whole
         pattern.
 
-        The dry-run-checkbox preview changes nothing, so it runs directly with no
-        enumeration or confirmation. The '-y'/per-action-skip bypasses delete the
+        The Dry Run checkbox's preview changes nothing, so it has no
+        confirmation; it is listed for first all the same (_nothing_matches()),
+        so that a pattern matching nothing reads as it does without the box
+        ticked. The '-y'/per-action-skip bypasses delete the
         whole pattern, logging that they have done so.
         """
         if (
@@ -180,7 +202,9 @@ class ResultsPanel(WindowDialogs):
             return
 
         if self.dry_run_objects.isChecked():
-            # Harmless preview: run directly, no enumeration or confirmation.
+            # Harmless preview: no confirmation, but listed for first
+            if self._nothing_matches("yd data delete", ["-R", path], path):
+                return
             self._run_command_in_subprocess("yd data delete", ["-Ry", path, "-D"])
             return
 

@@ -248,8 +248,36 @@ def test_the_dry_run_checkbox_skips_the_chooser(window, captured, monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError("a dry-run preview fetches nothing; do not ask")
 
-    monkeypatch.setattr(window, "_capture_dry_run_objects", fail)
+    seen = stub_enumeration(window, monkeypatch, objects())
     monkeypatch.setattr(window, "_build_chooser_dialog", fail)
+    window._discovery.tag = "pyex"
+    window.dry_run_objects.setChecked(True)
+
+    window._download_results_action()
+
+    assert seen == [("yd data download", ["pyex*"])], "listed for first"
+    _command, args, _kwargs = captured[0]
+    assert args[-2:] == ["pyex*", "-D"]
+
+
+def test_a_dry_run_matching_nothing_says_so_as_the_live_run_does(
+    window, captured, monkeypatch
+):
+    # Not the CLI's own dry run, which calls a pattern matching nothing a
+    # failure ('No matches for wildcard', exit 1): the same words as unticked
+    stub_enumeration(window, monkeypatch, [])
+    window._discovery.tag = "pyex"
+    window.dry_run_objects.setChecked(True)
+
+    window._download_results_action()
+
+    assert captured == []
+    assert "No objects match 'pyex*'" in window.log_output.toPlainText()
+
+
+def test_a_dry_run_whose_listing_fails_runs_all_the_same(window, captured, monkeypatch):
+    # The dry run itself then says why
+    stub_enumeration(window, monkeypatch, None)
     window._discovery.tag = "pyex"
     window.dry_run_objects.setChecked(True)
 

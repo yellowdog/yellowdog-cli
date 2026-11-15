@@ -611,10 +611,31 @@ def test_delete_dry_run_skips_confirmation(window, captured, monkeypatch):
         "_confirm_destructive",
         lambda *a, **k: Confirmation(proceed=False, handles=None),
     )
+    listed: list = []
+    monkeypatch.setattr(
+        window,
+        "_capture_dry_run_objects",
+        lambda command, extra_args: (
+            listed.append((command, extra_args))
+            or [ObjectSummary(path="my-tag/a", name="a", is_dir=False)]
+        ),
+    )
     window._discovery.tag = "my-tag"
     window.dry_run_objects.setChecked(True)
     window._delete_objects_action()
+    assert listed == [("yd data delete", ["-R", "my-tag*"])], "listed for first"
     assert captured == [("yd data delete", ["-Ry", "my-tag*", "-D"])]
+
+
+def test_a_delete_dry_run_matching_nothing_says_so(window, captured, monkeypatch):
+    monkeypatch.setattr(
+        window, "_capture_dry_run_objects", lambda command, extra_args: []
+    )
+    window._discovery.tag = "my-tag"
+    window.dry_run_objects.setChecked(True)
+    window._delete_objects_action()
+    assert captured == []
+    assert "No objects match 'my-tag*'" in window.log_output.toPlainText()
 
 
 def test_delete_bypass_logs_the_suppression(window, captured, monkeypatch):

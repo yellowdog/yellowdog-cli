@@ -682,7 +682,7 @@ file, choosing which ones first</string>
          <string>Report what would be downloaded or deleted, without doing either</string>
         </property>
         <property name="text">
-         <string>Dry-Run Download/Deletion</string>
+         <string>Dry Run Download/Deletion</string>
         </property>
        </widget>
       </item>

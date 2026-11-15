@@ -12,6 +12,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **Resubmit Tasks…** in the Work panel runs `yd workrequirement resubmit` on a Work Requirement chosen from those in scope whose Tasks did not all complete, resubmitting the failed, aborted or cancelled Tasks as ticked in its dialog, with the panel's Dry Run and Follow Progress.
 - **YellowDog IDs in the Command Output are orange**, as in a terminal.
+- **A dry run download or deletion matching nothing says so calmly**, as the action does without Dry Run: `No objects match '…'`, where it reported a failure (exit 1). The checkbox is now **Dry Run Download/Deletion**.
 - **Zoom the Command Output**: Cmd+= and Cmd+− (Ctrl on Windows and Linux) change its text size, Cmd+0 resets it, and the size is remembered.
 - **Table outlines in the Command Output are a muted blue**, so a table's content stands out.
 - **Each command's `Executing:` line is bold**, a heading for its output.
@@ -27,7 +28,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **Stop one command** from its output: right-click any of its lines and choose **Stop Process …**. It is asked to finish, made to after two seconds, and listed as *stopped*.
 - **Jump to the end of the Command Output**: scrolled up, a **↓** button in the window's bottom-right corner, or **Jump to End** in its right-click menu, returns to the end and follows new output again.
 - **The command history's buttons are labelled ← and →**, in place of `<` and `>`.
-- **The destructive actions' buttons are labelled in red**: Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, Terminate Compute Requirements and Delete Matching Objects, in a lighter red in Dark Mode. Delete Matching Objects moves to the bottom of the Results panel, below Browse Results Directory, and the Dry-Run Download/Deletion checkbox sits directly below Download Matching Objects.
+- **The destructive actions' buttons are labelled in red**: Cancel Work Requirements, Cancel & Abort, Shutdown Worker Pools, Terminate Compute Requirements and Delete Matching Objects, in a lighter red in Dark Mode. Delete Matching Objects moves to the bottom of the Results panel, below Browse Results Directory, and the Dry Run Download/Deletion checkbox sits directly below Download Matching Objects.
 - **The Dry Run and Follow Progress checkboxes share a row**, directly below Submit and Provision in the Work and Compute panels, relabelled from *Dry Run Work Requirement Submission*, *Follow Work Requirement Progress* and their Worker Pool counterparts, which makes room for the new button with the window barely taller.
 
 ## 15.13.0 — 2026-11-14
