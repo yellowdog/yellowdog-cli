@@ -48,6 +48,7 @@ from yellowdog_cli.commander.output_model import (
     ENDED_FAILED_MARK,
     ENDED_OK_MARK,
     ENDED_STOPPED_MARK,
+    EXECUTING,
     JSON_BRACKET,
     JSON_KEY,
     JSON_LITERAL,
@@ -153,7 +154,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     displayed; and, as the CLI colours them in a terminal, the pieces of a
     line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
     the YellowDog IDs (YDID_HIGHLIGHT_RE); and, muted, every other line's
-    time-and-PID prefix. A highlighter, not
+    time-and-PID prefix, and in bold, the message of the line announcing
+    each command (EXECUTING). A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -169,6 +171,8 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._states = self._formats(STATE_STYLES)
         self._ydid = QTextCharFormat()
         self._prefix = QTextCharFormat()
+        self._heading = QTextCharFormat()
+        self._heading.setFontWeight(QFont.Weight.Bold)
         self.set_dark(False)
 
     @staticmethod
@@ -234,8 +238,11 @@ class OutputHighlighter(QSyntaxHighlighter):
         elif message.startswith(f"{ENDED_OK_MARK} "):
             self.setFormat(0, len(text), self._ok)
         else:
-            if len(message) < len(text):
-                self.setFormat(0, len(text) - len(message), self._prefix)
+            prefix_length = len(text) - len(message)
+            if prefix_length:
+                self.setFormat(0, prefix_length, self._prefix)
+            if message.startswith(EXECUTING):
+                self.setFormat(prefix_length, len(message), self._heading)
             for start, length, kind in json_tokens(text):
                 self.setFormat(start, length, self._json[kind])
             for pattern in HIGHLIGHTED_STATES:

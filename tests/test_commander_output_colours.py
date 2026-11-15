@@ -11,7 +11,7 @@ qt_guard.require_qt()
 
 import gui_harness
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QTextDocument
+from PyQt6.QtGui import QColor, QFont, QTextDocument
 from PyQt6.QtWidgets import QApplication
 
 from yellowdog_cli.commander.commander import YellowDogApp
@@ -131,7 +131,7 @@ def test_a_marker_only_counts_at_the_start_of_the_message(window):
     for line in (echo, bare):
         window._output.log(line, prefix=False)
     QApplication.processEvents()
-    assert message_is_plain(window, echo)
+    assert ERROR_RGB_LIGHT not in colours_of(window, echo).values()
     assert colour_of(window, bare) == WARNING_RGB_LIGHT
 
 
@@ -380,3 +380,49 @@ def test_the_prefix_in_dark_mode(window):
     finally:
         window._dark_mode_action(Qt.CheckState.Unchecked)
         QApplication.processEvents()
+
+
+# --- The Executing line ----------------------------------------------------
+
+
+def weights_of(window, text: str) -> dict[str, int]:
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    layout = block.layout()
+    assert layout is not None
+    return {
+        block.text()[p.start : p.start + p.length]: p.format.fontWeight()
+        for p in layout.formats()
+    }
+
+
+def test_the_executing_line_is_a_bold_heading(window):
+    line = "2026-11-15 12:01:10 (089554) : Executing: 'yd list' in directory '/tmp'"
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    weights = weights_of(window, line)
+    assert weights["Executing: 'yd list' in directory '/tmp'"] == QFont.Weight.Bold
+    assert colours_of(window, line)["2026-11-15 12:01:10 (089554) : "] == (
+        PREFIX_RGB_LIGHT
+    ), "the prefix stays muted"
+
+
+def test_commanders_own_executing_line_is_the_one_made_bold(qapp, monkeypatch):
+    # The line Commander writes, not a sample of it: the two share EXECUTING
+    import sys
+
+    window = YellowDogApp()
+    gui_harness.shown(window)
+    try:
+        window._run_command_in_subprocess(
+            sys.executable, ["-c", "pass"], yd_command=False
+        )
+        QApplication.processEvents()
+        executing = next(
+            e.text for e in window._output._output_entries if "Executing: " in e.text
+        )
+        assert QFont.Weight.Bold in weights_of(window, executing).values()
+    finally:
+        window.shutdown()
+        window.close()

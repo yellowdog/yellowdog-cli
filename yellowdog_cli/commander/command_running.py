@@ -16,6 +16,7 @@ from PyQt6.QtCore import (
 
 from yellowdog_cli.commander.host import cli_program
 from yellowdog_cli.commander.output_model import (
+    EXECUTING,
     OutputRun,
     message_prefix,
 )
@@ -290,7 +291,7 @@ class CommandRunning(WindowBase):
         # Part of the command's run, although printed by Commander with its own
         # PID, since it is the line saying what the command was
         self._output.log(
-            f"Executing: '{run.command_line}' in directory '{self._working_dir()}'",
+            f"{EXECUTING}'{run.command_line}' in directory '{self._working_dir()}'",
             run=run.run_id,
             announcement=True,
         )

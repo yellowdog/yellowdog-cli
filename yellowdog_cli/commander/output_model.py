@@ -317,6 +317,10 @@ def message_prefix(pid: int) -> str:
     return f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ({pid:06d}) : "
 
 
+# How the line announcing each command Commander runs begins: the output
+# window shows its message in bold, so each command's output has a heading
+EXECUTING = "Executing: "
+
 # The prefix of a message, with or without the PID ('--pp')
 MESSAGE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} (?:\(\d+\) )?: ")
 
