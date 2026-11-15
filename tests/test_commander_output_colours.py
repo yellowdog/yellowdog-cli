@@ -31,6 +31,8 @@ from yellowdog_cli.commander.output_pane import (
     PREFIX_RGB_DARK,
     PREFIX_RGB_LIGHT,
     STATE_STYLES,
+    TABLE_OUTLINE_RGB_DARK,
+    TABLE_OUTLINE_RGB_LIGHT,
     WARNING_RGB_DARK,
     WARNING_RGB_LIGHT,
     YDID_RGB_DARK,
@@ -426,3 +428,36 @@ def test_commanders_own_executing_line_is_the_one_made_bold(qapp, monkeypatch):
     finally:
         window.shutdown()
         window.close()
+
+
+# --- Table outlines --------------------------------------------------------
+
+
+def test_a_tables_outline_is_muted_blue_and_its_content_is_not(window):
+    rows = ("┌─────┬────────┐", "│   1 │ render │", "└─────┴────────┘")
+    for row in rows:
+        window._output.log(row, prefix=False)
+    QApplication.processEvents()
+    assert colours_of(window, rows[0]) == {rows[0]: TABLE_OUTLINE_RGB_LIGHT}
+    middle = colours_of(window, rows[1])
+    assert middle == {"│": TABLE_OUTLINE_RGB_LIGHT}, "the bars alone, not 'render'"
+
+
+def test_the_outline_in_dark_mode(window):
+    row = "┌─────┬────────┐"
+    window._output.log(row, prefix=False)
+    QApplication.processEvents()
+    try:
+        window._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        assert colours_of(window, row) == {row: TABLE_OUTLINE_RGB_DARK}
+    finally:
+        window._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+def test_the_outline_is_the_one_the_cli_colours():
+    from yellowdog_cli.utils import printing
+    from yellowdog_cli.utils.output_style import TABLE_OUTLINE_CHARS
+
+    assert printing.PrintTableHighlighter.table_outline_chars == TABLE_OUTLINE_CHARS

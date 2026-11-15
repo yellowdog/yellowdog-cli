@@ -89,6 +89,10 @@ _STATES_BY_STYLE: dict[str, tuple[str, ...]] = {
         "UPLOADING",
     ),
 }
+# The box-drawing characters of a table's outline (tabulate's
+# 'simple_outline'), which the CLI's table highlighter, and Commander's output
+# window, colour apart from the table's content
+TABLE_OUTLINE_CHARS = "┌─┬│┼┐┤└┴┘├"
 HIGHLIGHTED_STATES = [
     re.compile(
         rf"\b(?P<{style}>{'|'.join(re.escape(state) for state in sorted(states, key=len, reverse=True))})\b"

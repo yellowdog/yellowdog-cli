@@ -39,6 +39,7 @@ from yellowdog_cli.utils.output_style import (
     HIGHLIGHTED_STATES,
     JSON_INDENT,
     MAX_LINES_COLOURED_JSON,
+    TABLE_OUTLINE_CHARS,
     WARNING_MARKER,
     WARNING_STYLE,
 )
@@ -114,7 +115,7 @@ class PrintTableHighlighter(RegexHighlighter):
     """
 
     base_style = "pyexamples."
-    table_outline_chars = "┌─┬│┼┐┤└┴┘├"
+    table_outline_chars = TABLE_OUTLINE_CHARS
     # '+', not '*', which also matched the empty string at every position
     highlights = [  # type: ignore[assignment]  # noqa: RUF012
         re.compile(rf"(?P<table_outline>[{table_outline_chars}]+)"),

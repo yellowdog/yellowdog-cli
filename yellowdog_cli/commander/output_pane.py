@@ -72,6 +72,7 @@ from yellowdog_cli.commander.selection import (
 from yellowdog_cli.utils.output_style import (
     ERROR_MARKER,
     HIGHLIGHTED_STATES,
+    TABLE_OUTLINE_CHARS,
     WARNING_MARKER,
 )
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid_type
@@ -144,6 +145,11 @@ YDID_RGB_DARK = (250, 150, 70)
 # every line of a long run, the CLI's bold blue for it would be noise
 PREFIX_RGB_LIGHT = (140, 140, 140)
 PREFIX_RGB_DARK = (120, 120, 120)
+# A table's outline, in a muted version of the CLI's blue for it, so the
+# table's content stands out from its grid
+TABLE_OUTLINE_RGB_LIGHT = (95, 130, 170)
+TABLE_OUTLINE_RGB_DARK = (85, 115, 150)
+TABLE_OUTLINE = re.compile(rf"[{TABLE_OUTLINE_CHARS}]+")
 
 
 class OutputHighlighter(QSyntaxHighlighter):
@@ -154,8 +160,8 @@ class OutputHighlighter(QSyntaxHighlighter):
     displayed; and, as the CLI colours them in a terminal, the pieces of a
     line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
     the YellowDog IDs (YDID_HIGHLIGHT_RE); and, muted, every other line's
-    time-and-PID prefix, and in bold, the message of the line announcing
-    each command (EXECUTING). A highlighter, not
+    time-and-PID prefix and a table's outline (TABLE_OUTLINE_CHARS), and in
+    bold, the message of the line announcing each command (EXECUTING). A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
@@ -171,6 +177,7 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._states = self._formats(STATE_STYLES)
         self._ydid = QTextCharFormat()
         self._prefix = QTextCharFormat()
+        self._outline = QTextCharFormat()
         self._heading = QTextCharFormat()
         self._heading.setFontWeight(QFont.Weight.Bold)
         self.set_dark(False)
@@ -222,6 +229,9 @@ class OutputHighlighter(QSyntaxHighlighter):
         self._prefix.setForeground(
             QColor(*(PREFIX_RGB_DARK if is_dark else PREFIX_RGB_LIGHT))
         )
+        self._outline.setForeground(
+            QColor(*(TABLE_OUTLINE_RGB_DARK if is_dark else TABLE_OUTLINE_RGB_LIGHT))
+        )
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
@@ -245,6 +255,10 @@ class OutputHighlighter(QSyntaxHighlighter):
                 self.setFormat(prefix_length, len(message), self._heading)
             for start, length, kind in json_tokens(text):
                 self.setFormat(start, length, self._json[kind])
+            for match in TABLE_OUTLINE.finditer(text):
+                self.setFormat(
+                    match.start(), match.end() - match.start(), self._outline
+                )
             for pattern in HIGHLIGHTED_STATES:
                 for match in pattern.finditer(text):
                     style = str(match.lastgroup)
