@@ -12,11 +12,12 @@ import os
 from collections.abc import Callable
 from typing import cast
 
-from PyQt6.QtCore import QFileSystemWatcher, Qt, QTimer
+from PyQt6.QtCore import QEvent, QFileSystemWatcher, QObject, Qt, QTimer
 from PyQt6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QKeyEvent,
     QKeySequence,
     QResizeEvent,
     QShortcut,
@@ -150,13 +151,10 @@ class FileViewer(QDialog):
         self.find_field = QLineEdit(self)
         self.find_field.setPlaceholderText(FIND_PLACEHOLDER)
         self.find_field.setClearButtonEnabled(True)
-        self.find_field.returnPressed.connect(self.find_next)
-        QShortcut(
-            QKeySequence("Shift+Return"),
-            self.find_field,
-            self.find_previous,
-            context=Qt.ShortcutContext.WidgetShortcut,
-        )
+        # Return and Enter find (Shift going back), handled by the field
+        # itself: a QLineEdit hands them on to the dialog after
+        # 'returnPressed', which would press the dialog's default button
+        self.find_field.installEventFilter(self)
         QShortcut(QKeySequence.StandardKey.Find, self, self._focus_find)
         self.status = QLabel(self)
         self.status.hide()
@@ -172,9 +170,14 @@ class FileViewer(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
         self.open_button = QPushButton(OPEN_IN_EDITOR, self)
-        # Return in the Find field finds; it must not open the editor
-        self.open_button.setAutoDefault(False)
         buttons.addButton(self.open_button, QDialogButtonBox.ButtonRole.ActionRole)
+        # No default button, so that Return closes nothing and opens nothing
+        # (a dialog's push buttons are autoDefault, and the one focused, or
+        # else the first, would take Return); Esc still closes it
+        for button in buttons.buttons():
+            if isinstance(button, QPushButton):
+                button.setAutoDefault(False)
+                button.setDefault(False)
         self.open_button.clicked.connect(lambda: open_file(self.path))
         buttons.rejected.connect(self.close)
 
@@ -191,6 +194,24 @@ class FileViewer(QDialog):
         self._reload_timer.timeout.connect(self.load)
         self._watcher = QFileSystemWatcher([path], self)
         self._watcher.fileChanged.connect(self._reload_timer.start)
+
+    def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        """
+        Return or Enter in the Find field finds the next match, or with Shift
+        the previous, and goes no further.
+        """
+        if (
+            a0 is self.find_field
+            and isinstance(a1, QKeyEvent)
+            and a1.type() == QEvent.Type.KeyPress
+            and a1.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+        ):
+            if a1.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                self.find_previous()
+            else:
+                self.find_next()
+            return True
+        return super().eventFilter(a0, a1)
 
     def resizeEvent(self, a0: QResizeEvent | None) -> None:
         super().resizeEvent(a0)

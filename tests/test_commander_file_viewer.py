@@ -14,8 +14,10 @@ import qt_guard
 qt_guard.require_qt()
 
 import gui_harness
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QTextDocument
-from PyQt6.QtWidgets import QApplication, QPlainTextEdit
+from PyQt6.QtTest import QTest
+from PyQt6.QtWidgets import QApplication, QPlainTextEdit, QPushButton
 
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.file_viewer import (
@@ -268,8 +270,26 @@ def test_a_file_replaced_by_an_editor_is_still_watched(window, config, tmp_path)
     for team in ("team-b", "team-c"):
         replacement = tmp_path / "config.toml.new"
         replacement.write_text(CONFIG_TEXT.replace("team-a", team), encoding="utf-8")
-        os.replace(replacement, config)
+        replace_as_an_editor_does(replacement, config)
         wait_for(lambda team=team: team in viewer.text.toPlainText())
+
+
+def replace_as_an_editor_does(source, destination, timeout: float = 5.0) -> None:
+    """
+    Replace 'destination' with 'source', trying again for a while where
+    Windows refuses (another process, such as a virus scanner, has the file
+    open for a moment), as an editor saving does.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if time.monotonic() > deadline:
+                raise
+            QApplication.processEvents()
+            time.sleep(0.05)
 
 
 def test_a_file_gone_is_said_and_its_text_kept(window, config):
@@ -302,10 +322,10 @@ def test_find_says_when_there_is_none(window, config):
     assert viewer.status.isVisible() and viewer.status.text() == NOT_FOUND
 
 
-def test_return_in_find_does_not_open_the_editor(window, config):
+def test_no_button_takes_return(window, config):
     viewer = show_config(window)
-    assert not viewer.open_button.autoDefault()
-    assert not viewer.open_button.isDefault()
+    for button in viewer.findChildren(QPushButton):
+        assert not button.autoDefault() and not button.isDefault(), button.text()
 
 
 def test_open_in_editor_opens_the_file(window, config, monkeypatch):
@@ -364,3 +384,36 @@ def test_a_long_path_is_elided_rather_than_widening_the_window(
     assert viewer.path_label.text().startswith("…")
     assert viewer.path_label.text().endswith(f"{os.sep}config.toml")
     assert viewer.path_label.toolTip() == str(path)
+
+
+@pytest.mark.parametrize(
+    "key, modifier",
+    [
+        (Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier),
+        (Qt.Key.Key_Enter, Qt.KeyboardModifier.KeypadModifier),
+        (Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier),
+    ],
+)
+def test_return_in_find_finds_and_keeps_the_window_open(window, config, key, modifier):
+    viewer = show_config(window)
+    viewer.find_field.setFocus()
+    QTest.keyClicks(viewer.find_field, "team")
+    QTest.keyClick(viewer.find_field, key, modifier)
+    QApplication.processEvents()
+    assert viewer.isVisible()
+    assert viewer.text.textCursor().selectedText().lower() == "team"
+
+
+def test_return_in_the_text_keeps_the_window_open(window, config):
+    viewer = show_config(window)
+    viewer.text.setFocus()
+    QTest.keyClick(viewer.text, Qt.Key.Key_Return)
+    QApplication.processEvents()
+    assert viewer.isVisible()
+
+
+def test_escape_closes_it(window, config):
+    viewer = show_config(window)
+    QTest.keyClick(viewer.text, Qt.Key.Key_Escape)
+    QApplication.processEvents()
+    assert window._file_viewers == {}

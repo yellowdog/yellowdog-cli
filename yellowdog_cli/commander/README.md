@@ -500,7 +500,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 
 **Saving.** The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another. There is nothing to save when the window is empty.
 
-**The file windows.** Each file opens in one window: showing it again brings that window forward. The text is coloured, the configuration file and any `.toml` file as TOML, the others as JSON. It is read again when the file changes on disk, keeping your place. **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous, and **Open in Editor** opens the file in the default application for its type. The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode. The output window notes each file shown.
+**The file windows.** Each file opens in one window: showing it again brings that window forward. The text is coloured, the configuration file and any `.toml` file as TOML, the others as JSON. It is read again when the file changes on disk, keeping your place. **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous, Esc closes the window, and **Open in Editor** opens the file in the default application for its type. The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode. The output window notes each file shown.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
