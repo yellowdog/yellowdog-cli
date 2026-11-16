@@ -431,3 +431,75 @@ def toml_tokens(text: str) -> list[tuple[int, int, str]]:
         (match.start(), match.end() - match.start(), str(match.lastgroup))
         for match in _TOML_TOKEN.finditer(text)
     ]
+
+
+# The pieces of a Jsonnet line the file viewer colours beyond JSON's kinds
+# and TOML_COMMENT: 'local', 'function', 'self' and the rest
+JSONNET_KEYWORD = "keyword"
+# The state a Jsonnet line ends in, which the next line starts in: outside
+# anything, inside a '/* */' comment, or inside a '|||' text block
+JSONNET_NORMAL = 0
+JSONNET_IN_COMMENT = 1
+JSONNET_IN_TEXT_BLOCK = 2
+
+_JSONNET_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
+_JSONNET_STRING = r"""@?"(?:[^"\\]|\\.)*"|@?'(?:[^'\\]|\\.)*'"""
+_JSONNET_KEYWORDS = (
+    "assert|else|error|for|function|if|import|importbin|importstr|in|local"
+    "|self|super|tailstrict|then"
+)
+# Scanned left to right, so a '//' or ':' inside a string is the string's. A
+# field's name is a key where a field separator (':', '::', ':::', with or
+# without '+') follows it
+_JSONNET_TOKEN = re.compile(
+    rf"(?P<comment>(?://|\#).*$|/\*.*?\*/)"
+    rf"|(?P<open_comment>/\*.*$)"
+    rf"|(?P<text_block>\|\|\|)"
+    rf"|(?P<key>(?:{_JSONNET_IDENTIFIER}|{_JSONNET_STRING}))(?=\s*\+?:{{1,3}}(?!:))"
+    rf"|(?P<string>{_JSONNET_STRING})"
+    rf"|(?P<keyword>\b(?:{_JSONNET_KEYWORDS})\b|\$)"
+    rf"|(?P<literal>\b(?:true|false|null)\b)"
+    rf"|(?P<number>(?<![\w.]){_JSON_NUMBER}(?![\w.]))"
+    rf"|(?P<bracket>[\[\]{{}}()])"
+)
+
+
+def jsonnet_tokens(text: str, state: int) -> tuple[list[tuple[int, int, str]], int]:
+    """
+    The pieces of a line of a Jsonnet file to colour, as (start, length,
+    kind) -- a key (a field's name), a string, a keyword, a literal, a
+    number, a bracket, a comment (TOML_COMMENT) -- and the state the line
+    ends in. 'state' is the one the line before ended in (JSONNET_NORMAL for
+    the first), so a '/* */' comment or a '|||' text block over several
+    lines is coloured throughout: the viewer shows every line, so it can
+    carry it, where the output window, filtering lines, cannot.
+    """
+    tokens: list[tuple[int, int, str]] = []
+    position = 0
+    if state == JSONNET_IN_COMMENT:
+        end = text.find("*/")
+        if end < 0:
+            return ([(0, len(text), TOML_COMMENT)] if text else []), state
+        position = end + 2
+        tokens.append((0, position, TOML_COMMENT))
+        state = JSONNET_NORMAL
+    elif state == JSONNET_IN_TEXT_BLOCK:
+        closing = re.match(r"\s*\|\|\|", text)
+        if closing is None:
+            return ([(0, len(text), JSON_STRING)] if text else []), state
+        position = closing.end()
+        tokens.append((closing.end() - 3, 3, JSON_STRING))
+        state = JSONNET_NORMAL
+    for match in _JSONNET_TOKEN.finditer(text, position):
+        kind = str(match.lastgroup)
+        start, length = match.start(), match.end() - match.start()
+        if kind == "open_comment":
+            tokens.append((start, length, TOML_COMMENT))
+            return tokens, JSONNET_IN_COMMENT
+        if kind == "text_block":
+            # What follows the opening '|||' on its line ('-' to chomp) is
+            # part of it; the block's text is the lines below
+            tokens.append((start, len(text) - start, JSON_STRING))
+            return tokens, JSONNET_IN_TEXT_BLOCK
+        tokens.append((start, length, TOML_COMMENT if kind == "comment" else kind))
+    return tokens, state
