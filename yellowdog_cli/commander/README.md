@@ -72,7 +72,7 @@ Its object actions — downloading, deleting and listing the objects your Tasks 
 
 Commander is supported on a best-effort basis: report a problem with it through the same channel as one with the CLI, with the output window's contents if you can (**Save Command Output** writes them to a file). The commands it runs are the CLI's own, and are fully supported.
 
-![YellowDog Commander on macOS](screenshots/screenshot_macos.png)
+![YellowDog Commander on macOS, with the configuration file open in a window of its own](screenshots/screenshot_macos.png)
 
 ## Installation
 
