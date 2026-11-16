@@ -4,6 +4,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`--validate` with no specification file checks `[dataClient]` too**, for `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate`, since its values are the `{{dataClient.*}}` variables those commands substitute: a mistake there, which was only warned of, now fails the check (exit code 1).
+
 ### Commander
 
 - **Reset the window's appearance**: Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back to its default size and place, with Dark Mode following the system and the default output text size; `yd commander --reset-appearance` opens it that way.
@@ -18,7 +24,6 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`yd resource rename`** renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its ID, so what refers to it by ID is unaffected: `yd resource rename --type Group render-team render-artists`, or by ID without `--type`. A name already taken is refused, and `--dry-run` and `--json` are taken.
 - **An Allowance specification's `id` replaces that one Allowance**: `yd resource create` creates the new Allowance and then removes the one the `id` names, without `-M`; an `id` that finds no Allowance fails (exit code 6) and creates nothing. `yd resource remove` removes the Allowance an `id` names, and `yd resource plan` lists it.
 - **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [dataClient], [workRequirement] valid against the config schema; [workerPool] not read by this command`, naming only the sections the file has, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.
-- **`--validate` with no specification file checks `[dataClient]` too**, for `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate`: its values are the `{{dataClient.*}}` variables those commands substitute.
 
 ## 15.14.0 — 2026-11-15
 
