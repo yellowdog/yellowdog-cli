@@ -269,6 +269,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         # Help: the button, the platform's help key (Cmd+? on macOS, F1
         # elsewhere) and F1 everywhere, all opening the one modeless dialog
         self._help_dialog: HelpDialog | None = None
+        # The open file viewers, by absolute path (_display_file())
+        self._file_viewers = {}
         self.show_help.clicked.connect(self._show_help_action)
         help_keys = QKeySequence.keyBindings(QKeySequence.StandardKey.HelpContents)
         for key in {*help_keys, QKeySequence(Qt.Key.Key_F1)}:
@@ -458,6 +460,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         size = max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, size))
         self._output_font.setPointSize(size)
         self.log_output.setFont(self._output_font)
+        self._restyle_file_viewers()
         file_dialogs.dialog_settings().setValue(SETTING_OUTPUT_FONT_SIZE, size)
 
     @staticmethod
@@ -483,6 +486,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._forget_appearance()
         self._output_font.setPointSize(OUTPUT_FONT_SIZE)
         self.log_output.setFont(self._output_font)
+        self._restyle_file_viewers()
         # The system's appearance, not the one Dark Mode set the application
         # to, which the style hints report until handed back to the system;
         # then setChecked(), not a click, so it is not remembered as a choice
@@ -965,7 +969,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if not self._check_config_file():
             return
         self._display_file(
-            cast(str, self._config_file), "configuration file", toml=True
+            cast(str, self._config_file), "configuration file", is_config=True
         )
 
     def _deselect_files_action(self):
@@ -1126,6 +1130,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self.setStyleSheet("")
         self._colour_destructive_buttons(is_dark)
         self._output.set_dark(is_dark)
+        self._restyle_file_viewers()
 
     def _show_help_action(self):
         """

@@ -485,8 +485,8 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 ## Utility Actions
 
 - **Browse Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
-- **Show Config** — prints the contents of the selected configuration file to the Command Output window.
-- **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
+- **Show Config** — opens the selected configuration file in a window of its own, which can stay open beside the main window while you work.
+- **Show WR JSON** / **Show WP JSON** — open the Work Requirement / Worker Pool definition file in a window of its own (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
 - **Dark Mode** — toggle between light and dark appearance.
@@ -499,6 +499,8 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 **Copy, Save and Clear while filtered.** While the output is [filtered](#filtering-the-command-output), Copy and Save take only the lines shown. Clear clears everything and ends the filter by process, keeping the text filter.
 
 **Saving.** The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another. There is nothing to save when the window is empty.
+
+**The file windows.** Each file opens in one window: showing it again brings that window forward. The text is coloured, the configuration file and any `.toml` file as TOML, the others as JSON. It is read again when the file changes on disk, keeping your place. **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous, and **Open in Editor** opens the file in the default application for its type. The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode. The output window notes each file shown.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
@@ -550,7 +552,7 @@ The output is coloured so that what matters stands out in a long run, much as th
 | A line in green | `✓ … finished (exit 0)`, at the end of a command that succeeded |
 | A word in red, green, blue, grey or orange | A status: `FAILED`, `COMPLETED`, `RUNNING` or `EXECUTING`, `CANCELLED`, and transitional ones such as `STARVED` |
 | Orange text | A YellowDog ID, which you can right-click (see [Acting on IDs in the Output](#acting-on-ids-in-the-output)) |
-| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output; or the configuration file, shown by **Show Config**, with its `[section]` headings bold and its comments grey |
+| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output |
 | A bold line | `Executing:`, announcing each command: a heading for its output |
 
 #### Reading Details
@@ -562,8 +564,6 @@ The output is coloured so that what matters stands out in a long run, much as th
 **Tables.** A table's outline is a muted blue, so its content stands out from the grid.
 
 **JSON, line by line.** Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too. `true`, `false` and `null` are magenta, where the CLI makes `false` red, which here would read as an error.
-
-**The configuration file.** Only **Show Config**'s output is coloured as TOML, so text in a command's output that looks like `name = value` is left alone. Each line is judged on its own, as JSON's are, so the lines inside a multi-line `"""` string are coloured as if they were TOML.
 
 **What counts as nothing found.** A message starting `No `, after its prefix; a task's own output starting so is not one.
 

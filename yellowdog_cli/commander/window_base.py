@@ -32,6 +32,7 @@ from yellowdog_cli.commander.arguments import QuotingError, split_arguments
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
 from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.file_dialogs import FileDialogs
+from yellowdog_cli.commander.file_viewer import FileViewer, language_of
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import path_would_be_globbed
 from yellowdog_cli.utils.command_registry import (
@@ -164,7 +165,9 @@ class WindowBase(QMainWindow):
     # Set up by the window's __init__ (commander.py)
     _confirmations_disabled: bool
     _font: QFont
+    _output_font: QFont
     _file_dialogs: FileDialogs
+    _file_viewers: dict[str, FileViewer]
     _output: OutputPane
     _config_file: str | None
     _wr_file: str | None
@@ -565,21 +568,48 @@ class WindowBase(QMainWindow):
         except OSError as e:  # On Windows, a file with no application for its type
             self._output.log(f"Cannot open '{file_name}': {e}")
 
-    def _display_file(self, path: str, description: str, toml: bool = False):
+    def _display_file(self, path: str, description: str, is_config: bool = False):
         """
-        Show a file's text in the output window, coloured as TOML where 'toml'
-        says it is, or say why it cannot be read (gone, unreadable, not
-        UTF-8): an exception escaping a button's slot would abort the whole
-        application.
+        Show a file in a viewer of its own (FileViewer), raising the one
+        showing it already, or say in the output window why it cannot be
+        read (gone, unreadable, not UTF-8): an exception escaping a button's
+        slot would abort the whole application. A configuration file is
+        coloured as TOML, as is a file named '.toml', and any other as JSON.
         """
-        try:
-            with open(path, encoding="utf-8") as f:
-                text = f.read()
-        except (OSError, UnicodeDecodeError) as e:
-            self._output.log(f"Cannot open {description} '{path}': {e}")
-            return
-        self._output.log(f"Displaying contents of '{path}':\n")
-        self._output.log(text, prefix=False, toml=toml)
+        key = abspath(path)
+        viewer = self._file_viewers.get(key)
+        if viewer is None:
+            viewer = FileViewer(
+                self,
+                key,
+                description,
+                language_of(key, is_config),
+                self._output_font,
+                self.dark_mode.isChecked(),
+                lambda file: self._file_dialogs.open_with_default_application(file),
+            )
+            error = viewer.load()
+            if error is not None:
+                self._output.log(f"Cannot open {description} '{path}': {error}")
+                viewer.deleteLater()
+                return
+            self._file_viewers[key] = viewer
+            viewer.finished.connect(lambda *_: self._file_viewers.pop(key, None))
+            self._output.log(f"Showing {description} '{path}' in its own window")
+        else:
+            viewer.load()
+        viewer.show()
+        viewer.raise_()
+        viewer.activateWindow()
+
+    def _restyle_file_viewers(self) -> None:
+        """
+        Give the open viewers the output window's text size and the
+        appearance, after either changes.
+        """
+        for viewer in self._file_viewers.values():
+            viewer.set_font(self._output_font)
+            viewer.set_dark(self.dark_mode.isChecked())
 
 
 def _before_end_of_options(args: list[str], options: list[str]) -> list[str]:

@@ -251,9 +251,6 @@ class OutputEntry:
     # of Commander's own messages: Commander prints it, with Commander's PID, so
     # a user reading the PID on it can mean either.
     announcement: bool = False
-    # A TOML document (Show Config's configuration file), coloured by
-    # toml_tokens() in place of the rules for a command's output
-    toml: bool = False
 
     @property
     def lines(self) -> int:
@@ -382,7 +379,7 @@ def json_tokens(text: str) -> list[tuple[int, int, str]]:
     ]
 
 
-# The pieces of a TOML line the output window colours beyond JSON's kinds
+# The pieces of a TOML line the file viewer colours beyond JSON's kinds
 TOML_TABLE = "table"  # a [table] or [[array of tables]] heading
 TOML_COMMENT = "comment"
 
