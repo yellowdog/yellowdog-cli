@@ -673,6 +673,12 @@ The Configured Worker Pool models can be found in the Scheduler API at: https://
 }
 ```
 
+A pool needs only its `name` and `namespace`, which can be given on the command line in place of a file; the Platform sets `targetNodeCount` to 1:
+
+```bash
+yd resource create --type ConfiguredWorkerPool --set name=render-onprem --set namespace=image-processing
+```
+
 `yd resource create` reports the pool's token when it creates the pool, and `yd show --show-token` shows it. It can be refreshed or regenerated with [`yd workerpool token`](commands.md#yd-workerpool-token). The token never expires unless `tokenTtl` is given, as an ISO 8601 duration alongside `name` and `namespace` (`"tokenTtl": "PT720H"` for 30 days).
 
 A Configured Worker Pool cannot be updated: `yd resource create` adds a new pool each time. `yd resource remove` shuts the pool down rather than deleting it.
