@@ -201,6 +201,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-status",
             "yd-resource-plan",
             "yd-resource-export",
+            "yd-resource-rename",
             "yd-resubmit",
         }
 
@@ -506,6 +507,7 @@ class TestToolKinds:
             "yd-wait",
             "yd-follow",
             "yd-resubmit",
+            "yd-resource-rename",
         }
 
     def test_a_command_must_state_its_kind(self):

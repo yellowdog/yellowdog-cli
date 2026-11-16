@@ -9,7 +9,7 @@
    * [The Compiled-Schema Cache](#the-compiled-schema-cache)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 12:22:01 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 10:56:32 GMT 2026 -->
 
 <!--te-->
 
@@ -43,7 +43,7 @@ With `--json`, the result is the array of violations, `[]` for a valid file:
 ]
 ```
 
-The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. Given no specification file, `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate` build what they submit from the configuration file, so `--validate` checks the sections they build from instead (`[common]` and `[workRequirement]`, or `[common]`, `[workerPool]` and `[computeRequirement]`) against the configuration's schema, reporting and exiting the same way. It is refused where there is nothing to check: no specification file and no configuration file, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
+The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. Given no specification file, `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate` build what they submit from the configuration file, so `--validate` checks the sections they build from instead (`[common]`, `[dataClient]` and `[workRequirement]`, or `[common]`, `[dataClient]`, `[workerPool]` and `[computeRequirement]`; `[dataClient]` because its values are the `{{dataClient.*}}` variables) against the configuration's schema, reporting and exiting the same way. The line saying they are valid names only the sections the file has, and its other sections as not read by the command; problems in those are warnings, from the check every command makes as it starts, and leave the exit code alone. It is refused where there is nothing to check: no specification file and no configuration file, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
 
 Since it contacts nothing, `--validate` needs no Application key or secret, so it runs on a machine with none configured, such as a CI job.
 

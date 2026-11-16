@@ -60,7 +60,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 13:23:48 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 15 14:25:50 GMT 2026 -->
 
 <!--te-->
 
@@ -72,7 +72,7 @@ Its object actions — downloading, deleting and listing the objects your Tasks 
 
 Commander is supported on a best-effort basis: report a problem with it through the same channel as one with the CLI, with the output window's contents if you can (**Save Command Output** writes them to a file). The commands it runs are the CLI's own, and are fully supported.
 
-![YellowDog Commander on macOS](screenshots/screenshot_macos.png)
+![YellowDog Commander on macOS, with the configuration file open in a window of its own](screenshots/screenshot_macos.png)
 
 ## Installation
 
@@ -111,7 +111,7 @@ yd commander config.toml -t render-test -v frames=120 -r render.json
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
-Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)).
+Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)), and `--reset-appearance` to open with the window's default size and place, Dark Mode following your system, and the default output text size, forgetting what was remembered of them.
 
 ### Launch Details
 
@@ -128,7 +128,7 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
 
-**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it. `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 
@@ -485,8 +485,8 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 ## Utility Actions
 
 - **Browse Config Directory** — browses the configuration file's directory in the same read-only [file dialog](#file-dialogs); selecting a file opens it in the default application for its type.
-- **Show Config** — prints the contents of the selected configuration file to the Command Output window.
-- **Show WR JSON** / **Show WP JSON** — display the contents of the Work Requirement / Worker Pool definition file (the file selected in Panel 2 or 3, or the one referenced by the configuration).
+- **Show Config** — opens the selected configuration file in a window of its own, which can stay open beside the main window while you work.
+- **Show WR JSON** / **Show WP JSON** — open the Work Requirement / Worker Pool definition file in a window of its own (the file selected in Panel 2 or 3, or the one referenced by the configuration).
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
 - **Dark Mode** — toggle between light and dark appearance.
@@ -499,6 +499,8 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 **Copy, Save and Clear while filtered.** While the output is [filtered](#filtering-the-command-output), Copy and Save take only the lines shown. Clear clears everything and ends the filter by process, keeping the text filter.
 
 **Saving.** The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another. There is nothing to save when the window is empty.
+
+**The file windows.** Each file opens in one window: showing it again brings that window forward. The text is coloured, the configuration file and any `.toml` file as TOML, the others as JSON. It is read again when the file changes on disk, keeping your place. **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous, Esc closes the window, and **Open in Editor** opens the file in the default application for its type. The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode. The output window notes each file shown.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
@@ -569,6 +571,7 @@ The output is coloured so that what matters stands out in a long run, much as th
 
 - **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
 - **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
+- **Reset the window's appearance** — Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back as it first opens: its default size, centred, Dark Mode following your system's appearance, and the Command Output text at its default size. To open Commander that way, launch it with `--reset-appearance`.
 
 ### Filtering the Command Output
 
@@ -582,7 +585,7 @@ The `Executing:` line announcing a command belongs to both. It is about the comm
 
 While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual. Output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*.
 
-To see everything again, in the order it arrived, click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
+To see everything again, in the order it arrived, click **Clear Filters** on the bar, choose **Clear Filters** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
 
 To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return. The dialog lists Commander's own messages and then each command in the order it started, with:
 
@@ -604,7 +607,7 @@ Each line is matched on its own, as `grep` would. A message wrapped onto several
 
 Case is ignored, and the text can fall anywhere in the line. Two characters are wildcards: `*` matches any run of characters and `?` any single one. So `ydid:task:*` finds every line naming a Task, and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
 
-The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
+The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Clear Filters**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
 
 #### Copying and Saving Filtered Output
 
@@ -612,13 +615,15 @@ The text filter works together with the filter by process, so filtering to one c
 
 ### Acting on IDs in the Output
 
-To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**.
+To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**. While a `yd follow` in this window is following the ID, **Stop Following …** takes Follow's place, and stops it.
 
 #### ID Action Details
 
 **Several IDs on a line.** Each gets a submenu of its own, titled by its kind and the ID shortened in the middle, with **Copy ID**, **Show** and **Follow**. The ID you clicked on comes first, and at most five are offered.
 
 **Followed already.** As with **Follow…**, an ID that a command still running in this window is following already is not followed again; the output window says so.
+
+**What Stop Following stops.** It stops the `yd follow` command, as **Stop Process …** would, so a `yd follow` given several IDs stops following all of them. A Submit or Provision with Follow Progress is not stopped this way, since stopping it could cut its submission short; use **Stop Process …** on its output instead.
 
 ### Stopping a Command
 

@@ -33,6 +33,15 @@ RN_ROLE = "Role"
 RN_SOURCE_TEMPLATE = "ComputeSourceTemplate"
 RN_STRING_ATTRIBUTE_DEFINITION = "StringAttributeDefinition"
 RN_UPDATE_APPLICATION_REQUEST = "UpdateApplicationRequest"
+# The resource types 'yd resource rename' renames: those whose name the
+# Platform takes in an update, by ID (checked live). An Image Family's update
+# finds the family by its name, and a Keyring's takes only a description.
+RENAMEABLE_RESOURCE_TYPES = (
+    RN_SOURCE_TEMPLATE,
+    RN_REQUIREMENT_TEMPLATE,
+    RN_GROUP,
+    RN_APPLICATION,
+)
 
 # Entity type names (used as CLI arguments and for dispatch)
 ET_ALLOWANCES = "allowances"

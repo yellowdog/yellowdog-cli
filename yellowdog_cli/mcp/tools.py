@@ -38,6 +38,7 @@ from yellowdog_cli.utils.command_registry import (
     positive_int,
     resolve_cloud_info_type,
     resolve_entity_type,
+    resolve_resource_type,
 )
 from yellowdog_cli.utils.entity_names import CLOUD_INFO_TYPES
 from yellowdog_cli.utils.limits import (
@@ -218,6 +219,9 @@ def _item_schema(option: Option) -> dict[str, Any]:
     elif kind is resolve_cloud_info_type:
         schema["type"] = "string"
         schema["enum"] = list(CLOUD_INFO_TYPES)
+    elif kind is resolve_resource_type:
+        # A resource type in any case, offered as the option's choices
+        schema["type"] = "string"
     elif kind in (None, str):
         schema["type"] = "string"
     else:

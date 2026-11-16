@@ -1251,12 +1251,12 @@ press Enter to run it</string>
           </widget>
          </item>
          <item>
-          <widget class="QPushButton" name="output_filter_show_all">
+          <widget class="QPushButton" name="output_filter_clear">
            <property name="toolTip">
-            <string>Show all the output again, lifting both filters (Esc)</string>
+            <string>Clear both filters, showing all the output again (Esc)</string>
            </property>
            <property name="text">
-            <string>Show All Output</string>
+            <string>Clear Filters</string>
            </property>
           </widget>
          </item>

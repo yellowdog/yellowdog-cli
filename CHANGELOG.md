@@ -2,6 +2,29 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.15.0 — 2026-11-16
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`--validate` with no specification file checks `[dataClient]` too**, for `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate`, since its values are the `{{dataClient.*}}` variables those commands substitute: a mistake there, which was only warned of, now fails the check (exit code 1).
+
+### Commander
+
+- **Reset the window's appearance**: Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back to its default size and place, with Dark Mode following the system and the default output text size; `yd commander --reset-appearance` opens it that way.
+- **Show Config, Show WR JSON and Show WP JSON open the file in a window of its own**, rather than the output window: one window per file, coloured as TOML or JSON, read again when the file changes, with Find and **Open in Editor**, following Dark Mode and the output's text size.
+- **Stop Following an ID**: right-clicking an ID that a `yd follow` in the window is following offers **Stop Following …** in place of **Follow …**, and stops that command.
+- **Show All Output is now Clear Filters**, on the output window's filter bar and its right-click menu; Esc still does the same.
+- **The arrow buttons' arrows are larger on Windows and Linux**: ←, → and ↓, which their smaller default fonts drew small.
+
+### Other
+
+- **`yd resource create --type ComputeSourceTemplate --set 'source={...}'` works**: the template's `source` is read as JSON, where it was kept as text and the creation failed with `'str' object has no attribute 'pop'`.
+- **`yd resource rename`** renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its ID, so what refers to it by ID is unaffected: `yd resource rename --type Group render-team render-artists`, or by ID without `--type`. A name already taken is refused, and `--dry-run` and `--json` are taken.
+- **An Allowance specification's `id` replaces that one Allowance**: `yd resource create` creates the new Allowance and then removes the one the `id` names, without `-M`; an `id` that finds no Allowance fails (exit code 6) and creates nothing. `yd resource remove` removes the Allowance an `id` names, and `yd resource plan` lists it.
+- **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [dataClient], [workRequirement] valid against the config schema; [workerPool] not read by this command`, naming only the sections the file has, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.
+
 ## 15.14.0 — 2026-11-15
 
 ### Other

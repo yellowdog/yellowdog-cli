@@ -200,3 +200,43 @@ def test_the_menu_entry_jumps_to_the_end(window):
     QApplication.processEvents()
     assert at_end(window)
     assert not window._output._jump_button.isVisible()
+
+
+# --- The arrow buttons' font ------------------------------------------------
+
+
+def test_the_arrow_font_is_the_window_font_scaled(monkeypatch):
+    from PyQt6.QtGui import QFont
+
+    from yellowdog_cli.commander import output_pane
+
+    monkeypatch.setattr(output_pane, "ARROW_FONT_SCALE", 1.6)
+    font = output_pane.arrow_font(QFont("Helvetica", 9))
+    assert (font.family(), font.pointSize()) == ("Helvetica", 14)
+
+
+def test_the_arrow_buttons_use_the_arrow_font(qapp, monkeypatch):
+    # Larger than the window's font where the scale says so (off macOS, whose
+    # default font draws its arrows large enough already)
+    from yellowdog_cli.commander import output_pane
+
+    monkeypatch.setattr(output_pane, "ARROW_FONT_SCALE", 1.6)
+    window = YellowDogApp()
+    try:
+        expected = round(window.font().pointSizeF() * 1.6)
+        for button in (
+            window.prev_command,
+            window.next_command,
+            window._output._jump_button,
+        ):
+            assert button.font().pointSize() == expected, button.objectName()
+    finally:
+        window.shutdown()
+        window.close()
+
+
+def test_macos_keeps_the_window_font_size():
+    from yellowdog_cli.commander import output_pane
+    from yellowdog_cli.commander.host import MACOS
+
+    assert (output_pane.ARROW_FONT_SCALE == 1.0) is MACOS

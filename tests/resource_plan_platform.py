@@ -427,7 +427,8 @@ class FakePlatform:
         ConfiguredWorkerPool, found by name as a substring, namespace and,
         where both the search and the pool give one, type, and fetched by
         ID) and Allowances (held as RN_ALLOWANCE, found by description as a
-        substring, as the Platform matches it).
+        substring, as the Platform matches it, and fetched by ID, a 404 for
+        one not held).
         """
         pools = self.client.worker_pool_client
         pools.get_worker_pools.side_effect = lambda search: _Search(
@@ -440,6 +441,15 @@ class FakePlatform:
             ]
         )
         pools.get_worker_pool_by_id.side_effect = self._by_id(RN_CONFIGURED_POOL)
+
+        def _allowance(ydid: str) -> Any:
+            # An 'id' an Allowance specification replaces: a 404 for one gone
+            for held in self.held.get(RN_ALLOWANCE, []):
+                if held.id == ydid:
+                    return deepcopy(held)
+            raise _not_found()
+
+        self.client.allowances_client.get_allowance_by_id.side_effect = _allowance
         self.client.allowances_client.get_allowances.side_effect = lambda search: (
             _Search(
                 [

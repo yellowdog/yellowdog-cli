@@ -431,6 +431,15 @@ RESOURCE_SHELL: dict[str, tuple[Property, ...]] = {
         Property("groups", STRS, description="the Groups to add the user to, by name"),
     ),
     "ComputeRequirementTemplate": (_USER_DATA_FILE, _USER_DATA_FILES),
+    # Not the new Allowance's ID, which the Platform assigns: the YDID of the
+    # one it replaces (yd-create), or the one to remove (yd-remove)
+    "Allowance": (
+        Property(
+            "id",
+            STR,
+            description="the YDID of an existing Allowance this one replaces",
+        ),
+    ),
 }
 
 # A Compute Source Template takes the same two inside its 'source', beside
@@ -682,12 +691,14 @@ ALL_CONFIG_SECTIONS: frozenset[str] = frozenset(CONFIG_SECTIONS)
 DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"})
 # What a command builds from with no specification file, and so what its
 # '--validate' checks: yd-submit's Work Requirement, yd-provision's Worker Pool
-# and yd-instantiate's Compute Requirement
+# and yd-instantiate's Compute Requirement; [dataClient] with each, since every
+# command on the main wrapper reads it, as the '{{dataClient.*}}' variables
+# (load_config.register_dc_substitutions())
 WORK_REQUIREMENT_CONFIG_SECTIONS: frozenset[str] = frozenset(
-    {"common", "workRequirement"}
+    {"common", "dataClient", "workRequirement"}
 )
 WORKER_POOL_CONFIG_SECTIONS: frozenset[str] = frozenset(
-    {"common", "workerPool", "computeRequirement"}
+    {"common", "dataClient", "workerPool", "computeRequirement"}
 )
 
 

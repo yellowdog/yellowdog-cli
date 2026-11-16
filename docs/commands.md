@@ -55,6 +55,7 @@
       * [yd resource create](#yd-resource-create)
       * [yd resource plan](#yd-resource-plan)
       * [yd resource export](#yd-resource-export)
+      * [yd resource rename](#yd-resource-rename)
       * [yd resource remove](#yd-resource-remove)
    * [yd allowance](#yd-allowance)
       * [yd allowance boost](#yd-allowance-boost)
@@ -96,7 +97,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Tue Nov 10 12:34:35 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 10:56:30 GMT 2026 -->
 
 <!--te-->
 
@@ -781,7 +782,7 @@ Key options:
 - `--hide-user-data` — with `--dry-run`, show the User Data as a summary of its size rather than the script in full, as for `yd workerpool provision`; refused without `--dry-run`
 - `--validate` — check the specification against its schema and stop, reporting every violation, rather than instantiating it (see [Checking Specifications](schemas.md#checking-a-file-before-submitting-it))
 - `--follow`/`-f` — follow the Compute Requirement's events after it is created, until it is terminated or Ctrl-C is pressed (its stream stays open while it lives)
-- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification as evaluated, its variables substituted, and stop; refused when the Compute Requirement comes from the configuration alone, with no specification file, where `--validate` checks the configuration's `[common]`, `[workerPool]` and `[computeRequirement]` instead
+- `--jsonnet-dry-run`/`-J` — print the Jsonnet specification as evaluated, its variables substituted, and stop; refused when the Compute Requirement comes from the configuration alone, with no specification file, where `--validate` checks the configuration's `[common]`, `[dataClient]`, `[workerPool]` and `[computeRequirement]` instead
 - `--json` — emit a JSON object naming the created Compute Requirement (`id`, `name`, `namespace` and `type`), or an array of them if batching created several; with `--dry-run`, the processed specification; refused with `--report`, which writes its own output (see [Machine-readable Output and Exit Codes](json-output.md))
 
 ```shell
@@ -1253,6 +1254,7 @@ Resources: Compute Source and Compute Requirement Templates, Keyrings, Credentia
 | [`create`](#yd-resource-create) | Create and update resources | `yd-create` |
 | [`plan`](#yd-resource-plan) | Show what creating resources would change | `yd-resource-plan` |
 | [`export`](#yd-resource-export) | Write existing resources out as specifications | `yd-resource-export` |
+| [`rename`](#yd-resource-rename) | Rename a resource, keeping its ID | `yd-resource-rename` |
 | [`remove`](#yd-resource-remove) | Remove resources | `yd-remove` |
 | `list <type>` | `yd list`, for the resource types: `allowances`, `applications`, `attribute-definitions`, `compute-requirement-templates`, `compute-source-templates`, `groups`, `image-families`, `keyrings`, `namespace-policies`, `namespaces`, `permissions`, `roles` and `users` |  |
 | `show` | `yd show`, for resource IDs, or names with `--type`, with `--show-members` |  |
@@ -1269,7 +1271,7 @@ yd resource create [options] --type <resource-type> --set <property=value> [--se
 Key options:
 - `--type <resource-type>` — the type of a resource given on the command line, such as `Keyring` or `Namespace`, in any case
 - `--set <property=value>` — a property of that resource, the value read as JSON where it can be (a number, a list, an object, `true`, `null`) and as text otherwise; repeatable, each property once; needs `--type`
-- `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
+- `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances (an Allowance specification's `id`, which replaces that one Allowance, needs no `-M`)
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
 - `--force-update` — update every existing resource, even one that `yd resource plan` finds unchanged
@@ -1339,6 +1341,29 @@ yd resource export compute-requirement-templates --name 'render-*' --with-depend
 ```
 
 See [Exporting Resources as Specifications](resources.md#exporting-resources-as-specifications) for the round trip with `yd resource plan`, Credentials and the other details.
+
+### yd resource rename
+
+The `yd resource rename` command renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its YellowDog ID, so whatever refers to it by ID (a template's sources, an Allowance's template, a Group's members) is unaffected. A namespaced resource keeps its namespace.
+
+```shell
+yd resource rename [options] <resource> <new-name>
+```
+
+The resource is given by its YellowDog ID, or by its name with `--type` (`namespace/name` for a template, the configured namespace without one). The rename is confirmed first, unless `--yes` is given. A name already in use by another resource of that type refuses the rename, and a resource already so named is left unchanged.
+
+Key options:
+- `--type <resource-type>` — the type of the resource named: `ComputeSourceTemplate`, `ComputeRequirementTemplate`, `Group` or `Application`, in any case; not needed with a YellowDog ID
+- `--dry-run`/`-D` — say what would be renamed, without renaming it
+- `--json` — emit the rename as a JSON array of one record (see [Machine-readable Output and Exit Codes](json-output.md))
+
+```shell
+yd resource rename --type ComputeSourceTemplate render-prod/aws-eu-west-2-ondemand aws-eu-west-2-standard
+yd resource rename --type Group render-team render-artists
+yd resource rename ydid:app:000000:3f1e2d4c-5b6a-4c7d-8e9f-0a1b2c3d4e5f render-pipeline
+```
+
+Renaming changes what specifications name the resource as: a specification still giving the old name creates a new resource when given to `yd resource create`, so update the specification too.
 
 ### yd resource remove
 

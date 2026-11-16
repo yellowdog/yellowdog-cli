@@ -62,6 +62,7 @@ from yellowdog_cli.utils.entity_names import (
     ET_WORK_REQUIREMENTS,
     ET_WORKER_POOLS,
     ET_WORKERS,
+    RENAMEABLE_RESOURCE_TYPES,
     RN_ALLOWANCE,
     RN_APPLICATION,
     RN_CONFIGURED_POOL,
@@ -931,15 +932,28 @@ MCP_EXCLUDED_SPECIFICATION_FILES: dict[str, frozenset[str]] = {
 }
 
 
+# The options MCP_EXCLUDED_OPTIONS names that a command's tool keeps, where
+# the reason for excluding them does not hold: yd-resource-rename's '--type'
+# says what a name names, there being no specification to say it
+MCP_KEPT_OPTIONS: dict[str, frozenset[str]] = {
+    "yd-resource-rename": frozenset({"--type"}),
+}
+
+
 def mcp_excluded(command: Command, option: Option) -> bool:
     """
     Whether no MCP tool for 'command' exposes 'option': it is in
-    MCP_EXCLUDED_OPTIONS, is one of the command's own specification-file
-    options, or is hidden (a noun verb's option that does not apply to its
-    object, or one its verb fixes: noun_registry.py).
+    MCP_EXCLUDED_OPTIONS (unless MCP_KEPT_OPTIONS keeps it for the command),
+    is one of the command's own specification-file options, or is hidden (a
+    noun verb's option that does not apply to its object, or one its verb
+    fixes: noun_registry.py).
     """
     return (
-        option.name in MCP_EXCLUDED_OPTIONS
+        (
+            option.name in MCP_EXCLUDED_OPTIONS
+            and option.name
+            not in MCP_KEPT_OPTIONS.get(command.internal_name, frozenset())
+        )
         or option.name
         in MCP_EXCLUDED_SPECIFICATION_FILES.get(command.internal_name, frozenset())
         or option.kwargs.get("help") == SUPPRESS
@@ -3548,6 +3562,70 @@ COMMANDS["yd-resource-export"] = Command(
         " yd_resource_create reads back, as a JSON array, changing nothing."
         " With no types, the Compute Source and Compute Requirement Templates,"
         " Image Families and Namespace Policy of the namespace."
+    ),
+    script=False,
+)
+
+# --- yd-resource-rename ------------------------------------------------------
+
+
+def check_rename_target(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    yd-resource-rename: a name needs --type, an ID does not (its type is the
+    ID's, which must be one rename takes, and agree with --type if given).
+    """
+    from yellowdog_cli.utils.ydid_utils import get_ydid_type
+
+    ydid_type = get_ydid_type(args.rename_target)
+    if ydid_type is None and args.resource_type is None:
+        parser.error(
+            f"'{args.rename_target}' is not a YellowDog ID: give --type to"
+            " rename a resource by name"
+        )
+
+
+COMMANDS["yd-resource-rename"] = Command(
+    name="yd-resource-rename",
+    purpose="renaming a resource",
+    summary="Rename a resource in place, keeping its ID",
+    kind=CommandKind.API,
+    options=(
+        VARIABLE,
+        NAMESPACE,
+        option(
+            "rename_target",
+            metavar="<resource>",
+            type=str,
+            help=(
+                "the resource to rename: its YellowDog ID, or with --type its"
+                " name ('namespace/name' for a template, the configured"
+                " namespace without one)"
+            ),
+        ),
+        option(
+            "new_name",
+            metavar="<new-name>",
+            type=str,
+            help="the new name, in the same namespace",
+        ),
+        RESOURCE_TYPE.variant(
+            choices=RENAMEABLE_RESOURCE_TYPES,
+            help=(
+                "the type of the resource named, e.g. 'Group' (any case): "
+                + ", ".join(RENAMEABLE_RESOURCE_TYPES)
+            ),
+        ),
+        DRY_RUN.variant(help="say what would be renamed, without renaming it"),
+        YES.variant(help="rename without user confirmation"),
+        ACTIONS_JSON.variant(help="emit the rename as a JSON array of one record"),
+    ),
+    validators=(check_rename_target,),
+    requires_namespace_and_tag=False,
+    tool=ToolKind.ACTING,
+    tool_description=(
+        "Rename a Compute Source Template, Compute Requirement Template, Group"
+        " or Application in place, keeping its ID, so what refers to it by ID"
+        " is unaffected."
     ),
     script=False,
 )

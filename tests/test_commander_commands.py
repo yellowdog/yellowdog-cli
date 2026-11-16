@@ -228,17 +228,12 @@ def test_a_selected_work_requirement_can_still_be_read_by_commander_itself(
     definition = selected_definition(
         window, monkeypatch, tmp_path, "bash_with_args.json"
     )
-    logged: list[str] = []
-    monkeypatch.setattr(
-        window._output, "log", lambda text, **kwargs: logged.append(text)
-    )
 
     window._select_work_requirement_action()
     window._show_wr_json_action()
 
-    assert any(definition.read_text().strip() in line for line in logged), (
-        f"the file's contents were never shown; logged: {logged}"
-    )
+    (viewer,) = window._file_viewers.values()
+    assert viewer.text.toPlainText() == definition.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("unreadable", ["not UTF-8", "gone"])

@@ -10,6 +10,8 @@
          * [Details](#details-2)
       * [Resource Removal](#resource-removal)
          * [Details](#details-3)
+      * [Renaming a Resource](#renaming-a-resource)
+         * [Rename Details](#rename-details)
       * [Resource Matching](#resource-matching)
    * [Resource Specification Definitions](#resource-specification-definitions)
    * [Exporting Resources as Specifications](#exporting-resources-as-specifications)
@@ -46,7 +48,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 16:03:55 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 10:56:32 GMT 2026 -->
 
 <!--te-->
 
@@ -216,11 +218,30 @@ yd resource remove ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:img
 
 **A resource that does not exist.** Each resource is fetched before it is removed. One given by ID that does not exist is reported as not found, without a prompt, with exit code 6. One named in a specification file, or by name with `--type`, that does not exist is warned of and recorded as `skipped` instead, with exit code 0. A Worker Pool that has already been shut down is skipped.
 
+### Renaming a Resource
+
+`yd resource rename` renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its YellowDog ID, so whatever refers to it by ID is unaffected: the Compute Requirement Templates using a renamed source, an Allowance's template, a Group's members. Give the resource by name with `--type`, or by its ID, and the new name:
+
+```shell
+yd resource rename --type ComputeSourceTemplate image-processing/aws-eu-west-2-ondemand aws-eu-west-2-standard
+yd resource rename --type Group render-team render-artists
+```
+
+Change the name in the resource's specification file too: given the old name, `yd resource create` would create a second resource.
+
+#### Rename Details
+
+**What can be renamed.** The Platform takes a new name for these four types only. An Image Family is found by its name to be updated, so it cannot be renamed, nor can a Keyring, whose update takes only a description; to rename one of those, create it under the new name and remove the old one.
+
+**Namespaces.** A template keeps its namespace: the new name is given without one. A template named without a namespace is looked for in the configured namespace.
+
+**Checks.** The rename is confirmed first, unless `--yes` is given. A name another resource of the type already has refuses the rename (exit code 1), a resource not found is exit code 6, and a resource already so named is left unchanged. `--dry-run` says what would be renamed, and `--json` records the rename with the previous name (`previousName`).
+
 ### Resource Matching
 
 Resources match on **resource names** and (where applicable) **resource namespaces** rather than on YellowDog IDs. This allows the `yd resource create` and `yd resource remove` commands to be stateless: there is no need to keep a local record of the YellowDog IDs of the resources created.
 
-However, this means that **caution is required** when updating or removing resources, since matching uses **only** the **namespace/name** of the resource, never its `ydid`. A resource with a given name could have been removed and replaced in the Platform by some other means, and the resource specification would still match it.
+However, this means that **caution is required** when updating or removing resources, since matching uses **only** the **namespace/name** of the resource, never its `ydid`, Allowances aside (see [Allowances](#allowances)). A resource with a given name could have been removed and replaced in the Platform by some other means, and the resource specification would still match it.
 
 ## Resource Specification Definitions
 
@@ -388,7 +409,7 @@ generate-keyrings | yd resource create -
 
 #### Details
 
-**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text. A property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`).
+**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text. A property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. A Compute Source Template's `source` is read as JSON, being an object: `--set 'source={"type": "co.yellowdog.platform.model.SimulatorComputeSource", "name": "sim"}'`. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`).
 
 **Rules for `--type` and `--set`.** A property is given once. The type is given with `--type` alone, not as `--set resource=...`. A resource given this way is checked against the schema, processed, reported and recorded exactly as one in a file is, and can be given with files too.
 
@@ -673,6 +694,12 @@ The Configured Worker Pool models can be found in the Scheduler API at: https://
 }
 ```
 
+A pool needs only its `name` and `namespace`, which can be given on the command line in place of a file; the Platform sets `targetNodeCount` to 1:
+
+```bash
+yd resource create --type ConfiguredWorkerPool --set name=render-onprem --set namespace=image-processing
+```
+
 `yd resource create` reports the pool's token when it creates the pool, and `yd show --show-token` shows it. It can be refreshed or regenerated with [`yd workerpool token`](commands.md#yd-workerpool-token). The token never expires unless `tokenTtl` is given, as an ISO 8601 duration alongside `name` and `namespace` (`"tokenTtl": "PT720H"` for 30 days).
 
 A Configured Worker Pool cannot be updated: `yd resource create` adds a new pool each time. `yd resource remove` shuts the pool down rather than deleting it.
@@ -710,19 +737,40 @@ The `effectiveFrom` and `effectiveUntil` dates can use any format the **[datepar
 
 A template can be named in place of its ID, and `yd resource create` substitutes the ID: a Compute Source Template in a Sources Allowance's (`co.yellowdog.platform.model.SourcesAllowance`) `sourceCreatedFromId`, and a Compute Requirement Template in a Requirements Allowance's `requirementCreatedFromId`. A name without a namespace is looked up in the configured namespace.
 
-Allowances **cannot be updated** once created; they can only be removed and recreated. To replace an Allowance, give `--match-allowances-by-description`/`-M`, which matches existing Allowances by their `description`:
+Allowances **cannot be updated** once created; they can only be removed and recreated. To replace one Allowance, give its YellowDog ID as the specification's `id`, and `yd resource create` creates the new Allowance and then removes that one:
+
+```json
+{
+  "resource": "Allowance",
+  "id": "ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f",
+  "description": "render-team-monthly",
+  "allowedHours": 1500,
+  "effectiveFrom": "Now",
+  "effectiveUntil": "After two months",
+  "limitEnforcement": "SOFT",
+  "monitoredStatuses": ["RUNNING", "PENDING", "STOPPED", "TERMINATING", "STOPPING"],
+  "regions": ["eu-west-2"],
+  "resetType": "NONE",
+  "sourceCreatedFromId": "awsondemand-eu-west-2",
+  "type": "co.yellowdog.platform.model.SourcesAllowance"
+}
+```
+
+To replace the Allowances with the same `description` instead, give `--match-allowances-by-description`/`-M`:
 
 ```shell
 yd resource create -M allowance.json
 ```
 
-`yd resource remove` likewise matches Allowances by `description` only with `-M`. Allowances can also be removed by their IDs (`yd resource remove ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f`).
+`yd resource remove` removes the Allowance a specification's `id` names, and matches Allowances by `description` only with `-M`. Allowances can also be removed by their IDs (`yd resource remove ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f`).
 
 Allowances can be **boosted** (have extra hours added) with the `yd allowance boost` command.
 
 #### Details
 
 **Source Allowances.** A Source Allowance (type `co.yellowdog.platform.model.SourceAllowance`) takes the Compute Source ID itself in its `sourceId` property, **not** the Compute Source Template ID.
+
+**Replacing by `id`.** `yd resource create` asks to confirm the replacement, then creates the new Allowance, then removes the old one, so a creation that fails leaves it in place. An `id` that finds no Allowance fails the specification (exit code 6) and creates nothing: an Allowance that has been replaced is gone, and its replacement has an ID of its own, which `yd resource create` reports, for the next replacement. A specification with an `id` is not matched by `description`, even with `-M`. `yd resource plan` lists the Allowance an `id` replaces. With `yd resource remove`, an `id` that finds no Allowance is skipped, with a warning.
 
 **Replacing with `-M`.** When matches are found, `yd resource create` asks which ones to remove, selecting from them when there are several (a selection `--yes` does not skip), and asks to confirm each removal, all before the new Allowance is created. The chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place. A run that cannot ask (no terminal to answer from) fails before anything has changed.
 

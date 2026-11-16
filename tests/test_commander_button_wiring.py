@@ -57,13 +57,13 @@ WIRING = [
     ("run_any_command", "_run_any_command_action"),
     ("next_command", "_next_command_action"),
     ("prev_command", "_prev_command_action"),
-    ("output_filter_show_all", "_show_all_output"),
+    ("output_filter_clear", "_clear_filters"),
     ("show_help", "_show_help_action"),
 ]
 
 # The class an action belongs to, where that is not the window: a collaborator
 # that connects its own buttons, and so is the class to patch before building.
-OWNERS = {"_show_all_output": OutputPane}
+OWNERS = {"_clear_filters": OutputPane}
 
 
 @pytest.mark.parametrize("button_name,action_name", WIRING)

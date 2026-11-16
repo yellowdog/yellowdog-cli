@@ -1,7 +1,8 @@
 """
 Tests for acting on the YellowDog IDs in Commander's output window from its
-right-click menu: which IDs a line offers, Copy, Show and Follow for each, and
-Follow refused for one already followed.
+right-click menu: which IDs a line offers, Copy, Show and Follow for each,
+Follow refused for one already followed, and Stop Following in its place
+while a 'yd follow' follows it.
 """
 
 import pytest
@@ -175,3 +176,75 @@ def test_one_followed_already_is_not_followed_again(window):
     ).trigger()
     assert window.ran == []
     assert f"Not following '{WR}' again" in window.log_output.toPlainText()
+
+
+@pytest.fixture
+def stopped(window, monkeypatch):
+    """
+    The runs Stop Following stops, recorded rather than stopped.
+    """
+    runs: list[OutputRun] = []
+    monkeypatch.setattr(window._output, "stop_run", runs.append)
+    return runs
+
+
+def running(window: YellowDogApp, run: OutputRun) -> OutputRun:
+    """
+    'run', registered as a command running in the window, with a process.
+    """
+    window._output._output_runs[run.run_id] = run
+    window._output._run_processes[run.run_id] = object()
+    return run
+
+
+def test_stop_following_replaces_follow_for_one_followed(window, stopped):
+    following = running(window, OutputRun(5, "yd follow", pid=4242, arguments=(WR,)))
+    window._output.log(f"Created Work Requirement {WR}")
+    menu = menu_at(window, "Created Work Requirement")
+    assert "Follow Work Requirement" not in texts(menu)
+    action(menu, "Stop Following Work Requirement").trigger()
+    assert stopped == [following]
+    assert window.ran == []
+
+
+def test_stop_following_a_worker_pool(window, stopped):
+    following = running(
+        window, OutputRun(6, "yd workerpool follow", pid=4243, arguments=(POOL,))
+    )
+    window._output.log(f"Provisioned Worker Pool {POOL}")
+    action(
+        menu_at(window, "Provisioned Worker Pool"), "Stop Following Worker Pool"
+    ).trigger()
+    assert stopped == [following]
+
+
+def test_stop_following_in_a_submenu(window, stopped):
+    following = running(window, OutputRun(5, "yd follow", pid=4242, arguments=(WR,)))
+    window._output.log(f"Created {WR} on {POOL}")
+    menu = menu_at(window, "Created")
+    submenus = [a.menu() for a in menu.actions() if a.menu() is not None]
+    assert texts(submenus[0]) == ["Copy ID", "Show", "Stop Following"]
+    assert texts(submenus[1]) == ["Copy ID", "Show", "Follow"]
+    action(submenus[0], "Stop Following").trigger()
+    assert stopped == [following]
+
+
+def test_a_submission_following_it_is_not_stopped_by_it(window, stopped):
+    # Stopping it could cut the submission short: Stop Process is for that
+    running(
+        window,
+        OutputRun(7, "yd workrequirement submit", pid=4244, arguments=("-f", WR)),
+    )
+    window._output.log(f"Created Work Requirement {WR}")
+    assert "Stop Following Work Requirement" not in texts(
+        menu_at(window, "Created Work Requirement")
+    )
+
+
+def test_a_follow_already_stopping_is_not_offered(window, stopped):
+    following = running(window, OutputRun(5, "yd follow", pid=4242, arguments=(WR,)))
+    following.stop_requested = True
+    window._output.log(f"Created Work Requirement {WR}")
+    assert "Follow Work Requirement" in texts(
+        menu_at(window, "Created Work Requirement")
+    )

@@ -43,6 +43,7 @@ from PyQt6.QtWidgets import (
 )
 
 from yellowdog_cli.commander.elision import elide_middle
+from yellowdog_cli.commander.host import MACOS
 from yellowdog_cli.commander.output_model import (
     COMMANDER_RUN,
     ENDED_FAILED_MARK,
@@ -80,7 +81,7 @@ from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
 PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-SHOW_ALL_OUTPUT = "Show All Output"
+CLEAR_FILTERS = "Clear Filters"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
 PROCESS_ROW_GAP = "  "  # between the process chooser's columns
@@ -95,7 +96,24 @@ FOLLOWABLE_YDID_TYPES = frozenset(
     {YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT}
 )
 JUMP_TO_END = "Jump to End"
+# In the right-click menu, in Follow's place for an ID a 'yd follow' follows
+STOP_FOLLOWING = "Stop Following"
 JUMP_ARROW = "↓"
+# How much larger than the window's font the arrow buttons' glyphs (↓ here,
+# ← and → for the command history) are drawn: Windows' and Linux's default
+# fonts are smaller than macOS's, and their arrow glyphs small for their size
+ARROW_FONT_SCALE = 1.0 if MACOS else 1.6
+
+
+def arrow_font(base: QFont) -> QFont:
+    """
+    The font for an arrow button: 'base', the window's, scaled by
+    ARROW_FONT_SCALE, with its family and size explicit, so that it holds
+    over whatever font the button would otherwise inherit.
+    """
+    return QFont(base.family(), round(base.pointSizeF() * ARROW_FONT_SCALE))
+
+
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
 JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
 # The colours of the CLI's error and warning lines, one per appearance: the
@@ -365,7 +383,7 @@ class OutputPane:
         view: QPlainTextEdit,
         bar: QFrame,
         bar_label: QLabel,
-        show_all_button: QPushButton,
+        clear_button: QPushButton,
         text_filter: QLineEdit,
         copy_button: QPushButton,
         save_button: QPushButton,
@@ -413,11 +431,11 @@ class OutputPane:
         bar.hide()
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         view.customContextMenuRequested.connect(self._show_output_menu)
-        show_all_button.clicked.connect(self._show_all_output)
+        clear_button.clicked.connect(self._clear_filters)
         QShortcut(
             QKeySequence(Qt.Key.Key_Escape),
             view,
-            self._show_all_output,
+            self._clear_filters,
             context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
         )
 
@@ -460,12 +478,9 @@ class OutputPane:
         button.setObjectName("jump_to_end")
         # The arrow character, as on the command history's ← and → buttons
         button.setText(JUMP_ARROW)
-        # In the window's font, as theirs are, not the output's fixed-width one
-        # it would inherit from the view; built with its family and size
-        # explicit, since the window's own font marks neither as set, which
-        # would leave the inherited one in force
-        window_font = self._window.font()
-        button.setFont(QFont(window_font.family(), window_font.pointSize()))
+        # The arrow buttons' font, as theirs is, not the output's fixed-width
+        # one it would inherit from the view
+        button.setFont(arrow_font(self._window.font()))
         button.setToolTip(JUMP_TO_END_TOOLTIP)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Out of the Tab order, appearing and vanishing as it does; a click's
@@ -699,7 +714,7 @@ class OutputPane:
             if frozenset({run_id}) != self._output_filter
         ]
         if self._filtered:
-            actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
+            actions.append((CLEAR_FILTERS, self._clear_filters))
         menu.addSeparator()
         ydids = ydids_at(
             block.text(), self._view.cursorForPosition(position).positionInBlock()
@@ -730,31 +745,62 @@ class OutputPane:
     def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
         """
         Copy, Show and (for what 'yd follow' follows) Follow for each YellowDog
-        ID on the clicked line: named by its type where there is one, in a
-        submenu each, titled by type and ID, where there are several.
+        ID on the clicked line, or Stop Following in Follow's place while a
+        'yd follow' in this window follows it: named by its type where there
+        is one, in a submenu each, titled by type and ID, where there are
+        several.
         """
 
-        def add(target: QMenu, ydid: str, copy: str, show: str, follow: str) -> None:
-            copy_action = cast(QAction, target.addAction(copy))
+        def add(target: QMenu, ydid: str, kind: str) -> None:
+            copy_action = cast(QAction, target.addAction(f"Copy {kind}ID".strip()))
             copy_action.triggered.connect(functools_partial(copy_to_clipboard, ydid))
-            show_action = cast(QAction, target.addAction(show))
+            show_action = cast(QAction, target.addAction(f"Show {kind}".strip()))
             show_action.triggered.connect(functools_partial(self._show_ydid, ydid))
-            if get_ydid_type(ydid) in FOLLOWABLE_YDID_TYPES:
-                follow_action = cast(QAction, target.addAction(follow))
+            if get_ydid_type(ydid) not in FOLLOWABLE_YDID_TYPES:
+                return
+            if follows := self._follows_of(ydid):
+                stop_action = cast(
+                    QAction, target.addAction(f"{STOP_FOLLOWING} {kind}".strip())
+                )
+                stop_action.triggered.connect(
+                    functools_partial(self._stop_following, follows)
+                )
+            else:
+                follow_action = cast(
+                    QAction, target.addAction(f"Follow {kind}".strip())
+                )
                 follow_action.triggered.connect(
                     functools_partial(self._follow_ydid, ydid)
                 )
 
         if len(ydids) == 1:
             (ydid,) = ydids
-            kind = ydid_kind(ydid)
-            add(menu, ydid, f"Copy {kind} ID", f"Show {kind}", f"Follow {kind}")
+            add(menu, ydid, f"{ydid_kind(ydid)} ")
             return
         for ydid in ydids:
             submenu = cast(
                 QMenu, menu.addMenu(f"{ydid_kind(ydid)} {elide_middle(ydid)}")
             )
-            add(submenu, ydid, "Copy ID", "Show", "Follow")
+            add(submenu, ydid, "")
+
+    def _follows_of(self, ydid: str) -> list[OutputRun]:
+        """
+        The 'yd follow' commands following a YellowDog ID that Stop Following
+        would stop: running, not already being stopped. A command that follows
+        as well as doing other work (a submission with '--follow') is not one,
+        since stopping it could cut that work short; Stop Process stops it.
+        """
+        return [
+            run
+            for run in self._output_runs.values()
+            if run.is_follow_command
+            and run.is_following(ydid)
+            and self._is_stoppable(run)
+        ]
+
+    def _stop_following(self, runs: list[OutputRun], *_args) -> None:
+        for run in runs:
+            self.stop_run(run)
 
     def _stoppable_runs(self, entry: OutputEntry | None) -> list[OutputRun]:
         """
@@ -764,13 +810,16 @@ class OutputPane:
         if entry is None:
             return []
         runs = [self._output_runs[run_id] for run_id in entry.runs]
-        return [
-            run
-            for run in runs
-            if run.running
-            and not run.stop_requested
-            and run.run_id in self._run_processes
-        ]
+        return [run for run in runs if self._is_stoppable(run)]
+
+    def _is_stoppable(self, run: OutputRun) -> bool:
+        """
+        Whether a run can be stopped: still running, not already being
+        stopped.
+        """
+        return (
+            run.running and not run.stop_requested and run.run_id in self._run_processes
+        )
 
     def log_ending(self, run: OutputRun, *_signal_args) -> None:
         """
@@ -959,7 +1008,7 @@ class OutputPane:
         """
         return self._output_filter is not None or self._line_pattern is not None
 
-    def _show_all_output(self):
+    def _clear_filters(self):
         """
         Lift both filters: the field is emptied with its signals blocked, so
         that emptying it does not start a second rebuild.
@@ -1090,7 +1139,7 @@ class OutputPane:
         document = cast(QTextDocument, self._view.document())
         shown = 0 if document.isEmpty() else document.blockCount()
         # The count of hidden new lines is text rather than a button: clicking
-        # it could only do what Show All Output beside it does, and a button
+        # it could only do what Clear Filters beside it does, and a button
         # labelled with a status does not say that
         hidden = self._hidden_line_count
         self._bar_label.setText(
