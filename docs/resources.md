@@ -716,19 +716,40 @@ The `effectiveFrom` and `effectiveUntil` dates can use any format the **[datepar
 
 A template can be named in place of its ID, and `yd resource create` substitutes the ID: a Compute Source Template in a Sources Allowance's (`co.yellowdog.platform.model.SourcesAllowance`) `sourceCreatedFromId`, and a Compute Requirement Template in a Requirements Allowance's `requirementCreatedFromId`. A name without a namespace is looked up in the configured namespace.
 
-Allowances **cannot be updated** once created; they can only be removed and recreated. To replace an Allowance, give `--match-allowances-by-description`/`-M`, which matches existing Allowances by their `description`:
+Allowances **cannot be updated** once created; they can only be removed and recreated. To replace one Allowance, give its YellowDog ID as the specification's `id`, and `yd resource create` creates the new Allowance and then removes that one:
+
+```json
+{
+  "resource": "Allowance",
+  "id": "ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f",
+  "description": "render-team-monthly",
+  "allowedHours": 1500,
+  "effectiveFrom": "Now",
+  "effectiveUntil": "After two months",
+  "limitEnforcement": "SOFT",
+  "monitoredStatuses": ["RUNNING", "PENDING", "STOPPED", "TERMINATING", "STOPPING"],
+  "regions": ["eu-west-2"],
+  "resetType": "NONE",
+  "sourceCreatedFromId": "awsondemand-eu-west-2",
+  "type": "co.yellowdog.platform.model.SourcesAllowance"
+}
+```
+
+To replace the Allowances with the same `description` instead, give `--match-allowances-by-description`/`-M`:
 
 ```shell
 yd resource create -M allowance.json
 ```
 
-`yd resource remove` likewise matches Allowances by `description` only with `-M`. Allowances can also be removed by their IDs (`yd resource remove ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f`).
+`yd resource remove` removes the Allowance a specification's `id` names, and matches Allowances by `description` only with `-M`. Allowances can also be removed by their IDs (`yd resource remove ydid:allow:000000:9b2f4c1e-5d7a-4e3b-8c6f-1a2b3c4d5e6f`).
 
 Allowances can be **boosted** (have extra hours added) with the `yd allowance boost` command.
 
 #### Details
 
 **Source Allowances.** A Source Allowance (type `co.yellowdog.platform.model.SourceAllowance`) takes the Compute Source ID itself in its `sourceId` property, **not** the Compute Source Template ID.
+
+**Replacing by `id`.** `yd resource create` asks to confirm the replacement, then creates the new Allowance, then removes the old one, so a creation that fails leaves it in place. An `id` that finds no Allowance fails the specification (exit code 6) and creates nothing: an Allowance that has been replaced is gone, and its replacement has an ID of its own, which `yd resource create` reports, for the next replacement. A specification with an `id` is not matched by `description`, even with `-M`. `yd resource plan` lists the Allowance an `id` replaces. With `yd resource remove`, an `id` that finds no Allowance is skipped, with a warning.
 
 **Replacing with `-M`.** When matches are found, `yd resource create` asks which ones to remove, selecting from them when there are several (a selection `--yes` does not skip), and asks to confirm each removal, all before the new Allowance is created. The chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place. A run that cannot ask (no terminal to answer from) fails before anything has changed.
 

@@ -1269,7 +1269,7 @@ yd resource create [options] --type <resource-type> --set <property=value> [--se
 Key options:
 - `--type <resource-type>` — the type of a resource given on the command line, such as `Keyring` or `Namespace`, in any case
 - `--set <property=value>` — a property of that resource, the value read as JSON where it can be (a number, a list, an object, `true`, `null`) and as text otherwise; repeatable, each property once; needs `--type`
-- `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances
+- `--match-allowances-by-description`/`-M` — match using the `description` property when updating Allowances (an Allowance specification's `id`, which replaces that one Allowance, needs no `-M`)
 - `--show-keyring-passwords` — display the YellowDog-generated password when creating a Keyring
 - `--regenerate-app-keys` — regenerate the application key and secret when updating an Application; required to grant an existing Application access to Keyrings
 - `--force-update` — update every existing resource, even one that `yd resource plan` finds unchanged

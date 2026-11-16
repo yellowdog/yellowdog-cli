@@ -113,6 +113,21 @@ def test_an_allowance_with_dates_parses_them(platform):
     assert entry.action == "create"
 
 
+def test_an_allowance_with_an_id_replaces_that_one(platform):
+    _, model = resource_creation.prepare_allowance(_ctx(platform), _allowance())
+    held = platform.holding(RN_ALLOWANCE, model)
+    entry = _plan(platform, RN_ALLOWANCE, _allowance(id=held.id))
+    assert entry.action == "create"
+    assert entry.changes == (Change("replaces", held.id, None, "removed"),)
+
+
+def test_an_allowance_with_an_id_not_found_fails(platform):
+    # As the real run fails: creating it would leave two
+    gone = "ydid:allow:000000:00000000-0000-0000-0000-000000000001"
+    with pytest.raises(NotFoundError, match="cannot be replaced"):
+        _plan(platform, RN_ALLOWANCE, _allowance(id=gone))
+
+
 def test_an_allowance_for_a_template_not_found_fails(platform):
     with pytest.raises(NotFoundError):
         _plan(platform, RN_ALLOWANCE, _allowance(sourceCreatedFromId="missing"))

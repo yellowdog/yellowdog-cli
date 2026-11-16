@@ -431,6 +431,15 @@ RESOURCE_SHELL: dict[str, tuple[Property, ...]] = {
         Property("groups", STRS, description="the Groups to add the user to, by name"),
     ),
     "ComputeRequirementTemplate": (_USER_DATA_FILE, _USER_DATA_FILES),
+    # Not the new Allowance's ID, which the Platform assigns: the YDID of the
+    # one it replaces (yd-create), or the one to remove (yd-remove)
+    "Allowance": (
+        Property(
+            "id",
+            STR,
+            description="the YDID of an existing Allowance this one replaces",
+        ),
+    ),
 }
 
 # A Compute Source Template takes the same two inside its 'source', beside

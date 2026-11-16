@@ -898,6 +898,20 @@ def allowances_matching_description(client: PlatformClient, description: str) ->
     ]
 
 
+def get_allowance_by_id(client: PlatformClient, allowance_id: str) -> Any | None:
+    """
+    The Allowance with this YellowDog ID, or None where there is none (an
+    HTTP 404); any other failure, such as a 401, is raised. Uncached, as
+    the description match is: the Allowances a run replaces it removes.
+    """
+    try:
+        return client.allowances_client.get_allowance_by_id(allowance_id)
+    except Exception as e:
+        if is_http_not_found(e):
+            return None
+        raise
+
+
 def allowances_to_remove(client: PlatformClient, description: str) -> list:
     """
     The Allowances whose description is exactly 'description' that the user

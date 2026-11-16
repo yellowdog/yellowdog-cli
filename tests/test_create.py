@@ -251,6 +251,101 @@ def test_an_unanswerable_choice_fails_before_the_new_allowance_exists(
     allowance_env.client.allowances_client.add_allowance.assert_not_called()
 
 
+@pytest.fixture
+def replacing(allowance_env, monkeypatch):
+    """
+    An Allowance 'old' that an 'id' names, created before and removed after
+    the new one, the order of the calls kept in 'allowance_env.calls'.
+    """
+    calls: list = []
+    allowance_env.calls = calls
+    old = SimpleNamespace(id="old")
+    allowance_env.old = old
+    monkeypatch.setattr(
+        yd_create,
+        "get_allowance_by_id",
+        lambda client, ydid: calls.append(("get", ydid)) or old,
+    )
+    allowance_env.client.allowances_client.add_allowance.side_effect = (
+        lambda allowance: calls.append("add") or SimpleNamespace(id="new")
+    )
+    monkeypatch.setattr(
+        yd_create,
+        "remove_allowances",
+        lambda client, allowances, on_removed: (
+            calls.append(("remove", allowances)) or on_removed("old") or ["old"]
+        ),
+    )
+    return allowance_env
+
+
+def test_an_id_replaces_that_allowance(replacing):
+    yd_create.create_allowance(_ctx(), _allowance(id="old"))
+    assert replacing.calls == [("get", "old"), "add", ("remove", [replacing.old])]
+    assert [(r["id"], r["action"]) for r in replacing.records] == [
+        ("new", "created"),
+        ("old", "removed"),
+    ]
+
+
+def test_an_id_is_not_sent_as_the_new_allowances(replacing, monkeypatch):
+    built: list[dict] = []
+    monkeypatch.setattr(
+        yd_create,
+        "_get_model_object",
+        lambda type, resource, **k: built.append(dict(resource)) or MagicMock(),
+    )
+    yd_create.create_allowance(_ctx(), _allowance(id="old"))
+    assert "id" not in built[-1]
+
+
+def test_an_id_needs_no_match_by_description_and_overrides_it(replacing, monkeypatch):
+    replacing.args.match_allowances_by_description = True
+    monkeypatch.setattr(
+        yd_create,
+        "allowances_to_remove",
+        lambda *a: pytest.fail("matched by description despite an 'id'"),
+    )
+    yd_create.create_allowance(_ctx(), _allowance(id="old"))
+    assert ("remove", [replacing.old]) in replacing.calls
+
+
+def test_an_id_not_found_creates_nothing(replacing, monkeypatch):
+    # Replaced already, it has gone: another creation would leave two
+    monkeypatch.setattr(yd_create, "get_allowance_by_id", lambda *a: None)
+    with pytest.raises(NotFoundError, match="Allowance gone not found"):
+        yd_create.create_allowance(_ctx(), _allowance(id="gone"))
+    replacing.client.allowances_client.add_allowance.assert_not_called()
+
+
+def test_a_declined_replacement_creates_nothing(replacing, monkeypatch):
+    monkeypatch.setattr(yd_create, "confirmed", lambda _: False)
+    yd_create.create_allowance(_ctx(), _allowance(id="old"))
+    replacing.client.allowances_client.add_allowance.assert_not_called()
+    assert [(r["id"], r["action"]) for r in replacing.records] == [("old", "skipped")]
+
+
+def test_an_allowance_by_id_not_found_is_none(monkeypatch):
+    response = Response()
+    response.status_code = 404
+    client = MagicMock()
+    client.allowances_client.get_allowance_by_id.side_effect = HTTPError(
+        response=response
+    )
+    assert entity_utils.get_allowance_by_id(client, "gone") is None
+
+
+def test_an_allowance_lookups_other_failure_is_raised(monkeypatch):
+    response = Response()
+    response.status_code = 401
+    client = MagicMock()
+    client.allowances_client.get_allowance_by_id.side_effect = HTTPError(
+        response=response
+    )
+    with pytest.raises(HTTPError):
+        entity_utils.get_allowance_by_id(client, "a")
+
+
 def test_a_template_name_not_found_fails_the_allowance(allowance_env, monkeypatch):
     monkeypatch.setattr(
         yd_create, "get_compute_source_template_id_by_name", lambda *a: None

@@ -51,6 +51,7 @@ from yellowdog_cli.utils.property_names import (
     PROP_CST_ID,
     PROP_DESCRIPTION,
     PROP_GROUPS,
+    PROP_ID,
     PROP_IMAGE_GROUPS,
     PROP_IMAGES,
     PROP_KEYRINGS,
@@ -65,6 +66,7 @@ from yellowdog_cli.utils.resource_creation import (
     RoleSpecification,
     _get_model_object,
     _raise_for_response,
+    allowance_to_replace,
     attribute_definition_endpoint,
     check_keyring_grants,
     prepare_allowance,
@@ -700,12 +702,18 @@ def plan_allowance(
     """
     An Allowance, always created, its template resolved as the real run
     resolves it (one an earlier specification creates being left as its
-    name). With '--match-allowances-by-description' and a description, each
-    Allowance of that description is replaced, listed without a prompt.
+    name). The Allowance its 'id' names is replaced, one not found failing
+    as the real run fails; else with '--match-allowances-by-description'
+    and a description, each Allowance of that description is replaced,
+    listed without a prompt.
     """
+    replace_id = resource.pop(PROP_ID, None)
     description, _ = prepare_allowance(ctx, resource, planned)
     changes: tuple[Change, ...] = ()
-    if run_options().match_allowances_by_description and description is not None:
+    if replace_id is not None:
+        allowance_to_replace(ctx, replace_id)
+        changes = (Change("replaces", replace_id, None, "removed"),)
+    elif run_options().match_allowances_by_description and description is not None:
         changes = tuple(
             Change("replaces", allowance.id, None, "removed")
             for allowance in allowances_matching_description(ctx.client, description)

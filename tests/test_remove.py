@@ -460,6 +460,32 @@ def test_an_allowance_without_a_description_is_skipped_with_a_warning(env, capsy
     assert "without a 'description'" in " ".join(capsys.readouterr().out.split())
 
 
+def test_an_allowance_by_id_is_removed_without_matching(env, monkeypatch):
+    # No '--match-allowances-by-description' needed: the 'id' names it
+    monkeypatch.setattr(yd_remove, "get_allowance_by_id", lambda *a: object())
+    yd_remove.remove_allowance(_ctx(), {"id": "a1", "description": "d"})
+    env.client.allowances_client.delete_allowance_by_id.assert_called_once_with("a1")
+    assert [(r["id"], r["action"]) for r in env.records] == [("a1", "removed")]
+
+
+def test_an_allowance_by_id_not_found_is_skipped_with_a_warning(
+    env, monkeypatch, capsys
+):
+    monkeypatch.setattr(yd_remove, "get_allowance_by_id", lambda *a: None)
+    yd_remove.remove_allowance(_ctx(), {"id": "gone"})
+    env.client.allowances_client.delete_allowance_by_id.assert_not_called()
+    assert [(r["id"], r["action"]) for r in env.records] == [("gone", "skipped")]
+    assert "Allowance gone not found" in " ".join(capsys.readouterr().out.split())
+
+
+def test_an_allowance_by_id_declined_is_skipped(env, monkeypatch):
+    monkeypatch.setattr(yd_remove, "get_allowance_by_id", lambda *a: object())
+    monkeypatch.setattr(yd_remove, "confirmed", lambda _: False)
+    yd_remove.remove_allowance(_ctx(), {"id": "a1"})
+    env.client.allowances_client.delete_allowance_by_id.assert_not_called()
+    assert [(r["id"], r["action"]) for r in env.records] == [("a1", "skipped")]
+
+
 def test_attribute_definitions_carry_a_timeout_and_keep_the_exit_code(env, monkeypatch):
     delete = MagicMock(return_value=_response(401, "Unauthorized"))
     monkeypatch.setattr(yd_remove, "delete", delete)

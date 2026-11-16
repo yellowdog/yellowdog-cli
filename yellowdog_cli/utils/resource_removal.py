@@ -43,6 +43,7 @@ from yellowdog_cli.utils.entity_utils import (
     clear_group_caches,
     clear_image_caches,
     clear_keyring_cache,
+    get_allowance_by_id,
     get_application_id_by_name,
     get_compute_requirement_template_id_by_name,
     get_compute_source_template_id_by_name,
@@ -541,11 +542,26 @@ def remove_configured_worker_pool(ctx: RunContext, resource: dict):
 
 def remove_allowance(ctx: RunContext, resource: dict):
     """
-    Remove the Allowances matching an Allowance specification's
-    'description', with '--match-allowances-by-description'; each is
-    recorded with its ID.
+    Remove the Allowance an Allowance specification's 'id' names, or the
+    Allowances matching its 'description', with
+    '--match-allowances-by-description'; each is recorded with its ID. An
+    'id' that finds none is skipped, as a resource that does not exist is.
     """
     description = resource.get(PROP_DESCRIPTION)
+    allowance_id = resource.get(PROP_ID)
+    if allowance_id is not None:
+        if get_allowance_by_id(ctx.client, allowance_id) is None:
+            print_warning(f"Allowance {allowance_id} not found; it is skipped")
+            record_resource(RN_ALLOWANCE, description, allowance_id, "skipped")
+            return
+        if not confirmed(f"Remove Allowance {allowance_id}?"):
+            record_resource(RN_ALLOWANCE, description, allowance_id, "skipped")
+            return
+        ctx.client.allowances_client.delete_allowance_by_id(allowance_id)
+        print_info(f"Removed Allowance {allowance_id}")
+        record_resource(RN_ALLOWANCE, description, allowance_id, "removed")
+        return
+
     if not _OPTIONS.match_allowances_by_description:
         print_warning(
             "To remove Allowances by matching on their 'description', "

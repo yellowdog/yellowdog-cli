@@ -76,6 +76,7 @@ from yellowdog_cli.utils.entity_utils import (
     clear_group_caches,
     clear_image_caches,
     clear_keyring_cache,
+    get_allowance_by_id,
     get_application_group_summaries,
     get_application_id_by_name,
     get_compute_requirement_template_id_by_name,
@@ -1129,9 +1130,26 @@ def prepare_allowance(
     return resource.get(PROP_DESCRIPTION), _get_model_object(type, resource)
 
 
+def allowance_to_replace(ctx: RunContext, allowance_id: str) -> Allowance:
+    """
+    The Allowance an Allowance specification's 'id' names, for the new one
+    to replace. One that does not exist is NotFoundError, so nothing is
+    created: an Allowance replaced already has gone, its replacement having
+    an ID of its own, and creating another would leave two.
+    """
+    allowance = get_allowance_by_id(ctx.client, allowance_id)
+    if allowance is None:
+        raise NotFoundError(
+            f"Allowance {allowance_id} not found, so cannot be replaced (an"
+            " Allowance replaced already has a new ID)"
+        )
+    return allowance
+
+
 def create_allowance(ctx: RunContext, resource: dict):
     """
-    Create an allowance.
+    Create an Allowance, replacing the one its 'id' names, or with
+    '--match-allowances-by-description' those of its description.
     """
     original_type, type = _prepare_allowance_resource(ctx, resource)
 
@@ -1146,13 +1164,21 @@ def create_allowance(ctx: RunContext, resource: dict):
         return
 
     description = resource.get(PROP_DESCRIPTION)
+    # Not the new Allowance's: the one it replaces
+    replace_id = resource.pop(PROP_ID, None)
 
-    # Existing Allowances with the same description are chosen and confirmed
-    # now, before anything changes, so a prompt that cannot be answered
-    # fails the run before the replacement exists; they are removed only
-    # once it does, so a creation that fails loses nothing
+    # The Allowance its 'id' names, or those with the same description, are
+    # chosen and confirmed now, before anything changes, so a prompt that
+    # cannot be answered fails the run before the replacement exists; they
+    # are removed only once it does, so a creation that fails loses nothing
     to_replace = []
-    if _OPTIONS.match_allowances_by_description and description is not None:
+    if replace_id is not None:
+        existing = allowance_to_replace(ctx, replace_id)
+        if not confirmed(f"Replace Allowance {replace_id}?"):
+            record_resource(RN_ALLOWANCE, description, replace_id, "skipped")
+            return
+        to_replace = [existing]
+    elif _OPTIONS.match_allowances_by_description and description is not None:
         _LOG.debug(
             "Checking for existing Allowance(s) matching description '%s'", description
         )
