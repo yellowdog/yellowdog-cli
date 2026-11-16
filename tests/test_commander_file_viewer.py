@@ -14,6 +14,7 @@ import qt_guard
 qt_guard.require_qt()
 
 import gui_harness
+from PyQt6 import sip
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QTextDocument
 from PyQt6.QtTest import QTest
@@ -417,3 +418,27 @@ def test_escape_closes_it(window, config):
     QTest.keyClick(viewer.text, Qt.Key.Key_Escape)
     QApplication.processEvents()
     assert window._file_viewers == {}
+
+
+def test_a_viewer_is_not_kept_above_the_main_window(window, config):
+    # On Windows and Linux a window with a parent is kept above it, as a
+    # dialog is; macOS does not, so only the parent can be tested here
+    viewer = show_config(window)
+    assert viewer.parent() is None
+    handle = viewer.windowHandle()
+    assert handle is not None and handle.transientParent() is None
+
+
+def test_closing_the_main_window_closes_the_viewers(window, config, tmp_path):
+    first = show_config(window)
+    other = tmp_path / "wr.json"
+    other.write_text(WR_TEXT, encoding="utf-8")
+    window._wr_file = str(other)
+    window._show_wr_json_action()
+    viewers = list(window._file_viewers.values())
+    assert first in viewers and len(viewers) == 2
+    window.shutdown()
+    QApplication.processEvents()
+    assert window._file_viewers == {}
+    # Closed, and so deleted (WA_DeleteOnClose)
+    assert all(sip.isdeleted(viewer) for viewer in viewers)

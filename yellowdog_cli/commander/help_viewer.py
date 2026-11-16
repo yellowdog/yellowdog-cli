@@ -131,10 +131,12 @@ class HelpDialog(QDialog):
     """
     The help window. Modeless, so it can stay open beside the main window while
     the user follows it; the window keeps one and raises it again rather than
-    opening a second.
+    opening a second. The window makes it with no parent, as it does the file
+    viewers, so Windows and Linux do not keep it above the main window, and
+    closes it as it shuts down.
     """
 
-    def __init__(self, parent: QWidget, package_dir: str):
+    def __init__(self, parent: QWidget | None, package_dir: str):
         super().__init__(parent)
         self.setWindowTitle(HELP_TITLE)
         self.resize(*HELP_SIZE)

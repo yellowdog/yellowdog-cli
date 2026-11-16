@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commander
+
+- **The file windows and the Help window no longer stay in front of the main window** on Windows and Linux: a Show Config, Show WR JSON or Show WP JSON window, or Help, can go behind it, as on macOS. They still close with it.
+
 ## 15.15.0 — 2026-11-16
 
 ### Upgrading

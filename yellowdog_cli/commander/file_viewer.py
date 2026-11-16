@@ -127,7 +127,7 @@ class FileViewer(QDialog):
 
     def __init__(
         self,
-        parent: QWidget,
+        parent: QWidget | None,
         path: str,
         description: str,
         language: str,
