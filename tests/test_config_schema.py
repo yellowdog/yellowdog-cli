@@ -489,8 +489,8 @@ class TestValidateWithoutASpecification:
             tmp_path,
         )
         assert (
-            "[common], [dataClient], [workRequirement] valid against the config"
-            " schema; [workerPool] not read by this command"
+            "[common], [workRequirement] valid against the config schema;"
+            " [workerPool] not read by this command"
         ) in out
         # Warned of by the check every command makes as it starts
         assert "workerPool.maxNodes: must be an integer" in out
@@ -502,10 +502,8 @@ class TestValidateWithoutASpecification:
             GOOD_COMMON + '[workRequirement]\ntaskType = "bash"\n',
             tmp_path,
         )
-        assert (
-            "[common], [dataClient], [workRequirement] valid against the config"
-            " schema\n"
-        ) in out
+        # Only the sections the file has
+        assert "[common], [workRequirement] valid against the config schema\n" in out
         assert "not read" not in out
 
     def test_data_client_is_judged_as_its_values_are_variables(self, tmp_path):
@@ -529,7 +527,16 @@ class TestValidateWithoutASpecification:
             + '[dataClient.archive]\nbucket = "render-archive"\n',
             tmp_path,
         )
-        assert "valid against the config schema" in out
+        assert "[common], [dataClient] valid against the config schema" in out
+
+    def test_none_of_its_sections_present(self, tmp_path):
+        out = self._validate(
+            "workrequirement", "submit", "[workerPool]\nmaxNodes = 10\n", tmp_path
+        )
+        assert (
+            "none of [common], [dataClient], [workRequirement] to check;"
+            " [workerPool] not read by this command"
+        ) in out
 
     def test_a_worker_pool_check_names_the_work_requirement(self, tmp_path):
         out = self._validate(
@@ -541,9 +548,8 @@ class TestValidateWithoutASpecification:
             tmp_path,
         )
         assert (
-            "[common], [computeRequirement], [dataClient], [workerPool] valid"
-            " against the config schema; [workRequirement] not read by this"
-            " command"
+            "[common], [workerPool] valid against the config schema;"
+            " [workRequirement] not read by this command"
         ) in out
 
 

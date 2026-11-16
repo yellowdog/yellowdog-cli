@@ -525,23 +525,28 @@ def validate_config_and_exit(
     '--validate' with no specification file: the configuration file's
     'sections', those the command builds from, checked and reported as a
     file's are -- every violation an error and a record, exit 1, else a line
-    saying they are valid, exit 0, which names the file's other sections as
-    not read by the command, so it is not taken for the whole file's verdict
-    (the check every command makes as it starts warns of those).
+    saying they are valid, exit 0. The line names only the sections the file
+    has, and names its other sections as not read by the command, so it is
+    not taken for the whole file's verdict (the check every command makes
+    as it starts warns of those).
     """
     violations = validate_config(document, sections)
     for violation in violations:
         record({"source": source, "path": violation.path, "message": violation.message})
         print_error(_describe(source, violation))
     if not violations and not json_requested():
-        shown = ", ".join(f"[{name}]" for name in sorted(sections))
-        message = f"'{source}': {shown} valid against the config schema"
-        unread = sorted(
-            name for name in document if name in ALL_CONFIG_SECTIONS - sections
-        )
+        present = sorted(name for name in document if name in ALL_CONFIG_SECTIONS)
+        checked = [f"[{name}]" for name in present if name in sections]
+        unread = [f"[{name}]" for name in present if name not in sections]
+        if checked:
+            message = (
+                f"'{source}': {', '.join(checked)} valid against the config schema"
+            )
+        else:
+            wanted = ", ".join(f"[{name}]" for name in sorted(sections))
+            message = f"'{source}': none of {wanted} to check"
         if unread:
-            others = ", ".join(f"[{name}]" for name in unread)
-            message += f"; {others} not read by this command"
+            message += f"; {', '.join(unread)} not read by this command"
         print_info(message)
     exit(ExitCode.FAILURE if violations else ExitCode.SUCCESS)
 

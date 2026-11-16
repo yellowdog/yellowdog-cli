@@ -14,7 +14,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Other
 
-- **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [dataClient], [workRequirement] valid against the config schema; [workerPool] not read by this command`, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.
+- **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [dataClient], [workRequirement] valid against the config schema; [workerPool] not read by this command`, naming only the sections the file has, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.
 - **`--validate` with no specification file checks `[dataClient]` too**, for `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate`: its values are the `{{dataClient.*}}` variables those commands substitute.
 
 ## 15.14.0 — 2026-11-15
