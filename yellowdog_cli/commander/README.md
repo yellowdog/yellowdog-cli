@@ -60,7 +60,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 15 14:25:50 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 14:11:01 GMT 2026 -->
 
 <!--te-->
 
@@ -570,6 +570,7 @@ The output is coloured so that what matters stands out in a long run, much as th
 ### Moving Around
 
 - **Jump to End** — while you are scrolled up in the Command Output window, new output arrives without scrolling it. A **↓** button appears in its bottom-right corner: click it, or choose **Jump to End** from the right-click menu, to return to the end and follow new output again.
+- **Jump to Top** — while you are scrolled down from the start of the output, a **↑** button appears in the window's top-right corner: click it, or choose **Jump to Top** from the right-click menu, to go back to the first line. New output then arrives without scrolling the window, until you return to the end.
 - **Text size** — Cmd+= and Cmd+− (Ctrl on Windows and Linux) make the Command Output window's text larger and smaller, and Cmd+0 puts it back; the size is remembered for the next session.
 - **Reset the window's appearance** — Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back as it first opens: its default size, centred, Dark Mode following your system's appearance, and the Command Output text at its default size. To open Commander that way, launch it with `--reset-appearance`.
 

@@ -1,7 +1,8 @@
 """
-Tests for jumping to the end of Commander's output window: the down-arrow
-button floating in its bottom-right corner while it is scrolled up, and the
-right-click menu's Jump to End.
+Tests for jumping to the end and the top of Commander's output window: the
+down-arrow button floating in its bottom-right corner while it is scrolled up,
+the up-arrow button in its top-right corner while it is scrolled down, and the
+right-click menu's Jump to End and Jump to Top.
 """
 
 import pytest
@@ -16,7 +17,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QMenu
 
 from yellowdog_cli.commander.commander import YellowDogApp
-from yellowdog_cli.commander.output_pane import JUMP_TO_END
+from yellowdog_cli.commander.output_pane import JUMP_TO_END, JUMP_TO_TOP
 
 LINES = 300  # enough to scroll a window of any font
 
@@ -46,9 +47,13 @@ def scroll_up(window) -> None:
     QApplication.processEvents()
 
 
-def jump_action(window):
+def at_top(window) -> bool:
+    return scrollbar(window).value() == scrollbar(window).minimum()
+
+
+def jump_action(window, text: str = JUMP_TO_END):
     menu: QMenu = window._output._build_output_menu(QPoint(5, 5))
-    (action,) = [a for a in menu.actions() if a.text() == JUMP_TO_END]
+    (action,) = [a for a in menu.actions() if a.text() == text]
     return action
 
 
@@ -134,14 +139,19 @@ def wheel(window, dx: int = 0, dy: int = 0, times: int = 10) -> None:
 
 def in_the_corner(window) -> bool:
     """
-    Whether the button is inside the viewport, in its bottom-right quarter.
+    Whether the Jump to End button is inside the viewport, in its bottom-right
+    quarter, and the Jump to Top button in its top-right quarter.
     """
     viewport = window.log_output.viewport()
-    corner = window._output._jump_button.geometry()
+    bottom = window._output._jump_button.geometry()
+    top = window._output._jump_top_button.geometry()
     return (
-        viewport.rect().contains(corner)
-        and corner.left() > viewport.width() * 3 // 4
-        and corner.top() > viewport.height() * 3 // 4
+        viewport.rect().contains(bottom)
+        and bottom.left() > viewport.width() * 3 // 4
+        and bottom.top() > viewport.height() * 3 // 4
+        and viewport.rect().contains(top)
+        and top.left() > viewport.width() * 3 // 4
+        and top.bottom() < viewport.height() // 4
     )
 
 
@@ -202,6 +212,51 @@ def test_the_menu_entry_jumps_to_the_end(window):
     assert not window._output._jump_button.isVisible()
 
 
+# --- Jump to Top -------------------------------------------------------------
+
+
+def test_the_top_button_shows_away_from_the_top(window):
+    # The fixture leaves the view at its end, far from its top
+    assert window._output._jump_top_button.isVisible()
+
+
+def test_the_top_button_jumps_to_the_top_and_hides(window):
+    window._output._jump_top_button.click()
+    QApplication.processEvents()
+    assert at_top(window)
+    assert not window._output._jump_top_button.isVisible()
+    assert window._output._jump_button.isVisible()
+
+
+def test_at_the_top_new_output_is_not_followed(window):
+    window._output._jump_top_button.click()
+    window._output.log("a line arriving at the top")
+    QApplication.processEvents()
+    assert at_top(window)
+
+
+def test_a_short_output_shows_neither_button(qapp):
+    window = YellowDogApp()
+    try:
+        gui_harness.shown(window)
+        window._output.log("one line")
+        QApplication.processEvents()
+        assert not window._output._jump_button.isVisible()
+        assert not window._output._jump_top_button.isVisible()
+    finally:
+        window.shutdown()
+        window.close()
+
+
+def test_the_top_menu_entry_jumps_to_the_top(window):
+    action = jump_action(window, JUMP_TO_TOP)
+    assert action.isEnabled()
+    action.trigger()
+    QApplication.processEvents()
+    assert at_top(window)
+    assert not jump_action(window, JUMP_TO_TOP).isEnabled()
+
+
 # --- The arrow buttons' font ------------------------------------------------
 
 
@@ -228,6 +283,7 @@ def test_the_arrow_buttons_use_the_arrow_font(qapp, monkeypatch):
             window.prev_command,
             window.next_command,
             window._output._jump_button,
+            window._output._jump_top_button,
         ):
             assert button.font().pointSize() == expected, button.objectName()
     finally:
