@@ -141,7 +141,7 @@ class WindowBase(QMainWindow):
     clear_command_output: QPushButton
     copy_command_output: QPushButton
     save_command_output: QPushButton
-    output_filter_show_all: QPushButton
+    output_filter_clear: QPushButton
     delete_objects: QPushButton
     cancel_work_requirements: QPushButton
     cancel_work_requirements_and_abort: QPushButton

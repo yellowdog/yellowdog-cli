@@ -84,7 +84,7 @@ from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE, YDIDType, get_ydid
 # The prefix a 'yd-*' command run with '--pp' gives each message, carrying the PID
 # of the process that printed it; see OutputRun.printed_pid.
 PREFIXED_PID = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \((\d+)\) : ")
-SHOW_ALL_OUTPUT = "Show All Output"
+CLEAR_FILTERS = "Clear Filters"
 SHOW_OUTPUT_FROM_PROCESS = "Show Output from Process…"
 PROCESS_DIALOG_TITLE = "Show Output from Process"
 PROCESS_ROW_GAP = "  "  # between the process chooser's columns
@@ -409,7 +409,7 @@ class OutputPane:
         view: QPlainTextEdit,
         bar: QFrame,
         bar_label: QLabel,
-        show_all_button: QPushButton,
+        clear_button: QPushButton,
         text_filter: QLineEdit,
         copy_button: QPushButton,
         save_button: QPushButton,
@@ -457,11 +457,11 @@ class OutputPane:
         bar.hide()
         view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         view.customContextMenuRequested.connect(self._show_output_menu)
-        show_all_button.clicked.connect(self._show_all_output)
+        clear_button.clicked.connect(self._clear_filters)
         QShortcut(
             QKeySequence(Qt.Key.Key_Escape),
             view,
-            self._show_all_output,
+            self._clear_filters,
             context=Qt.ShortcutContext.WidgetWithChildrenShortcut,
         )
 
@@ -764,7 +764,7 @@ class OutputPane:
             if frozenset({run_id}) != self._output_filter
         ]
         if self._filtered:
-            actions.append((SHOW_ALL_OUTPUT, self._show_all_output))
+            actions.append((CLEAR_FILTERS, self._clear_filters))
         menu.addSeparator()
         ydids = ydids_at(
             block.text(), self._view.cursorForPosition(position).positionInBlock()
@@ -1058,7 +1058,7 @@ class OutputPane:
         """
         return self._output_filter is not None or self._line_pattern is not None
 
-    def _show_all_output(self):
+    def _clear_filters(self):
         """
         Lift both filters: the field is emptied with its signals blocked, so
         that emptying it does not start a second rebuild.
@@ -1190,7 +1190,7 @@ class OutputPane:
         document = cast(QTextDocument, self._view.document())
         shown = 0 if document.isEmpty() else document.blockCount()
         # The count of hidden new lines is text rather than a button: clicking
-        # it could only do what Show All Output beside it does, and a button
+        # it could only do what Clear Filters beside it does, and a button
         # labelled with a status does not say that
         hidden = self._hidden_line_count
         self._bar_label.setText(

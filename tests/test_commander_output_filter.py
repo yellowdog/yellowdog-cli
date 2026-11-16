@@ -32,7 +32,7 @@ from yellowdog_cli.commander.output_model import (
     line_pattern,
 )
 from yellowdog_cli.commander.output_pane import (
-    SHOW_ALL_OUTPUT,
+    CLEAR_FILTERS,
     SHOW_OUTPUT_FROM_PROCESS,
 )
 
@@ -224,10 +224,10 @@ def test_the_menu_keeps_the_standard_actions(two_runs):
     texts = [action.text() for action in menu.actions()]
     assert any("Copy" in text for text in texts)
     assert any("Select All" in text for text in texts)
-    assert SHOW_ALL_OUTPUT not in texts, "nothing to show all of yet"
+    assert CLEAR_FILTERS not in texts, "no filter to clear yet"
 
 
-def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
+def test_the_bar_says_what_is_shown_and_clear_filters_ends_it(two_runs):
     assert not two_runs.output_filter_bar.isVisible()
     everything = shown(two_runs)
 
@@ -240,13 +240,13 @@ def test_the_bar_says_what_is_shown_and_show_all_ends_it(two_runs):
     assert f"3 of {everything.count(chr(10)) + 1} lines" in label
     assert "hidden" not in label, "nothing new has arrived"
 
-    two_runs.output_filter_show_all.click()
+    two_runs.output_filter_clear.click()
 
     assert not two_runs.output_filter_bar.isVisible()
     assert shown(two_runs) == everything, "in the original order"
 
 
-def test_the_menu_offers_show_all_while_filtered(two_runs):
+def test_the_menu_offers_clear_filters_while_filtered(two_runs):
     filter_to_line_containing(two_runs, "second command")
 
     menu = two_runs._output._build_output_menu(position_of(two_runs, "second command"))
@@ -254,7 +254,7 @@ def test_the_menu_offers_show_all_while_filtered(two_runs):
     assert not any(text.startswith("Show Only") for text in texts), (
         "already showing only that"
     )
-    menu_action(menu, SHOW_ALL_OUTPUT).trigger()
+    menu_action(menu, CLEAR_FILTERS).trigger()
 
     assert "first message" in shown(two_runs)
 
@@ -270,7 +270,7 @@ def test_escape_ends_the_filter(two_runs):
 
 
 def test_output_arriving_while_filtered(two_runs):
-    # Counted on the bar's label, and shown by Show All Output: the bar's only
+    # Counted on the bar's label, and shown by Clear Filters: the bar's only
     # button, because a second one doing the same would say nothing more.
     filter_to_line_containing(two_runs, "second command")
     assert two_runs._output._output_filter is not None
@@ -287,7 +287,7 @@ def test_output_arriving_while_filtered(two_runs):
     # Its 'Executing:' line, its two lines and the line saying how it ended
     assert two_runs.output_filter_label.text().endswith(" · 5 new lines hidden")
 
-    two_runs.output_filter_show_all.click()
+    two_runs.output_filter_clear.click()
     assert "more from Commander" in shown(two_runs)
     assert "a third command's message" in shown(two_runs)
 
@@ -298,7 +298,7 @@ def test_a_line_arriving_while_filtered_can_itself_be_filtered_to(two_runs):
     assert two_runs._output._output_filter is not None
     (second_run,) = two_runs._output._output_filter
     two_runs._output.log("more from the second command", prefix=False, run=second_run)
-    two_runs._output._show_all_output()
+    two_runs._output._clear_filters()
 
     filter_to_line_containing(two_runs, "more from the second command")
 
@@ -392,7 +392,7 @@ def test_ending_the_filter_keeps_the_top_line_in_view(window):
     scrollbar.setValue(scrollbar.maximum() // 2)
     top = window.log_output.firstVisibleBlock().text()
 
-    window._output._show_all_output()
+    window._output._clear_filters()
 
     assert window.log_output.firstVisibleBlock().text() == top
 
@@ -942,12 +942,12 @@ def test_escape_in_the_field_empties_it(two_runs):
     assert not two_runs.output_filter_bar.isVisible()
 
 
-def test_show_all_output_lifts_both_filters(two_runs):
+def test_clear_filters_lifts_both_filters(two_runs):
     everything = shown(two_runs)
     filter_to_line_containing(two_runs, "second command")
     filter_text(two_runs, "message")
 
-    two_runs.output_filter_show_all.click()
+    two_runs.output_filter_clear.click()
 
     assert two_runs.output_text_filter.text() == ""
     assert shown(two_runs) == everything

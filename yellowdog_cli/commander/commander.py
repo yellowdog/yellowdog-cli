@@ -201,7 +201,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             view=self.log_output,
             bar=self.output_filter_bar,
             bar_label=self.output_filter_label,
-            show_all_button=self.output_filter_show_all,
+            clear_button=self.output_filter_clear,
             text_filter=self.output_text_filter,
             copy_button=self.copy_command_output,
             save_button=self.save_command_output,

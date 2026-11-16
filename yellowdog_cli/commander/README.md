@@ -585,7 +585,7 @@ The `Executing:` line announcing a command belongs to both. It is about the comm
 
 While the output is filtered, a bar above it says whose output is shown and how many of the window's lines that is. Output from the filtered command keeps arriving as usual. Output from everything else is kept but hidden, and counted on the bar as *N new lines hidden*.
 
-To see everything again, in the order it arrived, click **Show All Output** on the bar, choose **Show All Output** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
+To see everything again, in the order it arrived, click **Clear Filters** on the bar, choose **Clear Filters** from the right-click menu, or press Esc in the output window. The line you right-clicked stays where it was on screen when the filter is applied, and the top line stays where it was when it is lifted. If the window was following the output at its end, it still is.
 
 To choose one or more processes from the whole list, right-click anywhere in the output window and choose **Show Output from Process…**. Tick the processes to show, using **All** and **None** if they help, and click **Show Output** or press Return. The dialog lists Commander's own messages and then each command in the order it started, with:
 
@@ -607,7 +607,7 @@ Each line is matched on its own, as `grep` would. A message wrapped onto several
 
 Case is ignored, and the text can fall anywhere in the line. Two characters are wildcards: `*` matches any run of characters and `?` any single one. So `ydid:task:*` finds every line naming a Task, and `error` every line mentioning an error. Every other character, `[` and `]` included, stands for itself.
 
-The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Show All Output**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
+The text filter works together with the filter by process, so filtering to one command and typing `error` shows only that command's lines mentioning an error. The bar says what each filter is, and lines arriving that do not match are counted as hidden like any others. **Clear Filters**, or Esc in the output window, lifts both filters at once. **Clear Command Output** ends the filter by process but leaves the text in the field, which goes on applying to new output.
 
 #### Copying and Saving Filtered Output
 
