@@ -696,7 +696,8 @@ class OutputPane:
     def _build_output_menu(self, position: QPoint) -> QMenu:
         """
         Build (but do not show) the output window's context menu: the standard
-        Copy and Select All, then the filter actions. The runs offered are those
+        Copy and Select All, then the filter actions, and Stop Process last, the
+        rarest and the one not to choose by accident. The runs offered are those
         of the line under the pointer, so nothing has to be selected first — two
         of them for an 'Executing:' line, its command's and Commander's.
         """
@@ -722,9 +723,6 @@ class OutputPane:
         if ydids:
             self._add_ydid_actions(menu, ydids)
             menu.addSeparator()
-        for run in self._stoppable_runs(entry):
-            stop = cast(QAction, menu.addAction(run.stop_text))
-            stop.triggered.connect(functools_partial(self.stop_run, run))
         jump = cast(QAction, menu.addAction(JUMP_TO_END))
         jump.setEnabled(not self._at_end())
         jump.triggered.connect(self._jump_to_end)
@@ -740,6 +738,12 @@ class OutputPane:
                 block.blockNumber() if entry is not None else None,
             )
         )
+        stoppable = self._stoppable_runs(entry)
+        if stoppable:
+            menu.addSeparator()
+        for run in stoppable:
+            stop = cast(QAction, menu.addAction(run.stop_text))
+            stop.triggered.connect(functools_partial(self.stop_run, run))
         return menu
 
     def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
