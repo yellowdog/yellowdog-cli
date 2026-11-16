@@ -565,11 +565,12 @@ class WindowBase(QMainWindow):
         except OSError as e:  # On Windows, a file with no application for its type
             self._output.log(f"Cannot open '{file_name}': {e}")
 
-    def _display_file(self, path: str, description: str):
+    def _display_file(self, path: str, description: str, toml: bool = False):
         """
-        Show a file's text in the output window, or say why it cannot be read
-        (gone, unreadable, not UTF-8): an exception escaping a button's slot
-        would abort the whole application.
+        Show a file's text in the output window, coloured as TOML where 'toml'
+        says it is, or say why it cannot be read (gone, unreadable, not
+        UTF-8): an exception escaping a button's slot would abort the whole
+        application.
         """
         try:
             with open(path, encoding="utf-8") as f:
@@ -578,7 +579,7 @@ class WindowBase(QMainWindow):
             self._output.log(f"Cannot open {description} '{path}': {e}")
             return
         self._output.log(f"Displaying contents of '{path}':\n")
-        self._output.log(text, prefix=False)
+        self._output.log(text, prefix=False, toml=toml)
 
 
 def _before_end_of_options(args: list[str], options: list[str]) -> list[str]:

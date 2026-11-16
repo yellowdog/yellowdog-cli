@@ -550,7 +550,7 @@ The output is coloured so that what matters stands out in a long run, much as th
 | A line in green | `✓ … finished (exit 0)`, at the end of a command that succeeded |
 | A word in red, green, blue, grey or orange | A status: `FAILED`, `COMPLETED`, `RUNNING` or `EXECUTING`, `CANCELLED`, and transitional ones such as `STARVED` |
 | Orange text | A YellowDog ID, which you can right-click (see [Acting on IDs in the Output](#acting-on-ids-in-the-output)) |
-| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output |
+| Blue keys, green strings, cyan numbers | A JSON document, such as a dry run's or `--json` output; or the configuration file, shown by **Show Config**, with its `[section]` headings bold and its comments grey |
 | A bold line | `Executing:`, announcing each command: a heading for its output |
 
 #### Reading Details
@@ -562,6 +562,8 @@ The output is coloured so that what matters stands out in a long run, much as th
 **Tables.** A table's outline is a muted blue, so its content stands out from the grid.
 
 **JSON, line by line.** Each line is judged by its shape alone, so a JSON line the text filter shows on its own is still coloured, and on rare occasions a line that only looks like JSON is too. `true`, `false` and `null` are magenta, where the CLI makes `false` red, which here would read as an error.
+
+**The configuration file.** Only **Show Config**'s output is coloured as TOML, so text in a command's output that looks like `name = value` is left alone. Each line is judged on its own, as JSON's are, so the lines inside a multi-line `"""` string are coloured as if they were TOML.
 
 **What counts as nothing found.** A message starting `No `, after its prefix; a task's own output starting so is not one.
 

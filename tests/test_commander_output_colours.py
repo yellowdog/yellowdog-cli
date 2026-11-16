@@ -22,7 +22,10 @@ from yellowdog_cli.commander.output_model import (
     JSON_NUMBER,
     JSON_STRING,
     MESSAGE_PREFIX,
+    TOML_COMMENT,
+    TOML_TABLE,
     json_tokens,
+    toml_tokens,
 )
 from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
@@ -35,6 +38,7 @@ from yellowdog_cli.commander.output_pane import (
     STATE_STYLES,
     TABLE_OUTLINE_RGB_DARK,
     TABLE_OUTLINE_RGB_LIGHT,
+    TOML_STYLES,
     WARNING_RGB_DARK,
     WARNING_RGB_LIGHT,
     YDID_RGB_DARK,
@@ -507,3 +511,157 @@ def test_nothing_found_in_dark_mode(window):
     finally:
         window._dark_mode_action(Qt.CheckState.Unchecked)
         QApplication.processEvents()
+
+
+# --- TOML (Show Config) ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line, pieces",
+    [
+        ("# A comment", [("# A comment", TOML_COMMENT)]),
+        ("[common]", [("[common]", TOML_TABLE)]),
+        (
+            "[[workRequirement.taskGroups]]  # each group",
+            [
+                ("[[workRequirement.taskGroups]]", TOML_TABLE),
+                ("# each group", TOML_COMMENT),
+            ],
+        ),
+        (
+            'namespace = "team-a"  # where # it runs',
+            [
+                ("namespace", JSON_KEY),
+                ('"team-a"', JSON_STRING),
+                ("# where # it runs", TOML_COMMENT),
+            ],
+        ),
+        ("tag = 'x#y'", [("tag", JSON_KEY), ("'x#y'", JSON_STRING)]),
+        ('"a.b" = 1_000', [('"a.b"', JSON_KEY), ("1_000", JSON_NUMBER)]),
+        ("a.b.c = -3.5e2", [("a.b.c", JSON_KEY), ("-3.5e2", JSON_NUMBER)]),
+        ("flag = false", [("flag", JSON_KEY), ("false", JSON_LITERAL)]),
+        (
+            "when = 2026-11-16T10:00:00Z",
+            [("when", JSON_KEY), ("2026-11-16T10:00:00Z", JSON_NUMBER)],
+        ),
+        (
+            'sizes = [1, "two", 0x1F]',
+            [
+                ("sizes", JSON_KEY),
+                ("[", JSON_BRACKET),
+                ("1", JSON_NUMBER),
+                ('"two"', JSON_STRING),
+                ("0x1F", JSON_NUMBER),
+                ("]", JSON_BRACKET),
+            ],
+        ),
+        (
+            'pool = { name = "n", count = 2 }',
+            [
+                ("pool", JSON_KEY),
+                ("{", JSON_BRACKET),
+                ("name", JSON_KEY),
+                ('"n"', JSON_STRING),
+                ("count", JSON_KEY),
+                ("2", JSON_NUMBER),
+                ("}", JSON_BRACKET),
+            ],
+        ),
+        # A multi-line array's lines, and a multi-line string's quotes
+        ('    "render",', [('"render"', JSON_STRING)]),
+        ("]", [("]", JSON_BRACKET)]),
+        ('script = """', [("script", JSON_KEY), ('"""', JSON_STRING)]),
+        # An '=' or '#' in a string is the string's
+        (
+            'url = "https://example.com/?x=1#top"',
+            [("url", JSON_KEY), ('"https://example.com/?x=1#top"', JSON_STRING)],
+        ),
+        ("", []),
+    ],
+)
+def test_toml_pieces(line, pieces):
+    assert [(line[s : s + n], kind) for s, n, kind in toml_tokens(line)] == pieces
+
+
+def toml_colour(kind: str, dark: bool = False) -> tuple[int, int, int] | None:
+    light_colour, dark_colour, _bold, _italic = TOML_STYLES[kind]
+    return dark_colour if dark else light_colour
+
+
+CONFIG_TEXT = """\
+# The team's settings
+[common]
+namespace = "team-a"
+tag = "render"
+
+[workRequirement]
+taskCount = 3
+"""
+
+
+@pytest.fixture
+def shown_config(window, tmp_path, monkeypatch):
+    config = tmp_path / "config.toml"
+    config.write_text(CONFIG_TEXT, encoding="utf-8")
+    monkeypatch.setattr(window, "_config_file", str(config))
+    window._show_config_action()
+    QApplication.processEvents()
+    return window
+
+
+def is_bold(window, text: str, piece: str) -> bool:
+    document = window.log_output.document()
+    assert isinstance(document, QTextDocument)
+    block = document.find(text).block()
+    layout = block.layout()
+    assert layout is not None
+    for format_range in layout.formats():
+        start = format_range.start
+        if block.text()[start : start + format_range.length] == piece:
+            return format_range.format.fontWeight() == QFont.Weight.Bold
+    raise AssertionError(f"{piece!r} is not coloured")
+
+
+def test_show_config_colours_the_file_as_toml(shown_config):
+    colours = colours_of(shown_config, 'namespace = "team-a"')
+    assert colours["namespace"] == toml_colour(JSON_KEY)
+    assert colours['"team-a"'] == toml_colour(JSON_STRING)
+    assert colours_of(shown_config, "taskCount = 3")["3"] == toml_colour(JSON_NUMBER)
+    assert colours_of(shown_config, "# The team's")[
+        "# The team's settings"
+    ] == toml_colour(TOML_COMMENT)
+    assert is_bold(shown_config, "[workRequirement]", "[workRequirement]")
+
+
+def test_toml_colours_in_dark_mode(shown_config):
+    try:
+        shown_config._dark_mode_action(Qt.CheckState.Checked)
+        QApplication.processEvents()
+        colours = colours_of(shown_config, 'namespace = "team-a"')
+        assert colours["namespace"] == toml_colour(JSON_KEY, dark=True)
+        assert colours['"team-a"'] == toml_colour(JSON_STRING, dark=True)
+    finally:
+        shown_config._dark_mode_action(Qt.CheckState.Unchecked)
+        QApplication.processEvents()
+
+
+def test_toml_shown_alone_by_the_filter_is_still_coloured(shown_config):
+    shown_config.output_text_filter.setText("namespace")
+    shown_config._output._apply_text_filter()
+    QApplication.processEvents()
+    assert shown_config.log_output.toPlainText() == 'namespace = "team-a"'
+    colours = colours_of(shown_config, 'namespace = "team-a"')
+    assert colours["namespace"] == toml_colour(JSON_KEY)
+
+
+def test_only_show_config_is_coloured_as_toml(window):
+    # The same text as a command's output is not read as TOML
+    line = 'namespace = "team-a"'
+    window._output.log(line, prefix=False)
+    QApplication.processEvents()
+    assert colour_of(window, line) is None
+
+
+def test_the_toml_colours_are_jsons_where_they_share_a_kind():
+    for kind in (JSON_KEY, JSON_STRING, JSON_NUMBER, JSON_LITERAL, JSON_BRACKET):
+        assert TOML_STYLES[kind] == JSON_STYLES[kind]

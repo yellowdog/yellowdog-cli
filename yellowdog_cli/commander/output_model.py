@@ -242,6 +242,9 @@ class OutputEntry:
     # of Commander's own messages: Commander prints it, with Commander's PID, so
     # a user reading the PID on it can mean either.
     announcement: bool = False
+    # A TOML document (Show Config's configuration file), coloured by
+    # toml_tokens() in place of the rules for a command's output
+    toml: bool = False
 
     @property
     def lines(self) -> int:
@@ -367,4 +370,58 @@ def json_tokens(text: str) -> list[tuple[int, int, str]]:
     return [
         (match.start(), match.end() - match.start(), str(match.lastgroup))
         for match in _JSON_TOKEN.finditer(text)
+    ]
+
+
+# The pieces of a TOML line the output window colours beyond JSON's kinds
+TOML_TABLE = "table"  # a [table] or [[array of tables]] heading
+TOML_COMMENT = "comment"
+
+_TOML_BASIC_STRING = r'"(?:[^"\\]|\\.)*"'
+_TOML_LITERAL_STRING = r"'[^']*'"
+_TOML_SIMPLE_KEY = rf"(?:[A-Za-z0-9_-]+|{_TOML_BASIC_STRING}|{_TOML_LITERAL_STRING})"
+_TOML_KEY = rf"{_TOML_SIMPLE_KEY}(?:\s*\.\s*{_TOML_SIMPLE_KEY})*"
+# A heading: a key in single or double brackets, alone on its line but for a
+# comment
+_TOML_HEADING = re.compile(
+    rf"^\s*(?P<table>\[\[?\s*{_TOML_KEY}\s*\]\]?)\s*(?P<comment>#.*)?$"
+)
+_TOML_DATE = (
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?"
+    r"|\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+)
+_TOML_NUMBER = (
+    r"[+-]?(?:0x[0-9A-Fa-f_]+|0o[0-7_]+|0b[01_]+"
+    r"|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)"
+)
+# Scanned left to right, so a '#' or '=' inside a string is the string's; a
+# multi-line string's opening or closing quotes are coloured, not its text
+_TOML_TOKEN = re.compile(
+    rf"(?P<comment>#.*$)"
+    rf"|(?P<key>{_TOML_KEY})(?=\s*=(?!=))"
+    rf'|(?P<string>"""|\'\'\'|{_TOML_BASIC_STRING}|{_TOML_LITERAL_STRING})'
+    rf"|(?P<number>(?<![\w.:-])(?:{_TOML_DATE}|{_TOML_NUMBER})(?![\w.:-]))"
+    rf"|(?P<literal>(?<![\w.-])(?:true|false|[+-]?inf|[+-]?nan)(?![\w.-]))"
+    rf"|(?P<bracket>[\[\]{{}}])"
+)
+
+
+def toml_tokens(text: str) -> list[tuple[int, int, str]]:
+    """
+    The pieces of a line of a TOML document to colour, as (start, length,
+    kind): a table heading (TOML_TABLE), a key, a string, a number or date, a
+    literal (true, false, inf, nan), a bracket, a comment (TOML_COMMENT).
+    Judged line by line, as json_tokens() is, so that it holds when the text
+    filter shows only some of the document's lines; the text of a multi-line
+    string is read as TOML too, so may be coloured where it is not.
+    """
+    if heading := _TOML_HEADING.match(text):
+        return [
+            (heading.start(kind), heading.end(kind) - heading.start(kind), kind)
+            for kind in (TOML_TABLE, TOML_COMMENT)
+            if heading.group(kind) is not None
+        ]
+    return [
+        (match.start(), match.end() - match.start(), str(match.lastgroup))
+        for match in _TOML_TOKEN.finditer(text)
     ]

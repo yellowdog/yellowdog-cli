@@ -964,7 +964,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
     def _show_config_action(self):
         if not self._check_config_file():
             return
-        self._display_file(cast(str, self._config_file), "configuration file")
+        self._display_file(
+            cast(str, self._config_file), "configuration file", toml=True
+        )
 
     def _deselect_files_action(self):
         """

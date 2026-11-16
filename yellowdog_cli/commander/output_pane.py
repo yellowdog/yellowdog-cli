@@ -56,6 +56,8 @@ from yellowdog_cli.commander.output_model import (
     JSON_NUMBER,
     JSON_STRING,
     MESSAGE_PREFIX,
+    TOML_COMMENT,
+    TOML_TABLE,
     LineBuffer,
     OutputEntry,
     OutputRun,
@@ -63,6 +65,7 @@ from yellowdog_cli.commander.output_model import (
     json_tokens,
     line_pattern,
     message_prefix,
+    toml_tokens,
 )
 from yellowdog_cli.commander.processes import TERMINATE_TIMEOUT_MS
 from yellowdog_cli.commander.selection import (
@@ -145,6 +148,16 @@ JSON_STYLES: dict[
     JSON_LITERAL: ((150, 40, 150), (220, 130, 220), False, True),
     JSON_BRACKET: (None, None, True, False),
 }
+# A TOML document's colours (Show Config's configuration file): JSON's for the
+# kinds the two share, a table heading bold, as the heading of the lines
+# below it, and a comment muted, as a message's prefix is
+TOML_STYLES: dict[
+    str, tuple[tuple[int, int, int] | None, tuple[int, int, int] | None, bool, bool]
+] = {
+    **JSON_STYLES,
+    TOML_TABLE: (None, None, True, False),
+    TOML_COMMENT: ((140, 140, 140), (120, 120, 120), False, False),
+}
 # The status words the CLI colours in a terminal (output_style's
 # HIGHLIGHTED_STATES, each pattern's group named by its style), coloured as it
 # colours them, in shades for each appearance, but not bold, as the CLI makes
@@ -185,15 +198,23 @@ class OutputHighlighter(QSyntaxHighlighter):
     line of JSON (json_tokens()), the status words (HIGHLIGHTED_STATES) and
     the YellowDog IDs (YDID_HIGHLIGHT_RE); and, muted, every other line's
     time-and-PID prefix and a table's outline (TABLE_OUTLINE_CHARS), and in
-    bold, the message of the line announcing each command (EXECUTING). A highlighter, not
+    bold, the message of the line announcing each command (EXECUTING); and
+    the lines of a TOML document (an OutputEntry marked toml) by
+    toml_tokens() alone. A highlighter, not
     coloured text: the document stays plain, so the filters, Copy and Save
     are untouched. Only the marked line is coloured: the lines after a
     warning are often a table or a document, not more of the message, and
     Commander runs the CLI with '--nf', so a message is not wrapped.
     """
 
-    def __init__(self, document: QTextDocument):
+    def __init__(self, document: QTextDocument, is_toml: Callable[[int], bool]):
+        """
+        'is_toml' says whether the entry a block is tagged with (its user
+        state, OutputPane.log()) is a TOML document.
+        """
         super().__init__(document)
+        self._is_toml = is_toml
+        self._toml = self._formats(TOML_STYLES)
         self._error = QTextCharFormat()
         self._warning = QTextCharFormat()
         self._ok = QTextCharFormat()
@@ -250,6 +271,7 @@ class OutputHighlighter(QSyntaxHighlighter):
             QColor(*(NOTHING_RGB_DARK if is_dark else NOTHING_RGB_LIGHT))
         )
         self._colour(self._json, JSON_STYLES, is_dark)
+        self._colour(self._toml, TOML_STYLES, is_dark)
         self._colour(self._states, STATE_STYLES, is_dark)
         self._ydid.setForeground(
             QColor(*(YDID_RGB_DARK if is_dark else YDID_RGB_LIGHT))
@@ -264,6 +286,10 @@ class OutputHighlighter(QSyntaxHighlighter):
 
     def highlightBlock(self, text: str | None) -> None:
         if not text:
+            return
+        if self._is_toml(self.currentBlockState()):
+            for start, length, kind in toml_tokens(text):
+                self.setFormat(start, length, self._toml[kind])
             return
         # The message after its prefix, where the CLI puts its marker and
         # Commander its ending mark; one elsewhere in the line (an 'Executing:'
@@ -455,7 +481,9 @@ class OutputPane:
         QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
 
         self._jump_button = self._add_jump_button(view)
-        self._highlighter = OutputHighlighter(cast(QTextDocument, view.document()))
+        self._highlighter = OutputHighlighter(
+            cast(QTextDocument, view.document()), self._entry_is_toml
+        )
 
     def set_dark(self, is_dark: bool) -> None:
         """
@@ -618,16 +646,20 @@ class OutputPane:
         prefix: bool = True,
         run: int = COMMANDER_RUN,
         announcement: bool = False,
+        toml: bool = False,
     ):
         """
         Add text to the output window, attributed to the run it came from:
         Commander's own messages unless a command's run is named. While the
         window is filtered to another run it is kept but not shown, and counted
-        in the filter bar. An announcement is a command's 'Executing:' line; see
-        OutputEntry.
+        in the filter bar. An announcement is a command's 'Executing:' line,
+        and 'toml' marks a TOML document, coloured as one; see OutputEntry.
         """
         entry = OutputEntry(
-            run, f"{message_prefix(self._pid) if prefix else ''}{output}", announcement
+            run,
+            f"{message_prefix(self._pid) if prefix else ''}{output}",
+            announcement,
+            toml,
         )
         self._output_entries.append(entry)
         self._output_line_total += entry.lines
@@ -639,9 +671,27 @@ class OutputPane:
             block = cast(QTextDocument, self._view.document()).lastBlock()
             for _ in lines:
                 block.setUserState(len(self._output_entries) - 1)
+                self._recolour_if_toml(block)
                 block = block.previous()
         self._hidden_line_count += entry.lines - len(lines)
         self._update_output_filter_bar()
+
+    def _entry_is_toml(self, index: int) -> bool:
+        """
+        Whether the entry with this index (a block's user state) is a TOML
+        document; -1, an untagged block's, is none.
+        """
+        return (
+            0 <= index < len(self._output_entries) and self._output_entries[index].toml
+        )
+
+    def _recolour_if_toml(self, block: QTextBlock) -> None:
+        """
+        Colour a block just tagged as a TOML document's: the highlighter
+        coloured it as the text arrived, before it was tagged.
+        """
+        if self._entry_is_toml(block.userState()):
+            self._highlighter.rehighlightBlock(block)
 
     def _log_lines(self, lines: list[str], run: OutputRun):
         if not lines:
@@ -1057,6 +1107,7 @@ class OutputPane:
                 if (index, number) >= anchor_key:
                     anchor_line = block.blockNumber()
             block.setUserState(index)
+            self._recolour_if_toml(block)
             block = block.next()
 
         if following or anchor_line is None:
