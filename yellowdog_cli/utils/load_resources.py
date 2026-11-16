@@ -212,16 +212,31 @@ def load_resource_specifications(
     )
 
 
+# The resource properties named in STRING_PROPERTIES that are not strings in
+# that resource type: STRING_PROPERTIES is keyed by name alone, for the
+# configuration and Work Requirement keys, where 'source' is a task data
+# input's text, but a Compute Source Template's 'source' is an object. '--set'
+# reads these as JSON. Held to the resources schema by
+# tests/test_resource_inline.py, so a clash a new property makes is found
+STRUCTURED_RESOURCE_PROPERTIES: dict[str, frozenset[str]] = {
+    RN_SOURCE_TEMPLATE: frozenset({PROP_SOURCE}),
+}
+
+
 def _inline_resource(resource_type: str, properties: list[str]) -> dict:
     """
     The resource '--type' and '--set' give: each 'property=value' read as a
     '--property' value is, JSON where it parses (a string property keeping
-    its text), and its values' variables substituted as a file's are.
+    its text, bar STRUCTURED_RESOURCE_PROPERTIES), and its values' variables
+    substituted as a file's are.
     """
     resource: dict = {PROP_RESOURCE: resource_type}
+    structured = STRUCTURED_RESOURCE_PROPERTIES.get(resource_type, frozenset())
     for given in properties:
         name, _, value = given.partition("=")
-        resource[name] = parse_property_value(value, name)
+        resource[name] = parse_property_value(
+            value, None if name in structured else name
+        )
     resolve_variables_insitu(resource)
     return resource
 

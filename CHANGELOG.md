@@ -14,6 +14,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Other
 
+- **`yd resource create --type ComputeSourceTemplate --set 'source={...}'` works**: the template's `source` is read as JSON, where it was kept as text and the creation failed with `'str' object has no attribute 'pop'`.
 - **`yd resource rename`** renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its ID, so what refers to it by ID is unaffected: `yd resource rename --type Group render-team render-artists`, or by ID without `--type`. A name already taken is refused, and `--dry-run` and `--json` are taken.
 - **An Allowance specification's `id` replaces that one Allowance**: `yd resource create` creates the new Allowance and then removes the one the `id` names, without `-M`; an `id` that finds no Allowance fails (exit code 6) and creates nothing. `yd resource remove` removes the Allowance an `id` names, and `yd resource plan` lists it.
 - **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [dataClient], [workRequirement] valid against the config schema; [workerPool] not read by this command`, naming only the sections the file has, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.

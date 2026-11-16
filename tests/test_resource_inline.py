@@ -152,6 +152,78 @@ def test_a_value_is_read_as_property_overrides_read_it(load):
     assert resource["x"] is True and resource["y"] is None
 
 
+def test_a_source_templates_source_is_read_as_json(load):
+    # 'source' is a task data input's text in STRING_PROPERTIES, but a
+    # Compute Source Template's is an object
+    source = {
+        "type": "co.yellowdog.platform.model.SimulatorComputeSource",
+        "name": "aws-eu-west-2",
+    }
+    (resource,), _ = load(
+        resource_type="ComputeSourceTemplate",
+        properties=["namespace=render-prod", f"source={json.dumps(source)}"],
+    )
+    assert resource["source"] == source
+    assert resource["namespace"] == "render-prod"
+
+
+def _schema_top_level(schema: object) -> list[tuple[str, str, object]]:
+    """
+    Every resource type's top-level properties in the resources schema, as
+    (resource type, property, its schema), the 'else' of a variable wrapping
+    unwrapped.
+    """
+    found: list[tuple[str, str, object]] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict) and "resource" in properties:
+                resource = properties["resource"]
+                resource = resource.get("else", resource)  # a variable's wrapping
+                names = resource.get("enum") or [resource.get("const")]
+                for name, property_schema in properties.items():
+                    for resource_type in names:
+                        found.append(
+                            (
+                                resource_type,
+                                name,
+                                property_schema.get("else", property_schema),
+                            )
+                        )
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(schema)
+    return found
+
+
+def test_the_structured_properties_are_every_string_registry_clash():
+    # A name STRING_PROPERTIES keeps as text that a resource type takes as an
+    # object or a list: '--set' must read it as JSON there
+    from yellowdog_cli.utils.property_names import STRING_PROPERTIES
+    from yellowdog_cli.utils.specs.schema import Family, build_schema
+
+    clashes: dict[str, set[str]] = {}
+    for resource_type, name, schema in _schema_top_level(
+        build_schema(Family.RESOURCES)
+    ):
+        if name not in STRING_PROPERTIES or not isinstance(schema, dict):
+            continue
+        kinds = schema.get("type")
+        kinds = kinds if isinstance(kinds, list) else [kinds]
+        if "object" in kinds or "array" in kinds:
+            clashes.setdefault(resource_type, set()).add(name)
+    assert clashes, "the scan found nothing: it no longer reads the schema"
+    assert clashes == {
+        resource_type: set(names)
+        for resource_type, names in load_resources.STRUCTURED_RESOURCE_PROPERTIES.items()
+    }
+
+
 def test_a_value_has_its_variables_substituted(load, monkeypatch):
     monkeypatch.setattr(
         load_resources,

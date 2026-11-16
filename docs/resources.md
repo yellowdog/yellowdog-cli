@@ -409,7 +409,7 @@ generate-keyrings | yd resource create -
 
 #### Details
 
-**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text. A property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`).
+**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text. A property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. A Compute Source Template's `source` is read as JSON, being an object: `--set 'source={"type": "co.yellowdog.platform.model.SimulatorComputeSource", "name": "sim"}'`. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`).
 
 **Rules for `--type` and `--set`.** A property is given once. The type is given with `--type` alone, not as `--set resource=...`. A resource given this way is checked against the schema, processed, reported and recorded exactly as one in a file is, and can be given with files too.
 
