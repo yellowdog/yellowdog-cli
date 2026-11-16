@@ -1008,6 +1008,20 @@ class CLIParser:
         return self.args.output_file
 
     # -----------------------------------------------------------------------
+    # yd-resource-rename
+    # -----------------------------------------------------------------------
+
+    @property
+    @allow_missing_attribute
+    def rename_target(self) -> str | None:
+        return self.args.rename_target
+
+    @property
+    @allow_missing_attribute
+    def new_name(self) -> str | None:
+        return self.args.new_name
+
+    # -----------------------------------------------------------------------
     # yd-resource-export
     # -----------------------------------------------------------------------
 

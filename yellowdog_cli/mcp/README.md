@@ -23,7 +23,7 @@
    * [Security Notes](#security-notes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 13 15:40:55 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 10:52:49 GMT 2026 -->
 
 <!--te-->
 
@@ -161,6 +161,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_resource_export` | read-only | `yd resource export` | Write existing resources out as specifications |
 | `yd_resource_plan` | read-only | `yd resource plan` | Show what creating resources would change |
 | `yd_resource_remove` | destructive | `yd resource remove` | Remove resources |
+| `yd_resource_rename` | acting | `yd resource rename` | Rename a resource, keeping its ID |
 | `yd_schema` | read-only | `yd schema` | Print, write or check the specification schemas |
 | `yd_show` | read-only | `yd show` | Show the JSON details of entities referenced by their YDIDs |
 | `yd_status` | read-only | `yd status` | Show the work and compute in the namespace |

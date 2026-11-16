@@ -931,6 +931,12 @@ NOUNS: tuple[Noun, ...] = (
                 "Write existing resources out as specifications",
                 "exporting resources as specifications",
             ),
+            Verb(
+                "rename",
+                "yd-resource-rename",
+                "Rename a resource, keeping its ID",
+                "renaming a resource",
+            ),
             Verb("remove", "yd-remove", "Remove resources", "removing resources"),
             Verb(
                 "list",

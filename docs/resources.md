@@ -10,6 +10,8 @@
          * [Details](#details-2)
       * [Resource Removal](#resource-removal)
          * [Details](#details-3)
+      * [Renaming a Resource](#renaming-a-resource)
+         * [Rename Details](#rename-details)
       * [Resource Matching](#resource-matching)
    * [Resource Specification Definitions](#resource-specification-definitions)
    * [Exporting Resources as Specifications](#exporting-resources-as-specifications)
@@ -46,7 +48,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov  9 16:03:55 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 16 10:56:32 GMT 2026 -->
 
 <!--te-->
 
@@ -216,11 +218,30 @@ yd resource remove ydid:crt:D9C548:2a09093d-c74c-4bde-95d1-c576c6f03b13 ydid:img
 
 **A resource that does not exist.** Each resource is fetched before it is removed. One given by ID that does not exist is reported as not found, without a prompt, with exit code 6. One named in a specification file, or by name with `--type`, that does not exist is warned of and recorded as `skipped` instead, with exit code 0. A Worker Pool that has already been shut down is skipped.
 
+### Renaming a Resource
+
+`yd resource rename` renames a Compute Source Template, Compute Requirement Template, Group or Application in place, keeping its YellowDog ID, so whatever refers to it by ID is unaffected: the Compute Requirement Templates using a renamed source, an Allowance's template, a Group's members. Give the resource by name with `--type`, or by its ID, and the new name:
+
+```shell
+yd resource rename --type ComputeSourceTemplate image-processing/aws-eu-west-2-ondemand aws-eu-west-2-standard
+yd resource rename --type Group render-team render-artists
+```
+
+Change the name in the resource's specification file too: given the old name, `yd resource create` would create a second resource.
+
+#### Rename Details
+
+**What can be renamed.** The Platform takes a new name for these four types only. An Image Family is found by its name to be updated, so it cannot be renamed, nor can a Keyring, whose update takes only a description; to rename one of those, create it under the new name and remove the old one.
+
+**Namespaces.** A template keeps its namespace: the new name is given without one. A template named without a namespace is looked for in the configured namespace.
+
+**Checks.** The rename is confirmed first, unless `--yes` is given. A name another resource of the type already has refuses the rename (exit code 1), a resource not found is exit code 6, and a resource already so named is left unchanged. `--dry-run` says what would be renamed, and `--json` records the rename with the previous name (`previousName`).
+
 ### Resource Matching
 
 Resources match on **resource names** and (where applicable) **resource namespaces** rather than on YellowDog IDs. This allows the `yd resource create` and `yd resource remove` commands to be stateless: there is no need to keep a local record of the YellowDog IDs of the resources created.
 
-However, this means that **caution is required** when updating or removing resources, since matching uses **only** the **namespace/name** of the resource, never its `ydid`. A resource with a given name could have been removed and replaced in the Platform by some other means, and the resource specification would still match it.
+However, this means that **caution is required** when updating or removing resources, since matching uses **only** the **namespace/name** of the resource, never its `ydid`, Allowances aside (see [Allowances](#allowances)). A resource with a given name could have been removed and replaced in the Platform by some other means, and the resource specification would still match it.
 
 ## Resource Specification Definitions
 
