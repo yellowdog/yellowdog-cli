@@ -525,7 +525,9 @@ def validate_config_and_exit(
     '--validate' with no specification file: the configuration file's
     'sections', those the command builds from, checked and reported as a
     file's are -- every violation an error and a record, exit 1, else a line
-    saying they are valid, exit 0.
+    saying they are valid, exit 0, which names the file's other sections as
+    not read by the command, so it is not taken for the whole file's verdict
+    (the check every command makes as it starts warns of those).
     """
     violations = validate_config(document, sections)
     for violation in violations:
@@ -533,7 +535,14 @@ def validate_config_and_exit(
         print_error(_describe(source, violation))
     if not violations and not json_requested():
         shown = ", ".join(f"[{name}]" for name in sorted(sections))
-        print_info(f"'{source}': {shown} valid against the config schema")
+        message = f"'{source}': {shown} valid against the config schema"
+        unread = sorted(
+            name for name in document if name in ALL_CONFIG_SECTIONS - sections
+        )
+        if unread:
+            others = ", ".join(f"[{name}]" for name in unread)
+            message += f"; {others} not read by this command"
+        print_info(message)
     exit(ExitCode.FAILURE if violations else ExitCode.SUCCESS)
 
 

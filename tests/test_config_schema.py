@@ -455,6 +455,69 @@ class TestAtCommandStart:
         assert "maxNodes" not in result.stdout + result.stderr
 
 
+class TestValidateWithoutASpecification:
+    """
+    '--validate' with no specification file judges the sections the command
+    builds from, and names the file's others as not read by it.
+    """
+
+    @staticmethod
+    def _validate(noun: str, verb: str, config: str, cwd) -> str:
+        result = _run(
+            [
+                sys.executable,
+                "-m",
+                "yellowdog_cli.yd",
+                noun,
+                verb,
+                "--nf",
+                "--validate",
+            ],
+            config,
+            cwd,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return result.stdout
+
+    def test_the_sections_it_does_not_read_are_named(self, tmp_path):
+        out = self._validate(
+            "workrequirement",
+            "submit",
+            GOOD_COMMON + '[workRequirement]\ntaskType = "bash"\n' + BAD_POOL,
+            tmp_path,
+        )
+        assert (
+            "[common], [workRequirement] valid against the config schema;"
+            " [workerPool] not read by this command"
+        ) in out
+        # Warned of by the check every command makes as it starts
+        assert "workerPool.maxNodes: must be an integer" in out
+
+    def test_nothing_is_named_when_it_reads_every_section_there(self, tmp_path):
+        out = self._validate(
+            "workrequirement",
+            "submit",
+            GOOD_COMMON + '[workRequirement]\ntaskType = "bash"\n',
+            tmp_path,
+        )
+        assert "[common], [workRequirement] valid against the config schema\n" in out
+        assert "not read" not in out
+
+    def test_a_worker_pool_check_names_the_work_requirement(self, tmp_path):
+        out = self._validate(
+            "workerpool",
+            "provision",
+            GOOD_COMMON
+            + '[workRequirement]\ntaskType = "bash"\n'
+            + "[workerPool]\nmaxNodes = 10\n",
+            tmp_path,
+        )
+        assert (
+            "[common], [computeRequirement], [workerPool] valid against the"
+            " config schema; [workRequirement] not read by this command"
+        ) in out
+
+
 class TestReviewFindings:
     def test_every_key_the_loaders_read_is_in_its_section(self):
         # The template parity above cannot see a key read but undocumented:

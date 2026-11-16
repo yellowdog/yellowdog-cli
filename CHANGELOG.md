@@ -11,6 +11,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **Stop Following an ID**: right-clicking an ID that a `yd follow` in the window is following offers **Stop Following …** in place of **Follow …**, and stops that command.
 - **The arrow buttons' arrows are larger on Windows and Linux**: ←, → and ↓, which their smaller default fonts drew small.
 
+### Other
+
+- **`--validate` with no specification file names the sections it does not judge**: `yd workrequirement submit --validate` reports `[common], [workRequirement] valid against the config schema; [workerPool] not read by this command`, so the line is not taken for the whole file's verdict. Problems in those sections are still warned of as every command starts.
+
 ## 15.14.0 — 2026-11-15
 
 ### Other
