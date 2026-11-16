@@ -97,6 +97,15 @@ class OutputRun:
         )
 
     @property
+    def is_follow_command(self) -> bool:
+        """
+        Whether the command is 'yd follow' (by any of its names), whose only
+        work is following, so that stopping it stops nothing else.
+        """
+        command = command_named(self.command)
+        return command is not None and command.internal_name == FOLLOWING_COMMAND
+
+    @property
     def follows_events(self) -> bool:
         """
         Whether the command follows the event streams of the entities it is

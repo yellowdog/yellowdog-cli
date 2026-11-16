@@ -8,6 +8,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 - **Reset the window's appearance**: Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) puts the window back to its default size and place, with Dark Mode following the system and the default output text size; `yd commander --reset-appearance` opens it that way.
 - **Show Config colours the configuration file**: keys, strings, numbers and `true`/`false` as JSON is coloured, `[section]` headings bold and comments grey.
+- **Stop Following an ID**: right-clicking an ID that a `yd follow` in the window is following offers **Stop Following …** in place of **Follow …**, and stops that command.
 - **The arrow buttons' arrows are larger on Windows and Linux**: ←, → and ↓, which their smaller default fonts drew small.
 
 ## 15.14.0 — 2026-11-15

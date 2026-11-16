@@ -615,13 +615,15 @@ The text filter works together with the filter by process, so filtering to one c
 
 ### Acting on IDs in the Output
 
-To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**.
+To look at, or follow, something a command printed the ID of, right-click the line it is on. For a line with one YellowDog ID, the menu offers **Copy … ID**, **Show …** (`yd show`) and, for a Work Requirement, Worker Pool or Compute Requirement, **Follow …** (`yd follow`), each named by what the ID identifies, as in **Show Work Requirement**. While a `yd follow` in this window is following the ID, **Stop Following …** takes Follow's place, and stops it.
 
 #### ID Action Details
 
 **Several IDs on a line.** Each gets a submenu of its own, titled by its kind and the ID shortened in the middle, with **Copy ID**, **Show** and **Follow**. The ID you clicked on comes first, and at most five are offered.
 
 **Followed already.** As with **Follow…**, an ID that a command still running in this window is following already is not followed again; the output window says so.
+
+**What Stop Following stops.** It stops the `yd follow` command, as **Stop Process …** would, so a `yd follow` given several IDs stops following all of them. A Submit or Provision with Follow Progress is not stopped this way, since stopping it could cut its submission short; use **Stop Process …** on its output instead.
 
 ### Stopping a Command
 

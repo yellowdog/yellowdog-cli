@@ -99,6 +99,8 @@ FOLLOWABLE_YDID_TYPES = frozenset(
     {YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT}
 )
 JUMP_TO_END = "Jump to End"
+# In the right-click menu, in Follow's place for an ID a 'yd follow' follows
+STOP_FOLLOWING = "Stop Following"
 JUMP_ARROW = "↓"
 # How much larger than the window's font the arrow buttons' glyphs (↓ here,
 # ← and → for the command history) are drawn: Windows' and Linux's default
@@ -793,31 +795,62 @@ class OutputPane:
     def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
         """
         Copy, Show and (for what 'yd follow' follows) Follow for each YellowDog
-        ID on the clicked line: named by its type where there is one, in a
-        submenu each, titled by type and ID, where there are several.
+        ID on the clicked line, or Stop Following in Follow's place while a
+        'yd follow' in this window follows it: named by its type where there
+        is one, in a submenu each, titled by type and ID, where there are
+        several.
         """
 
-        def add(target: QMenu, ydid: str, copy: str, show: str, follow: str) -> None:
-            copy_action = cast(QAction, target.addAction(copy))
+        def add(target: QMenu, ydid: str, kind: str) -> None:
+            copy_action = cast(QAction, target.addAction(f"Copy {kind}ID".strip()))
             copy_action.triggered.connect(functools_partial(copy_to_clipboard, ydid))
-            show_action = cast(QAction, target.addAction(show))
+            show_action = cast(QAction, target.addAction(f"Show {kind}".strip()))
             show_action.triggered.connect(functools_partial(self._show_ydid, ydid))
-            if get_ydid_type(ydid) in FOLLOWABLE_YDID_TYPES:
-                follow_action = cast(QAction, target.addAction(follow))
+            if get_ydid_type(ydid) not in FOLLOWABLE_YDID_TYPES:
+                return
+            if follows := self._follows_of(ydid):
+                stop_action = cast(
+                    QAction, target.addAction(f"{STOP_FOLLOWING} {kind}".strip())
+                )
+                stop_action.triggered.connect(
+                    functools_partial(self._stop_following, follows)
+                )
+            else:
+                follow_action = cast(
+                    QAction, target.addAction(f"Follow {kind}".strip())
+                )
                 follow_action.triggered.connect(
                     functools_partial(self._follow_ydid, ydid)
                 )
 
         if len(ydids) == 1:
             (ydid,) = ydids
-            kind = ydid_kind(ydid)
-            add(menu, ydid, f"Copy {kind} ID", f"Show {kind}", f"Follow {kind}")
+            add(menu, ydid, f"{ydid_kind(ydid)} ")
             return
         for ydid in ydids:
             submenu = cast(
                 QMenu, menu.addMenu(f"{ydid_kind(ydid)} {elide_middle(ydid)}")
             )
-            add(submenu, ydid, "Copy ID", "Show", "Follow")
+            add(submenu, ydid, "")
+
+    def _follows_of(self, ydid: str) -> list[OutputRun]:
+        """
+        The 'yd follow' commands following a YellowDog ID that Stop Following
+        would stop: running, not already being stopped. A command that follows
+        as well as doing other work (a submission with '--follow') is not one,
+        since stopping it could cut that work short; Stop Process stops it.
+        """
+        return [
+            run
+            for run in self._output_runs.values()
+            if run.is_follow_command
+            and run.is_following(ydid)
+            and self._is_stoppable(run)
+        ]
+
+    def _stop_following(self, runs: list[OutputRun], *_args) -> None:
+        for run in runs:
+            self.stop_run(run)
 
     def _stoppable_runs(self, entry: OutputEntry | None) -> list[OutputRun]:
         """
@@ -827,13 +860,16 @@ class OutputPane:
         if entry is None:
             return []
         runs = [self._output_runs[run_id] for run_id in entry.runs]
-        return [
-            run
-            for run in runs
-            if run.running
-            and not run.stop_requested
-            and run.run_id in self._run_processes
-        ]
+        return [run for run in runs if self._is_stoppable(run)]
+
+    def _is_stoppable(self, run: OutputRun) -> bool:
+        """
+        Whether a run can be stopped: still running, not already being
+        stopped.
+        """
+        return (
+            run.running and not run.stop_requested and run.run_id in self._run_processes
+        )
 
     def log_ending(self, run: OutputRun, *_signal_args) -> None:
         """
