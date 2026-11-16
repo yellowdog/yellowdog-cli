@@ -682,12 +682,14 @@ ALL_CONFIG_SECTIONS: frozenset[str] = frozenset(CONFIG_SECTIONS)
 DATA_CLIENT_CONFIG_SECTIONS: frozenset[str] = frozenset({"common", "dataClient"})
 # What a command builds from with no specification file, and so what its
 # '--validate' checks: yd-submit's Work Requirement, yd-provision's Worker Pool
-# and yd-instantiate's Compute Requirement
+# and yd-instantiate's Compute Requirement; [dataClient] with each, since every
+# command on the main wrapper reads it, as the '{{dataClient.*}}' variables
+# (load_config.register_dc_substitutions())
 WORK_REQUIREMENT_CONFIG_SECTIONS: frozenset[str] = frozenset(
-    {"common", "workRequirement"}
+    {"common", "dataClient", "workRequirement"}
 )
 WORKER_POOL_CONFIG_SECTIONS: frozenset[str] = frozenset(
-    {"common", "workerPool", "computeRequirement"}
+    {"common", "dataClient", "workerPool", "computeRequirement"}
 )
 
 

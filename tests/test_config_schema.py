@@ -462,7 +462,9 @@ class TestValidateWithoutASpecification:
     """
 
     @staticmethod
-    def _validate(noun: str, verb: str, config: str, cwd) -> str:
+    def _validate(
+        noun: str, verb: str, config: str, cwd, expected_exit: int = 0
+    ) -> str:
         result = _run(
             [
                 sys.executable,
@@ -476,7 +478,7 @@ class TestValidateWithoutASpecification:
             config,
             cwd,
         )
-        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == expected_exit, result.stdout + result.stderr
         return result.stdout
 
     def test_the_sections_it_does_not_read_are_named(self, tmp_path):
@@ -487,8 +489,8 @@ class TestValidateWithoutASpecification:
             tmp_path,
         )
         assert (
-            "[common], [workRequirement] valid against the config schema;"
-            " [workerPool] not read by this command"
+            "[common], [dataClient], [workRequirement] valid against the config"
+            " schema; [workerPool] not read by this command"
         ) in out
         # Warned of by the check every command makes as it starts
         assert "workerPool.maxNodes: must be an integer" in out
@@ -500,8 +502,34 @@ class TestValidateWithoutASpecification:
             GOOD_COMMON + '[workRequirement]\ntaskType = "bash"\n',
             tmp_path,
         )
-        assert "[common], [workRequirement] valid against the config schema\n" in out
+        assert (
+            "[common], [dataClient], [workRequirement] valid against the config"
+            " schema\n"
+        ) in out
         assert "not read" not in out
+
+    def test_data_client_is_judged_as_its_values_are_variables(self, tmp_path):
+        # Every command on the main wrapper reads [dataClient], as the
+        # '{{dataClient.*}}' variables
+        out = self._validate(
+            "workrequirement",
+            "submit",
+            GOOD_COMMON + "[dataClient]\nbucket = 5\n",
+            tmp_path,
+            expected_exit=1,
+        )
+        assert "dataClient.bucket" in out
+
+    def test_a_data_client_profile_is_not_refused(self, tmp_path):
+        out = self._validate(
+            "workerpool",
+            "provision",
+            GOOD_COMMON
+            + '[dataClient]\nremote = "s3"\n'
+            + '[dataClient.archive]\nbucket = "render-archive"\n',
+            tmp_path,
+        )
+        assert "valid against the config schema" in out
 
     def test_a_worker_pool_check_names_the_work_requirement(self, tmp_path):
         out = self._validate(
@@ -513,8 +541,9 @@ class TestValidateWithoutASpecification:
             tmp_path,
         )
         assert (
-            "[common], [computeRequirement], [workerPool] valid against the"
-            " config schema; [workRequirement] not read by this command"
+            "[common], [computeRequirement], [dataClient], [workerPool] valid"
+            " against the config schema; [workRequirement] not read by this"
+            " command"
         ) in out
 
 
