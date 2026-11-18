@@ -2,7 +2,7 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
-## Unreleased
+## 15.15.1 — 2026-11-18
 
 ### Commander
 
