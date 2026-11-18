@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- The CLI requires `yellowdog-sdk` 16.1.1 or later.
+
 ## 15.15.1 — 2026-11-18
 
 ### Commander

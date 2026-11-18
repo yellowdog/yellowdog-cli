@@ -168,13 +168,6 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
     # ("must not contain a source with ... set" / "must be null"), and
     # 'provider'/'instancePricing'/'traits' were accepted but the value
     # returned did not match what was sent, in a live create-then-show.
-    #
-    # 'credentials' is not here, although a value sent for it comes back None
-    # in the raw model. That is the *same* evidence shape this registry rejects
-    # for SimulatorComputeSource.userData/subregion below (accepted-then-dropped
-    # is not "the platform assigns it"), so it is in NOT_SETTABLE, where its
-    # actual reason -- a derived aggregate of 'credential' that no
-    # specification would ever author -- belongs. See NOT_SETTABLE.
     "status": COMPUTE_SOURCE_CLASSES,
     "statusMessage": COMPUTE_SOURCE_CLASSES,
     "createdFromId": COMPUTE_SOURCE_CLASSES,
@@ -245,39 +238,13 @@ SERVER_ASSIGNED_COVERAGE: dict[str, frozenset[str]] = {
 
 # Properties a model declares but the CLI's creation path can never populate from
 # a specification for a reason *other* than "the platform assigns it"
-# (SERVER_ASSIGNED_COVERAGE covers that case, per class, above).
-#
-# 'credentials' is the one entry, on all nine compute source classes. It is not
-# in SERVER_ASSIGNED_COVERAGE: the evidence for that, "a value was sent and the
-# raw SDK model's field (fetched directly via compute_client, bypassing
-# yd-show's rendering) came back None", is precisely the evidence shape that is
-# *rejected* for SimulatorComputeSource.userData/subregion, on the ruling that
-# accepted-then-dropped is not the same claim as server-assigned. What actually
-# disqualifies it is a different, stronger fact,
-# checked directly against the installed SDK: alongside the plural, init=False
-# 'credentials: Set[str] | None', every one of these classes declares a
-# singular, required, author-settable 'credential: str' -- which the corpus does
-# set, on every source. The plural is the derived aggregate of the singular; no
-# specification would ever author it, and a specification that tried would be
-# authoring the same fact twice in two shapes. That is exactly what this
-# registry is for, and unlike SERVER_ASSIGNED_COVERAGE it carries no read-gate
-# obligation (test_system_resources.py's read gate reads SERVER_ASSIGNED, the
-# set of SERVER_ASSIGNED_COVERAGE's names in tests/resource_models.py, only),
-# so it needs no READ_GATE_EXCLUSIONS entries waiving a demand nothing should
-# make.
-_CREDENTIALS_IS_A_DERIVED_AGGREGATE = (
-    "the plural, init=False aggregate of the singular, required, author-settable "
-    "'credential: str' this class also declares (checked directly against the "
-    "installed SDK) -- the corpus sets 'credential' on every source, and no "
-    "specification would author the derived set as well; not in "
-    "SERVER_ASSIGNED_COVERAGE because 'a value was sent and None came back' is "
-    "the accepted-then-dropped evidence shape that registry rejects, not "
-    "evidence the platform assigns the property"
-)
-NOT_SETTABLE: dict[str, dict[str, str]] = {
-    class_name: {"credentials": _CREDENTIALS_IS_A_DERIVED_AGGREGATE}
-    for class_name in sorted(COMPUTE_SOURCE_CLASSES)
-}
+# (SERVER_ASSIGNED_COVERAGE covers that case, per class, above). It has no
+# entries: every property of the installed SDK's models is either settable from
+# a specification or assigned by the Platform. Unlike SERVER_ASSIGNED_COVERAGE,
+# an entry here carries no read-gate obligation (test_system_resources.py's read
+# gate reads SERVER_ASSIGNED, the set of SERVER_ASSIGNED_COVERAGE's names in
+# tests/resource_models.py, only).
+NOT_SETTABLE: dict[str, dict[str, str]] = {}
 
 # Properties deliberately left uncovered for a reason other than "the CLI's
 # creation path cannot populate them" (that's SERVER_ASSIGNED_COVERAGE/NOT_SETTABLE). "*"
