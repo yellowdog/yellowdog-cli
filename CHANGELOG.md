@@ -2,6 +2,15 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.15.1 — 2026-11-18
+
+### Commander
+
+- **Jsonnet files are coloured as Jsonnet** in the file windows (Show WR JSON and Show WP JSON with a `.jsonnet` or `.libsonnet` file): field names, strings in either quote, comments, keywords such as `local` and `function`, and `|||` text blocks, a comment or text block over several lines coloured throughout, where only lines shaped like JSON were coloured.
+- **The file windows and the Help window no longer stay in front of the main window** on Windows and Linux: a Show Config, Show WR JSON or Show WP JSON window, or Help, can go behind it, as on macOS. They still close with it.
+- **A Jump to Top button** (**↑**) floats in the output window's top-right corner while it is scrolled down from the start, matching Jump to End's **↓**, and the right-click menu has **Jump to Top** above Jump to End.
+- **Stop Process is the last item of the output window's right-click menu**, set apart from the rest, so it is not chosen in passing on the way to Jump to End or a filter.
+
 ## 15.15.0 — 2026-11-16
 
 ### Upgrading

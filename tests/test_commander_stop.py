@@ -93,6 +93,15 @@ def test_a_running_command_can_be_stopped_from_its_output(window):
     assert f"Stopping {run.bar_subject}" in window.log_output.toPlainText()
 
 
+def test_stop_is_the_last_item_set_apart(window):
+    process, run = start(window, SLEEPER, "sleeper started")
+    actions = menu_at(window, "sleeper started").actions()
+    assert actions[-1].text() == run.stop_text
+    assert actions[-2].isSeparator()
+    window._output.stop_run(run)
+    wait_until_finished(process)
+
+
 def test_a_command_that_ignores_the_request_is_forced_to_stop(window, monkeypatch):
     monkeypatch.setattr(output_pane, "TERMINATE_TIMEOUT_MS", 300)
     process, run = start(window, STUBBORN, "stubborn started")

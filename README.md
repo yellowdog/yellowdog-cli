@@ -313,17 +313,17 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 
 | Page | What it covers |
 |---|---|
-| **[How a Task Finds a Worker](docs/concepts.md)** | The pieces (Work Requirements, Task Groups, Worker Pools, Nodes and Workers) and how the Scheduler matches a Task Group's run specification to Workers: Task Types, Worker Tags, namespaces, instance types, RAM and vCPUs |
-| **[Why Isn't My Work Running?](docs/troubleshooting.md)** | A step-by-step path from a Work Requirement whose Tasks don't start to the cause, built around `yd workrequirement compare` |
 | **[Installation](docs/installation.md)** | Installing the CLI with uv, or into a virtual environment with uv or pip; updating it, choosing its Python, and the Jsonnet extra |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
-| **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
 | **[Worker Pools](docs/worker-pools.md)** | Provisioning Worker Pools and Compute Requirements: their properties and JSON specifications, large-scale provisioning, dry runs, and Node Actions |
-| **[Data Client](docs/data-client.md)** | Moving files to, from and between object stores with `yd data`, through rclone: remote paths, named profiles, worked examples and troubleshooting |
-| **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)** | `yd resource create`, `plan`, `remove` and `export`: templates, Keyrings and Credentials, Image Families, Allowances, Applications, Groups, Configured Worker Pools and the rest |
+| **[How a Task Finds a Worker](docs/concepts.md)** | The pieces (Work Requirements, Task Groups, Worker Pools, Nodes and Workers) and how the Scheduler matches a Task Group's run specification to Workers: Task Types, Worker Tags, namespaces, instance types, RAM and vCPUs |
+| **[Variable Substitutions](docs/variables.md)** | `{{variable}}` substitutions: the default variables, defining your own, type tags, defaults, removing a property with `::`, writing one literally, and the `__{{variable}}__` form for User Data and Node Actions |
 | **[Jsonnet Support](docs/jsonnet.md)** | Writing any specification in Jsonnet, and how variable substitutions work in it |
 | **[Checking Specifications](docs/schemas.md)** | The specifications' JSON Schemas: checking a file with `--validate`, in an editor or in CI, and `yd schema` |
+| **[Creating, Updating and Removing YellowDog Resources](docs/resources.md)** | `yd resource create`, `plan`, `remove` and `export`: templates, Keyrings and Credentials, Image Families, Allowances, Applications, Groups, Configured Worker Pools and the rest |
+| **[Data Client](docs/data-client.md)** | Moving files to, from and between object stores with `yd data`, through rclone: remote paths, named profiles, worked examples and troubleshooting |
+| **[Why Isn't My Work Running?](docs/troubleshooting.md)** | A step-by-step path from a Work Requirement whose Tasks don't start to the cause, built around `yd workrequirement compare` |
 
 ## Reference
 

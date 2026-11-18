@@ -218,3 +218,24 @@ def test_the_readme_has_a_table_of_contents(qapp):
         entries += section_link_item(block)
         block = block.next()
     assert entries == len(_headings(README)) - 1  # all but the title
+
+
+def test_the_help_is_not_kept_above_the_main_window(qapp):
+    # On Windows and Linux a window with a parent is kept above it; macOS
+    # does not, so only the parent can be tested here
+    window = YellowDogApp()
+    window.show_help.click()
+    dialog = window._help_dialog
+    assert dialog is not None and dialog.parent() is None
+    handle = dialog.windowHandle()
+    assert handle is not None and handle.transientParent() is None
+    dialog.close()
+
+
+def test_shutting_the_main_window_closes_the_help(qapp):
+    window = YellowDogApp()
+    window.show_help.click()
+    dialog = window._help_dialog
+    assert dialog is not None and dialog.isVisible()
+    window.shutdown()
+    assert not dialog.isVisible()

@@ -861,6 +861,13 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             SETTING_WINDOW_GEOMETRY, self.saveGeometry()
         )
         self._discovery.stop()
+        # The file viewers and the Help window have no parent (see
+        # _display_file()), so the window's closing does not close them, and
+        # an open one would keep the application running after it
+        for viewer in list(self._file_viewers.values()):
+            viewer.close()
+        if self._help_dialog is not None:
+            self._help_dialog.close()
 
         # Release any nested event loop (config parsing, entity enumeration):
         # the close was delivered from inside it, so it must be told to exit or
@@ -1138,7 +1145,9 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         that it keeps the place the user had reached in it.
         """
         if self._help_dialog is None:
-            self._help_dialog = HelpDialog(self, _PKG_DIR)
+            # No parent, as the file viewers have none (_display_file()):
+            # Windows and Linux would keep it above the main window
+            self._help_dialog = HelpDialog(None, _PKG_DIR)
         self._help_dialog.show()
         self._help_dialog.raise_()
         self._help_dialog.activateWindow()

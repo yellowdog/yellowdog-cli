@@ -579,8 +579,12 @@ class WindowBase(QMainWindow):
         key = abspath(path)
         viewer = self._file_viewers.get(key)
         if viewer is None:
+            # No parent: on Windows and Linux a window with one is kept above
+            # it, as a dialog is, and a file kept open for reference would
+            # cover the main window. Held by '_file_viewers', and closed by
+            # shutdown(), as a parent would have done
             viewer = FileViewer(
-                self,
+                None,
                 key,
                 description,
                 language_of(key, is_config),

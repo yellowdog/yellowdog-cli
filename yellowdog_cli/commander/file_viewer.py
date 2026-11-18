@@ -3,8 +3,8 @@ The file viewer (FileViewer): a configuration or definition file shown in a
 window of its own, which Show Config, Show WR JSON and Show WP JSON open, so
 that a file kept open for reference neither interleaves with nor scrolls away
 the commands' output. Modeless and read-only, one per file (the window keeps
-them and raises one again rather than opening a second), coloured as TOML or
-JSON line by line (FileHighlighter, over output_model's tokenizers), reloaded
+them and raises one again rather than opening a second), coloured as TOML,
+Jsonnet or JSON (FileHighlighter, over output_model's tokenizers), reloaded
 when the file changes on disk, with Find and Open in Editor.
 """
 
@@ -39,9 +39,12 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander.elision import elide_path_to_fit
 from yellowdog_cli.commander.output_model import (
+    JSONNET_KEYWORD,
+    JSONNET_NORMAL,
     TOML_COMMENT,
     TOML_TABLE,
     json_tokens,
+    jsonnet_tokens,
     toml_tokens,
 )
 from yellowdog_cli.commander.output_pane import (
@@ -51,19 +54,25 @@ from yellowdog_cli.commander.output_pane import (
 )
 
 # How a file is coloured: as TOML (a configuration file, or a definition file
-# named '.toml') or, by its lines' shape, as JSON (JSON and Jsonnet alike)
+# named '.toml'), as Jsonnet (a '.jsonnet' or '.libsonnet' file), or, by its
+# lines' shape, as JSON
 TOML = "toml"
+JSONNET = "jsonnet"
 JSON = "json"
 TOML_EXTENSION = ".toml"
-# A TOML document's colours: JSON's for the kinds the two share, a table
-# heading bold, as the heading of the lines below it, and a comment muted, as
-# a message's prefix is in the output window
-TOML_STYLES: dict[
+JSONNET_EXTENSIONS = (".jsonnet", ".libsonnet")
+# The viewer's colours, by kind of piece: JSON's for the kinds the three
+# languages share; a TOML table heading bold, as the heading of the lines
+# below it; a comment muted, as a message's prefix is in the output window;
+# and a Jsonnet keyword ('local', 'function', 'self', ...) in an orange of
+# its own, apart from the literals' magenta
+FILE_STYLES: dict[
     str, tuple[tuple[int, int, int] | None, tuple[int, int, int] | None, bool, bool]
 ] = {
     **JSON_STYLES,
     TOML_TABLE: (None, None, True, False),
     TOML_COMMENT: (PREFIX_RGB_LIGHT, PREFIX_RGB_DARK, False, False),
+    JSONNET_KEYWORD: ((175, 90, 0), (240, 160, 80), False, False),
 }
 VIEWER_SIZE = (760, 640)  # px: a viewer's opening width and height
 OPEN_IN_EDITOR = "Open in Editor"
@@ -77,24 +86,29 @@ RELOAD_DELAY_MS = 150
 def language_of(path: str, is_config: bool) -> str:
     """
     How a file is coloured: a configuration file, or a file named '.toml', as
-    TOML; anything else as JSON, which colours Jsonnet near enough.
+    TOML; a '.jsonnet' or '.libsonnet' file as Jsonnet; anything else as JSON.
     """
     if is_config or path.lower().endswith(TOML_EXTENSION):
         return TOML
+    if path.lower().endswith(JSONNET_EXTENSIONS):
+        return JSONNET
     return JSON
 
 
 class FileHighlighter(QSyntaxHighlighter):
     """
-    Colours each line of the viewer's document by toml_tokens() or
-    json_tokens(), from TOML_STYLES (whose JSON kinds are JSON_STYLES).
+    Colours each line of the viewer's document by toml_tokens(),
+    jsonnet_tokens() or json_tokens(), from FILE_STYLES (whose JSON kinds are
+    JSON_STYLES). A Jsonnet line's ending state is its block state, which the
+    next line starts in, so a comment or text block over several lines is
+    coloured throughout, and an edit to one line recolours those after it.
     """
 
     def __init__(self, document: QTextDocument, language: str):
         super().__init__(document)
-        self._tokens = toml_tokens if language == TOML else json_tokens
+        self._language = language
         self._formats: dict[str, QTextCharFormat] = {}
-        for name, (_light, _dark, bold, italic) in TOML_STYLES.items():
+        for name, (_light, _dark, bold, italic) in FILE_STYLES.items():
             self._formats[name] = QTextCharFormat()
             if bold:
                 self._formats[name].setFontWeight(QFont.Weight.Bold)
@@ -105,16 +119,26 @@ class FileHighlighter(QSyntaxHighlighter):
         """
         Use the colours for the appearance, and recolour what is shown.
         """
-        for name, (light, dark, _bold, _italic) in TOML_STYLES.items():
+        for name, (light, dark, _bold, _italic) in FILE_STYLES.items():
             colour = dark if is_dark else light
             if colour is not None:
                 self._formats[name].setForeground(QColor(*colour))
         self.rehighlight()
 
     def highlightBlock(self, text: str | None) -> None:
-        if not text:
-            return
-        for start, length, kind in self._tokens(text):
+        text = text or ""
+        if self._language == JSONNET:
+            # -1, the first line's, is the state outside everything; an
+            # empty line inside a text block keeps the block's state
+            tokens, state = jsonnet_tokens(
+                text, max(self.previousBlockState(), JSONNET_NORMAL)
+            )
+            self.setCurrentBlockState(state)
+        elif self._language == TOML:
+            tokens = toml_tokens(text) if text else []
+        else:
+            tokens = json_tokens(text) if text else []
+        for start, length, kind in tokens:
             self.setFormat(start, length, self._formats[kind])
 
 
@@ -127,7 +151,7 @@ class FileViewer(QDialog):
 
     def __init__(
         self,
-        parent: QWidget,
+        parent: QWidget | None,
         path: str,
         description: str,
         language: str,

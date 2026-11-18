@@ -1,7 +1,7 @@
 """
 The output window (OutputPane): the widget, its filter bar and right-click menu,
-the process chooser, the text filter and the Jump to End button, over the
-entries and runs in output_model. The window logs to it and hands it each process it starts;
+the process chooser, the text filter and the Jump to Top and Jump to End
+buttons, over the entries and runs in output_model. The window logs to it and hands it each process it starts;
 everything the filters do is here.
 """
 
@@ -96,9 +96,11 @@ FOLLOWABLE_YDID_TYPES = frozenset(
     {YDIDType.WORK_REQUIREMENT, YDIDType.WORKER_POOL, YDIDType.COMPUTE_REQUIREMENT}
 )
 JUMP_TO_END = "Jump to End"
+JUMP_TO_TOP = "Jump to Top"
 # In the right-click menu, in Follow's place for an ID a 'yd follow' follows
 STOP_FOLLOWING = "Stop Following"
 JUMP_ARROW = "↓"
+JUMP_TO_TOP_ARROW = "↑"
 # How much larger than the window's font the arrow buttons' glyphs (↓ here,
 # ← and → for the command history) are drawn: Windows' and Linux's default
 # fonts are smaller than macOS's, and their arrow glyphs small for their size
@@ -115,7 +117,8 @@ def arrow_font(base: QFont) -> QFont:
 
 
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
-JUMP_BUTTON_MARGIN = 8  # from the output window's bottom-right corner
+JUMP_TO_TOP_TOOLTIP = "Jump to the top of the output"
+JUMP_BUTTON_MARGIN = 8  # from the output window's right-hand corners
 # The colours of the CLI's error and warning lines, one per appearance: the
 # light one too dark to read on a dark background, the dark one too pale on a
 # light one. The error red is the destructive buttons' label colour too.
@@ -339,24 +342,27 @@ def copy_to_clipboard(text: str, *_args) -> None:
 
 class CornerKeeper(QObject):
     """
-    Keeps a widget in its parent's bottom-right corner, JUMP_BUTTON_MARGIN in,
-    moving it whenever the parent is resized; a scroll area's viewport also
+    Keeps a widget in its parent's bottom-right corner (top-right with
+    'top'), JUMP_BUTTON_MARGIN in, moving it whenever the parent is resized; a scroll area's viewport also
     needs place() after every scroll, which moves its children with the text.
     Not a layout on the parent, which neither scroll nor the scroll area's
     resizing of its viewport reliably brought back to the corner.
     """
 
-    def __init__(self, parent: QWidget, widget: QWidget):
+    def __init__(self, parent: QWidget, widget: QWidget, top: bool = False):
         super().__init__(parent)
         self._parent = parent
         self._widget = widget
+        self._top = top
         parent.installEventFilter(self)
         self.place()
 
     def place(self) -> None:
         self._widget.move(
             self._parent.width() - self._widget.width() - JUMP_BUTTON_MARGIN,
-            self._parent.height() - self._widget.height() - JUMP_BUTTON_MARGIN,
+            JUMP_BUTTON_MARGIN
+            if self._top
+            else self._parent.height() - self._widget.height() - JUMP_BUTTON_MARGIN,
         )
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
@@ -456,7 +462,7 @@ class OutputPane:
         # Cmd+F on macOS, Ctrl+F elsewhere, from anywhere in the window
         QShortcut(QKeySequence.StandardKey.Find, window, self._focus_text_filter)
 
-        self._jump_button = self._add_jump_button(view)
+        self._jump_button = self._add_jump_buttons(view)
         self._highlighter = OutputHighlighter(cast(QTextDocument, view.document()))
 
     def set_dark(self, is_dark: bool) -> None:
@@ -465,23 +471,70 @@ class OutputPane:
         """
         self._highlighter.set_dark(is_dark)
 
-    def _add_jump_button(self, view: QPlainTextEdit) -> QToolButton:
+    def _add_jump_buttons(self, view: QPlainTextEdit) -> QToolButton:
         """
-        A down-arrow button floating in the output window's bottom-right
-        corner, shown only while the view is scrolled up from its end: new
-        output is followed only at the end, and the read-only view takes no
-        Ctrl+End. It floats over the text rather than taking a row of the
-        window, and CornerKeeper moves it back to the corner whenever the
-        viewport is resized.
+        Two arrow buttons floating in the output window's right-hand corners:
+        a down arrow in the bottom one, shown only while the view is scrolled
+        up from its end (new output is followed only at the end, and the
+        read-only view takes no Ctrl+End), and an up arrow in the top one,
+        shown only while it is scrolled down from its top. They float over
+        the text rather than taking a row of the window, and CornerKeeper
+        moves each back to its corner whenever the viewport is resized or
+        scrolled. Returns the Jump to End button; the other is _jump_top_button.
         """
-        button = QToolButton(view.viewport())
-        button.setObjectName("jump_to_end")
+        viewport = cast(QWidget, view.viewport())
+        button = self._new_jump_button(
+            viewport, "jump_to_end", JUMP_ARROW, JUMP_TO_END_TOOLTIP, self._jump_to_end
+        )
+        self._jump_top_button = self._new_jump_button(
+            viewport,
+            "jump_to_top",
+            JUMP_TO_TOP_ARROW,
+            JUMP_TO_TOP_TOOLTIP,
+            self._jump_to_top,
+        )
+        self._corner_keeper = CornerKeeper(viewport, button)
+        self._top_corner_keeper = CornerKeeper(
+            viewport, self._jump_top_button, top=True
+        )
+        scrollbar = cast(QScrollBar, view.verticalScrollBar())
+        # Whether the view was at its end before the range last changed: the
+        # view's own following of new output is not to be relied on, since on
+        # Windows the range can grow after a jump with nothing to follow it
+        self._following = True
+        scrollbar.valueChanged.connect(self._note_following)
+        scrollbar.rangeChanged.connect(self._stay_at_end_if_following)
+        scrollbar.valueChanged.connect(self._show_jump_buttons_if_scrolled)
+        scrollbar.rangeChanged.connect(self._show_jump_buttons_if_scrolled)
+        # Scrolling moves the viewport's children with its text (QWidget.scroll),
+        # so the buttons are put back in their corners after every scroll, either
+        # way; connected after the view's own handlers, these run after the scroll
+        horizontal = cast(QScrollBar, view.horizontalScrollBar())
+        for keeper in (self._corner_keeper, self._top_corner_keeper):
+            scrollbar.valueChanged.connect(keeper.place)
+            horizontal.valueChanged.connect(keeper.place)
+        return button
+
+    def _new_jump_button(
+        self,
+        viewport: QWidget,
+        name: str,
+        arrow: str,
+        tooltip: str,
+        slot: Callable[[], None],
+    ) -> QToolButton:
+        """
+        A hidden arrow button on the output window's viewport, for
+        _add_jump_buttons() to place.
+        """
+        button = QToolButton(viewport)
+        button.setObjectName(name)
         # The arrow character, as on the command history's ← and → buttons
-        button.setText(JUMP_ARROW)
+        button.setText(arrow)
         # The arrow buttons' font, as theirs is, not the output's fixed-width
         # one it would inherit from the view
         button.setFont(arrow_font(self._window.font()))
-        button.setToolTip(JUMP_TO_END_TOOLTIP)
+        button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Out of the Tab order, appearing and vanishing as it does; a click's
         # focus goes to the output window, as a click anywhere in it would
@@ -490,31 +543,18 @@ class OutputPane:
         # under its bezel, which is translucent (light) or absent (dark)
         button.setBackgroundRole(QPalette.ColorRole.Base)
         button.setAutoFillBackground(True)
-        button.clicked.connect(self._jump_to_end)
+        button.clicked.connect(slot)
         button.adjustSize()
-        viewport = cast(QWidget, view.viewport())
-        self._corner_keeper = CornerKeeper(viewport, button)
         button.hide()
-        scrollbar = cast(QScrollBar, view.verticalScrollBar())
-        # Whether the view was at its end before the range last changed: the
-        # view's own following of new output is not to be relied on, since on
-        # Windows the range can grow after a jump with nothing to follow it
-        self._following = True
-        scrollbar.valueChanged.connect(self._note_following)
-        scrollbar.rangeChanged.connect(self._stay_at_end_if_following)
-        scrollbar.valueChanged.connect(self._show_jump_button_if_scrolled_up)
-        scrollbar.rangeChanged.connect(self._show_jump_button_if_scrolled_up)
-        # Scrolling moves the viewport's children with its text (QWidget.scroll),
-        # so the button is put back in the corner after every scroll, either way;
-        # connected after the view's own handlers, these run after the scroll
-        scrollbar.valueChanged.connect(self._corner_keeper.place)
-        horizontal = cast(QScrollBar, view.horizontalScrollBar())
-        horizontal.valueChanged.connect(self._corner_keeper.place)
         return button
 
     def _at_end(self) -> bool:
         scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
         return scrollbar.value() >= scrollbar.maximum()
+
+    def _at_top(self) -> bool:
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        return scrollbar.value() <= scrollbar.minimum()
 
     def _note_following(self, _value: int) -> None:
         self._following = self._at_end()
@@ -527,8 +567,9 @@ class OutputPane:
         if self._following:
             cast(QScrollBar, self._view.verticalScrollBar()).setValue(maximum)
 
-    def _show_jump_button_if_scrolled_up(self, *_args) -> None:
+    def _show_jump_buttons_if_scrolled(self, *_args) -> None:
         self._jump_button.setVisible(not self._at_end())
+        self._jump_top_button.setVisible(not self._at_top())
 
     def _jump_to_end(self) -> None:
         """
@@ -536,6 +577,13 @@ class OutputPane:
         """
         scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
         scrollbar.setValue(scrollbar.maximum())
+
+    def _jump_to_top(self) -> None:
+        """
+        Scroll to the top, where new output arriving leaves the view.
+        """
+        scrollbar = cast(QScrollBar, self._view.verticalScrollBar())
+        scrollbar.setValue(scrollbar.minimum())
 
     def start_run(
         self,
@@ -696,7 +744,8 @@ class OutputPane:
     def _build_output_menu(self, position: QPoint) -> QMenu:
         """
         Build (but do not show) the output window's context menu: the standard
-        Copy and Select All, then the filter actions. The runs offered are those
+        Copy and Select All, then the filter actions, and Stop Process last, the
+        rarest and the one not to choose by accident. The runs offered are those
         of the line under the pointer, so nothing has to be selected first — two
         of them for an 'Executing:' line, its command's and Commander's.
         """
@@ -722,9 +771,9 @@ class OutputPane:
         if ydids:
             self._add_ydid_actions(menu, ydids)
             menu.addSeparator()
-        for run in self._stoppable_runs(entry):
-            stop = cast(QAction, menu.addAction(run.stop_text))
-            stop.triggered.connect(functools_partial(self.stop_run, run))
+        top = cast(QAction, menu.addAction(JUMP_TO_TOP))
+        top.setEnabled(not self._at_top())
+        top.triggered.connect(self._jump_to_top)
         jump = cast(QAction, menu.addAction(JUMP_TO_END))
         jump.setEnabled(not self._at_end())
         jump.triggered.connect(self._jump_to_end)
@@ -740,6 +789,12 @@ class OutputPane:
                 block.blockNumber() if entry is not None else None,
             )
         )
+        stoppable = self._stoppable_runs(entry)
+        if stoppable:
+            menu.addSeparator()
+        for run in stoppable:
+            stop = cast(QAction, menu.addAction(run.stop_text))
+            stop.triggered.connect(functools_partial(self.stop_run, run))
         return menu
 
     def _add_ydid_actions(self, menu: QMenu, ydids: list[str]) -> None:
