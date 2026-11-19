@@ -509,6 +509,31 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def usage_from(self) -> str | None:
+        return self.args.usage_from
+
+    @property
+    @allow_missing_attribute
+    def usage_until(self) -> str | None:
+        return self.args.usage_until
+
+    @property
+    @allow_missing_attribute
+    def usage_by(self) -> tuple[str, ...] | None:
+        return self.args.usage_by
+
+    @property
+    @allow_missing_attribute
+    def usage_refresh(self) -> bool | None:
+        return self.args.usage_refresh
+
+    @property
+    @allow_missing_attribute
+    def usage_where(self) -> list[tuple[str, str]] | None:
+        return self.args.usage_where
+
+    @property
+    @allow_missing_attribute
     def list_limit(self) -> int:
         """
         The most Tasks, Instances, Nodes or Workers to list: '--limit', else

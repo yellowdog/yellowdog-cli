@@ -44,20 +44,21 @@ def _temp_root() -> Path:
     return Path(tempfile.gettempdir())
 
 
-def cache_directory() -> Path | None:
+def cache_directory(name: str = CACHE_DIRECTORY_NAME) -> Path | None:
     """
     The cache directory, created if need be, or None if it cannot be
-    created or cannot be trusted.
+    created or cannot be trusted; 'name' gives another cache its own
+    (utils/usage_report.py's).
     """
     if sys.platform == "win32":
-        path = _temp_root() / CACHE_DIRECTORY_NAME
+        path = _temp_root() / name
         try:
             path.mkdir(exist_ok=True)
         except OSError:
             return None
         return None if path.is_symlink() or not path.is_dir() else path
     uid = os.getuid()
-    path = _temp_root() / f"{CACHE_DIRECTORY_NAME}-{uid}"
+    path = _temp_root() / f"{name}-{uid}"
     try:
         path.mkdir(mode=0o700, exist_ok=True)
         info = path.lstat()

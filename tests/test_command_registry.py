@@ -198,6 +198,7 @@ class TestRegistryMatchesEntryPoints:
             "yd-init",
             "yd-jsonnet-factor",
             "yd-jsonnet-fromjson",
+            "yd-usage",
             "yd-status",
             "yd-resource-plan",
             "yd-resource-export",
@@ -467,6 +468,7 @@ class TestToolKinds:
             "yd-version",
             "yd-schema",
             "yd-status",
+            "yd-usage",
             "yd-resource-plan",
             "yd-resource-export",
         }

@@ -41,6 +41,7 @@ CASES = (
     "permission-unscoped",
     "permission-keyrings",
     "permission-compute-requirements",
+    "permission-usage",
     "permission-show-other-namespace",
     "permission-within",
     "permission-within-pool",

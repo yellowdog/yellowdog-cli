@@ -88,6 +88,15 @@ LOOKUP_MAX_PARENTS = 10
 # Requirement
 AUTO_SHUTDOWN_POOLS_CHECKED = 20
 COMPLETION_CACHE_SECONDS = 30
+# How far each end of a kept usage report's window may be from the window
+# asked for, the end taken as now at the latest, for 'yd usage' to use it
+# rather than fetch another: a window of fixed past dates matches exactly
+# and is used for good, one ending now for this long after it was fetched
+USAGE_REPORT_REUSE_SECONDS = 600
+# The kept usage reports: each fetch removes those unused for this long, and
+# then the least recently used beyond this many
+USAGE_REPORTS_UNUSED_SECONDS = 7 * 24 * 60 * 60
+USAGE_REPORTS_KEPT = 20
 
 # The most in-situ substitution passes a specification is given to settle; a
 # pass that changes nothing ends them. Real chains of references settle in two

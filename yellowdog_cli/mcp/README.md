@@ -169,6 +169,7 @@ Kind is `read-only`, `acting` or `destructive`, carried to the client as the too
 | `yd_task_cancel` | destructive | `yd task cancel` | Cancel Tasks |
 | `yd_taskgroup_compare` | read-only | `yd taskgroup compare` | Compare a Task Group against Worker Pool(s) |
 | `yd_taskgroup_priority` | destructive | `yd taskgroup priority` | Change the priority of Task Groups and Work Requirements |
+| `yd_usage` | read-only | `yd usage` | Show compute usage over a time window |
 | `yd_variables` | read-only | `yd variables` | Report the processed values of variable substitutions |
 | `yd_version` | read-only | `yd version` | Report version information |
 | `yd_wait` | acting | `yd wait` | Wait for entities to reach a terminal state |
@@ -297,6 +298,7 @@ Every tool's schema is the command's own options, less a fixed exclusion set, gr
 
 - **Configuration and credentials, which the server owns**: `--config`, `--key`, `--secret`, `--url`, `--docs`, `--debug`, `--pac`, `--no-format`, `--quiet`, `--env-override`, `--print-pid`, `--no-config`, `--property`.
 - **Supplied by the server itself, meaningless without a terminal, or refused together with `--json`**: `--json`, `--yes`, `--interactive`, `--progress`, `--report`, `--ids-only`.
+- **`yd usage`'s `--refresh`**, which the server always passes, so `yd_usage` fetches the usage report afresh on every call rather than using one kept from an earlier run.
 - **Machine maintenance, not platform work**: `--upgrade-rclone`, `--which-rclone`.
 - **`yd version`'s single-version flags**, each refused together with the `--json` the server passes: `--cli`, `--sdk`, `--python`, `--jsonnet`, `--rclone`, `--mcp`.
 - **A resource given on the command line**, which the specification says as well: `yd resource create`'s and `yd resource remove`'s `--type` and `--set`.

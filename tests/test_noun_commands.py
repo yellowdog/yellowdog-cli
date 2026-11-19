@@ -57,6 +57,7 @@ UTILITIES = {
     "yd-variables",
     "yd-schema",
     "yd-status",
+    "yd-usage",
     "yd-format-json",
     "yd-help",
     "yd-version",

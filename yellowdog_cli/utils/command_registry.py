@@ -891,6 +891,9 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         "--progress",
         "--report",
         "--ids-only",
+        # yd-usage's: the server always passes it (mcp/tools.py's
+        # fixed_args()), since an agent has no reason to suspect a kept report
+        "--refresh",
         # Machine maintenance, not platform work
         "--upgrade-rclone",
         "--which-rclone",
@@ -3724,6 +3727,157 @@ COMMANDS["yd-status"] = Command(
     script=False,
 )
 
+# --- yd-usage ------------------------------------------------------------
+
+# What yd-usage totals Instances by (utils/usage_report.py reads each)
+USAGE_GROUP_KEYS: tuple[str, ...] = (
+    "namespace",
+    "tag",
+    "requirement",
+    "provider",
+    "region",
+    "instance-type",
+    "source",
+    "spot",
+)
+
+
+def usage_group_keys(value: str) -> tuple[str, ...]:
+    """
+    A '--by' value: one grouping key, or several separated by commas, each
+    one of USAGE_GROUP_KEYS and none given twice.
+    """
+    keys = tuple(key.strip() for key in value.split(","))
+    for key in keys:
+        if key not in USAGE_GROUP_KEYS:
+            raise ArgumentTypeError(
+                f"invalid grouping '{key}' ("
+                + (
+                    did_you_mean(key, USAGE_GROUP_KEYS)
+                    or f"choose from {', '.join(USAGE_GROUP_KEYS)}"
+                )
+                + ")"
+            )
+    repeated = sorted({key for key in keys if keys.count(key) > 1})
+    if repeated:
+        raise ArgumentTypeError(f"grouping given more than once: {', '.join(repeated)}")
+    return keys
+
+
+def usage_filter(value: str) -> tuple[str, str]:
+    """
+    A '--where' value: 'key=pattern', the key one of USAGE_GROUP_KEYS and
+    the pattern a glob, which may not be empty.
+    """
+    key, equals, pattern = value.partition("=")
+    key = key.strip()
+    if not equals:
+        raise ArgumentTypeError(f"'{value}' is not 'key=pattern' (e.g. 'provider=aws')")
+    if key not in USAGE_GROUP_KEYS:
+        raise ArgumentTypeError(
+            f"invalid filter key '{key}' ("
+            + (
+                did_you_mean(key, USAGE_GROUP_KEYS)
+                or f"choose from {', '.join(USAGE_GROUP_KEYS)}"
+            )
+            + ")"
+        )
+    if not pattern:
+        raise ArgumentTypeError(f"'{value}' has no pattern after '='")
+    return key, pattern
+
+
+COMMANDS["yd-usage"] = Command(
+    name="yd-usage",
+    purpose=(
+        "showing the hours Instances spent in each status over a time window,"
+        " from the Platform's compute usage report, totalled by namespace or"
+        " other keys"
+    ),
+    summary="Show compute usage over a time window",
+    kind=CommandKind.API,
+    options=(
+        option(
+            "--from",
+            dest="usage_from",
+            metavar="<when>",
+            required=False,
+            default="7 days ago",
+            help=(
+                "the start of the window, a date and time in any form the"
+                " dateparser library reads ('2026-11-01', '3 days ago');"
+                " '7 days ago' if not given"
+            ),
+        ),
+        option(
+            "--until",
+            dest="usage_until",
+            metavar="<when>",
+            required=False,
+            default="now",
+            help="the end of the window, read as '--from' is; 'now' if not given",
+        ),
+        option(
+            "--by",
+            dest="usage_by",
+            type=usage_group_keys,
+            metavar="<key>[,...]",
+            required=False,
+            default="namespace",
+            help=(
+                "what to total the Instances by, one key or several separated"
+                f" by commas: {', '.join(USAGE_GROUP_KEYS)} ('namespace' if not"
+                " given)"
+            ),
+        ),
+        option(
+            "--where",
+            dest="usage_where",
+            type=usage_filter,
+            action="append",
+            metavar="<key>=<pattern>",
+            required=False,
+            help=(
+                "count only the Instances whose key matches the pattern, a glob"
+                " in any case ('provider=aws', 'instance-type=g4dn.*'), the key"
+                " any '--by' takes; repeatable: different keys must all match,"
+                " the same key given again matches either"
+            ),
+        ),
+        NAMESPACE.variant(
+            help="the namespace to report on; every namespace if not given"
+        ),
+        option(
+            "--refresh",
+            "-R",
+            dest="usage_refresh",
+            action="store_true",
+            required=False,
+            help=(
+                "fetch the report again, rather than use the one kept from an"
+                " earlier run with the same window and namespace"
+            ),
+        ),
+        JSON.variant(help="print one JSON document holding the window and the totals"),
+    ),
+    tool=ToolKind.READ_ONLY,
+    tool_description=(
+        "Show the hours Instances spent in each status (pending, running,"
+        " stopping, stopped, terminating, unknown, and in all) over a time"
+        " window, totalled by namespace or by the keys 'usage_by' lists, from"
+        " the Platform's compute usage report, which counts only the time"
+        " inside the window. 'usage_where' narrows the Instances counted, each"
+        " entry 'key=pattern' (a glob in any case, over the keys 'usage_by'"
+        " takes): different keys must all match, the same key again matches"
+        " either. 'usage_from' and 'usage_until' take any date and time the"
+        " dateparser"
+        " library reads ('2026-11-01', '3 days ago'; '7 days ago' and 'now'"
+        " if not given); 'namespace' reports on one namespace, every namespace"
+        " if not given. The report is fetched afresh on every call."
+    ),
+    script=False,
+)
+
 # --- yd-cloud-info -------------------------------------------------------
 
 CLOUD_INFO_PROVIDERS = ("aws", "azure", "google", "oci")
@@ -3755,11 +3909,13 @@ def cloud_info_sort_keys(value: str) -> tuple[str, ...]:
     return parse_sort_keys(value, _CLOUD_INFO_SORT_CHOICES)
 
 
-# Each '--sort' type and the keys it accepts, which the MCP catalogue offers
-# as a list of them (mcp/tools.py)
+# Each type of keys separated by commas ('--sort', and yd-usage's '--by') and
+# the keys it accepts, which the MCP catalogue offers as a list of them
+# (mcp/tools.py) and Tab completes (utils/completion.py)
 SORT_KEY_TYPES: dict[Callable[[str], tuple[str, ...]], tuple[str, ...]] = {
     entity_sort_keys: ENTITY_SORT_KEYS,
     cloud_info_sort_keys: _CLOUD_INFO_SORT_CHOICES,
+    usage_group_keys: USAGE_GROUP_KEYS,
 }
 
 # The types each filter applies to, as (dest, flag, types); '--provider' and

@@ -41662,6 +41662,279 @@
       "type": "str"
     }
   ],
+  "yd-usage": [
+    {
+      "choices": null,
+      "const": null,
+      "default": "7 days ago",
+      "dest": "usage_from",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--from"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": "now",
+      "dest": "usage_until",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--until"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": "namespace",
+      "dest": "usage_by",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--by"
+      ],
+      "required": false,
+      "type": "usage_group_keys"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "usage_where",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--where"
+      ],
+      "required": false,
+      "type": "usage_filter"
+    },
+    {
+      "choices": null,
+      "const": "",
+      "default": null,
+      "dest": "namespace",
+      "kind": "_StoreAction",
+      "nargs": "?",
+      "option_strings": [
+        "--namespace",
+        "-n"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "usage_refresh",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--refresh",
+        "-R"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "json",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--json",
+        "-J"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "docs",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--docs"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "config",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--config",
+        "-c"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "key",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--key",
+        "-k"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "secret",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--secret",
+        "-s"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "url",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--url",
+        "-u"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "debug",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--debug"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "pac",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--pac"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_format",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-format",
+        "--nf"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "quiet",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--quiet",
+        "-q"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "env_override",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--env-override"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "print_pid",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--print-pid",
+        "--pp"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "no_config",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--no-config",
+        "--nc"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "property",
+      "kind": "_AppendAction",
+      "nargs": null,
+      "option_strings": [
+        "--property"
+      ],
+      "required": false,
+      "type": "str"
+    }
+  ],
   "yd-variables": [
     {
       "choices": null,

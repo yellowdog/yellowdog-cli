@@ -1,7 +1,9 @@
 """
 The failure tests' limited Application: one Group with 'work-viewer' in
 LIMITED_NAMESPACE alone, and an Application in it, made by
-specs/limited-app.jsonnet. Its key and secret are read from the creation's
+specs/limited-app.jsonnet; and the usage scope test's (USAGE_SPEC), with
+'compute-viewer' in the run's namespace besides, so that it may read usage
+there and nowhere else. Its key and secret are read from the creation's
 records and registered with the runner as secrets before the result is
 checked, so not even a failed creation's report can show them.
 """
@@ -11,12 +13,14 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from harness.lifecycle import NOT_FOUND
 from harness.run import LIMITED_NAMESPACE, SPECS, Run
 from harness.yd import Yd, YdError
 
 LIMITED_SPEC = SPECS / "limited-app.jsonnet"
+USAGE_SPEC = SPECS / "usage-app.jsonnet"
 # What the limited Application may do: list Work Requirements in its namespace
 CONTROL = ("wr", "list", "--namespace", LIMITED_NAMESPACE, "--json", "--quiet")
 _SELECT = ("--yes", "--json", "--quiet")
@@ -41,10 +45,10 @@ class LimitedApp:
     secret: str = field(repr=False)
 
 
-def create_limited_app(yd: Yd, run: Run) -> LimitedApp:
+def create_limited_app(yd: Yd, run: Run, spec: Path = LIMITED_SPEC) -> LimitedApp:
     """
     Create the namespace (when missing), the Group and the Application for
-    the run (whose configuration file gives the specification its run ID
+    the run from 'spec' (the run's configuration file giving it its run ID
     and namespace), registering the Application's key and secret with the
     runner as secrets before anything is reported.
     """
@@ -54,7 +58,7 @@ def create_limited_app(yd: Yd, run: Run) -> LimitedApp:
         *_SELECT,
         "--variable",
         f"limited_namespace={LIMITED_NAMESPACE}",
-        str(LIMITED_SPEC),
+        str(spec),
         check=False,
         expect_secret=True,
     )

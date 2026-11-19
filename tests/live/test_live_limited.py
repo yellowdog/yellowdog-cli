@@ -12,6 +12,7 @@ from harness.limited import (
     CONTROL,
     LIMITED_NAMESPACE,
     LIMITED_SPEC,
+    USAGE_SPEC,
     create_limited_app,
     remove_application,
     remove_group,
@@ -47,14 +48,14 @@ CREATED = [
 ]
 
 
-def _specification() -> list[dict]:
+def _specification(spec=LIMITED_SPEC) -> list[dict]:
     try:
         check_jsonnet_import()
     except ImportError as error:
         pytest.skip(str(error))
     import _jsonnet
 
-    return json.loads(_jsonnet.evaluate_file(str(LIMITED_SPEC)))
+    return json.loads(_jsonnet.evaluate_file(str(spec)))
 
 
 def test_the_group_has_work_viewer_in_the_limited_namespace_alone():
@@ -139,3 +140,28 @@ def test_output_that_does_not_parse_is_never_shown():
         create_limited_app(yd, RUN)
     assert "limited-secret" not in str(raised.value)
     assert "it broke" in str(raised.value)
+
+
+def test_the_usage_group_reads_usage_in_the_runs_namespace_alone():
+    (_, group, application) = _specification(USAGE_SPEC)
+    assert group["name"] == "{{run_id}}-usage-group"
+    roles = {role["role"]["name"]: role["scope"] for role in group["roles"]}
+    assert roles == {
+        "compute-viewer": {
+            "global": False,
+            "namespaces": [{"namespace": "{{namespace}}"}],
+        },
+        "work-viewer": {
+            "global": False,
+            "namespaces": [{"namespace": "{{limited_namespace}}"}],
+        },
+    }
+    assert application["groups"] == [group["name"]]
+    for resource in (group, application):
+        assert resource["description"].endswith(", namespace {{namespace}}")
+
+
+def test_creation_takes_the_specification_given():
+    yd = FakeYd(lambda args: result(args, document=CREATED))
+    create_limited_app(yd, RUN, USAGE_SPEC)
+    assert str(USAGE_SPEC) in yd.calls[0]

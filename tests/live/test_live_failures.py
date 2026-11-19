@@ -411,6 +411,22 @@ def test_permission_compute_requirements(as_limited):
     )
 
 
+def test_permission_usage(as_limited):
+    # Reading the usage report needs COMPUTE_USAGE_READ, which 'work-viewer'
+    # does not give, even in the limited Application's own namespace
+    _fails(
+        as_limited,
+        "permission-usage",
+        5,
+        PERMISSION,
+        "usage",
+        "--namespace",
+        LIMITED_NAMESPACE,
+        "--refresh",
+        *_JSON,
+    )
+
+
 def test_permission_show_other_namespace(as_limited, stuck_wr):
     _fails(
         as_limited,
