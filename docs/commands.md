@@ -2133,7 +2133,7 @@ yd usage --from '24 hours ago' --by tag
 yd usage --json | jq -r '.groups[] | [.namespace, .hours.running] | @tsv'
 ```
 
-A date with no time, such as `2026-10-01`, is midnight in your local time zone; the summary line shows the window in UTC.
+A date with no time, such as `2026-10-01`, is midnight in your local time zone; the summary line shows the window in UTC. To give a date in another time zone, add it: `--from '2026-10-01 UTC'` is midnight UTC wherever the command runs, and an offset (`'2026-10-01 09:00 +02:00'`) or an abbreviation (`EST`) works too, though a name such as `Europe/Paris` does not.
 
 An Application allowed to read usage in some namespaces only is refused a report on every namespace, so without `--namespace` the command asks for the namespaces the Application can read, leaves out any the Platform says it may not read usage in, and says which it reported on (`Reporting on the 2 namespaces this Application can read usage in: …`); `namespaces` under `--json` lists them, and is `null` for a report on every namespace. A namespace given with `--namespace` that the Application may not read usage in is refused, with exit code 5.
 
