@@ -316,6 +316,26 @@ class TestFixedArgs:
         assert "-n" not in fixed_args(COMMANDS["yd-wait"], settings)
         assert fixed_args(COMMANDS["yd-version"], settings) == ["--nf", "--json"]
 
+    def test_the_usage_report_is_always_fetched_afresh(self):
+        settings = ServerSettings(
+            config_file=None, namespace=None, tag=None, variables=()
+        )
+        assert "--refresh" in fixed_args(COMMANDS["yd-usage"], settings)
+        assert "refresh" not in tool_named("yd_usage").input_schema["properties"]
+        assert "--refresh" not in fixed_args(COMMANDS["yd-list"], settings)
+
+    def test_the_usage_filters_are_a_list_of_key_and_pattern(self):
+        tool = tool_named("yd_usage")
+        schema = tool.input_schema["properties"]["usage_where"]
+        assert schema["type"] == "array"
+        assert schema["items"]["type"] == "string"
+        pattern = re.compile(schema["items"]["pattern"])
+        assert pattern.match("provider=aws") and pattern.match("spot=spot")
+        assert not pattern.match("providr=aws") and not pattern.match("provider=")
+        # The description names the arguments as the schema does
+        for name in ("usage_by", "usage_where", "usage_from", "usage_until"):
+            assert f"'{name}'" in tool.description
+
     def test_the_self_printing_commands_take_json(self):
         # yd-show and yd-variables print their own JSON document, which
         # --json leaves alone on stdout, their warnings going to stderr

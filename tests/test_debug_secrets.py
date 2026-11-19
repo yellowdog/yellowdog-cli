@@ -97,6 +97,10 @@ def _run(args: list[str], tmp_path, url: str) -> subprocess.CompletedProcess:
         ["variables", "api_token"],
         # Offline: its other checks reach PyPI and the remote's bucket
         ["doctor", "--offline"],
+        # Its own request, which carries the key and secret in its headers
+        # (the '-n' path; without one, the SDK's application details first)
+        ["usage", "--namespace", "image-processing", "--refresh"],
+        ["usage", "--refresh"],
     ],
     ids=lambda args: " ".join(args),
 )

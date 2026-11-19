@@ -1,6 +1,7 @@
 """
 Polling the run's compute through 'yd': a Worker Pool's Nodes and Workers,
-a Compute Requirement's Instances, and their states. Every wait is bounded:
+a Compute Requirement's Instances, and their states, and a Compute
+Requirement's hours in the usage report ('yd usage'). Every wait is bounded:
 one that runs out raises ComputeTimeout naming what it last saw, and a wait
 for a Worker to register carries the Compute Requirement's source report and
 exhaustion, masked, since those say why nothing came up. A 'yd' failure while
@@ -279,3 +280,44 @@ def wait_for_requirement(
 
     wait_for(f"{cr_id} {'/'.join(sorted(statuses))}", probe, timeout_minutes, **timing)
     return seen["status"]
+
+
+def requirement_usage(
+    yd: Yd,
+    namespace: str,
+    requirement: str,
+    statuses: frozenset[str],
+    timeout_minutes: float,
+    **timing,
+) -> dict:
+    """
+    The usage report's group for the named Compute Requirement, over the
+    last day in the namespace, once it has hours in each of 'statuses':
+    fetched afresh at each poll ('--refresh'), since the report is kept
+    between runs and the Platform's usage may trail what it has done.
+    """
+    found: dict = {}
+
+    def probe() -> tuple[bool, str]:
+        document = yd(
+            "usage",
+            "--namespace",
+            namespace,
+            "--by",
+            "requirement",
+            "--from",
+            "1 day ago",
+            "--refresh",
+            "--json",
+            "--quiet",
+        ).document
+        groups = [g for g in document["groups"] if g["requirement"] == requirement]
+        if not groups:
+            return False, f"no usage for {requirement}"
+        found.update(groups[0])
+        hours = groups[0]["hours"]
+        missing = sorted(s for s in statuses if not hours.get(s))
+        return not missing, f"no {', '.join(missing)} hours: {hours}"
+
+    wait_for(f"{requirement}'s usage", probe, timeout_minutes, **timing)
+    return found

@@ -84,6 +84,7 @@
       * [yd follow](#yd-follow)
       * [yd wait](#yd-wait)
       * [yd status](#yd-status)
+      * [yd usage](#yd-usage)
       * [yd application](#yd-application)
       * [yd variables](#yd-variables)
       * [yd init](#yd-init)
@@ -97,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov 16 10:56:30 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 19 09:45:20 GMT 2026 -->
 
 <!--te-->
 
@@ -2063,6 +2064,80 @@ Key options:
 ```
 
 The Namespace and Tag columns are left out, since the first line names them, and a Provisioned Worker Pool's Compute Requirement appears in both its sections, as in `yd list`. A section with nothing to show says so. A warning closes the report when anything is unhealthy (`1 Worker Pool unhealthy`); being unhealthy does not change the exit code. A section whose search fails, a missing permission say, says why (in `failures` under `--json`) and the others are still shown; the command then exits with that failure's [exit code](json-output.md), or 1 for failures of different kinds. `--quiet` prints the tables alone, as `yd list --quiet` does, with a failed search still said on stderr.
+
+### yd usage
+
+The `yd usage` command shows the time Instances spent running, stopped and in all statuses over a time window, in hours and minutes (`h:mm`, time under a minute shown as `<0:01`), the last seven days unless told otherwise, totalled by namespace or by the other keys `--by` names. It reads the Platform's compute usage report, which counts only the time inside the window.
+
+```shell
+yd usage [options]
+```
+
+```shell
+yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
+```
+
+```
+2026-11-19 07:48:25 : Fetching the usage report from the Platform
+2026-11-19 07:48:26 : Report fetched now (2026-11-19 07:48 UTC, 48.2 kB), in '$TMPDIR/yellowdog-cli-usage-501/81a02021fcca0d50/report.zip'
+2026-11-19 07:48:26 : Instance usage from 2026-11-01 00:00 UTC until 2026-11-08 00:00 UTC, by namespace, instance-type
+    ┌──────────────┬─────────────────┬─────────────┬──────────────────┬──────────────────┬────────────────┐
+    │ Namespace    │ Instance type   │ Instances   │ Running (h:mm)   │ Stopped (h:mm)   │ Total (h:mm)   │
+    ├──────────────┼─────────────────┼─────────────┼──────────────────┼──────────────────┼────────────────┤
+    │ team-render  │ g4dn.xlarge     │ 1           │ 0:00             │ 168:00           │ 168:00         │
+    │ team-train   │ t3a.2xlarge     │ 121         │ 11:12            │ 0:00             │ 12:00          │
+    └──────────────┴─────────────────┴─────────────┴──────────────────┴──────────────────┴────────────────┘
+2026-11-19 07:48:26 : Total: 122 Instances, 11:12 running of 180:00 in all statuses
+```
+
+Key options:
+- `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
+- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `spot` (spot or on-demand)
+- `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
+- `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
+- `--refresh`/`-R` — fetch the report again (see below)
+- `--json`/`-J` — print one JSON document holding the window, when the report was fetched and where it is kept, and each group's Instance count and its time in every status, in hours and in exact seconds:
+
+```json
+{"from": "...", "until": "...", "namespace": null, "namespaces": null, "by": ["namespace"], "where": {}, "fetched": "...", "reportFile": "...", "groups": [{"namespace": "team-render", "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}]}
+```
+
+Some uses:
+
+```shell
+# Last week's usage across every namespace (the defaults)
+yd usage
+
+# Where the hours went in one namespace: each Compute Requirement, by name
+yd usage -n image-processing --by requirement
+
+# Anything left stopped, which still costs for its disks: look down the Stopped column
+yd usage --by namespace,requirement
+
+# Spot against on-demand, per cloud provider, over the last 30 days
+yd usage --from '30 days ago' --by provider,spot
+
+# AWS alone, region by region
+yd usage --where provider=aws --by region
+
+# Which namespaces ran GPU instances, of either family
+yd usage --where 'instance-type=g4dn.*' --where 'instance-type=p3.*' --by namespace,instance-type
+
+# A calendar month, by namespace and instance type, for a cost review
+yd usage --from 2026-10-01 --until 2026-11-01 --by namespace,instance-type
+
+# The last day, by tag (one per project or pipeline, say)
+yd usage --from '24 hours ago' --by tag
+
+# Running hours per namespace as tab-separated text, for a spreadsheet
+yd usage --json | jq -r '.groups[] | [.namespace, .hours.running] | @tsv'
+```
+
+A date with no time, such as `2026-10-01`, is midnight in your local time zone; the summary line shows the window in UTC.
+
+An Application allowed to read usage in some namespaces only is refused a report on every namespace, so without `--namespace` the command asks for the namespaces the Application can read, leaves out any the Platform says it may not read usage in, and says which it reported on (`Reporting on the 2 namespaces this Application can read usage in: …`); `namespaces` under `--json` lists them, and is `null` for a report on every namespace. A namespace given with `--namespace` that the Application may not read usage in is refused, with exit code 5.
+
+The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path. A later run with the same `--from`, `--until` and `--namespace`, as written, uses the report kept rather than fetching the report again while they still cover that window to within ten minutes at each end: a window of fixed dates in the past for as long as it is kept, since its usage no longer changes, and a window ending now (the default) for ten minutes after it was fetched, which is long enough to look at the same week `--by` several keys in turn. `--refresh` fetches a new one regardless. Each fetch removes the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
 
 ### yd application
 

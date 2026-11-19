@@ -193,3 +193,44 @@ def test_a_worker_wait_can_ask_for_a_new_worker():
             **_timing(Clock()),
         )
     compute.wait_for_worker(yd, NS, RUN, POOL, 1, instance_id="i-3", **_timing(Clock()))
+
+
+def _usage(groups):
+    def respond(args):
+        return result(args, document={"groups": next(groups)})
+
+    return respond
+
+
+def test_requirement_usage_waits_for_the_hours_of_each_status():
+    group = {"requirement": "cr-1", "instances": 1}
+    yd = FakeYd(
+        _usage(
+            iter(
+                [
+                    [],
+                    [{**group, "hours": {"running": 0.1, "stopped": 0.0}}],
+                    [
+                        {"requirement": "other", "hours": {"running": 9}},
+                        {**group, "hours": {"running": 0.2, "stopped": 0.01}},
+                    ],
+                ]
+            )
+        )
+    )
+    clock = Clock()
+    usage = compute.requirement_usage(
+        yd, NS, "cr-1", frozenset({"running", "stopped"}), 10, **_timing(clock)
+    )
+    assert usage["hours"] == {"running": 0.2, "stopped": 0.01}
+    assert len(yd.calls) == 3
+    assert all("--refresh" in call and NS in call for call in yd.calls)
+
+
+def test_requirement_usage_names_what_it_last_saw_when_time_is_up():
+    stuck = [{"requirement": "cr-1", "hours": {"running": 0.1, "stopped": 0.0}}]
+    yd = FakeYd(_usage(iter([stuck] * 100)))
+    with pytest.raises(ComputeTimeout, match="no stopped hours"):
+        compute.requirement_usage(
+            yd, NS, "cr-1", frozenset({"running", "stopped"}), 2, **_timing(Clock())
+        )

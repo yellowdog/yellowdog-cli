@@ -2,6 +2,11 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.16.0 — 2026-11-19
+
+- The CLI requires `yellowdog-sdk` 16.1.1 or later.
+- **`yd usage` shows the hours Instances spent running, stopped and in all statuses over a time window**, the last seven days by default (`--from`, `--until`), totalled by namespace or by tag, Compute Requirement, provider, region, instance type, Compute Source or spot (`--by`, several at once), and filtered by any of those (`--where provider=aws`, a glob in any case, repeatable), the table giving times as `h:mm` and `--json` the hours and exact seconds in every status. It reads the Platform's compute usage report, keeping the report (a zip of CSV files) in a private temporary directory for the next run with the same window and namespace: a window of fixed past dates is read from it while it is kept, and one ending now for ten minutes, unless `--refresh` fetches the report again. Reports unused for a week, and the least recently used beyond 20, are removed. An Application allowed to read usage in some namespaces only gets a report on those, named in its output, and a `--namespace` that does not exist is said to be missing (exit code 6) rather than reported as idle. The MCP server offers it as `yd_usage`, which fetches the report afresh on every call.
+
 ## 15.15.1 — 2026-11-18
 
 ### Commander

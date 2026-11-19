@@ -38,7 +38,7 @@
          * [Details](#details-7)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov 16 10:56:34 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 19 09:45:24 GMT 2026 -->
 
 <!--te-->
 
@@ -123,6 +123,8 @@ The file is found next to `config.toml`, or in the `--content-path` directory if
 
 - Software the Tasks need goes **before** the installer, because the installer starts the Agent, which may then give a Task to the node: `userDataFiles = ["install-ffmpeg.sh", "yd-agent-installer.sh"]`.
 - Scripts that change the Agent's configuration, such as [`add-task-type.sh`, `add-docker-task-type.sh` and `add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#additional-user-data-scripts), go **after** it, because the installer writes that configuration afresh.
+
+**User Data size.** A Worker Pool leaves less room for User Data than the cloud provider's limit suggests. The Platform adds the Agent's configuration to it and encodes the result, and the provider's limit applies to what is sent. On AWS, whose limit is 16 KB, a Worker Pool's User Data can be only about two thirds of that; a Compute Requirement's is sent unchanged. User Data that is too large is refused as the instances are requested. The refusal appears in the status message of the pool's Compute Source, which `yd show` of the Worker Pool's Compute Requirement includes. To make room, trim the script, or download larger scripts as it runs instead of including them.
 
 ## Worker Pools vs. Compute Requirements
 

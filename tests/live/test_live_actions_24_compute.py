@@ -1,7 +1,8 @@
 """
 Live: a standalone Compute Requirement stopped and started as a whole,
-listed, shown by its name, followed in a thread while it is terminated, and
-waited for by ID and, terminated, by name. It
+listed, shown by its name, followed in a thread while it is terminated,
+waited for by ID and, terminated, by name, and found in the usage report
+('yd usage') with its running and stopped hours. It
 runs last of the 'ydst-actions' modules, after the actions pool has ended,
 so its time never counts against the pool's idle timeouts.
 """
@@ -83,3 +84,28 @@ def test_a_requirement_is_stopped_started_followed_and_waited_for(live_run):
         # A terminated one is still found by its name
         (by_name,) = yd("cr", "wait", cr_name, "--json", "--quiet", ok=(0, 1)).records
         assert by_name["id"] == cr_id, by_name
+
+        # Its one Instance ran, was stopped and started: the usage report
+        # has it, by the requirement's name, with running and stopped hours
+        usage = compute.requirement_usage(
+            yd, run.namespace, cr_name, frozenset({"running", "stopped"}), minutes
+        )
+        assert usage["instances"] == 1, usage
+        assert usage["hours"]["total"] >= usage["hours"]["running"], usage
+
+        # The report fetched is kept: the same window again, without
+        # '--refresh', reads it rather than fetching another
+        kept = [
+            yd(
+                "usage",
+                "--namespace",
+                run.namespace,
+                "--from",
+                "1 day ago",
+                "--json",
+                "--quiet",
+            ).document
+            for _ in range(2)
+        ]
+        assert kept[0]["fetched"] == kept[1]["fetched"], kept
+        assert kept[0]["groups"] == kept[1]["groups"], kept

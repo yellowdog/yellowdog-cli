@@ -48,7 +48,7 @@ ACTIVE_TYPES = ("work-requirements", "worker-pools", "compute-requirements")
 ACCOUNT_WIDE = frozenset({"keyrings", "allowances", "applications", "groups"})
 # Not in a namespace: the sweep counts one only when its description names
 # the sweep's namespace, as a run's does (specs/common.jsonnet,
-# specs/limited-app.jsonnet)
+# specs/limited-app.jsonnet, specs/usage-app.jsonnet)
 DESCRIBED_ACCOUNT_WIDE = ("keyrings", "applications", "groups")
 # What a run keeps while its compute may still be alive
 KEPT_WHILE_COMPUTE_LIVES = ("allowances", "keyrings")

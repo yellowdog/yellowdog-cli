@@ -27,6 +27,7 @@ from yellowdog_cli.utils.command_registry import (
     NAMESPACE,
     SORT_KEY_TYPES,
     TAG,
+    USAGE_GROUP_KEYS,
     Command,
     Exclusive,
     Option,
@@ -39,6 +40,7 @@ from yellowdog_cli.utils.command_registry import (
     resolve_cloud_info_type,
     resolve_entity_type,
     resolve_resource_type,
+    usage_filter,
 )
 from yellowdog_cli.utils.entity_names import CLOUD_INFO_TYPES
 from yellowdog_cli.utils.limits import (
@@ -222,6 +224,10 @@ def _item_schema(option: Option) -> dict[str, Any]:
     elif kind is resolve_resource_type:
         # A resource type in any case, offered as the option's choices
         schema["type"] = "string"
+    elif kind is usage_filter:
+        # 'key=pattern', the key one of yd-usage's grouping keys
+        schema["type"] = "string"
+        schema["pattern"] = f"^({'|'.join(USAGE_GROUP_KEYS)})=.+$"
     elif kind in (None, str):
         schema["type"] = "string"
     else:
@@ -472,7 +478,7 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
     """
     The arguments the server adds ahead of a tool's own, each only where
     the command has the option: the config source, no formatting, the JSON
-    result, no prompts, and the
+    result, no prompts, a fresh usage report, and the
     launch-time namespace, tag and variables (first, so a tool's own come
     later and win).
     """
@@ -490,6 +496,10 @@ def fixed_args(command: Command, settings: ServerSettings) -> list[str]:
         args.append("--json")
     if command.option_named("--yes") is not None:
         args.append("--yes")
+    # yd-usage's kept report suits a person, who is told its age, not an
+    # agent asking for the last seven days, who would get yesterday's
+    if command.option_named("--refresh") is not None:
+        args.append("--refresh")
     # Joined, as a tool's own values are (see _joined()): a launch-time value
     # beginning with '-' is a value, never a flag. An option a noun verb hides
     # is refused if given
