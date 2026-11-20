@@ -189,8 +189,7 @@ def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
 # One widget from each row of the right-hand column, the leftmost in the row.
 RIGHT_COLUMN_ROWS = [
     "label_7",  # Namespace:
-    "user_variables_label",  # Variables:
-    "properties_label",  # Properties:
+    "user_variables_label",  # Variables: (and Properties:, beside it)
     "browse_config_directory",
     "run_any_command",
     "command_output_title",
@@ -249,17 +248,23 @@ def test_the_left_column_fields_start_at_the_same_edge(qapp):
     assert len(set(starts.values())) == 1, f"ragged field edges: {starts}"
 
 
-def test_the_properties_field_starts_under_the_variables_field(qapp):
-    # In separate grid rows, each field would otherwise begin where its own label
-    # ends, and 'Properties:' and 'Variables:' differ in width
+def test_the_variables_and_properties_fields_share_a_row(qapp):
+    # Side by side, as Namespace, Tag and Name are, each field as wide as the
+    # other, so that neither takes the row's slack
     win = gui_harness.shown(YellowDogApp())
 
-    starts = {
-        name: getattr(win, name).mapTo(win, QPoint(0, 0)).x()
+    variables, properties = (
+        getattr(win, name)
+        .geometry()
+        .translated(getattr(win, name).parentWidget().mapTo(win, QPoint(0, 0)))
         for name in ("user_variables", "properties")
-    }
+    )
 
-    assert len(set(starts.values())) == 1, f"ragged field edges: {starts}"
+    assert variables.top() == properties.top()
+    assert win.properties_label.mapTo(win, QPoint(0, 0)).x() > variables.right()
+    assert abs(variables.width() - properties.width()) <= 1, (
+        f"unequal fields: {variables.width()} and {properties.width()}"
+    )
 
 
 # One row from each panel of the left-hand column, top to bottom.

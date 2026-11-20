@@ -20,7 +20,7 @@
    <string>YellowDog Commander</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="main_grid" rowstretch="0,0,0,0,0,0,1" columnstretch="0,0,1,0">
+   <layout class="QGridLayout" name="main_grid" rowstretch="0,0,0,0,0,1" columnstretch="0,0,1,0">
     <property name="bottomMargin">
      <number>0</number>
     </property>
@@ -108,7 +108,7 @@
       </property>
      </widget>
     </item>
-    <item row="2" column="0" rowspan="5">
+    <item row="2" column="0" rowspan="4">
      <layout class="QVBoxLayout" name="submit_provision_collect">
       <property name="spacing">
        <number>8</number>
@@ -721,7 +721,7 @@ file, choosing which ones first</string>
       </item>
      </layout>
     </item>
-    <item row="1" column="1" rowspan="6">
+    <item row="1" column="1" rowspan="5">
      <widget class="Line" name="line_5">
       <property name="orientation">
        <enum>Qt::Orientation::Vertical</enum>
@@ -856,7 +856,7 @@ for Cancel, Shut Down and Terminate</string>
      </layout>
     </item>
     <item row="3" column="2">
-     <layout class="QHBoxLayout" name="horizontalLayout">
+     <layout class="QHBoxLayout" name="horizontalLayout_variables_properties" stretch="0,1,0,1">
       <property name="leftMargin">
        <number>0</number>
       </property>
@@ -907,13 +907,6 @@ as name=value pairs separated by spaces</string>
         </property>
        </widget>
       </item>
-     </layout>
-    </item>
-    <item row="4" column="2">
-     <layout class="QHBoxLayout" name="horizontalLayout_properties">
-      <property name="leftMargin">
-       <number>0</number>
-      </property>
       <item>
        <widget class="QLabel" name="properties_label">
         <property name="maximumSize">
@@ -982,14 +975,14 @@ separated by spaces; quote a value containing spaces</string>
       </property>
      </widget>
     </item>
-    <item row="5" column="2" colspan="2">
+    <item row="4" column="2" colspan="2">
      <widget class="Line" name="line_4">
       <property name="orientation">
        <enum>Qt::Orientation::Horizontal</enum>
       </property>
      </widget>
     </item>
-    <item row="6" column="2" colspan="2">
+    <item row="5" column="2" colspan="2">
      <layout class="QVBoxLayout" name="command_output">
       <property name="spacing">
        <number>-1</number>

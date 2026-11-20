@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commander
+
+- **The Variables and Properties fields share a row**, side by side and equally wide, as Namespace, Tag and Name do.
+
 ## 15.17.0 — 2026-11-20
 
 - The CLI requires `yellowdog-sdk` 16.2.0 or later.
