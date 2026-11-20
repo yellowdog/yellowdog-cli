@@ -51,6 +51,9 @@ import requests
 from yellowdog_cli.utils.completion_cache import cache_directory, cache_key
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import (
+    RAW_CONNECT_TIMEOUT,
+    USAGE_REPORT_CHUNK_BYTES,
+    USAGE_REPORT_READ_TIMEOUT,
     USAGE_REPORT_REUSE_SECONDS,
     USAGE_REPORTS_KEPT,
     USAGE_REPORTS_UNUSED_SECONDS,
@@ -401,6 +404,21 @@ def _fetch(
     namespace: str | None,
 ) -> Fetched:
     """
+    The report, fetched under a progress display (_FetchProgress) while
+    the Platform builds it and while it arrives.
+    """
+    with _FetchProgress() as progress:
+        return _fetch_shown(ctx, from_time, until_time, namespace, progress)
+
+
+def _fetch_shown(
+    ctx: RunContext,
+    from_time: datetime,
+    until_time: datetime,
+    namespace: str | None,
+    progress: _FetchProgress,
+) -> Fetched:
+    """
     The report's zip, as the Platform sends it: for the namespace given,
     else scoped as a search is (entity_utils.search_namespaces()), every
     namespace for an Application that can read them all and those it can
@@ -415,14 +433,15 @@ def _fetch(
     from yellowdog_cli.utils import entity_utils
     from yellowdog_cli.utils.task_batches import raise_for_response
 
+    wait = _report_timeout(ctx.config.read_timeout)[1]
     if namespace:
-        response = _request(ctx, from_time, until_time, [namespace])
+        response = _request(ctx, from_time, until_time, [namespace], progress)
         if response.status_code != 200:
             raise_for_response(response)
-        return Fetched(response.content, [namespace])
+        return Fetched(_body(response, progress, wait), [namespace])
 
     namespaces = entity_utils.search_namespaces(ctx.client, None)
-    response = _request(ctx, from_time, until_time, namespaces)
+    response = _request(ctx, from_time, until_time, namespaces, progress)
     if (
         response.status_code == 403
         and namespaces is None
@@ -434,7 +453,7 @@ def _fetch(
             " namespaces by name",
             len(namespaces),
         )
-        response = _request(ctx, from_time, until_time, namespaces)
+        response = _request(ctx, from_time, until_time, namespaces, progress)
     refused: list[str] = []
     if response.status_code == 403 and namespaces:
         refused = sorted(set(_refused_namespaces(response.text)) & set(namespaces))
@@ -444,10 +463,166 @@ def _fetch(
                 "Usage is not readable in %s: asking for %s alone", refused, remaining
             )
             namespaces = remaining
-            response = _request(ctx, from_time, until_time, namespaces)
+            response = _request(ctx, from_time, until_time, namespaces, progress)
     if response.status_code != 200:
         raise_for_response(response)
-    return Fetched(response.content, namespaces, refused)
+    return Fetched(_body(response, progress, wait), namespaces, refused)
+
+
+def _report_timeout(read_timeout: float | None) -> tuple[float, float | None]:
+    """
+    (connect, read) for the report request: readTimeout, but at least
+    USAGE_REPORT_READ_TIMEOUT, since the Platform builds the report before
+    it answers; None (readTimeout = 0) is no limit, as everywhere.
+    """
+    if read_timeout is None:
+        return (RAW_CONNECT_TIMEOUT, None)
+    return (RAW_CONNECT_TIMEOUT, max(read_timeout, USAGE_REPORT_READ_TIMEOUT))
+
+
+def _waited(seconds: float) -> str:
+    """
+    A wait as a message gives it: '5 minutes', '90 seconds'.
+    """
+    if seconds % 60 == 0:
+        minutes = int(seconds // 60)
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{seconds:g} seconds"
+
+
+def _progress_shown() -> bool:
+    """
+    Whether the fetch's progress is shown: on a terminal alone, and never
+    under --json, --quiet or --no-format, which ask for output read as a
+    whole.
+    """
+    from yellowdog_cli.utils import printing
+    from yellowdog_cli.utils.output_settings import OUTPUT
+
+    return bool(
+        printing.CONSOLE_ERR.is_terminal
+        and not (OUTPUT.json_output or OUTPUT.quiet or OUTPUT.no_format)
+    )
+
+
+class _FetchProgress:
+    """
+    One line on standard error, updated in place while the report is
+    fetched: how long the Platform has taken to answer, then how much of
+    the report has arrived and how fast; removed when the fetch ends, done
+    or failed. Nothing at all where it is not shown (_progress_shown()).
+    The wait and the size are logged under --debug either way.
+    """
+
+    def __init__(self) -> None:
+        self._progress = None
+        self._task = None
+        self._since = time.monotonic()
+        self._received = 0
+
+    def __enter__(self) -> _FetchProgress:
+        if _progress_shown():
+            from rich.progress import Progress, ProgressColumn, Task
+            from rich.text import Text
+
+            from yellowdog_cli.utils import printing
+
+            class FetchColumn(ProgressColumn):
+                """
+                The wait, then the size received and its rate.
+                """
+
+                def render(self, task: Task) -> Text:
+                    if not task.fields["downloading"]:
+                        waited = int(time.monotonic() - task.fields["since"])
+                        return Text(
+                            "Waiting for the Platform to build the report\u2026"
+                            f" {waited // 60}:{waited % 60:02}"
+                        )
+                    shown = (
+                        f"Downloading the report\u2026 {size_text(int(task.completed))}"
+                    )
+                    if task.speed:
+                        shown += f" ({size_text(int(task.speed))}/s)"
+                    return Text(shown)
+
+            self._progress = Progress(
+                FetchColumn(), console=printing.CONSOLE_ERR, transient=True
+            )
+            self._progress.start()
+            self._task = self._progress.add_task(
+                "", total=None, downloading=False, since=self._since
+            )
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        if self._progress is not None:
+            self._progress.stop()
+
+    def waiting(self) -> None:
+        """
+        A request is sent: the wait for its answer starts.
+        """
+        self._since = time.monotonic()
+        self._received = 0
+        self._show(downloading=False, completed=0, since=self._since)
+
+    def answered(self) -> None:
+        _LOG.debug("The Platform answered after %.1fs", time.monotonic() - self._since)
+
+    def received(self, count: int) -> None:
+        """
+        A chunk of the report arrived.
+        """
+        self._received += count
+        self._show(downloading=True, completed=self._received)
+
+    def done(self) -> None:
+        _LOG.debug("Received %s", size_text(self._received))
+
+    def _show(self, **fields) -> None:
+        if self._progress is None or self._task is None:
+            return
+        completed = fields.pop("completed")
+        self._progress.update(self._task, completed=completed, **fields)
+        self._progress.refresh()
+
+
+def _body(
+    response: requests.Response, progress: _FetchProgress, wait: float | None
+) -> bytes:
+    """
+    A report's body, read in chunks so that its arrival can be shown. A
+    stall longer than the read timeout ('wait') is said as the request's
+    own timeout is; requests raises it as a ConnectionError holding urllib3's
+    ReadTimeoutError, kept as it is (its exit code) with a clearer message.
+    """
+    from urllib3.exceptions import ReadTimeoutError
+
+    progress.answered()
+    chunks = []
+    try:
+        for chunk in response.iter_content(chunk_size=USAGE_REPORT_CHUNK_BYTES):
+            if chunk:
+                chunks.append(chunk)
+                progress.received(len(chunk))
+    except requests.ConnectionError as e:
+        if e.args and isinstance(e.args[0], ReadTimeoutError):
+            raise type(e)(_timed_out(wait)) from e
+        raise
+    progress.done()
+    return b"".join(chunks)
+
+
+def _timed_out(wait: float | None) -> str:
+    """
+    What a report the Platform was too slow to send is reported as.
+    """
+    return (
+        f"The Platform sent nothing of the usage report for {_waited(wait or 0)};"
+        " a larger [common] readTimeout (or --property"
+        " common.readTimeout=<seconds>) gives it longer"
+    )
 
 
 def _request(
@@ -455,6 +630,7 @@ def _request(
     from_time: datetime,
     until_time: datetime,
     namespaces: list[str] | None,
+    progress: _FetchProgress,
 ) -> requests.Response:
     body: dict = {"fromTime": _iso(from_time), "untilTime": _iso(until_time)}
     if namespaces is not None:
@@ -465,12 +641,21 @@ def _request(
         body["untilTime"],
         f"in {namespaces}" if namespaces is not None else "in every namespace",
     )
-    return requests.put(
-        url=f"{ctx.config.url}/{REPORT_PATH}",
-        headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
-        json=body,
-        timeout=ctx.config.request_timeout,
-    )
+    timeout = _report_timeout(ctx.config.read_timeout)
+    progress.waiting()
+    try:
+        # Streamed, so that the report's body can be read in chunks
+        return requests.put(
+            url=f"{ctx.config.url}/{REPORT_PATH}",
+            headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
+            json=body,
+            timeout=timeout,
+            stream=True,
+        )
+    except requests.ReadTimeout as e:
+        # Its own message, of its own kind and keeping its exit code; a
+        # connect timeout is no wait for the report, and keeps requests' own
+        raise type(e)(_timed_out(timeout[1])) from e
 
 
 # The namespaces a refusal names: 'Missing required permissions:

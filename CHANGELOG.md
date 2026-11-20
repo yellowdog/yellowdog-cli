@@ -4,6 +4,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd usage` shows its progress while it fetches the report**, on a terminal: how long the Platform has taken to build it, then how much has arrived. The Platform has 5 minutes to start sending a report and between each part of it, or `readTimeout` if that is longer; other requests wait `readTimeout`, 90 seconds by default.
 - **`yd usage --by creator` totals usage by the Application, or the user in the Portal, that provisioned it**, shown by name, and `--where creator=<pattern>` counts only one creator's usage, by name or ID.
 
 ## 15.16.0 — 2026-11-19

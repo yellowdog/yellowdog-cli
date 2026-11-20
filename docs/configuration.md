@@ -138,7 +138,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
-| `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. A Task batch whose response times out is resubmitted only when all its Tasks have names |
+| `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. `yd usage`'s report request waits at least 5 minutes, since the Platform builds the report before it answers. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable); a relative path is relative to the current directory, not the configuration file's |
 
