@@ -2,6 +2,18 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.17.0 — 2026-11-20
+
+- The CLI requires `yellowdog-sdk` 16.2.0 or later.
+- **A Worker Pool's provisioning priority**: `provisioningPriority` in the `workerPool` section (or a Worker Pool specification) sets the order in which Worker Pools that could be scaled up for the same demand are scaled up, highest first. `yd workerpool list` shows it in a Priority column.
+- **`--sort priority`** lists Worker Pools by provisioning priority, and Work Requirements and Task Groups by priority, highest first.
+- **`yd usage` shows its progress while it fetches the report**, on a terminal: how long the Platform has taken to build it, then how much has arrived. The Platform has 5 minutes to start sending a report and between each part of it, or `readTimeout` if that is longer; other requests wait `readTimeout`, 90 seconds by default.
+- **`yd usage --by creator` totals usage by the Application, or the user in the Portal, that provisioned it**, shown by name, and `--where creator=<pattern>` counts only one creator's usage, by name or ID.
+
+### Commander
+
+- **The User-Defined Variables field is labelled Variables.**
+
 ## 15.16.0 — 2026-11-19
 
 - The CLI requires `yellowdog-sdk` 16.1.1 or later.

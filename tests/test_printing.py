@@ -633,12 +633,30 @@ class TestWorkerPoolTableCounts:
             registeredWorkerCount=6,
             healthy=True,
             id="ydid:wrkrpool:1",
+            provisioningPriority=2.5,
         )
         headers, rows = worker_pool_table([pool])  # type: ignore[list-item]
         row = dict(zip(headers, rows[0]))
         assert row["Nodes"] == 3
         assert row["Workers (Claimed/All)"] == "2/6"
         assert row["Healthy"] == "Yes"
+
+    def test_the_priority_follows_the_type(self):
+        pool = SimpleNamespace(
+            name="wp",
+            namespace="ns",
+            type="co.yellowdog.platform.model.ProvisionedWorkerPool",
+            status="RUNNING",
+            registeredNodeCount=0,
+            claimedWorkerCount=0,
+            registeredWorkerCount=0,
+            healthy=True,
+            id="ydid:wrkrpool:1",
+            provisioningPriority=10.0,
+        )
+        headers, rows = worker_pool_table([pool])  # type: ignore[list-item]
+        assert headers.index("Priority") == headers.index("Type") + 1
+        assert dict(zip(headers, rows[0]))["Priority"] == "10"
 
 
 class TestWorkersTableNodeAndClaim:

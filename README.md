@@ -20,13 +20,13 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 07:59:47 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 12:45:51 GMT 2026 -->
 
 <!--te-->
 
 # Overview
 
-This repository contains a set of command-line utilities for driving the YellowDog Platform, written in Python. The commands use the **[YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html)**, the code for which can be found [on GitHub](https://github.com/yellowdog/yellowdog-sdk-python-public).
+The YellowDog CLI, the `yd` command, drives the YellowDog Platform from the command line. It is written in Python and uses the **[YellowDog Python SDK](https://docs.yellowdog.ai/sdk/python/index.html)**, the code for which can be found [on GitHub](https://github.com/yellowdog/yellowdog-sdk-python-public).
 
 This documentation should be read in conjunction with the main **[YellowDog Documentation](https://docs.yellowdog.ai)**, which provides a comprehensive description of the concepts and operation of the YellowDog Platform.
 
@@ -77,7 +77,7 @@ To set up **Configured Worker Pools**, you'll need:
 5. A Configured Worker Pool Token: from the **Workers** tab in the YellowDog Portal, use the **+Add Configured Worker Pool** button to create a new Worker Pool and generate a token.
 
 
-6. Obtain the YellowDog Agent and install/configure it on your on-premises systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-CONFIGURED.md).
+6. Obtain the YellowDog Agent and install/configure it on your on-premises systems using the Token obtained above. See guidance for [Linux](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) and [Windows](https://github.com/yellowdog/resources/blob/main/agent-install/windows/README-INSTALLER.md#configured-worker-pool-installation).
 
 # What It Looks Like
 
@@ -155,8 +155,8 @@ Commands are run from the command line. Invoking any command with the `--help` o
 
 ```text
 % yd workrequirement cancel -h
-usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
-                                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
+usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace|priority>[,...]] [--reverse] [--variable <var1=v1>]
+                                 [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
                                  [<work-requirement-name-or-ID> ...] [universal options]
 
 YellowDog command-line utility for cancelling Work Requirements
@@ -168,11 +168,12 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  --sort <name|created|status|namespace>[,...]
+  --sort <name|created|status|namespace|priority>[,...]
                         order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time, earliest
-                        first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in turn (e.g.
-                        'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
-  --reverse             reverse (descending) the whole order --sort gives
+                        first), 'status' (status name), 'namespace', or 'priority' (highest first: a Worker Pool's provisioning priority, a Work
+                        Requirement's or Task Group's priority); give several, separated by commas, to sort by each in turn (e.g. 'status,created'),
+                        the name always breaking any tie; combine with --reverse to invert the whole order
+  --reverse             invert the whole order --sort gives
   --variable, -v <var1=v1>
                         user-defined variable substitution; the option can be supplied multiple times, one per variable
   --namespace, -n [<namespace>]

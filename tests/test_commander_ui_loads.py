@@ -189,7 +189,7 @@ def test_no_button_is_squeezed_or_stretched_out_of_step(qapp):
 # One widget from each row of the right-hand column, the leftmost in the row.
 RIGHT_COLUMN_ROWS = [
     "label_7",  # Namespace:
-    "user_variables_label",  # User-Defined Variables:
+    "user_variables_label",  # Variables:
     "properties_label",  # Properties:
     "browse_config_directory",
     "run_any_command",
@@ -251,7 +251,7 @@ def test_the_left_column_fields_start_at_the_same_edge(qapp):
 
 def test_the_properties_field_starts_under_the_variables_field(qapp):
     # In separate grid rows, each field would otherwise begin where its own label
-    # ends, and 'Properties:' is much shorter than 'User-Defined Variables:'
+    # ends, and 'Properties:' and 'Variables:' differ in width
     win = gui_harness.shown(YellowDogApp())
 
     starts = {

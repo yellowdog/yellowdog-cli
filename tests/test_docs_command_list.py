@@ -51,9 +51,20 @@ def _command_list() -> str:
 
 def _heading(text: str, heading: str) -> re.Match[str] | None:
     """
-    The heading's line: '### yd list'.
+    The heading's line: '### yd workrequirement submit'.
     """
     return re.search(rf"^{re.escape(heading)}$", _outside_fences(text), re.M)
+
+
+def _command_heading(text: str, form: str) -> str | None:
+    """
+    A command's heading: '## yd list' for a command of its own word,
+    '### yd workrequirement submit' for a verb under its noun's section.
+    """
+    for level in ("##", "###"):
+        if _heading(text, f"{level} {form}") is not None:
+            return f"{level} {form}"
+    return None
 
 
 def _section(text: str, heading: str) -> str:
@@ -214,15 +225,17 @@ class TestCommandSections:
 
     @pytest.mark.parametrize("name", DOCUMENTED)
     def test_every_command_has_a_section(self, name):
-        assert _heading(self.text, f"### {yd_form(name)}") is not None
+        assert _command_heading(self.text, yd_form(name)) is not None
 
     @pytest.mark.parametrize("name", STANDALONE_DOCUMENTED)
     def test_every_standalone_command_has_a_section(self, name):
-        assert _heading(self.text, f"### {yd_form(name)}") is not None
+        assert _command_heading(self.text, yd_form(name)) is not None
 
     @pytest.mark.parametrize("name", DOCUMENTED)
     def test_every_option_bullet_names_an_option_of_the_command(self, name):
-        section = _section(self.text, f"### {yd_form(name)}")
+        heading = _command_heading(self.text, yd_form(name))
+        assert heading is not None, f"no section for {name}"
+        section = _section(self.text, heading)
         command = CLI_COMMANDS[name]
         known = {f for o in command.flat_options() for f in o.flags}
         unknown = [f for f in _bullet_flags(section) if f not in known]
@@ -231,7 +244,7 @@ class TestCommandSections:
     def test_no_deprecated_script_has_a_section(self):
         unscripted = [name for name, command in COMMANDS.items() if not command.script]
         for name in [*SCRIPT_FORMS, *unscripted]:
-            assert _heading(self.text, f"### {name}") is None, name
+            assert _command_heading(self.text, name) is None, name
 
 
 class TestNounSections:

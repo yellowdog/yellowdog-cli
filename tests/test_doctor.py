@@ -1682,8 +1682,10 @@ class TestEntryPoint:
         text = (Path(__file__).parent.parent / "docs" / "commands.md").read_text(
             encoding="utf-8"
         )
-        assert "\n### yd doctor\n" in text
-        assert "--offline" in text.split("### yd doctor")[1].split("### yd help")[0]
+        assert "\n## yd doctor\n" in text
+        assert (
+            "--offline" in text.split("\n## yd doctor\n")[1].split("\n## yd help\n")[0]
+        )
 
 
 class TestLogging:

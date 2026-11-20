@@ -631,7 +631,13 @@ def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
 
 # The sort keys of the entity listings and interactive selection
 # (tables.sorted_objects())
-ENTITY_SORT_KEYS: tuple[str, ...] = ("name", "created", "status", "namespace")
+ENTITY_SORT_KEYS: tuple[str, ...] = (
+    "name",
+    "created",
+    "status",
+    "namespace",
+    "priority",
+)
 
 
 def entity_sort_keys(value: str) -> tuple[str, ...]:
@@ -975,18 +981,20 @@ SORT = option(
     help=(
         "order in which listed and interactively-selected entities "
         "are sorted: 'name' (default), 'created' (creation time, "
-        "earliest first), 'status' (status name), or 'namespace'; give "
+        "earliest first), 'status' (status name), 'namespace', or "
+        "'priority' (highest first: a Worker Pool's provisioning priority, "
+        "a Work Requirement's or Task Group's priority); give "
         "several, separated by commas, to sort by each in turn (e.g. "
         "'status,created'), the name always breaking any tie; combine "
         "with --reverse to invert the whole order"
     ),
-    metavar="<name|created|status|namespace>[,...]",
+    metavar="<name|created|status|namespace|priority>[,...]",
 )
 REVERSE = option(
     "--reverse",
     action="store_true",
     required=False,
-    help="reverse (descending) the whole order --sort gives",
+    help="invert the whole order --sort gives",
 )
 VARIABLE = option(
     "--variable",
@@ -3734,6 +3742,7 @@ USAGE_GROUP_KEYS: tuple[str, ...] = (
     "namespace",
     "tag",
     "requirement",
+    "creator",
     "provider",
     "region",
     "instance-type",

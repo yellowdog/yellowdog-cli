@@ -44,6 +44,13 @@ BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for ea
 # Platform may still be processing it), but for a Task batch whose Tasks all
 # have names (submit_with_retries())
 PLATFORM_READ_TIMEOUT = 90.0  # Seconds
+# How long the usage report request waits for the Platform's response at the
+# least (a larger readTimeout wins; readTimeout = 0 is still no limit), since
+# a large report takes the Platform a while to build: the MCP server's own
+# limit for a command (MCP_TOOL_TIMEOUT_SECONDS), so that the two agree
+USAGE_REPORT_READ_TIMEOUT = 300.0  # Seconds
+# The size of the chunks a usage report is read in, each one shown arriving
+USAGE_REPORT_CHUNK_BYTES = 1 << 20
 # How long the CLI's direct Platform requests wait to connect
 RAW_CONNECT_TIMEOUT = 10.0  # Seconds
 

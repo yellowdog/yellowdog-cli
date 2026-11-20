@@ -59,3 +59,6 @@ README_CLOUDWIZARD.md.*
 # The template, which holds none, is the exception
 tests/live/*.toml
 !tests/live/system-tests.example.toml
+
+# The documentation site, built by make docs
+sphinx/_build/

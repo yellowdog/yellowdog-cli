@@ -81,7 +81,7 @@ uv tool install "yellowdog-cli[cloudwizard]"
 
 In a virtual environment, install it with `uv pip install -U "yellowdog-cli[cloudwizard]"` or `pip install -U "yellowdog-cli[cloudwizard]"` instead (see [Installation](docs/installation.md)).
 
-You'll need a YellowDog Platform account, and an **Application** created in the [YellowDog Portal](https://portal.yellowdog.co/#/account/applications). The Application must belong to a group that has at least the `KEYRING_WRITE`, `COMPUTE_SOURCE_TEMPLATE_WRITE` and `COMPUTE_REQUIREMENT_TEMPLATE_WRITE` permissions. A member of the `administrators` group has these permissions already.
+You'll need a YellowDog Platform account, and an **Application** created in the [YellowDog Portal](https://portal.yellowdog.ai/#/account/applications). The Application must belong to a group that has at least the `KEYRING_WRITE`, `COMPUTE_SOURCE_TEMPLATE_WRITE` and `COMPUTE_REQUIREMENT_TEMPLATE_WRITE` permissions. A member of the `administrators` group has these permissions already.
 
 Cloud Wizard needs the Application's **Key ID** and **Key Secret**. Give them in one of three ways:
 
@@ -201,7 +201,7 @@ Cloud Wizard performs the following actions in your AWS account:
 4. It creates a new access key for the IAM user. The secret access key is not displayed (unless you add `--show-secrets`), and is recorded only in the Credential Cloud Wizard creates in YellowDog.
 5. It adds the `AWSServiceRoleForEC2Spot` service linked role to the AWS account. This allows YellowDog to provision spot instances.
 
-These steps automate YellowDog's [AWS account configuration guidelines](https://docs.yellowdog.co/#/knowledge-base/configuring-an-aws-account-for-use-with-yellowdog), except that the Service linked role for AWS Fleet is not added.
+These steps automate YellowDog's [AWS account configuration guidelines](https://docs.yellowdog.ai/#/knowledge-base/configuring-an-aws-account-for-use-with-yellowdog), except that the Service linked role for AWS Fleet is not added.
 
 Some AWS IAM settings take a little while to percolate through the AWS account. In particular, the `AWSServiceRoleForEC2Spot` service linked role may not take effect immediately, meaning that spot instances cannot be provisioned.
 

@@ -216,7 +216,13 @@ class TestSchemaMapping:
     def test_choices_and_defaults(self):
         sort = self._prop("yd_workrequirement_cancel", "sort")
         assert sort["type"] == "array"
-        assert sort["items"]["enum"] == ["name", "created", "status", "namespace"]
+        assert sort["items"]["enum"] == [
+            "name",
+            "created",
+            "status",
+            "namespace",
+            "priority",
+        ]
         assert sort["default"] == ["name"]
         assert (sort["minItems"], sort["uniqueItems"]) == (1, True)
 

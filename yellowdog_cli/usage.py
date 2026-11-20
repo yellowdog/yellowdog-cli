@@ -24,6 +24,7 @@ from yellowdog_cli.utils.tables import print_table
 from yellowdog_cli.utils.usage_report import (
     STATUS_COLUMNS,
     UsageGroup,
+    creator_names,
     filter_of,
     grouped_usage,
     namespace_exists,
@@ -72,8 +73,6 @@ def show_usage(ctx: RunContext) -> None:
         namespace,
         refresh=bool(ctx.args.usage_refresh),
     )
-    where = filter_of(ctx.args.usage_where)
-    groups = grouped_usage(report, by, where)
     if (
         namespace
         and not grouped_usage(report, [])
@@ -81,6 +80,18 @@ def show_usage(ctx: RunContext) -> None:
     ):
         # Nothing ran in it: say whether that is because it does not exist
         raise NotFoundError(f"No namespace '{namespace}' exists")
+    where = filter_of(ctx.args.usage_where)
+    # The creators' names, read only when asked for, and only once the
+    # namespace is known to exist
+    creators = None
+    if "creator" in by or "creator" in where:
+        creators = creator_names(ctx)
+        if creators.unreadable:
+            print_warning(
+                f"Could not read the account's {' or '.join(creators.unreadable)};"
+                " their creators are shown by ID"
+            )
+    groups = grouped_usage(report, by, where, creators)
 
     if ctx.args.json_output:
         print_json(
@@ -205,8 +216,14 @@ def duration_text(seconds: float) -> str:
 
 
 def _group_json(group: UsageGroup) -> dict:
+    keys: dict = {}
+    for key, value in group.keys.items():
+        keys[key] = value
+        if key == "creator":
+            # The ID too, for a script to join on: the name is for reading
+            keys["creatorId"] = group.creator_id
     return {
-        **group.keys,
+        **keys,
         "instances": group.instances,
         "hours": {
             **{

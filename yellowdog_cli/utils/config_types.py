@@ -106,6 +106,7 @@ class ConfigWorkerPool:
     max_nodes: int = 0
     max_nodes_set: bool = False  # Is max_nodes explicitly set?
     metrics_enabled: bool = False
+    provisioning_priority: float = 0
     min_nodes: int = 0
     min_nodes_set: bool = False
     name: str | None = None

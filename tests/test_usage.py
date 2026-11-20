@@ -19,13 +19,23 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from requests import HTTPError
+from requests import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout
 
 import yellowdog_cli.usage as usage
-from yellowdog_cli.utils import completion_cache, output_settings, usage_report
-from yellowdog_cli.utils.command_registry import usage_filter, usage_group_keys
+from yellowdog_cli.utils import (
+    completion_cache,
+    entity_utils,
+    output_settings,
+    usage_report,
+)
+from yellowdog_cli.utils.command_registry import (
+    USAGE_GROUP_KEYS,
+    usage_filter,
+    usage_group_keys,
+)
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
+from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
 
 URL = "https://api.example.com"
 KEY = "key-id"
@@ -33,11 +43,13 @@ SECRET = "key-secret"
 CR_RENDER = "ydid:compreq:000000:AAAAAA:00000000-0000-0000-0000-000000000001"
 CR_TRAIN = "ydid:compreq:000000:BBBBBB:00000000-0000-0000-0000-000000000002"
 CR_GONE = "ydid:compreq:000000:CCCCCC:00000000-0000-0000-0000-000000000003"
+APP_RENDER = "ydid:app:000000:aaaaaaaa-0000-0000-0000-000000000001"
+USER_ALICE = "ydid:user:000000:bbbbbbbb-0000-0000-0000-000000000002"
 
 REQUIREMENTS = [
     "Namespace,Name,Tag,Created Time,Terminated Time,Created by ID,Compute Requirement ID",
-    f"team-render,render-1,nightly,2026-11-01T00:00:00Z,,ydid:app:000000:x,{CR_RENDER}",
-    f"team-train,train-1,,2026-11-02T00:00:00Z,2026-11-03T00:00:00Z,ydid:app:000000:x,{CR_TRAIN}",
+    f"team-render,render-1,nightly,2026-11-01T00:00:00Z,,{APP_RENDER},{CR_RENDER}",
+    f"team-train,train-1,,2026-11-02T00:00:00Z,2026-11-03T00:00:00Z,{USER_ALICE},{CR_TRAIN}",
 ]
 INSTANCES_HEADER = (
     "Host Name,Provider,Region,Instance Type,Source Name,From Time,Until Time,"
@@ -78,6 +90,7 @@ _ZIP_TIME = (2026, 11, 8, 0, 0, 0)
 def _zip(
     instances: list[str] = INSTANCES,
     leave_out: str | None = None,
+    requirements: list[str] = REQUIREMENTS,
 ) -> bytes:
     """
     A report zip as the Platform names its files.
@@ -88,7 +101,7 @@ def _zip(
             "From Time,2026-11-01T00:00:00Z\n"
             "Until Time,2026-11-08T00:00:00Z\n"
         ),
-        "compute-requirements_000000_20261108_0000.csv": "\n".join(REQUIREMENTS) + "\n",
+        "compute-requirements_000000_20261108_0000.csv": "\n".join(requirements) + "\n",
         "instances_000000_20261108_0000.csv": "\n".join(instances) + "\n",
     }
     buffer = io.BytesIO()
@@ -101,6 +114,22 @@ def _zip(
     return buffer.getvalue()
 
 
+def _answer(status_code: int, content: bytes = b"", text: str = "") -> SimpleNamespace:
+    """
+    A response as requests gives a streamed one: its body also readable in
+    chunks (iter_content), three of them for anything longer than a few bytes.
+    """
+    size = max(1, len(content) // 3)
+
+    def iter_content(chunk_size=1):
+        for start in range(0, len(content), size):
+            yield content[start : start + size]
+
+    return SimpleNamespace(
+        status_code=status_code, content=content, text=text, iter_content=iter_content
+    )
+
+
 class _Platform:
     """
     requests.put as the report endpoint answers it, recording each call.
@@ -111,12 +140,20 @@ class _Platform:
         self.status_code = status_code
         self.calls: list[dict] = []
 
-    def __call__(self, url, headers, json, timeout):
-        self.calls.append({"url": url, "headers": headers, "json": json})
-        return SimpleNamespace(
-            status_code=self.status_code,
-            content=self.content,
-            text='{"errorType": "MissingPermissionException"}',
+    def __call__(self, url, headers, json, timeout, stream=False):
+        self.calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout,
+                "stream": stream,
+            }
+        )
+        return _answer(
+            self.status_code,
+            self.content,
+            '{"errorType": "MissingPermissionException"}',
         )
 
 
@@ -148,7 +185,7 @@ def _ctx(**args) -> RunContext:
     return RunContext(
         args=SimpleNamespace(**values),
         config=SimpleNamespace(
-            url=URL, key=KEY, secret=SECRET, request_timeout=(10, 90)
+            url=URL, key=KEY, secret=SECRET, request_timeout=(10, 90), read_timeout=90.0
         ),
         client=MagicMock(),
     )
@@ -191,6 +228,157 @@ class TestGroupKeys:
     def test_a_key_given_twice_is_refused(self):
         with pytest.raises(ArgumentTypeError, match="more than once: spot"):
             usage_group_keys("spot,namespace,spot")
+
+    def test_the_registry_offers_the_keys_the_report_reads(self):
+        assert usage_report.GROUP_KEYS == USAGE_GROUP_KEYS
+        assert "creator" in USAGE_GROUP_KEYS
+
+
+class TestTheReportsWait:
+    @pytest.mark.parametrize(
+        "read_timeout, expected", [(90.0, 300.0), (600.0, 600.0), (None, None)]
+    )
+    def test_the_report_waits_at_least_five_minutes(self, read_timeout, expected):
+        assert usage_report._report_timeout(read_timeout) == (
+            RAW_CONNECT_TIMEOUT,
+            expected,
+        )
+
+    def test_the_request_is_streamed_with_the_reports_timeout(self, platform):
+        _report(_ctx())
+        assert platform.calls[0]["timeout"] == (RAW_CONNECT_TIMEOUT, 300.0)
+        assert platform.calls[0]["stream"] is True
+
+    def test_a_timed_out_report_says_how_to_wait_longer(self, platform, monkeypatch):
+        def timed_out(**kwargs):
+            raise ReadTimeout("read timed out")
+
+        monkeypatch.setattr(usage_report.requests, "put", timed_out)
+        with pytest.raises(ReadTimeout, match=r"5 minutes.*readTimeout") as raised:
+            _report(_ctx())
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+    def test_a_connect_timeout_is_not_called_a_wait_for_the_report(
+        self, platform, monkeypatch
+    ):
+        def unreachable(**kwargs):
+            raise ConnectTimeout("connect timed out")
+
+        monkeypatch.setattr(usage_report.requests, "put", unreachable)
+        with pytest.raises(ConnectTimeout, match=r"^connect timed out$") as raised:
+            _report(_ctx())
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+    def test_a_download_that_stalls_says_how_to_wait_longer(
+        self, platform, monkeypatch
+    ):
+        from urllib3.exceptions import ReadTimeoutError
+
+        def stalls(**kwargs):
+            def iter_content(chunk_size=1):
+                yield b"PK"
+                raise ConnectionError(ReadTimeoutError(None, None, "Read timed out."))
+
+            return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
+
+        monkeypatch.setattr(usage_report.requests, "put", stalls)
+        with pytest.raises(ConnectionError, match=r"5 minutes.*readTimeout") as raised:
+            _report(_ctx())
+        assert classify(raised.value) == ExitCode.CONNECTION
+
+    def test_a_lost_connection_while_downloading_keeps_its_message(
+        self, platform, monkeypatch
+    ):
+        def lost(**kwargs):
+            def iter_content(chunk_size=1):
+                yield b"PK"
+                raise ConnectionError("connection reset")
+
+            return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
+
+        monkeypatch.setattr(usage_report.requests, "put", lost)
+        with pytest.raises(ConnectionError, match=r"^connection reset$"):
+            _report(_ctx())
+
+
+@pytest.fixture
+def terminal(monkeypatch) -> io.StringIO:
+    """
+    Standard error as a terminal, its output kept to be read.
+    """
+    from rich.console import Console
+
+    from yellowdog_cli.utils import printing
+
+    written = io.StringIO()
+    console = Console(file=written, force_terminal=True, width=100)
+    monkeypatch.setattr(printing, "CONSOLE_ERR", console)
+    return written
+
+
+def _fetch_shown(**args) -> usage_report.Report:
+    ctx = _ctx(no_format=False, **args)
+    with output_settings.configured(ctx.args):
+        return _report(ctx, refresh=True)
+
+
+class TestFetchProgress:
+    def test_the_report_arrives_whole_from_its_chunks(self, platform, terminal):
+        report = _fetch_shown()
+        assert report.path.read_bytes() == _zip()
+        assert report.fetched_bytes == len(_zip())
+
+    def test_progress_shows_the_wait_then_the_download(self, platform, terminal):
+        _fetch_shown()
+        shown = terminal.getvalue()
+        assert "Waiting for the Platform to build the report" in shown
+        assert "Downloading the report" in shown
+
+    @pytest.mark.parametrize("setting", ["json_output", "quiet", "no_format"])
+    def test_no_progress_under(self, setting, platform, terminal):
+        args = {setting: True}
+        if setting == "json_output":
+            args["json"] = True
+        ctx = _ctx(**{"no_format": False, **args})
+        with output_settings.configured(ctx.args):
+            _report(ctx, refresh=True)
+        assert "Waiting for the Platform" not in terminal.getvalue()
+
+    def test_no_progress_off_a_terminal(self, platform, monkeypatch):
+        from rich.console import Console
+
+        from yellowdog_cli.utils import printing
+
+        written = io.StringIO()
+        monkeypatch.setattr(printing, "CONSOLE_ERR", Console(file=written))
+        _fetch_shown()
+        assert written.getvalue() == ""
+
+    def test_a_failed_download_removes_the_display(
+        self, platform, terminal, monkeypatch
+    ):
+        def broken(**kwargs):
+            def iter_content(chunk_size=1):
+                yield b"PK"
+                raise ConnectionError("connection lost")
+
+            return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
+
+        monkeypatch.setattr(usage_report.requests, "put", broken)
+        with pytest.raises(ConnectionError, match="connection lost"):
+            _fetch_shown()
+        assert not list(
+            Path(
+                completion_cache.cache_directory(
+                    usage_report.USAGE_CACHE_DIRECTORY_NAME
+                )
+            ).glob("*/report.zip")
+        )
+
+    def test_an_empty_report_breaks_no_rate(self, platform, terminal):
+        platform.content = b""
+        with pytest.raises(usage_report.UsageReportError):
+            _fetch_shown()
 
 
 class TestTheReportIsFetchedAndKept:
@@ -305,6 +493,215 @@ class TestGrouping:
         report = _report(_ctx())
         (group,) = usage_report.grouped_usage(report, ["namespace", "requirement"])
         assert group.keys == {"namespace": "-", "requirement": CR_GONE}
+
+
+NAMES = usage_report.CreatorNames(
+    names={APP_RENDER: "render-farm", USER_ALICE: "alice"}
+)
+
+
+class TestCreator:
+    def _groups(self, platform, by, where=None, creators=NAMES):
+        return usage_report.grouped_usage(
+            _report(_ctx()),
+            by,
+            usage_report.filter_of(where),
+            creators=creators,
+        )
+
+    def test_grouped_by_creator_shows_name_and_kind(self, platform):
+        groups = self._groups(platform, ["creator"])
+        assert {g.keys["creator"]: g.creator_id for g in groups} == {
+            "render-farm (Application)": APP_RENDER,
+            "alice (User)": USER_ALICE,
+        }
+
+    def test_an_unresolved_creator_is_its_id(self, platform):
+        groups = self._groups(
+            platform, ["creator"], creators=usage_report.CreatorNames()
+        )
+        assert {g.keys["creator"] for g in groups} == {
+            f"{APP_RENDER} (?)",
+            f"{USER_ALICE} (?)",
+        }
+
+    def test_no_creators_given_is_every_creator_unresolved(self, platform):
+        groups = self._groups(platform, ["creator"], creators=None)
+        assert {g.keys["creator"] for g in groups} == {
+            f"{APP_RENDER} (?)",
+            f"{USER_ALICE} (?)",
+        }
+
+    def test_no_creator_is_a_dash(self, platform):
+        # One Instance whose requirement is not in the report, and one whose
+        # requirement's row names no creator
+        platform.content = _zip(
+            instances=[
+                INSTANCES_HEADER,
+                _instance(CR_GONE, "t3a.small", 60, instance_id="i-1"),
+                _instance(CR_TRAIN, "t3a.small", 60, instance_id="i-2"),
+            ],
+            requirements=[
+                REQUIREMENTS[0],
+                f"team-train,train-1,,2026-11-02T00:00:00Z,,,{CR_TRAIN}",
+            ],
+        )
+        (group,) = self._groups(platform, ["creator"])
+        assert group.keys == {"creator": "-"}
+        assert group.creator_id is None
+        assert group.instances == 2
+
+    def test_creators_sharing_a_name_stay_apart(self, platform):
+        other = "ydid:app:000000:cccccccc-0000-0000-0000-000000000003"
+        platform.content = _zip(
+            requirements=[
+                REQUIREMENTS[0],
+                f"team-render,render-1,,2026-11-01T00:00:00Z,,{APP_RENDER},{CR_RENDER}",
+                f"team-train,train-1,,2026-11-02T00:00:00Z,,{other},{CR_TRAIN}",
+            ]
+        )
+        names = usage_report.CreatorNames(names={APP_RENDER: "same", other: "same"})
+        groups = self._groups(platform, ["creator"], creators=names)
+        assert [g.keys["creator"] for g in groups] == ["same (Application)"] * 2
+        assert {g.creator_id: g.instances for g in groups} == {
+            APP_RENDER: 1,
+            other: 3,
+        }
+
+    @pytest.mark.parametrize(
+        "pattern, expected",
+        [
+            ("render-*", {"render-farm (Application)"}),
+            ("ALICE", {"alice (User)"}),
+            (f"{USER_ALICE[:24]}*", {"alice (User)"}),
+            ("render-farm (Application)", {"render-farm (Application)"}),
+            ("*(User)", {"alice (User)"}),
+            ("*(Group)", set()),
+        ],
+    )
+    def test_where_creator_matches_name_id_or_shown(self, platform, pattern, expected):
+        groups = self._groups(platform, ["creator"], [("creator", pattern)])
+        assert {g.keys["creator"] for g in groups} == expected
+
+    def test_where_creator_matches_an_unresolved_creator_as_shown(self, platform):
+        groups = self._groups(
+            platform,
+            ["namespace"],
+            [("creator", f"{APP_RENDER} (?)")],
+            creators=usage_report.CreatorNames(),
+        )
+        assert [g.keys for g in groups] == [{"namespace": "team-render"}]
+
+    def test_where_creator_matches_an_unresolved_creators_id(self, platform):
+        groups = self._groups(
+            platform,
+            ["namespace"],
+            [("creator", f"{APP_RENDER[:24]}*")],
+            creators=usage_report.CreatorNames(),
+        )
+        assert [g.keys for g in groups] == [{"namespace": "team-render"}]
+
+
+def _listings(monkeypatch, applications=None, users=None) -> list[str]:
+    """
+    The account's Applications and Users as entity_utils lists them, each a
+    list of objects or an exception the listing raises; the listings made
+    are noted in the list returned.
+    """
+    if applications is None:
+        applications = [SimpleNamespace(id=APP_RENDER, name="render-farm")]
+    if users is None:
+        users = [SimpleNamespace(id=USER_ALICE, name="alice", username="alice.s")]
+    calls: list[str] = []
+
+    def listing(kind, result):
+        def lister(client):
+            calls.append(kind)
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+        return lister
+
+    monkeypatch.setattr(
+        entity_utils, "get_all_applications", listing("applications", applications)
+    )
+    monkeypatch.setattr(entity_utils, "get_all_users", listing("users", users))
+    return calls
+
+
+def _refused() -> HTTPError:
+    return HTTPError(response=SimpleNamespace(status_code=403))
+
+
+class TestCreatorNames:
+    def test_creator_names_come_from_both_listings(self, monkeypatch):
+        _listings(monkeypatch)
+        creators = usage_report.creator_names(_ctx())
+        assert creators.names == {APP_RENDER: "render-farm", USER_ALICE: "alice"}
+        assert creators.unreadable == []
+
+    def test_creator_names_a_user_without_a_name_by_username(self, monkeypatch):
+        _listings(
+            monkeypatch,
+            users=[SimpleNamespace(id=USER_ALICE, name=None, username="alice.s")],
+        )
+        assert usage_report.creator_names(_ctx()).names[USER_ALICE] == "alice.s"
+
+    def test_creator_names_leaves_a_refused_listing_unresolved(self, monkeypatch):
+        _listings(monkeypatch, users=_refused())
+        creators = usage_report.creator_names(_ctx())
+        assert creators.names == {APP_RENDER: "render-farm"}
+        assert creators.unreadable == ["Users"]
+
+    def test_creator_names_raises_a_session_failure(self, monkeypatch):
+        _listings(monkeypatch, applications=ConnectionError("lost"))
+        with pytest.raises(ConnectionError):
+            usage_report.creator_names(_ctx())
+
+    def test_creator_names_raises_any_other_failure(self, monkeypatch):
+        _listings(
+            monkeypatch, users=HTTPError(response=SimpleNamespace(status_code=500))
+        )
+        with pytest.raises(HTTPError):
+            usage_report.creator_names(_ctx())
+
+
+class TestTheCommandByCreator:
+    def test_by_creator_prints_a_creator_column(self, platform, monkeypatch, capsys):
+        _listings(monkeypatch)
+        out, _ = _show(capsys, usage_by=("creator",))
+        assert "Creator" in out
+        assert "render-farm (Application)" in out
+        assert "alice (User)" in out
+
+    def test_json_carries_the_creator_id(self, platform, monkeypatch, capsys):
+        _listings(monkeypatch)
+        out, _ = _show(capsys, usage_by=("creator",), json_output=True, json=True)
+        groups = loads(out)["groups"]
+        assert {(g["creator"], g["creatorId"]) for g in groups} == {
+            ("render-farm (Application)", APP_RENDER),
+            ("alice (User)", USER_ALICE),
+        }
+        assert list(groups[0])[:2] == ["creator", "creatorId"]
+
+    def test_a_refused_listing_is_warned_of_once(self, platform, monkeypatch, capsys):
+        _listings(monkeypatch, users=_refused())
+        out, err = _show(capsys, usage_by=("creator",))
+        warning = "Could not read the account's Users; their creators are shown by ID"
+        assert (out + err).count(warning) == 1
+        assert f"{USER_ALICE} (?)" in out
+
+    def test_where_creator_alone_looks_creators_up(self, platform, monkeypatch, capsys):
+        calls = _listings(monkeypatch)
+        out, _ = _show(capsys, usage_where=[("creator", "render-*")])
+        assert calls == ["applications", "users"]
+        assert "team-render" in out and "team-train" not in out
+
+    def test_no_lookup_without_creator(self, platform, monkeypatch, capsys):
+        calls = _listings(monkeypatch)
+        _show(capsys, usage_by=("namespace", "tag"))
+        assert calls == []
 
 
 class TestTheCommand:
@@ -687,15 +1084,17 @@ class _ScopedPlatform(_Platform):
         super().__init__()
         self.usable = usable
 
-    def __call__(self, url, headers, json, timeout):
-        self.calls.append({"url": url, "headers": headers, "json": json})
+    def __call__(self, url, headers, json, timeout, stream=False):
+        self.calls.append(
+            {"url": url, "headers": headers, "json": json, "stream": stream}
+        )
         namespaces = json.get("namespaces")
         if namespaces is None:
             text = (
                 '{"errorType": "MissingPermissionException", "message": "Missing'
                 ' required permissions: COMPUTE_USAGE_READ with global scope."}'
             )
-            return SimpleNamespace(status_code=403, content=b"", text=text)
+            return _answer(403, text=text)
         refused = sorted(set(namespaces) - self.usable)
         if refused:
             text = (
@@ -703,8 +1102,8 @@ class _ScopedPlatform(_Platform):
                 f" required permissions: COMPUTE_USAGE_READ (namespaces:"
                 f' [{", ".join(refused)}], namespaceIds: [])"}}'
             )
-            return SimpleNamespace(status_code=403, content=b"", text=text)
-        return SimpleNamespace(status_code=200, content=self.content, text="")
+            return _answer(403, text=text)
+        return _answer(200, self.content)
 
 
 class TestANamespaceScopedApplication:
@@ -748,6 +1147,13 @@ class TestANamespaceScopedApplication:
             " team-render, team-train" in out
         )
         assert "not on" not in out
+
+    def test_a_narrowed_retry_streams_both_requests(self, scoped, terminal):
+        fake = scoped(["team-render", "team-train", "team-x"], {"team-train"})
+        report = _fetch_shown()
+        assert [call["stream"] for call in fake.calls] == [True, True]
+        assert report.refused == ["team-render", "team-x"]
+        assert "Downloading the report" in terminal.getvalue()
 
     def test_a_namespace_it_cannot_read_usage_in_is_dropped(self, scoped, capsys):
         fake = scoped(["team-render", "team-train", "team-x"], {"team-train"})
@@ -843,6 +1249,17 @@ class TestANamespaceThatDoesNotExist:
         ) as raised:
             self._show_ctx(capsys, ctx)
         assert classify(raised.value) == ExitCode.NOT_FOUND
+
+    def test_a_missing_namespace_is_found_before_any_creator_lookup(
+        self, platform, monkeypatch, capsys
+    ):
+        platform.content = _zip(instances=[INSTANCES_HEADER])
+        calls = _listings(monkeypatch, users=_refused())
+        ctx = self._ctx_with_namespaces(namespace="team-x", usage_by=("creator",))
+        with pytest.raises(NotFoundError, match="No namespace 'team-x' exists"):
+            self._show_ctx(capsys, ctx)
+        assert calls == []
+        assert "Could not read" not in capsys.readouterr().err
 
     def test_an_empty_report_for_a_namespace_that_exists(self, platform, capsys):
         platform.content = _zip(instances=[INSTANCES_HEADER])

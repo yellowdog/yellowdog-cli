@@ -210,7 +210,7 @@ A successful call returns the command's `--json` document. Its `content` is one 
 
 A call that fails comes back as a tool error: `isError` is true, and the result carries the command's `exitCode` and its `stderr`. The exit code is the CLI's own, so an agent can tell a configuration error (3) from an authentication failure (4) from not found (6); see the CLI README's exit code table.
 
-The per-family document shapes are the CLI README's own, in [Machine-readable Output and Exit Codes](../../docs/json-output.md).
+The per-family document shapes are the CLI's own, described in [Machine-readable Output and Exit Codes](../../docs/json-output.md).
 
 ### Details
 

@@ -49,6 +49,7 @@ from yellowdog_cli.utils.property_names import (
     MAX_NODES,
     MIN_NODES,
     NODE_BOOT_TIMEOUT,
+    PROVISIONING_PRIORITY,
     TARGET_INSTANCE_COUNT,
     TEMPLATE_ID,
     USERDATA,
@@ -361,6 +362,11 @@ def _merge_into_provisioned_properties(provisioned_properties: dict) -> None:
             ("workersPerNode", "workersPerVCPU", "workersCustomCommand"),
         ),
         ("metricsEnabled", CONFIG_WP.metrics_enabled, ("metricsEnabled",)),
+        (
+            PROVISIONING_PRIORITY,
+            CONFIG_WP.provisioning_priority,
+            (PROVISIONING_PRIORITY,),
+        ),
     ]:
         if value is not None and (
             provisioned_properties.get(key) is None
@@ -584,6 +590,7 @@ def _provision_batch(
         idlePoolShutdown=auto_shutdown(CONFIG_WP.idle_pool_timeout),
         nodeBootTimeout=timedelta(minutes=CONFIG_WP.node_boot_timeout),
         metricsEnabled=CONFIG_WP.metrics_enabled,
+        provisioningPriority=CONFIG_WP.provisioning_priority,
     )
 
     if ctx.args.dry_run:

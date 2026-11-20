@@ -31,3 +31,7 @@ The user documentation is a guide first and a reference second. Users come to it
 Before adding a clause to an existing guide sentence, decide whether a reader doing the common task needs it. If not, it goes in the section's Details, creating one if needed, or on the reference page. A fix to an edge case never lengthens the main path's sentence that covers the usual case.
 
 The repository's other documentation rules still hold: paragraphs are one line each (never hard-wrapped), every page states the current behaviour with no history (that is `CHANGELOG.md`'s), user-facing pages carry no internal language (phases, plans, branches), and the `yd` forms are named rather than the deprecated `yd-*` commands. Run the page's `make toc*` target after changing its headings.
+
+### The documentation site
+
+The same pages are built into a website by Sphinx (`make docs`, `sphinx/conf.py`; see DEVELOPMENT.md's *Documentation Site*), which adapts what GitHub alone needs as each page is read. A page is still written for GitHub, in GitHub's Markdown, never with Sphinx-only markup; `make docs` must pass after a change (any warning fails it, a link to a missing heading among them), and the Linux workflow and `release.sh` build it too.

@@ -198,6 +198,7 @@ class TestValues:
             "name,created",
             "name,status",
             "name,namespace",
+            "name,priority",
         ]
 
     def test_entity_types(self):
