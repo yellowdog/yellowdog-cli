@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 20 12:45:51 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 15:16:42 GMT 2026 -->
 
 <!--te-->
 
@@ -209,7 +209,7 @@ universal options:
                         supplied multiple times
 ```
 
-To start, run **[`yd init`](docs/commands.md#yd-init)**. It asks for your Application key and secret, namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory:
+To start, run **[`yd init`](docs/commands.md#yd-init)**. It asks for your [Application key and secret](docs/authentication.md), namespace, tag and Platform URL, and writes them to a `config.toml` in the current directory:
 
 ```shell
 yd init
@@ -315,6 +315,7 @@ Beyond this page, the documentation is one page per topic, mapped below. For a f
 | Page | What it covers |
 |---|---|
 | **[Installation](docs/installation.md)** | Installing the CLI with uv, or into a virtual environment with uv or pip; updating it, choosing its Python, and the Jsonnet extra |
+| **[Authentication](docs/authentication.md)** | Giving the CLI an Application's key and secret: `yd init`, `config.toml`, the `YD_KEY` and `YD_SECRET` environment variables or `--key` and `--secret`, and checking them with `yd doctor` |
 | **[Configuration](docs/configuration.md)** | The `config.toml` file and naming rules; the properties common to every command, and setting them on the command line, in environment variables or a `.env` file; overriding any property with `--property`; and which value wins |
 | **[Work Requirements](docs/work-requirements.md)** | Defining and submitting Work Requirements: their JSON and TOML structure, property inheritance, retries and failure policies, Task templates, automatic naming, CSV data and dry runs |
 | **[Worker Pools](docs/worker-pools.md)** | Provisioning Worker Pools and Compute Requirements: their properties and JSON specifications, large-scale provisioning, dry runs, and Node Actions |
