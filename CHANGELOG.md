@@ -2,7 +2,7 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
-## Unreleased
+## 15.17.0 — 2026-11-20
 
 - The CLI requires `yellowdog-sdk` 16.2.0 or later.
 - **A Worker Pool's provisioning priority**: `provisioningPriority` in the `workerPool` section (or a Worker Pool specification) sets the order in which Worker Pools that could be scaled up for the same demand are scaled up, highest first. `yd workerpool list` shows it in a Priority column.
