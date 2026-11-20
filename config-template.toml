@@ -526,6 +526,12 @@
     # Optional — default: false
     # metricsEnabled = false
 
+    # The order in which Worker Pools that could be scaled up for the same
+    # demand are scaled up, highest first. Set only when the pool is
+    # provisioned; it cannot be changed afterwards.
+    # Optional — default: 0
+    # provisioningPriority = 0
+
     # The platform limits each Compute Requirement / Worker Pool to 10,000
     # instances/nodes. When 'targetInstanceCount' or 'maxNodes' exceeds this,
     # yd workerpool provision and yd computerequirement instantiate automatically split the request across

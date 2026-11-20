@@ -298,3 +298,31 @@ class TestAMissingCredentialSaysWhy:
         load_config._load_config_file()
         _exits_3(load_config.load_config_common)
         assert f"'{url}'" in loading[-1] and "https://" in loading[-1]
+
+
+class TestTheProvisioningPriority:
+    def _loaded(self, monkeypatch, section: dict, overrides=None):
+        config = {"workerPool": section}
+        if overrides:
+            # As the file is read (_load_config_file())
+            load_config._apply_property_overrides(config, overrides)
+        monkeypatch.setattr(load_config, "CONFIG_TOML", config)
+        monkeypatch.setattr(load_config, "_ARGS", _args())
+        return load_config.load_config_worker_pool()
+
+    def test_it_is_read_as_a_number(self, loading, monkeypatch):
+        config = self._loaded(monkeypatch, {"provisioningPriority": 10})
+        assert config.provisioning_priority == 10.0
+
+    def test_it_is_zero_when_not_set(self, loading, monkeypatch):
+        assert self._loaded(monkeypatch, {}).provisioning_priority == 0
+
+    def test_a_property_override_sets_it(self, loading, monkeypatch):
+        config = self._loaded(
+            monkeypatch, {}, overrides=["workerPool.provisioningPriority=2.5"]
+        )
+        assert config.provisioning_priority == 2.5
+
+    def test_one_that_is_no_number_exits_3(self, loading, monkeypatch):
+        _exits_3(lambda: self._loaded(monkeypatch, {"provisioningPriority": "abc"}))
+        assert "provisioningPriority" in loading[0]

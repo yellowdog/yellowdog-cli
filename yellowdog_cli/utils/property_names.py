@@ -71,6 +71,7 @@ PARALLEL_BATCHES = "parallelBatches"  # Integer
 PRIORITY = "priority"  # Float
 PROCESS_EXIT_CODES = "processExitCodes"  # List of Ints
 PROVIDERS = "providers"  # List of Strings
+PROVISIONING_PRIORITY = "provisioningPriority"  # Float
 RAM = "ram"  # List of two Floats
 READ_TIMEOUT = "readTimeout"  # Float (seconds; 0 for no limit)
 REGIONS = "regions"  # List of Strings
@@ -199,6 +200,7 @@ ALL_KEYS = [
     PRIORITY,
     PROCESS_EXIT_CODES,
     PROVIDERS,
+    PROVISIONING_PRIORITY,
     RAM,
     READ_TIMEOUT,
     REGIONS,

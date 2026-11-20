@@ -648,6 +648,14 @@ CONFIG_WORKER_POOL: tuple[Property, ...] = (
     Property("requirementTag", STR, description="the Compute Requirement's tag"),
     Property("metricsEnabled", BOOL, description="collect platform metrics"),
     Property(
+        "provisioningPriority",
+        NUM,
+        description=(
+            "the order in which Worker Pools are scaled up for the same demand,"
+            " highest first; set only when provisioned"
+        ),
+    ),
+    Property(
         "computeRequirementBatchSize",
         INT_CAST,
         description="Instances per Compute Requirement when provisioning in batches",

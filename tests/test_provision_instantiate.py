@@ -381,6 +381,7 @@ _PROPERTIES = {
     "idlePoolShutdown": {"enabled": False},
     "createNodeWorkers": {"targetType": "PER_VCPU", "targetCount": 2.0},
     "metricsEnabled": False,
+    "provisioningPriority": 0,
 }
 
 
@@ -704,6 +705,35 @@ class TestHideUserData:
 # ---------------------------------------------------------------------------
 # yd-provision: how the TOML path and the merged values are reported
 # ---------------------------------------------------------------------------
+
+
+class TestProvisioningPriority:
+    def test_the_configured_priority_is_provisioned(self, run):
+        out, _ = run(
+            yd_provision,
+            ConfigWorkerPool(
+                template_id=CRT_ID,
+                target_instance_count=1,
+                provisioning_priority=2.5,
+            ),
+            dry_run=True,
+            json_output=True,
+        )
+        assert json_loads(out)["provisionedProperties"]["provisioningPriority"] == 2.5
+
+    def test_it_fills_in_a_specification_without_one(self, run, wp_file):
+        path = wp_file({}, {})
+        document = _provision_dry_run(
+            run, path, ConfigWorkerPool(provisioning_priority=10)
+        )
+        assert document["provisionedProperties"]["provisioningPriority"] == 10
+
+    def test_a_specifications_own_priority_is_kept(self, run, wp_file):
+        path = wp_file({}, {"provisioningPriority": 5})
+        document = _provision_dry_run(
+            run, path, ConfigWorkerPool(provisioning_priority=10)
+        )
+        assert document["provisionedProperties"]["provisioningPriority"] == 5
 
 
 class TestProvisionMessages:
@@ -1129,6 +1159,14 @@ class TestPropertyOverridesBeatTheSpecification:
         assert document["requirementTemplateUsage"]["imagesId"] == "cli-image"
         assert document["provisionedProperties"]["maxNodes"] == 5
         assert document["provisionedProperties"]["workerTag"] == "w"  # Not overridden
+
+    def test_a_provisioning_priority_is_overridden(self, run, wp_file, monkeypatch):
+        self._overriding(monkeypatch, yd_provision, "provisioningPriority")
+        path = wp_file({}, {"provisioningPriority": 5})
+        document = _provision_dry_run(
+            run, path, ConfigWorkerPool(provisioning_priority=7)
+        )
+        assert document["provisionedProperties"]["provisioningPriority"] == 7
 
     def test_an_idle_timeout_is_overridden_by_its_toml_name(
         self, run, wp_file, monkeypatch

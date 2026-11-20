@@ -8,18 +8,19 @@
          * [Details](#details)
    * [Worker Pools vs. Compute Requirements](#worker-pools-vs-compute-requirements)
    * [Worker Pool Properties](#worker-pool-properties)
-   * [Using Textual Names instead of IDs for Compute Requirement Templates and Image Families](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)
       * [Details](#details-1)
-   * [Large-Scale Provisioning](#large-scale-provisioning)
+   * [Using Textual Names instead of IDs for Compute Requirement Templates and Image Families](#using-textual-names-instead-of-ids-for-compute-requirement-templates-and-image-families)
       * [Details](#details-2)
+   * [Large-Scale Provisioning](#large-scale-provisioning)
+      * [Details](#details-3)
    * [Automatic Properties](#automatic-properties)
    * [All Properties in the workerPool Section](#all-properties-in-the-workerpool-section)
    * [Worker Pool Specification Using JSON Documents](#worker-pool-specification-using-json-documents)
       * [Worker Pool JSON Examples](#worker-pool-json-examples)
       * [TOML Properties Inherited by Worker Pool JSON Specifications](#toml-properties-inherited-by-worker-pool-json-specifications)
-         * [Details](#details-3)
+         * [Details](#details-4)
    * [Variable Substitutions in Worker Pool Properties](#variable-substitutions-in-worker-pool-properties)
-      * [Details](#details-4)
+      * [Details](#details-5)
    * [Following a Worker Pool](#following-a-worker-pool)
    * [Dry-Running Worker Pool Provisioning](#dry-running-worker-pool-provisioning)
    * [Node Actions](#node-actions)
@@ -30,15 +31,15 @@
       * [Action Fields Reference](#action-fields-reference)
          * [Common Fields (all action types)](#common-fields-all-action-types)
       * [Node Selection](#node-selection)
-         * [Details](#details-5)
+         * [Details](#details-6)
       * [Worker Pool Selection](#worker-pool-selection)
       * [Checking Node Action Queue Status](#checking-node-action-queue-status)
-         * [Details](#details-6)
-      * [Following Progress](#following-progress)
          * [Details](#details-7)
+      * [Following Progress](#following-progress)
+         * [Details](#details-8)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 09:45:24 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 12:39:58 GMT 2026 -->
 
 <!--te-->
 
@@ -155,6 +156,7 @@ The following properties are available:
 | `minNodes`              | The minimum number of nodes to which the Worker Pool can be scaled down.                                                                          | `0`                     |
 | `name`                  | The name of the Worker Pool.                                                                                                                      | Automatically Generated |
 | `nodeBootTimeout`       | The time in minutes allowed for a node to boot and register with the platform, otherwise it will be terminated.                                   | `10.0`                  |
+| `provisioningPriority`  | The order in which Worker Pools that could be scaled up for the same demand are scaled up, highest first. Any number; set only when the Worker Pool is provisioned. | `0`                     |
 | `requirementTag`        | The tag to apply to the Compute Requirement.                                                                                                      | `tag` set in `common`   |
 | `targetInstanceCount`   | The initial number of nodes to create in the Worker Pool.                                                                                         | `1`                     |
 | `templateId`            | The YellowDog Compute Requirement Template ID or name to use for provisioning. (**Required**)                                                     | No default provided     |
@@ -166,6 +168,10 @@ The following properties are available:
 | `workersPerNode`        | The number of Workers to establish on each node in the Worker Pool. Used when neither `workersPerVCPU` nor `workersCustomCommand` is set.          | `1`                     |
 | `workersPerVCPU`        | The number of Workers to establish per vCPU on each node in the Worker Pool, which may be a fraction (`0.5` is one Worker for every two vCPUs). Takes precedence over `workersPerNode`. |                         |
 | `workersCustomCommand`  | A command run on the node to determine the number of Workers to establish. Takes precedence over `workersPerNode` and `workersPerVCPU`.         |                         |
+
+### Details
+
+**Provisioning priority.** When work could be done by more than one Worker Pool, the Platform scales up the pool with the highest `provisioningPriority` first, so a pool of cheaper or preferred instances can be given a higher priority than a fallback. It only orders pools that could take the same work: a pool whose Workers the work does not match is not scaled up for it whatever its priority. The priority is fixed when the pool is provisioned and cannot be changed afterwards; `yd workerpool list` shows it, and `--sort priority` lists the pools highest first.
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families
 
@@ -237,6 +243,7 @@ Every property the `workerPool` section of a TOML configuration file can set, fo
     metricsEnabled = true
     name = "my-worker-pool"
     nodeBootTimeout = 5
+    provisioningPriority = 10
     requirementTag = "my_tag"
     targetInstanceCount = 1
     templateId = "ydid:crt:D9C548:465a107c-7cea-46e3-9fdd-15116cb92c40"
@@ -404,12 +411,13 @@ Like the configuration's own, `templateId` and `imagesId` may be names (e.g. `"i
 - `metricsEnabled`
 - `minNodes`, if the configuration sets it
 - `nodeBootTimeout`
+- `provisioningPriority`
 - `workerTag`
 - `workersPerNode`, `workersPerVCPU`, or `workersCustomCommand`
 
 #### Details
 
-**Defaults.** The timeouts, the Worker count and `metricsEnabled` are inserted with their defaults when the configuration does not set them. `minNodes`, `maxNodes` and `targetInstanceCount` are inserted only when it does. The default Worker count is `workersPerNode = 1`; set `workersPerNode = 0` in the configuration to insert a Worker count of `0` instead.
+**Defaults.** The timeouts, the Worker count, `metricsEnabled` and `provisioningPriority` are inserted with their defaults when the configuration does not set them. `minNodes`, `maxNodes` and `targetInstanceCount` are inserted only when it does. The default Worker count is `workersPerNode = 1`; set `workersPerNode = 0` in the configuration to insert a Worker count of `0` instead.
 
 **`--property` overrides.** A property given with `--property workerPool.<key>=<value>` replaces the specification's own value, rather than only filling it in when absent (see [Which Value Wins](configuration.md#which-value-wins)).
 

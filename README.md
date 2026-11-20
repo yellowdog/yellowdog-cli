@@ -20,7 +20,7 @@
    * [The Project](#the-project)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 07:59:47 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 12:45:51 GMT 2026 -->
 
 <!--te-->
 
@@ -155,8 +155,8 @@ Commands are run from the command line. Invoking any command with the `--help` o
 
 ```text
 % yd workrequirement cancel -h
-usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace>[,...]] [--reverse] [--variable <var1=v1>] [--namespace [<namespace>]]
-                                 [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
+usage: yd workrequirement cancel [-h] [--sort <name|created|status|namespace|priority>[,...]] [--reverse] [--variable <var1=v1>]
+                                 [--namespace [<namespace>]] [--tag [<tag>]] [--abort] [--follow] [--dry-run] [--json] [--interactive] [--yes]
                                  [<work-requirement-name-or-ID> ...] [universal options]
 
 YellowDog command-line utility for cancelling Work Requirements
@@ -168,11 +168,12 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  --sort <name|created|status|namespace>[,...]
+  --sort <name|created|status|namespace|priority>[,...]
                         order in which listed and interactively-selected entities are sorted: 'name' (default), 'created' (creation time, earliest
-                        first), 'status' (status name), or 'namespace'; give several, separated by commas, to sort by each in turn (e.g.
-                        'status,created'), the name always breaking any tie; combine with --reverse to invert the whole order
-  --reverse             reverse (descending) the whole order --sort gives
+                        first), 'status' (status name), 'namespace', or 'priority' (highest first: a Worker Pool's provisioning priority, a Work
+                        Requirement's or Task Group's priority); give several, separated by commas, to sort by each in turn (e.g. 'status,created'),
+                        the name always breaking any tie; combine with --reverse to invert the whole order
+  --reverse             invert the whole order --sort gives
   --variable, -v <var1=v1>
                         user-defined variable substitution; the option can be supplied multiple times, one per variable
   --namespace, -n [<namespace>]

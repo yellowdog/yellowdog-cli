@@ -277,3 +277,52 @@ def test_a_sort_value_is_keys_separated_by_commas(text, keys):
 def test_a_bad_sort_value_is_refused(text, message):
     with pytest.raises(ArgumentTypeError, match=message):
         entity_sort_keys(text)
+
+
+def _pool(name: str, priority):
+    """
+    Shaped like a Worker Pool summary: a provisioning priority.
+    """
+    return SimpleNamespace(name=name, provisioningPriority=priority)
+
+
+def _work(name: str, priority):
+    """
+    Shaped like a Work Requirement summary or a Task Group: a priority.
+    """
+    return SimpleNamespace(name=name, priority=priority)
+
+
+def test_sort_priority_highest_first(args):
+    args.sort = ("priority",)
+    objs = [_pool("alpha", 0.0), _pool("bravo", 10.0), _pool("charlie", 5.0)]
+    assert [o.name for o in sorted_objects(objs)] == ["bravo", "charlie", "alpha"]
+
+
+def test_sort_priority_reverse_lowest_first(args):
+    args.sort = ("priority",)
+    args.reverse = True
+    objs = [_pool("alpha", 0.0), _pool("bravo", 10.0), _pool("charlie", 5.0)]
+    assert [o.name for o in sorted_objects(objs)] == ["alpha", "charlie", "bravo"]
+
+
+def test_sort_priority_reads_a_work_requirements_priority(args):
+    args.sort = ("priority",)
+    objs = [_work("alpha", 1.0), _work("bravo", 3.0), _work("charlie", 2.0)]
+    assert [o.name for o in sorted_objects(objs)] == ["bravo", "charlie", "alpha"]
+
+
+def test_sort_priority_ties_are_broken_by_name_ascending(args):
+    args.sort = ("priority", "name")
+    objs = [_pool("charlie", 5.0), _pool("alpha", 5.0), _pool("bravo", 10.0)]
+    assert [o.name for o in sorted_objects(objs)] == ["bravo", "alpha", "charlie"]
+
+
+def test_sort_priority_is_passed_over_without_one(args):
+    args.sort = ("priority",)
+    objs = [SimpleNamespace(name="charlie"), SimpleNamespace(name="alpha")]
+    assert [o.name for o in sorted_objects(objs)] == ["alpha", "charlie"]
+
+
+def test_priority_is_a_sort_key():
+    assert entity_sort_keys("priority,name") == ("priority", "name")

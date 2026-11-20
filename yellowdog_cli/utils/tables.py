@@ -294,6 +294,7 @@ def worker_pool_table(
         "Worker Pool Name",
         "Namespace",
         "Type",
+        "Priority",
         "Status",
         "Nodes",
         "Workers (Claimed/All)",
@@ -310,6 +311,9 @@ def worker_pool_table(
                 (worker_pool_summary.type or "")
                 .split(".")[-1]
                 .replace("WorkerPool", ""),
+                _number_text(
+                    getattr(worker_pool_summary, "provisioningPriority", None)
+                ),
                 _cell(worker_pool_summary.status),
                 worker_pool_summary.registeredNodeCount,
                 _counts(
@@ -1233,19 +1237,33 @@ def sorted_objects(objects: list[_T], reverse: bool = False) -> list[_T]:
         by_type if name == "name" else _attribute_sort_key(name)
         for name in names
         # A key the objects lack ('createdTime' on an Instance) is passed over
-        if name == "name" or hasattr(objects[0], _SORT_ATTRIBUTES[name])
+        if name == "name" or _sort_attribute(name, objects[0]) is not None
     ]
     if "name" not in names:
         keys.append(by_type)
     return sorted(objects, key=lambda x: tuple(key(x) for key in keys), reverse=reverse)
 
 
-# The '--sort' keys read from an attribute of the object, by sort key name
-_SORT_ATTRIBUTES: dict[str, str] = {
-    "created": "createdTime",
-    "status": "status",
-    "namespace": "namespace",
+# The '--sort' keys read from an attribute of the object, by sort key name:
+# the first of its attributes the object has
+_SORT_ATTRIBUTES: dict[str, tuple[str, ...]] = {
+    "created": ("createdTime",),
+    "status": ("status",),
+    "namespace": ("namespace",),
+    # A Worker Pool's, else a Work Requirement's or Task Group's
+    "priority": ("provisioningPriority", "priority"),
 }
+
+# The '--sort' keys whose order is highest first
+_DESCENDING_SORT_KEYS = frozenset({"priority"})
+
+
+def _sort_attribute(name: str, sample: object) -> str | None:
+    """
+    The attribute the sort key 'name' reads on objects like 'sample', or
+    None for objects that lack it.
+    """
+    return next((a for a in _SORT_ATTRIBUTES[name] if hasattr(sample, a)), None)
 
 
 def _attribute_sort_key(name: str) -> Callable[[Any], tuple[bool, Any]]:
@@ -1253,14 +1271,16 @@ def _attribute_sort_key(name: str) -> Callable[[Any], tuple[bool, Any]]:
     The sort key named 'name': an object without a value is placed before
     those with one (after them with '--reverse'), never compared with them.
     A status is an enum, so is sorted on its name; a creation time on its
-    value.
+    value; a priority on its value negated, highest first.
     """
-    attribute = _SORT_ATTRIBUTES[name]
 
     def key(x: Any) -> tuple[bool, Any]:
-        value = getattr(x, attribute, None)
+        attribute = _sort_attribute(name, x)
+        value = None if attribute is None else getattr(x, attribute)
         if value is None:
             return (False, "")
+        if name in _DESCENDING_SORT_KEYS:
+            return (True, -value)
         return (True, value if name == "created" else str(value))
 
     return key

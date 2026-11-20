@@ -1620,6 +1620,9 @@ def load_config_worker_pool() -> ConfigWorkerPool:
             ),
             max_nodes_set=(False if wp_section.get(MAX_NODES) is None else True),
             metrics_enabled=wp_section.get(METRICS_ENABLED, False),
+            provisioning_priority=cast(
+                float, _number(wp_section, PROVISIONING_PRIORITY, float, 0)
+            ),
             min_nodes=cast(int, _number(wp_section, MIN_NODES, int, 0)),
             min_nodes_set=(False if wp_section.get(MIN_NODES) is None else True),
             name=cast(

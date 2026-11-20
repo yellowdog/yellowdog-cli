@@ -97,7 +97,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 17:14:06 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 12:39:53 GMT 2026 -->
 
 <!--te-->
 
@@ -182,8 +182,8 @@ These options are accepted by many commands, but not by all. The command section
 | `--dry-run`, `-D` | Report what the command would do, without acting |
 | `--interactive`, `-i` | List, and interactively select, the items to act on; e.g. to select which object paths to delete |
 | `--follow`, `-f` | Follow the relevant event stream after the command has acted: until the entity finishes, or, after an action that leaves it alive, until it has done what was asked of it. [When `--follow` and `--wait` Return](#when---follow-and---wait-return) gives the end for each command. |
-| `--sort <name\|created\|status\|namespace>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
-| `--reverse` | Reverse (descending) the whole order `--sort` gives |
+| `--sort <name\|created\|status\|namespace\|priority>[,...]` | Order in which listed and interactively-selected entities are sorted: `name` (default), `created` (creation time, earliest first), `status` (status name), `namespace`, or `priority` (highest first: a Worker Pool's provisioning priority, a Work Requirement's or Task Group's priority). Give several keys, separated by commas, to sort by each in turn, e.g. `--sort status,created`; the name always breaks any tie that remains |
+| `--reverse` | Invert the whole order `--sort` gives |
 | `--jsonnet-dry-run`, `-J` | Print the Jsonnet specification as evaluated, its variables substituted, and stop — see [Checking Jsonnet Processing](jsonnet.md#checking-jsonnet-processing) |
 
 All destructive commands require user confirmation before taking effect, unless the `--yes` option is supplied.
@@ -1856,8 +1856,8 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 | `--ids-only`/`-D` | Print only the YellowDog IDs of the listed entities, one per line, and nothing else on stdout (a warning goes to stderr), so `$(yd list ... --ids-only)` gives the IDs alone. Like `--json`, this lists non-interactively: e.g. `yd list tasks --ids-only` gives the IDs of all Tasks across all matching Work Requirements and Task Groups. An Instance is given as `<compute-requirement-ydid>.<instance-id>`, the form the `yd instance` verbs take. Refused for attribute definitions, namespace policies and permissions, which have no IDs |
 | `--json`/`-J` | Emit the listing as a plain JSON array of summary objects (mutually exclusive with `--ids-only`) |
 | `--count`/`-C` | Print only the number of matching items. Implies `--quiet`, and overrides `--details`, `--json` and `--ids-only`. Like `--json`, this aggregates non-interactively: e.g. `yd list tasks -C` counts all Tasks across all matching Work Requirements and Task Groups |
-| `--sort <name\|created\|status\|namespace>[,...]` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name), or `namespace`. Give several keys, separated by commas, to sort by each in turn: `--sort namespace,status,created` groups by namespace, then by status within it, then by age; the name (for Instances the instance type, for Nodes and Workers the Worker Pool name, for Tasks the task number) breaks any tie that remains. `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools; a key an entity type lacks is passed over. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd workrequirement cancel`, `yd workrequirement hold` and `yd workrequirement start` |
-| `--reverse` | List items in reverse (descending) order: the whole order `--sort` gives, every key's included |
+| `--sort <name\|created\|status\|namespace\|priority>[,...]` | Order listed (and interactively selected) entities by `name` (default), `created` (creation time, earliest first), `status` (status name), `namespace`, or `priority` (highest first: a Worker Pool's provisioning priority, a Work Requirement's or Task Group's priority). Give several keys, separated by commas, to sort by each in turn: `--sort namespace,status,created` groups by namespace, then by status within it, then by age; the name (for Instances the instance type, for Nodes and Workers the Worker Pool name, for Tasks the task number) breaks any tie that remains. `created`, `status` and `namespace` apply to entities exposing those fields, e.g. Work Requirements, Compute Requirements, Worker Pools, and `priority` to Worker Pools, Work Requirements and Task Groups; a key an entity type lacks is passed over. This is a global option, so it also affects the numbered selection lists shown by commands such as `yd workrequirement cancel`, `yd workrequirement hold` and `yd workrequirement start` |
+| `--reverse` | List items in reverse order: the whole order `--sort` gives inverted, every key's included |
 | `--public-ips-only` | With `instances`, list public IP addresses only; it cannot be combined with `--json`, `--ids-only` or `--details` |
 | `--unhealthy` | List only the Work Requirements, Worker Pools or Compute Requirements the Platform marks unhealthy |
 | `--provisioned` | List only Provisioned Worker Pools |
