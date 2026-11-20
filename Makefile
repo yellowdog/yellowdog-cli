@@ -12,7 +12,7 @@ build: $(SRC) $(MANIFEST)
 	uv build
 
 clean:
-	rm -rf $(BUILD_DIST) $(PYCACHE) $(TOC_BACKUP)
+	rm -rf $(BUILD_DIST) $(PYCACHE) $(TOC_BACKUP) sphinx/_build
 
 install: build
 	uv pip install -U -e ".[commander,mcp,jsonnet,cloudwizard]"
@@ -66,6 +66,28 @@ schema_descriptions: docs/work-requirement-property-dictionary.md
 test:
 	pytest -v -n 8
 
+# The documentation site (the 'docs' extra): the repository's Markdown as
+# HTML in sphinx/_build/html, any warning failing the build; and its image
+DOCS_VERSION = $(shell sed -n 's/^__version__ = "\(.*\)"/\1/p' yellowdog_cli/_version.py)
+DOCS_IMAGE = yellowdogco/cli-docs
+
+.PHONY: docs docs_linkcheck docs_build_image docs_publish_image
+
+docs:
+	sphinx-build -E -W --keep-going -c sphinx -b html . sphinx/_build/html
+
+# Every external link the pages make, checked over the network (by hand before
+# a release, never in CI, which would fail on another site's outage); the
+# report is in sphinx/_build/linkcheck/output.txt
+docs_linkcheck:
+	sphinx-build -c sphinx -b linkcheck . sphinx/_build/linkcheck
+
+docs_build_image: docs
+	cd sphinx && docker build . -t $(DOCS_IMAGE):$(DOCS_VERSION) --platform linux/amd64
+
+docs_publish_image: docs_build_image
+	docker push $(DOCS_IMAGE):$(DOCS_VERSION)
+
 # PYRIGHT_PYTHON=X.Y checks the code as that Python's (default: pyproject.toml's
 # pythonVersion, the oldest supported), since a branch for a newer Python is
 # unreachable to a check as the oldest
@@ -92,8 +114,8 @@ live_config:
 	python tests/live/check_config.py
 
 update:
-	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]"
 
 no_op:
-	# Available targets are: build, clean, format, install, test, tox, uninstall, update, pypi_upload, pypi_check
+	# Available targets are: build, clean, docs, docs_linkcheck, format, install, test, tox, uninstall, update, pypi_upload, pypi_check
 	# For releases, use: ./release.sh (or ./release.sh --release)

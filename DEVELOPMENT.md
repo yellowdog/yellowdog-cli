@@ -16,6 +16,8 @@
       * [Linux, macOS and Windows on GitHub Actions](#linux-macos-and-windows-on-github-actions)
    * [Type Checking](#type-checking)
    * [Building](#building)
+   * [Documentation Site](#documentation-site)
+      * [Details](#details)
    * [Commander](#commander)
    * [MCP Server](#mcp-server)
    * [Architecture](#architecture)
@@ -33,7 +35,7 @@
    * [Branching](#branching)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Oct 23 13:45:07 BST 2026 -->
+<!-- Added by: pwt, at: Thu Nov 19 17:40:20 GMT 2026 -->
 
 <!--te-->
 
@@ -246,7 +248,7 @@ A test still running after 5 minutes fails, with its stack in its report ([pytes
 
 Its thread method (`--timeout-method=thread`) is used on every platform, since the signal method cannot reach a test blocked in Qt's event loop, which never returns to Python to take the signal; it dumps every thread's stack and ends the worker, which pytest-xdist then reports by the test's name. pytest's own `faulthandler_timeout` (240 seconds) dumps the stacks a minute earlier, from C, wherever the test is stuck.
 
-- [`.github/workflows/linux-tests.yml`](.github/workflows/linux-tests.yml) runs it on Ubuntu under each supported Python, 3.10 to 3.15, one job each and side by side, so every push is checked as `make tox` checks a release. Each machine is set up by [`setup-ubuntu.sh`](setup-ubuntu.sh), so the workflow tests the script too: the system packages it installs, its virtual environment with every extra, and its check that Qt can be used, which fails rather than letting the Commander tests skip. The 3.10 and 3.15 jobs also run `make pyright`, each checking the code as its own Python's (see [Type Checking](#type-checking)).
+- [`.github/workflows/linux-tests.yml`](.github/workflows/linux-tests.yml) runs it on Ubuntu under each supported Python, 3.10 to 3.15, one job each and side by side, so every push is checked as `make tox` checks a release. A job of its own builds the documentation site (`make docs`; see [Documentation Site](#documentation-site)). Each machine is set up by [`setup-ubuntu.sh`](setup-ubuntu.sh), so the workflow tests the script too: the system packages it installs, its virtual environment with every extra, and its check that Qt can be used, which fails rather than letting the Commander tests skip. The 3.10 and 3.15 jobs also run `make pyright`, each checking the code as its own Python's (see [Type Checking](#type-checking)).
 - [`.github/workflows/macos-tests.yml`](.github/workflows/macos-tests.yml) runs it on macOS (Apple silicon) under the oldest and newest supported Python, 3.10 and 3.15, on a clean machine with uv's own Python builds, which differ from a Homebrew one in ways Commander has shown; the versions between are left to `make tox`, run on macOS before each release. It checks Qt can be used first, so the Commander tests cannot quietly skip.
 - [`.github/workflows/windows-tests.yml`](.github/workflows/windows-tests.yml) runs it on Windows, with every extra installed. A test that assumes Linux or macOS is fixed to run on Windows where it can, or skipped there with the reason. It is also where Windows PowerShell 5.1, the version built into Windows, is tested: it exists on Windows alone, so no test can run it on macOS or Linux. The runner has both 5.1 (`powershell`) and PowerShell 7 (`pwsh`), and `tests/test_completion.py`'s PowerShell tests run under each PowerShell present; the workflow checks both are there first, so they cannot quietly cover one alone.
 
@@ -278,6 +280,27 @@ The specification schemas' property descriptions are extracted from the Work Req
 ```shell
 make schema_descriptions
 ```
+
+## Documentation Site
+
+The documentation is also built as a website with [Sphinx](https://www.sphinx-doc.org/), as the Airflow provider's and RayDog's are, with the same theme and a copy button on every code block. The pages are the repository's own Markdown, read where they are: the README (the home page), `docs/*.md`, the Commander, MCP and Cloud Wizard READMEs, `CHANGELOG.md` and this guide. They are written for GitHub, and the site is another rendering of them. Install the `docs` extra (`make update` includes it), then build:
+
+```shell
+make docs                 # the site, in sphinx/_build/html; any warning fails the build
+make docs_linkcheck       # every external link the pages make, checked over the network
+make docs_build_image     # the site in a static-site-server image, yellowdogco/cli-docs:<version>
+make docs_publish_image   # pushes that image
+```
+
+Open `sphinx/_build/html/index.html`, or serve the directory (`python -m http.server -d sphinx/_build/html`) for search to work.
+
+### Details
+
+**What the site adapts.** `sphinx/conf.py` adapts what GitHub alone needs as each page is read, so no page carries anything for the site. It makes a bare URL a link, as GitHub does (MyST's `linkify`, only for a URL with a scheme or `www.`, so that `README.md` is never taken for a domain), removes the generated tables of contents, which the sidebar replaces, and gives a page with several top-level headings (the README, the Cloud Wizard's) one title, its other headings a level lower. A link to a file the site does not render goes to GitHub at the version's tag; an image is shown on the site, which copies it. The sidebar is the README's documentation map, a group per heading in its order, so a page added to the map is added to the site; one outside `docs/` is also added to `include_patterns`. Overview, the home page, is above it, with the home page's sections under it while the home page is shown (Sphinx expands no entry for the page holding the menu, so `_overview_sections()` and `sphinx/_templates/layout.html` add them, less the README's own Overview and its documentation map), and the repository on GitHub ends its last group, and each page's header links to its source there (`sphinx/_templates/breadcrumbs.html`). The home page is built as `README.html` and copied to `index.html`, the page the site's address gives, and every link to it points at `index.html`. The sidebar shows the version under the title (`sphinx/_templates/layout.html`), and each page names its address at `https://docs.yellowdog.ai/cli/` (`html_baseurl`) as its canonical one.
+
+**What fails the build.** The build fails on any warning, such as a link to a page or a heading that does not exist. It accepts a skipped heading level and a code block its language only loosely fits, as GitHub does. The Linux workflow builds the site on every push to `next-version`, and `release.sh` builds it before committing anything, so a page that breaks the site stops neither late. External links are not checked by the build, which would then fail on another site's outage: `make docs_linkcheck` checks them, by hand before a release, its report in `sphinx/_build/linkcheck/output.txt`. It checks GitHub's and the YellowDog documentation's and Portals' pages but not their `#...` anchors, which those sites make in the browser, and skips Azure's portal, which answers nothing without a login; a redirect is reported and not a failure.
+
+**Theme files.** `sphinx/_static/custom.css`, the fonts and the wordmark are the sibling sites', kept unchanged; the CLI's own styling is in `sphinx/_static/cli.css`, and its templates in `sphinx/_templates/`.
 
 ## Commander
 
@@ -405,11 +428,12 @@ yellowdog_cli/spec_data/  # Data shipped for the specification schemas (descript
 yellowdog_cli/completion_scripts/  # yd completion's bash, zsh, fish and PowerShell scripts
 .github/workflows/        # GitHub Actions, advisory: the whole suite on Linux (Python 3.10-3.15, set up by setup-ubuntu.sh), macOS (3.10 and 3.15) and Windows (PowerShell 5.1 and 7 included)
 docs/                    # The user documentation, by topic, that README.md points to: commands.md (the Command List), configuration, variables, work requirements, worker pools, resources, ...
+sphinx/                   # The documentation site's Sphinx configuration, theme files, template and Dockerfile (see Documentation Site)
 scripts/                  # Build-time helpers run by make targets; the pre-push hook and its signed-commit check
 tests/                    # All tests (see tests/README.md)
 pyproject.toml            # Package metadata, dependencies, ruff config
 CHANGELOG.md              # the release notes: each release's user-visible changes, and those not yet released under '## Unreleased'
-Makefile                  # format, test, coverage, complexity, pyright, tox, build, install, uninstall, update, clean, pre_push_hook, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload
+Makefile                  # format, test, coverage, complexity, pyright, tox, build, install, uninstall, update, clean, pre_push_hook, toc and toc_* targets, schema_descriptions, pypi_check/pypi_upload/pypi_test_upload, docs/docs_linkcheck/docs_build_image/docs_publish_image
 setup-ubuntu.sh           # Bare Ubuntu/Debian machine -> a checkout that runs the tests
 config-template.toml      # Annotated template for all TOML configuration properties
 RELEASING.md              # Branch model, release process, PyPI credentials

@@ -20,6 +20,11 @@ make format
 # Build distribution
 make build            # uv build
 
+# The documentation site (Sphinx, the 'docs' extra): the Markdown below as HTML in sphinx/_build/html, any warning failing it; and its image
+make docs
+make docs_linkcheck   # the pages' external links, over the network; by hand before a release, never in CI
+make docs_build_image # yellowdogco/cli-docs:<version>, which release.sh publishes
+
 # Run tests
 make test                           # pytest -v -n 8
 pytest -v                           # standard tests only
@@ -229,8 +234,8 @@ Documentation here is spread across several files, each with its own audience, a
 
 | File | Update it when |
 |---|---|
-| `README.md` | The landing page: what the CLI is, prerequisites, installation, usage, the typical workflow, and the documentation map, its Documentation section, a table row per page saying what it covers; a new `docs/` page or extension README gets a row (`tests/test_docs_map.py`), and a page whose scope changes gets its row's description changed. Run `make toc` afterwards — never hand-edit the table of contents |
-| `docs/*.md` | User-visible CLI behaviour changes, on the page for the topic: `commands.md` (the Command List) for a new command or flag or a change in what one does; `work-requirement-property-dictionary.md` for a new Work Requirement property (then `make schema_descriptions`); `installation.md`, `concepts.md`, `troubleshooting.md`, `configuration.md`, `variables.md`, `work-requirements.md`, `worker-pools.md`, `data-client.md`, `resources.md`, `jsonnet.md`, `json-output.md` for the rest; and `schemas.md` for the specification schemas, `--validate` and `yd schema`. Guide pages are written to `.claude/rules/docs.md` (the common case and a runnable example first, edge cases in a Details subsection). Run `make toc_docs` afterwards; a link to a section moved between files is fixed where it points, which `tests/test_doc_links.py` checks for every relative link |
+| `README.md` | The landing page: what the CLI is, prerequisites, installation, usage, the typical workflow, and the documentation map, its Documentation section, a table row per page saying what it covers; a new `docs/` page or extension README gets a row (`tests/test_docs_map.py`), which also puts it in the documentation site's sidebar (a page outside `docs/` is added to `sphinx/conf.py`'s `include_patterns` too), and a page whose scope changes gets its row's description changed. Run `make toc` afterwards — never hand-edit the table of contents |
+| `docs/*.md` | User-visible CLI behaviour changes, on the page for the topic: `commands.md` (the Command List) for a new command or flag or a change in what one does; `work-requirement-property-dictionary.md` for a new Work Requirement property (then `make schema_descriptions`); `installation.md`, `concepts.md`, `troubleshooting.md`, `configuration.md`, `variables.md`, `work-requirements.md`, `worker-pools.md`, `data-client.md`, `resources.md`, `jsonnet.md`, `json-output.md` for the rest; and `schemas.md` for the specification schemas, `--validate` and `yd schema`. Guide pages are written to `.claude/rules/docs.md` (the common case and a runnable example first, edge cases in a Details subsection). Run `make toc_docs` afterwards, and `make docs`, since the pages are also the documentation site; a link to a section moved between files is fixed where it points, which `tests/test_doc_links.py` checks for every relative link |
 | `README_CLOUDWIZARD.md` | Cloud Wizard behaviour changes (`make toc_cloudwizard` for its TOC) |
 | `PYPI_README.md` | The command list or the headline description changes — it is the PyPI landing page, so it summarises rather than documents |
 | `yellowdog_cli/commander/README.md` | Commander's GUI behaviour changes: a new button, dialog, or a change in what an action does (`make toc_commander` for its TOC, which the Help window shows too) |

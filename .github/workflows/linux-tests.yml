@@ -9,7 +9,7 @@
 # Commander tests skip. The 3.10 and 3.15 jobs also run 'make pyright', each
 # checking the code as its own Python's, the oldest and the newest supported,
 # against the dependencies that Python resolves; it needs the script's
-# libatomic.
+# libatomic. A job of its own builds the documentation site (make docs).
 name: Linux tests
 
 on:
@@ -71,3 +71,26 @@ jobs:
         with:
           name: linux-tests-py${{ matrix.python }}
           path: linux-tests.xml
+
+  # The documentation site, built as 'make docs' builds it, any warning
+  # failing it, so a page that breaks the Sphinx rendering fails here rather
+  # than at release
+  docs:
+    name: docs site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+          cache-suffix: docs
+
+      - name: Build the site
+        run: |
+          uv venv --python 3.14 .venv
+          uv pip install -e ".[docs]"
+          source .venv/bin/activate
+          make docs

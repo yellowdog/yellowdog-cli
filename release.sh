@@ -14,6 +14,9 @@
 # to 'next-version' alone, for the next release's notes. It asks whether 'make tox' has passed and
 # whether to run the tests, carrying on without either if told to, and
 # refuses to release unsigned commits, which 'main' requires to be signed.
+# It builds the documentation site (the 'docs' extra) before committing
+# anything, and after the PyPI upload asks whether to publish the site's
+# image (Docker), reporting a failure without stopping the release.
 
 set -euo pipefail
 
@@ -134,6 +137,21 @@ echo
 echo "--- Release notes (## Unreleased in $CHANGELOG) ---"
 _changelog_section Unreleased
 
+# The documentation site is built below (make docs, the 'docs' extra), and
+# its image published after the upload (Docker): the first is required, so
+# its absence stops the release here, before anything changes; the second is
+# only warned of, since a release may publish the image later by hand
+if ! command -v sphinx-build > /dev/null 2>&1; then
+    if $DRY_RUN; then
+        echo "[dry-run] WARNING: sphinx-build not found (ignored in dry-run)"
+    else
+        _die "sphinx-build not found: install the 'docs' extra (uv pip install -e '.[docs]')."
+    fi
+fi
+if ! docker info > /dev/null 2>&1; then
+    echo "WARNING: Docker is not running: the documentation site's image cannot be published until it is."
+fi
+
 # The tests below run in this venv alone, with every extra installed, which
 # can hide a failure: 'make tox' runs them on every supported Python version.
 # Asked, not required: a release may go without it, said so
@@ -224,6 +242,12 @@ echo
 echo "--- Build and distribution check ---"
 _run make pypi_check
 
+# Built here, as the version being released, so that a page that breaks the
+# site (any warning fails it) stops the release before anything is committed
+echo
+echo "--- Documentation site ---"
+_run make docs
+
 echo
 if _ask "Run the tests (pytest -v -n 8)?"; then
     echo "--- Running tests ---"
@@ -271,6 +295,24 @@ _confirm "Upload to PyPI now?"
 _run make pypi_upload
 
 # ---------------------------------------------------------------------------
+# Publish the documentation site's image (asked; a failure is reported, and
+# the release goes on, since the image can be published later by hand)
+# ---------------------------------------------------------------------------
+
+DOCS_IMAGE="yellowdogco/cli-docs:$NEW_VERSION"
+DOCS_PUBLISHED=false
+echo
+if _ask "Publish the documentation site's image ($DOCS_IMAGE)?"; then
+    if _run make docs_publish_image; then
+        DOCS_PUBLISHED=true
+    else
+        echo "WARNING: The documentation site's image was not published: run 'make docs_publish_image' on 'main' at v$NEW_VERSION."
+    fi
+else
+    echo "--- Not publishing the documentation site's image: 'make docs_publish_image' on 'main' at v$NEW_VERSION publishes it ---"
+fi
+
+# ---------------------------------------------------------------------------
 # Return to next-version and push
 # ---------------------------------------------------------------------------
 
@@ -302,3 +344,7 @@ echo "=== Release v$NEW_VERSION complete ==="
 echo
 echo "--- Release notes, for the release ticket ---"
 cat "$NOTES_FILE"
+if $DRY_RUN || $DOCS_PUBLISHED; then
+    echo
+    echo "Tell the operations team that documentation image $DOCS_IMAGE is available."
+fi

@@ -76,29 +76,28 @@
       * [yd jsonnet fromjson](#yd-jsonnet-fromjson)
       * [yd jsonnet factor](#yd-jsonnet-factor)
          * [Details](#details-2)
-   * [Other Commands](#other-commands)
-      * [yd list](#yd-list)
-         * [Listing Several Namespaces](#listing-several-namespaces)
-            * [Details](#details-3)
-      * [yd show](#yd-show)
-      * [yd follow](#yd-follow)
-      * [yd wait](#yd-wait)
-      * [yd status](#yd-status)
-      * [yd usage](#yd-usage)
-      * [yd application](#yd-application)
-      * [yd variables](#yd-variables)
-      * [yd init](#yd-init)
-      * [yd doctor](#yd-doctor)
-      * [yd help](#yd-help)
-      * [yd version](#yd-version)
-      * [yd format-json](#yd-format-json)
-      * [yd schema](#yd-schema)
-      * [yd completion](#yd-completion)
-         * [Names and IDs from the Platform](#names-and-ids-from-the-platform)
+   * [yd list](#yd-list)
+      * [Listing Several Namespaces](#listing-several-namespaces)
+         * [Details](#details-3)
+   * [yd show](#yd-show)
+   * [yd follow](#yd-follow)
+   * [yd wait](#yd-wait)
+   * [yd status](#yd-status)
+   * [yd usage](#yd-usage)
+   * [yd application](#yd-application)
+   * [yd variables](#yd-variables)
+   * [yd init](#yd-init)
+   * [yd doctor](#yd-doctor)
+   * [yd help](#yd-help)
+   * [yd version](#yd-version)
+   * [yd format-json](#yd-format-json)
+   * [yd schema](#yd-schema)
+   * [yd completion](#yd-completion)
+      * [Names and IDs from the Platform](#names-and-ids-from-the-platform)
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 09:45:20 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 19 17:14:06 GMT 2026 -->
 
 <!--te-->
 
@@ -131,7 +130,7 @@ The `list` and `show` verbs, and the `follow` and `wait` verbs of the Work Requi
 
 Since the noun says what a name stands for, the `show`, `follow`, `wait` and `compare` verbs of the Work Requirement, Task Group, Task, Worker Pool and Compute Requirement nouns take names too: a Work Requirement, Worker Pool or Compute Requirement by its name, a Task Group as `wr/tg` and a Task as `wr/tg/task`, each looked up in `--namespace` or the configured namespace, or in another given ahead of it (`namespace/name`, `namespace/wr/tg`), whether the object is live or finished: a Work Requirement's or Compute Requirement's name can be reused once it has finished, so a live one is found if there is one, else the newest. Every name is looked up before anything else is done; a name that finds nothing is reported and exits 6, and a name two live objects share is ambiguous, reported and exits 1, its ID being needed instead. A name pattern stands for every object whose name it matches: `yd wr show 'nightly-20261030*'`, `yd wp wait 'render-*'`, `yd tg show 'my-wr/render-*'` (see the Glob patterns table below). [Naming What a Command Acts On](#naming-what-a-command-acts-on) gives the rules the action commands share.
 
-`yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the [other commands](#other-commands), which act on no particular object: each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
+`yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the commands that act on no particular object, from [`yd list`](#yd-list) to [`yd completion`](#yd-completion): each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
 The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
 
@@ -1804,11 +1803,7 @@ The JSON is read as `yd format-json` reads it: a number is written as it was wri
 
 The command finds what the specifications share, not why: a series a person would write as a loop over zones is still written out one specification at a time.
 
-## Other Commands
-
-These commands act on no one kind of object, and are named by their `yd` word alone: `yd list`, `yd show`, `yd follow` and `yd wait` take any type of object, and the rest are utilities.
-
-### yd list
+## yd list
 
 The `yd list` command lists various YellowDog items in the configured `namespace`. Work Requirements, Worker Pools and Compute Requirements are listed with the configured `tag`, selected as the commands acting on them select them when given no names (Work Requirements and Compute Requirements by their tag, Worker Pools by the tag in their name), so a listing shows what `yd workrequirement cancel`, `yd workerpool shutdown` or `yd computerequirement terminate` would consider; give `--tag ''` (or `-t` alone) to list the whole namespace. Templates and Image Families, which nothing selects by tag, are listed whatever their names unless `--tag` is given.
 
@@ -1879,7 +1874,7 @@ Unambiguous prefix matching is supported — for example `yd list work-r` resolv
 yd list work-requirements --name 'myproject-*' --active-only
 ```
 
-#### Listing Several Namespaces
+### Listing Several Namespaces
 
 A namespace pattern lists across every namespace it matches that the Application can read, the namespace column saying where each item is:
 
@@ -1890,7 +1885,7 @@ yd list compute-requirements -n 'prod-?' --json
 
 The first line of the listing names the namespaces matched. `--name` takes a pattern in its namespace part as well, as in `yd list worker-pools --name 'team-*/render-*'`.
 
-##### Details
+#### Details
 
 - A pattern is for `yd list` and the `list` verbs alone. Every other command refuses one, whether it was given with `--namespace` (exit code 2) or configured in the configuration file, `YD_NAMESPACE` or `--property common.namespace=` (exit code 3), so no command acts on, or creates in, namespaces it was not given. `yd doctor` and `yd variables`, which only report the configuration, show a configured pattern as it is, `yd doctor` warning that other commands refuse it and naming the readable namespaces it matches.
 - A pattern matching no readable namespace is an empty listing (exit code 0): `No namespaces match 'team-x-*'`, or `0` with `--count` and `[]` with `--json`.
@@ -1908,7 +1903,7 @@ Each of `--auto-select-all`, `--strip-ids`, `--substitute-ids` and `--output-fil
 
 The `--substitute-ids`/`-U`, `--strip-ids`, `--auto-select-all` and `--output-file` options are used when capturing existing resources as specifications — see [Taking Resources One at a Time with `yd list` or `yd show`](resources.md#taking-resources-one-at-a-time-with-yd-list-or-yd-show). To capture a namespace's or an account's resources in one file, use [`yd resource export`](#yd-resource-export).
 
-### yd show
+## yd show
 
 The `yd show` command shows the details (in JSON) of any YellowDog entity that has a YellowDog ID.
 
@@ -1970,7 +1965,7 @@ yd show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.i-0123456789abc
 yd show ydid:compreq:000000:07e0a2c1-3e0a-4b40-9f5b-0b0f81a29b16.ocid1.instance.oc1.uk-london-1.anwgiljtbfkcyvycib2ubsewuwqqffx2jzyp7dolkhxanfvdsgvjzjrytepa
 ```
 
-### yd follow
+## yd follow
 
 The `yd follow` command follows the event streams for one or more Work Requirements, Worker Pools and Compute Requirements, specified by their YellowDog IDs. The nouns' `follow` verbs (`yd workrequirement follow my-wr`) take names too, looked up in `--namespace` or the configured namespace, as described at the [top of this page](#command-list); `yd follow` itself takes IDs alone, so its `--namespace` has no effect.
 
@@ -1999,7 +1994,7 @@ yd follow ydid:workreq:D9C548:37d3c0cd-2651-4779-be17-89a8601b03b8 \
           ydid:compreq:D9C548:98879b5a-9192-4a56-ad25-fc1330e49185
 ```
 
-### yd wait
+## yd wait
 
 The `yd wait` command waits for one or more Work Requirements, Worker Pools, or Compute Requirements to reach a terminal state, then exits with a status code reflecting the outcome. The nouns' `wait` verbs (`yd workrequirement wait my-wr`) take names too, looked up in `--namespace` or the configured namespace, as described at the [top of this page](#command-list); `yd wait` itself takes IDs alone, so its `--namespace` has no effect.
 
@@ -2024,7 +2019,7 @@ WR_ID=$(yd workrequirement submit mywork.json --quiet)
 yd wait "$WR_ID" && yd data download results/
 ```
 
-### yd status
+## yd status
 
 The `yd status` command shows the work and compute in the configured `namespace` and `tag` on one screen: the Work Requirements with their Task progress, the Worker Pools with their Nodes and Workers, and the Compute Requirements with their Instances. Each section lists what `yd list` lists for its type, and ends with a total. Give `--active-only` to leave out what has finished, shut down or terminated.
 
@@ -2065,7 +2060,7 @@ Key options:
 
 The Namespace and Tag columns are left out, since the first line names them, and a Provisioned Worker Pool's Compute Requirement appears in both its sections, as in `yd list`. A section with nothing to show says so. A warning closes the report when anything is unhealthy (`1 Worker Pool unhealthy`); being unhealthy does not change the exit code. A section whose search fails, a missing permission say, says why (in `failures` under `--json`) and the others are still shown; the command then exits with that failure's [exit code](json-output.md), or 1 for failures of different kinds. `--quiet` prints the tables alone, as `yd list --quiet` does, with a failed search still said on stderr.
 
-### yd usage
+## yd usage
 
 The `yd usage` command shows the time Instances spent running, stopped and in all statuses over a time window, in hours and minutes (`h:mm`, time under a minute shown as `<0:01`), the last seven days unless told otherwise, totalled by namespace or by the other keys `--by` names. It reads the Platform's compute usage report, which counts only the time inside the window.
 
@@ -2144,7 +2139,7 @@ An Application allowed to read usage in some namespaces only is refused a report
 
 The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path. A later run with the same `--from`, `--until` and `--namespace`, as written, uses the report kept rather than fetching the report again while they still cover that window to within ten minutes at each end: a window of fixed dates in the past for as long as it is kept, since its usage no longer changes, and a window ending now (the default) for ten minutes after it was fetched, which is long enough to look at the same week `--by` several keys in turn. `--refresh` fetches a new one regardless. Each fetch removes the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
 
-### yd application
+## yd application
 
 The `yd application` command shows the details of the current Application, i.e. the Application represented by the `key` and `secret` being used.
 
@@ -2188,7 +2183,7 @@ yd application --json
 }
 ```
 
-### yd variables
+## yd variables
 
 The `yd variables` command reports the processed values of variable substitutions, as JSON. It shows what a specification file would actually see, once the TOML configuration file, the environment, any `YD_VAR_*` variables, any `--variable`/`-v` options and the built-in defaults have all been taken into account, which makes it the quickest way to debug a variable substitution setup.
 
@@ -2255,7 +2250,7 @@ This is a heuristic, and the note is there so that it is not mistaken for a guar
 
 None of `yd completion`, `yd init`, `yd help`, `yd version`, `yd schema` and `yd format-json` (nor the [`yd jsonnet`](#yd-jsonnet) verbs) requires a configuration file or YellowDog credentials, and none accepts the [Universal Options](#universal-options) other than `--no-format`, which `yd init`, `yd help`, `yd version` and `yd schema` accept (`yd version`'s `--debug` is an option of its own, adding the Python executable and path); `yd doctor` is the exception here, since checking a configuration or a set of credentials means accepting the options that name them, but it never exits on one that is missing or broken — that is what it exists to report.
 
-### yd init
+## yd init
 
 The `yd init` command writes a starter configuration file: `config.toml` in the current directory, or with `--user` your own, `~/.config/yellowdog/config.toml`, which every directory without a `config.toml` of its own reads (see [Configuration](configuration.md)). It asks for the Application key ID and secret (the secret typed without being shown), the namespace, the tag and the Platform API URL, offering the value of `YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG` or `YD_URL` for Enter to keep, and writes them to its `[common]` section; a value given none is written commented out, so the file shows where it would go. A file holding the secret is readable by its owner alone. Run `yd doctor` afterwards to check it.
 
@@ -2268,7 +2263,7 @@ yd init [options]
 - `--yes`, `-y`: ask nothing, taking each value from its environment variable and leaving any not set commented out
 - `--no-format`: print the messages without colouring
 
-### yd doctor
+## yd doctor
 
 The `yd doctor` command checks whether this machine, this configuration and these credentials can run the CLI, and reports each check as `OK`, `WARN`, `FAIL` or `SKIP` with a remedy for anything wrong. It is the first thing to run when a command fails unexpectedly, and its output is what to include in a support request: the secret is shown redacted, and an inline data client remote with its name, type and provider only, every other parameter's value withheld.
 
@@ -2321,7 +2316,7 @@ yd doctor --json | jq '.[] | select(.status == "FAIL")'
 
 The exit code is 1 if any check failed, else 0, so it can gate a script or a CI job.
 
-### yd help
+## yd help
 
 The `yd help` command lists all available `yd` commands and their purposes, `yd commander` and `yd mcp` included, with the extra each command that needs one requires, or `(<extra> extra installed)` where it is installed already, and closes with how to see a command's options and where the documentation is.
 
@@ -2331,7 +2326,7 @@ yd help [--json] [--deprecated] [--no-format]
 
 The listing is coloured on a terminal, with the command names and the notes on extras picked out; `--no-format`/`--nf` prints it plain, as it is when piped. `--deprecated` lists the deprecated `yd-*` commands and the `yd` forms that replace them. With `--json` it prints every command as a JSON array of `{"command", "summary"}`: a noun adds `"alias"` (its short form, or `null`) and `"verbs"` (each `{"verb", "summary", "replaces"}`), a deprecated `yd-*` command `"deprecated": true` and `"replacedBy"` (its `yd` forms), and a command needing an extra `"extra"` and `"installed"`; the array is coloured on a terminal unless `--no-format` is given (see [Machine-readable Output and Exit Codes](json-output.md)).
 
-### yd version
+## yd version
 
 The `yd version` command reports the versions of the CLI, the YellowDog SDK, Python, and (if installed) Jsonnet, the rclone binary and the MCP SDK used by `yd mcp` as a table, followed by the CLI's author, licence and documentation link.
 
@@ -2353,7 +2348,7 @@ yd version --rclone  # print the rclone binary version only
 
 The rclone version is detected using the same lookup order as `yd workrequirement submit --which-rclone` (system `PATH` first, then the `rclone_api` download cache) without triggering a download; an rclone binary that does not answer within 5 seconds is reported as `unknown`. Each single-version option prints nothing and exits 1 if its component is not installed, or its version could not be read, so a script never takes `Not installed` or `unknown` for a version number. The documentation link is the release's own README, or `main`'s for a development build.
 
-### yd format-json
+## yd format-json
 
 The `yd format-json` command reformats JSON files in place using the CLI's compact JSON encoder (small containers on a single line, larger ones indented). A quoted glob pattern is expanded, as the `yd jsonnet` verbs expand one, and files not named `*.json` are skipped, each with a message.
 
@@ -2374,7 +2369,7 @@ yd format-json --stdout my_file.json
 yd list compute-source-templates --json | yd format-json -
 ```
 
-### yd schema
+## yd schema
 
 The `yd schema` command prints the JSON Schema a specification family must follow, generated from the CLI's own registry and the installed YellowDog SDK: `work-requirement` (what `yd workrequirement submit` accepts), `worker-pool` (`yd workerpool provision`), `compute-requirement` (`yd computerequirement instantiate`), `resources` (`yd resource create`), `node-actions` (`yd node action`) and `config` (the TOML configuration file every command reads; see [Configuration](configuration.md)). It needs no configuration file and no credentials.
 
@@ -2393,7 +2388,7 @@ After upgrading the CLI or the SDK, `yd schema --check <dir>` says whether a wri
 
 A family printed with `yd schema <family>` is exactly what `--write` writes for it (coloured when printed to a terminal, unless `--no-format` is given, so piped or redirected it is the same bytes), and each file is replaced whole or not at all. Every schema also accepts a `{{variable}}` substitution, the `{{name::}}` unset form included, wherever a plain value is otherwise expected.
 
-### yd completion
+## yd completion
 
 The `yd completion` command prints a shell completion script for `yd`, for bash, zsh, fish or PowerShell. Once it is loaded, pressing Tab completes:
 
@@ -2428,7 +2423,7 @@ yd completion powershell | Out-String | Invoke-Expression    # in $PROFILE
 
 The script asks `yd completion` what completes the word on each Tab, so it follows the installed CLI: upgrading the CLI needs no new script. Completing anything but a name or an ID on the Platform needs no configuration file and no credentials, and contacts nothing.
 
-#### Names and IDs from the Platform
+### Names and IDs from the Platform
 
 Tab offers the names and IDs of what is on the Platform when the script is printed with `--names`; without it, which is the default, completion is local only and contacts nothing. Load that script in place of the one without:
 

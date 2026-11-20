@@ -29,7 +29,7 @@ Run `release.sh` from the `next-version` branch with a clean working tree:
 ./release.sh --release  # execute the release for real
 ```
 
-The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it checks that every commit to be released is signed (`main` requires it; see [Pre-push Hook](DEVELOPMENT.md#pre-push-hook)), stopping if one is not, shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, carrying on without it if told so. It then asks whether to run the tests itself, which it does unless told not to: that run uses the current venv alone, which can hide a failure on another Python version or without the optional extras, so it adds little once `make tox` has passed. At the end it prints the release notes, for the release ticket.
+The script handles everything: version bump, the changelog's version and date, format, tests, merge, tag, push, PyPI upload. Before it changes anything, it checks that every commit to be released is signed (`main` requires it; see [Pre-push Hook](DEVELOPMENT.md#pre-push-hook)), stopping if one is not, shows the notes under `## Unreleased`, and asks whether `make tox` has passed on the commit being released, carrying on without it if told so. It then asks whether to run the tests itself, which it does unless told not to: that run uses the current venv alone, which can hide a failure on another Python version or without the optional extras, so it adds little once `make tox` has passed. It builds the documentation site (`make docs`, needing the `docs` extra) before committing anything, so a page that breaks the site stops the release there, and after the PyPI upload asks whether to publish the site's image (`make docs_publish_image`, needing Docker), reporting a failure without stopping the rest. At the end it prints the release notes, for the release ticket, and, once the image is published, a reminder to tell the operations team that the new documentation image is available.
 
 ## Manual Release Steps
 
@@ -62,6 +62,8 @@ In `CHANGELOG.md`, replace the `## Unreleased` heading with `## X.Y.Z — YYYY-M
 ```shell
 make format
 make pypi_check         # builds and checks the distribution
+make docs               # builds the documentation site; any warning fails it
+make docs_linkcheck     # optional: the pages' external links, over the network
 pytest -v               # optional once 'make tox' has passed
 ```
 
@@ -94,7 +96,15 @@ make pypi_upload
 
 Requires a `~/.pypirc` entry named `yellowdog-cli` with the appropriate API token.
 
-### 8. Return to `next-version`, and open `## Unreleased` there
+### 8. Publish the documentation site's image
+
+```shell
+make docs_publish_image   # yellowdogco/cli-docs:X.Y.Z
+```
+
+Requires Docker, and a login to Docker Hub allowed to push to `yellowdogco`. Then tell the operations team that documentation image `X.Y.Z` is available.
+
+### 9. Return to `next-version`, and open `## Unreleased` there
 
 ```shell
 git checkout next-version

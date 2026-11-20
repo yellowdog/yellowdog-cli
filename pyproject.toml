@@ -45,6 +45,7 @@
 
 [project.optional-dependencies]
     jsonnet = ["jsonnet"]
+    docs = ["sphinx", "myst-parser", "linkify-it-py", "sphinx-copybutton", "sphinx-rtd-theme"]
     commander = ["PyQt6"]
     mcp = ["mcp>=2.2"]
     cloudwizard = [
