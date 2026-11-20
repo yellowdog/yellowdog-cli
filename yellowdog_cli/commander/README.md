@@ -33,7 +33,7 @@
       * [Results Details](#results-details)
    * [Namespace, Tag, and Name Overrides](#namespace-tag-and-name-overrides)
       * [How the Placeholders Are Read](#how-the-placeholders-are-read)
-   * [User-Defined Variables](#user-defined-variables)
+   * [Variables](#variables)
    * [Properties](#properties)
       * [Properties Details](#properties-details)
    * [Quoting](#quoting)
@@ -60,7 +60,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov 16 14:11:01 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 12:10:50 GMT 2026 -->
 
 <!--te-->
 
@@ -106,7 +106,7 @@ yd commander config.toml -t render-test -v frames=120 -r render.json
 | `-t`, `--tag <tag>` | The **Tag** field |
 | `--name <glob>` | The **Name** field |
 | `-P`, `--path <object-path>` | The **Path** field |
-| `-v`, `--variable <name=value>` | The **User-Defined Variables** field; repeat it for each variable |
+| `-v`, `--variable <name=value>` | The **Variables** field; repeat it for each variable |
 | `--property <section.key=value>` | The **Properties** field; repeat it for each property. A value containing spaces is quoted for you |
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
@@ -150,7 +150,7 @@ Hover over any button, checkbox or field for a one-line description of what it d
 
 **Several at once.** Commands run asynchronously, so you can start several at once. Their output is interleaved as it arrives (see [Filtering the Command Output](#filtering-the-command-output)).
 
-**Without a configuration file.** If no configuration file is selected, Commander runs the `yd` commands with `--no-config`. They take their settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and User-Defined Variables fields described below. Results and downloads are written under the launch directory.
+**Without a configuration file.** If no configuration file is selected, Commander runs the `yd` commands with `--no-config`. They take their settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and Variables fields described below. Results and downloads are written under the launch directory.
 
 **No implicit `config.toml`.** Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it. Commander never picks one up implicitly.
 
@@ -233,7 +233,7 @@ The **Path** field is the equivalent escape hatch for the object actions, and is
 
 - **Wildcards** (`*`, `?`, `[…]`) in the last part of the path, matching files and directories: `render-test-2610*` for one month's runs, or `*` for everything under the prefix. The matched names are listed before anything is downloaded or deleted.
 - **A specific file or subdirectory**, with `/` separators: `render-test-261027-1045001-4f/taskoutput.txt` retrieves a single object rather than a whole tree.
-- **Variable substitution** with `{{...}}`: the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the User-Defined Variables field or the configuration file. No quoting is needed, unlike on the command line: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
+- **Variable substitution** with `{{...}}`: the built-in variables (`{{namespace}}`, `{{tag}}`, `{{username}}`, `{{date}}`) and any variable set in the Variables field or the configuration file. No quoting is needed, unlike on the command line: Commander passes the field's contents to the command directly, with no shell in between to expand or mangle them.
 - **An absolute rclone path**, beginning with the configured remote's name and a colon, such as `s3-results:acme-archive/2025/`. It is used verbatim and bypasses the configured bucket and prefix entirely.
 
 #### Object Path Details
@@ -439,9 +439,9 @@ The **Name** field is different in scope: it is a glob pattern, such as `render-
 
 Reading the configuration contacts nothing, and is bounded by a 10-second timeout. The first `yd` command of a session can be slow to start, on Windows especially. So a timed-out read is reported in the Command Output window and tried once more, with a longer allowance, rather than leaving the placeholders unresolved for the rest of the session.
 
-## User-Defined Variables
+## Variables
 
-The **User-Defined Variables** field passes variables to the commands for substitution in specifications. Enter them as `name=value` pairs separated by spaces, for example:
+The **Variables** field passes variables to the commands for substitution in specifications. Enter them as `name=value` pairs separated by spaces, for example:
 
 ```text
 instances=2 region=eu-west-2
@@ -467,7 +467,7 @@ Each pair is passed to the command as a `--property` option.
 
 **Which commands it reaches.** The **Extra Options** fields reach only `yd workrequirement submit` or `yd workerpool provision`. This field reaches every `yd` command, including the data client commands behind **Download** and **Delete**, so it can change `dataClient` properties such as the remote.
 
-**Re-reading the placeholders.** Like the User-Defined Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way. It waits until every entry is a complete `section.key=value` and no quote is left open.
+**Re-reading the placeholders.** Like the Variables field, editing it re-resolves the Namespace, Tag, and Path placeholders shortly after you stop typing, since `common.namespace` and `common.tag` can be set this way. It waits until every entry is a complete `section.key=value` and no quote is left open.
 
 **An open quote.** If the field cannot be split because a quote is left open, every action that runs a `yd` command says so in the output window and does nothing.
 
@@ -506,7 +506,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 
 ## Running Arbitrary Commands
 
-The **Run Command in Config Directory** field runs any command in the configuration file's directory. Type a `yd` command as you would in a terminal, and Commander adds the selected configuration file and the Namespace, Tag, User-Defined Variables and Properties fields for you:
+The **Run Command in Config Directory** field runs any command in the configuration file's directory. Type a `yd` command as you would in a terminal, and Commander adds the selected configuration file and the Namespace, Tag, Variables and Properties fields for you:
 
 ```text
 yd list work-requirements --active-only

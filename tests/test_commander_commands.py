@@ -1188,8 +1188,8 @@ class TestConfigDataFile:
     sorted(name for name in COMMANDS if name not in UNDECORATED_YD_COMMANDS),
 )
 def test_a_typed_command_is_given_only_the_overrides_it_takes(window, command):
-    # Added to every typed command, the Namespace, Tag, User-Defined Variables
-    # and Properties fields would make 'yd-show <id>' fail with
+    # Added to every typed command, the Namespace, Tag, Variables and
+    # Properties fields would make 'yd-show <id>' fail with
     # "unrecognized arguments: -n", and 'yd cloudinfo instance-types' read
     # the namespace as its type
     window._config_file = None

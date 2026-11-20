@@ -638,7 +638,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         """
         Start the left-hand column's input fields at one edge, by widening each
         of their labels to the widest of them; and likewise the right-hand
-        column's User-Defined Variables and Properties fields, one above the
+        column's Variables and Properties fields, one above the
         other in separate grid rows.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
@@ -650,7 +650,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         for labels in (
             (self.wr_options_label, self.wp_options_label, self.object_path_label),
             # The right-hand column's two, so that Properties lines up with the
-            # User-Defined Variables field above it
+            # Variables field above it
             (self.user_variables_label, self.properties_label),
         ):
             widest = max(label.sizeHint().width() for label in labels)

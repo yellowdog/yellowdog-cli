@@ -874,7 +874,7 @@ for Cancel, Shut Down and Terminate</string>
          </font>
         </property>
         <property name="text">
-         <string>User-Defined Variables:</string>
+         <string>Variables:</string>
         </property>
        </widget>
       </item>
