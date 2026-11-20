@@ -3747,7 +3747,7 @@ USAGE_GROUP_KEYS: tuple[str, ...] = (
     "region",
     "instance-type",
     "source",
-    "spot",
+    "pricing",
 )
 
 

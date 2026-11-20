@@ -2087,7 +2087,7 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
 
 Key options:
 - `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
-- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `creator` (the Application or user that provisioned the Compute Requirement, by name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `spot` (spot or on-demand)
+- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `creator` (the Application or user that provisioned the Compute Requirement, by name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `pricing` (`spot` or `on-demand`)
 - `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below)
@@ -2113,7 +2113,7 @@ yd usage --by creator
 yd usage --by namespace,requirement
 
 # Spot against on-demand, per cloud provider, over the last 30 days
-yd usage --from '30 days ago' --by provider,spot
+yd usage --from '30 days ago' --by provider,pricing
 
 # AWS alone, region by region
 yd usage --where provider=aws --by region

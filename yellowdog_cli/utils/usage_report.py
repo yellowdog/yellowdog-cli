@@ -94,7 +94,7 @@ GROUP_KEYS = (
     "region",
     "instance-type",
     "source",
-    "spot",
+    "pricing",
 )
 
 
@@ -920,7 +920,7 @@ def _value(
             return instance.get("Instance Type") or "-"
         case "source":
             return instance.get("Source Name") or "-"
-        case "spot":
+        case "pricing":
             return "spot" if instance.get("Spot") == "true" else "on-demand"
     raise ValueError(f"Unknown usage grouping '{key}'")
 

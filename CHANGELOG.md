@@ -4,6 +4,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd usage` totals spot against on-demand by `pricing`**, in place of `spot`: `--by pricing`, `--where pricing=spot`, a Pricing column and a `pricing` key in the `--json` groups. `--by spot` and `--where spot=...` are refused (exit code 2).
+
 ### Commander
 
 - **The Variables and Properties fields share a row**, side by side and equally wide, as Namespace, Tag and Name do.

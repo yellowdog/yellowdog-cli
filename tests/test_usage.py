@@ -226,12 +226,17 @@ class TestGroupKeys:
             usage_group_keys("namespcae")
 
     def test_a_key_given_twice_is_refused(self):
-        with pytest.raises(ArgumentTypeError, match="more than once: spot"):
-            usage_group_keys("spot,namespace,spot")
+        with pytest.raises(ArgumentTypeError, match="more than once: pricing"):
+            usage_group_keys("pricing,namespace,pricing")
 
     def test_the_registry_offers_the_keys_the_report_reads(self):
         assert usage_report.GROUP_KEYS == USAGE_GROUP_KEYS
         assert "creator" in USAGE_GROUP_KEYS
+
+    def test_spot_is_no_key(self):
+        # Spot or on-demand is the pricing key's value, not a key of its own
+        with pytest.raises(ArgumentTypeError, match="invalid grouping 'spot'"):
+            usage_group_keys("spot")
 
 
 class TestTheReportsWait:
@@ -470,7 +475,7 @@ class TestGrouping:
 
     def test_by_several_keys(self, platform):
         groups = usage_report.grouped_usage(
-            _report(_ctx()), ["namespace", "instance-type", "spot"]
+            _report(_ctx()), ["namespace", "instance-type", "pricing"]
         )
         assert {tuple(group.keys.values()): group.instances for group in groups} == {
             ("team-render", "g4dn.xlarge", "on-demand"): 1,
@@ -1032,9 +1037,9 @@ class TestFilters:
     def test_different_keys_must_all_match(self, platform):
         assert self._groups(
             platform,
-            ["namespace", "spot"],
+            ["namespace", "pricing"],
             ("namespace", "team-train"),
-            ("spot", "on-demand"),
+            ("pricing", "on-demand"),
         ) == {("team-train", "on-demand"): 2}
 
     def test_the_same_key_again_matches_either(self, platform):
@@ -1046,7 +1051,7 @@ class TestFilters:
         ) == {("g4dn.xlarge",): 1, ("t2.small",): 1}
 
     def test_a_key_need_not_be_grouped_by(self, platform):
-        assert self._groups(platform, ["namespace"], ("spot", "spot")) == {
+        assert self._groups(platform, ["namespace"], ("pricing", "spot")) == {
             ("team-train",): 1
         }
 

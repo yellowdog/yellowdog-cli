@@ -196,7 +196,7 @@ def _shown_text(iso: str) -> str:
 
 def _filter_text(where: dict[str, list[str]]) -> str:
     """
-    The filters as the summary says them: 'provider=aws or azure, spot=spot'.
+    The filters as the summary says them: 'provider=aws or azure, pricing=spot'.
     """
     return ", ".join(
         f"{key}={' or '.join(patterns)}" for key, patterns in where.items()
