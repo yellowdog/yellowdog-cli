@@ -4,6 +4,8 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+- **`yd usage --by creator` totals usage by the Application, or the user in the Portal, that provisioned it**, shown by name, and `--where creator=<pattern>` counts only one creator's usage, by name or ID.
+
 ## 15.16.0 — 2026-11-19
 
 - The CLI requires `yellowdog-sdk` 16.1.1 or later.

@@ -86,12 +86,80 @@ GROUP_KEYS = (
     "namespace",
     "tag",
     "requirement",
+    "creator",
     "provider",
     "region",
     "instance-type",
     "source",
     "spot",
 )
+
+
+# The Compute Requirement CSV's column naming who provisioned it: an
+# Application's ID or a user's
+CREATED_BY = "Created by ID"
+
+# A creator's kind, by the second field of its ID ('ydid:app:...')
+_CREATOR_KINDS = {"app": "Application", "user": "User"}
+
+# A creator its ID alone shows: one the listings did not name
+_UNRESOLVED = "(?)"
+
+
+@dataclass
+class CreatorNames:
+    """
+    The names of the creators the listings could read, by ID, and the kinds
+    ('Applications', 'Users') that could not be listed.
+    """
+
+    names: dict[str, str] = field(default_factory=dict)
+    unreadable: list[str] = field(default_factory=list)
+
+    def shown(self, creator_id: str) -> str:
+        """
+        A creator as the report shows it: 'render-farm (Application)', or
+        its ID marked '(?)' where it has no name, so that two unnamed
+        creators are never shown alike.
+        """
+        name = self.names.get(creator_id)
+        fields = creator_id.split(":")
+        kind = _CREATOR_KINDS.get(fields[1]) if len(fields) > 1 else None
+        if name is None or kind is None:
+            return f"{creator_id} {_UNRESOLVED}"
+        return f"{name} ({kind})"
+
+
+def creator_names(ctx: RunContext) -> CreatorNames:
+    """
+    The names of the account's Applications and Users, by ID, read with one
+    listing of each. A listing the Application is not permitted (403) leaves
+    that kind unnamed, noted in 'unreadable', since its creators can still be
+    shown by ID; any other failure is raised.
+    """
+    from yellowdog_cli.utils import entity_utils
+    from yellowdog_cli.utils.exit_codes import ExitCode, classify
+
+    creators = CreatorNames()
+    listings = (
+        ("Applications", entity_utils.get_all_applications),
+        ("Users", entity_utils.get_all_users),
+    )
+    for kind, listing in listings:
+        try:
+            found = listing(ctx.client)
+        except Exception as e:
+            if classify(e) != ExitCode.PERMISSION:
+                raise
+            _LOG.debug("not permitted to list %s", kind, exc_info=True)
+            creators.unreadable.append(kind)
+            continue
+        for item in found:
+            name = item.name or getattr(item, "username", None)
+            if name and item.id:
+                creators.names[item.id] = name
+        _LOG.debug("read the names of %d %s", len(found), kind)
+    return creators
 
 
 class UsageReportError(Exception):
@@ -136,6 +204,8 @@ class UsageGroup:
 
     keys: dict[str, str]
     instances: int = 0
+    # The creator's ID where grouped by creator (None for none)
+    creator_id: str | None = None
     seconds: dict[str, float] = field(
         default_factory=lambda: dict.fromkeys(STATUS_COLUMNS, 0.0)
     )
@@ -552,12 +622,18 @@ def _records(archive: zipfile.ZipFile, prefix: str) -> list[dict[str, str]]:
 
 
 def grouped_usage(
-    report: Report, by: list[str], where: dict[str, list[str]] | None = None
+    report: Report,
+    by: list[str],
+    where: dict[str, list[str]] | None = None,
+    creators: CreatorNames | None = None,
 ) -> list[UsageGroup]:
     """
     The report's Instances totalled by the keys in 'by', most total time
-    first; only those matching 'where' (filter_of()) when it is given.
+    first; only those matching 'where' (filter_of()) when it is given. A
+    creator is named from 'creators' (creator_names()), and grouped by its
+    ID, so that two creators sharing a name are never one group.
     """
+    creators = creators or CreatorNames()
     with zipfile.ZipFile(report.path) as archive:
         requirements = {
             row["Compute Requirement ID"]: row
@@ -567,10 +643,19 @@ def grouped_usage(
     groups: dict[tuple[str, ...], UsageGroup] = {}
     for instance in instances:
         requirement = requirements.get(instance["Compute Requirement ID"], {})
-        if where and not _matches(where, instance, requirement):
+        if where and not _matches(where, instance, requirement, creators):
             continue
-        values = {key: _value(key, instance, requirement) for key in by}
-        group = groups.setdefault(tuple(values.values()), UsageGroup(keys=values))
+        creator_id = requirement.get(CREATED_BY) or None
+        values = {key: _value(key, instance, requirement, creators) for key in by}
+        identity = tuple(
+            (creator_id or "") if key == "creator" else value
+            for key, value in values.items()
+        )
+        group = groups.get(identity)
+        if group is None:
+            group = groups[identity] = UsageGroup(
+                keys=values, creator_id=creator_id if "creator" in by else None
+            )
         group.instances += 1
         for status, column in STATUS_COLUMNS.items():
             group.seconds[status] += _seconds(instance.get(column))
@@ -591,24 +676,47 @@ def filter_of(where: list[tuple[str, str]] | None) -> dict[str, list[str]]:
 
 
 def _matches(
-    where: dict[str, list[str]], instance: dict[str, str], requirement: dict
+    where: dict[str, list[str]],
+    instance: dict[str, str],
+    requirement: dict,
+    creators: CreatorNames,
 ) -> bool:
     """
     Whether the Instance's value for every key matches one of its patterns,
-    as globs in any case ('provider=aws' matching 'AWS').
+    as globs in any case ('provider=aws' matching 'AWS'); a creator's
+    pattern matches its name or its ID.
     """
     return all(
         any(
-            fnmatch.fnmatchcase(
-                _value(key, instance, requirement).casefold(), pattern.casefold()
-            )
+            fnmatch.fnmatchcase(value.casefold(), pattern.casefold())
             for pattern in patterns
+            for value in _matched(key, instance, requirement, creators)
         )
         for key, patterns in where.items()
     )
 
 
-def _value(key: str, instance: dict[str, str], requirement: dict) -> str:
+def _matched(
+    key: str, instance: dict[str, str], requirement: dict, creators: CreatorNames
+) -> list[str]:
+    """
+    The values a key's '--where' patterns are matched against: the value
+    shown, and for a creator its name (where it has one) and its ID too, so
+    that a creator can be given as the table shows it or by either.
+    """
+    if key != "creator":
+        return [_value(key, instance, requirement, creators)]
+    creator_id = requirement.get(CREATED_BY)
+    if not creator_id:
+        return ["-"]
+    name = creators.names.get(creator_id)
+    values = [creators.shown(creator_id), creator_id]
+    return values if name is None else [*values, name]
+
+
+def _value(
+    key: str, instance: dict[str, str], requirement: dict, creators: CreatorNames
+) -> str:
     match key:
         case "namespace":
             return requirement.get("Namespace") or "-"
@@ -616,6 +724,9 @@ def _value(key: str, instance: dict[str, str], requirement: dict) -> str:
             return requirement.get("Tag") or "-"
         case "requirement":
             return requirement.get("Name") or instance["Compute Requirement ID"]
+        case "creator":
+            creator_id = requirement.get(CREATED_BY)
+            return creators.shown(creator_id) if creator_id else "-"
         case "provider":
             return instance.get("Provider") or "-"
         case "region":

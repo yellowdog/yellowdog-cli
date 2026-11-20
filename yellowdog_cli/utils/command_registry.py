@@ -3734,6 +3734,7 @@ USAGE_GROUP_KEYS: tuple[str, ...] = (
     "namespace",
     "tag",
     "requirement",
+    "creator",
     "provider",
     "region",
     "instance-type",

@@ -2092,7 +2092,7 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
 
 Key options:
 - `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
-- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `spot` (spot or on-demand)
+- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `creator` (the Application or user that provisioned the Compute Requirement, by name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `spot` (spot or on-demand)
 - `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below)
@@ -2110,6 +2110,9 @@ yd usage
 
 # Where the hours went in one namespace: each Compute Requirement, by name
 yd usage -n image-processing --by requirement
+
+# Which Application, or user in the Portal, provisioned what
+yd usage --by creator
 
 # Anything left stopped, which still costs for its disks: look down the Stopped column
 yd usage --by namespace,requirement
@@ -2136,6 +2139,8 @@ yd usage --json | jq -r '.groups[] | [.namespace, .hours.running] | @tsv'
 A date with no time, such as `2026-10-01`, is midnight in your local time zone; the summary line shows the window in UTC. To give a date in another time zone, add it: `--from '2026-10-01 UTC'` is midnight UTC wherever the command runs, and an offset (`'2026-10-01 09:00 +02:00'`) or an abbreviation (`EST`) works too, though a name such as `Europe/Paris` does not.
 
 An Application allowed to read usage in some namespaces only is refused a report on every namespace, so without `--namespace` the command asks for the namespaces the Application can read, leaves out any the Platform says it may not read usage in, and says which it reported on (`Reporting on the 2 namespaces this Application can read usage in: …`); `namespaces` under `--json` lists them, and is `null` for a report on every namespace. A namespace given with `--namespace` that the Application may not read usage in is refused, with exit code 5.
+
+**Creators.** A creator is shown by name and kind, `render-farm (Application)` or `alice (User)`, read from the account's Applications and Users only when `creator` is in `--by` or `--where`. One the listings cannot name, such as an Application since removed, is shown by its ID followed by `(?)`; where the Application may not list the account's Applications or Users at all, the command says so and shows those creators by ID. `--where creator=` matches a creator as the table shows it, its name alone or its ID, and `--json` gives each group's `creatorId` beside its `creator`.
 
 The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path. A later run with the same `--from`, `--until` and `--namespace`, as written, uses the report kept rather than fetching the report again while they still cover that window to within ten minutes at each end: a window of fixed dates in the past for as long as it is kept, since its usage no longer changes, and a window ending now (the default) for ten minutes after it was fetched, which is long enough to look at the same week `--by` several keys in turn. `--refresh` fetches a new one regardless. Each fetch removes the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
 
