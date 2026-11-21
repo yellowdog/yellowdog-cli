@@ -900,7 +900,8 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         # yd-usage's: the server always passes it (mcp/tools.py's
         # fixed_args()), since an agent has no reason to suspect a kept report
         "--refresh",
-        # yd-usage's other form of stdout, exclusive with the server's '--json'
+        # yd-usage's and yd-cloud-info's other form of stdout, exclusive with
+        # the server's '--json'
         "--csv",
         # Machine maintenance, not platform work
         "--upgrade-rclone",
@@ -1722,12 +1723,16 @@ def check_json_excludes_streaming(args: Namespace, parser: ArgumentParser) -> No
             )
 
 
-def check_usage_csv_excludes_json(args: Namespace, parser: ArgumentParser) -> None:
+def check_csv_excludes_json(args: Namespace, parser: ArgumentParser) -> None:
     """
-    On yd-usage, refuse '--csv' with '--json': each is the whole of stdout.
+    On yd-usage and yd-cloud-info, refuse '--csv' with '--json' or
+    '--count': each is the whole of stdout.
     """
-    if getattr(args, "csv_output", False) and getattr(args, "json", False):
-        parser.error("--csv cannot be combined with --json")
+    if not getattr(args, "csv_output", False):
+        return
+    for dest, flag in (("json", "--json"), ("count", "--count")):
+        if getattr(args, dest, False):
+            parser.error(f"--csv cannot be combined with {flag}")
 
 
 def check_hide_user_data_requires_dry_run(
@@ -3911,7 +3916,7 @@ COMMANDS["yd-usage"] = Command(
         ),
         JSON.variant(help="print one JSON document holding the window and the totals"),
     ),
-    validators=(check_usage_csv_excludes_json,),
+    validators=(check_csv_excludes_json,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Show the hours Instances spent in each status (pending, running,"
@@ -3949,8 +3954,21 @@ CLOUD_INFO_PRICED_SORT_KEYS: tuple[str, ...] = (
     "ram",
     "spot",
     "on-demand",
+    "spot-per-vcpu",
+    "on-demand-per-vcpu",
+    "saving",
 )
-_CLOUD_INFO_SORT_CHOICES = ("name", "vcpus", "ram", "price", "spot", "on-demand")
+_CLOUD_INFO_SORT_CHOICES = (
+    "name",
+    "vcpus",
+    "ram",
+    "price",
+    "spot",
+    "on-demand",
+    "spot-per-vcpu",
+    "on-demand-per-vcpu",
+    "saving",
+)
 
 
 def cloud_info_sort_keys(value: str) -> tuple[str, ...]:
@@ -3977,6 +3995,7 @@ CLOUD_INFO_OPTION_TYPES: tuple[tuple[str, str, frozenset[str]], ...] = (
     ("sub_region", "--sub-region", frozenset({CI_INSTANCE_TYPES, CI_PRICES})),
     ("vcpus", "--vcpus", frozenset({CI_INSTANCE_TYPES})),
     ("ram", "--ram", frozenset({CI_INSTANCE_TYPES})),
+    ("gpus", "--gpus", frozenset({CI_INSTANCE_TYPES})),
     ("arch", "--arch", frozenset({CI_INSTANCE_TYPES})),
     ("usage", "--usage", frozenset({CI_PRICES})),
     ("os_licence", "--os", frozenset({CI_INSTANCE_TYPES, CI_PRICES})),
@@ -4076,6 +4095,13 @@ RAM = option(
     metavar="<GiB|GiB-GiB>",
     help="instance types with this much RAM in GiB, in the forms --vcpus takes",
 )
+GPUS = option(
+    "--gpus",
+    type=str,
+    required=False,
+    metavar="<n|n-m>",
+    help="instance types with this many GPUs, in the forms --vcpus takes",
+)
 ARCH = option(
     "--arch",
     choices=("x86_64", "arm64"),
@@ -4109,11 +4135,13 @@ PRICES = option(
 )
 CLOUD_INFO_SORT = SORT.variant(
     type=cloud_info_sort_keys,
-    metavar="<name|vcpus|ram|price|spot|on-demand>[,...]",
+    metavar="<name|vcpus|ram|price|spot|on-demand|...>[,...]",
     help=(
         "order of the listing: 'name' (default), 'vcpus' and 'ram' for"
-        " instance types, 'price' for prices, 'spot' and 'on-demand' for"
-        " instance types with --prices; give several, separated by commas,"
+        " instance types, 'price' for prices, 'spot', 'on-demand',"
+        " 'spot-per-vcpu', 'on-demand-per-vcpu' and 'saving' (the spot"
+        " saving) for instance types with --prices; give several, separated"
+        " by commas,"
         " to sort by each in turn (e.g. 'spot,vcpus'); items without a"
         " value for a key come after those with one, with --reverse too"
     ),
@@ -4140,6 +4168,8 @@ def check_cloud_info_options(args: Namespace, parser: ArgumentParser) -> None:
         )
     if args.sub_region is not None and args.region is None:
         parser.error("--sub-region needs --region")
+    if args.top is not None and args.count:
+        parser.error("--top cannot be combined with --count")
     if info_type == CI_PRICES and args.region is None and args.name_glob is None:
         parser.error(
             "prices needs --region or --name: every region's prices are far too"
@@ -4162,7 +4192,7 @@ def check_cloud_info_options(args: Namespace, parser: ArgumentParser) -> None:
                 + "; choose from "
                 + ", ".join(sort_keys)
             )
-    for dest, flag in (("vcpus", "--vcpus"), ("ram", "--ram")):
+    for dest, flag in (("vcpus", "--vcpus"), ("ram", "--ram"), ("gpus", "--gpus")):
         text = getattr(args, dest)
         try:
             if text is not None:
@@ -4190,12 +4220,28 @@ COMMANDS["yd-cloud-info"] = Command(
         CLOUD_INFO_NAME,
         VCPUS,
         RAM,
+        GPUS,
         ARCH,
         USAGE,
         OS_LICENCE,
         PRICES,
+        option(
+            "--top",
+            dest="top",
+            type=positive_int,
+            metavar="<n>",
+            required=False,
+            help="list only the first <n> items, in the order --sort gives",
+        ),
+        option(
+            "--csv",
+            dest="csv_output",
+            action="store_true",
+            required=False,
+            help="print the items as CSV",
+        ),
     ),
-    validators=(check_cloud_info_options,),
+    validators=(check_cloud_info_options, check_csv_excludes_json),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "List what the YellowDog Platform knows of the cloud providers: its"
@@ -4203,11 +4249,13 @@ COMMANDS["yd-cloud-info"] = Command(
         " says. Filters: providers (aws, azure, google, oci), region and sub_region"
         " (exact names; sub_region needs region), name_glob (a glob; for"
         " prices, the instance type), and for instance-types vcpus and ram"
-        " (GiB) as 'n', 'n-m', 'n-' or '-m', and arch; for prices usage"
+        " (GiB) and gpus as 'n', 'n-m', 'n-' or '-m', and arch; for prices usage"
         " (spot, on-demand) and os_licence (none, windows). prices needs"
         " region or name_glob. instance-types with prices=true"
         " and a region adds each type's onDemandPrice, its lowest spotPrice"
-        " and spotSubRegion; sort by spot or on-demand to find the cheapest."
+        " and spotSubRegion, both prices per vCPU and spotSavingPercent; sort"
+        " by spot, on-demand, spot-per-vcpu, on-demand-per-vcpu or saving to"
+        " find the cheapest; top keeps the first n."
         " Returns an array of the listed items."
     ),
 )

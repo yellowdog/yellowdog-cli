@@ -67,6 +67,7 @@ class CloudInfoQuery:
     name_glob: str | None = None
     vcpus: Range | None = None
     ram_gib: Range | None = None
+    gpus: Range | None = None
     arch: str | None = None
     usage: str | None = None
     os_licence: str = "none"
@@ -87,6 +88,32 @@ class PricedInstanceType:
     spot: Price | None
     spot_sub_region: str | None
 
+    @property
+    def on_demand_per_vcpu(self) -> float | None:
+        """
+        The on-demand price per vCPU, or None without a price or a vCPU count.
+        """
+        return _per_vcpu(_price_value(self.on_demand), self.instance_type)
+
+    @property
+    def spot_per_vcpu(self) -> float | None:
+        """
+        The lowest spot price per vCPU, or None without a price or a vCPU count.
+        """
+        return _per_vcpu(_price_value(self.spot), self.instance_type)
+
+    @property
+    def spot_saving(self) -> float | None:
+        """
+        How much less the lowest spot price is than the on-demand price, as a
+        percentage of it (negative where spot costs more); None without both.
+        """
+        on_demand = _price_value(self.on_demand)
+        spot = _price_value(self.spot)
+        if on_demand is None or spot is None or on_demand == 0:
+            return None
+        return (1 - spot / on_demand) * 100
+
     def as_record(self) -> dict[str, Any]:
         """
         The '--json' record: the instance type's own fields, then the prices
@@ -99,6 +126,10 @@ class PricedInstanceType:
         )
         record["spotPrice"] = None if self.spot is None else Json.dump(self.spot)
         record["spotSubRegion"] = self.spot_sub_region
+        record["onDemandPricePerVcpu"] = self.on_demand_per_vcpu
+        record["spotPricePerVcpu"] = self.spot_per_vcpu
+        saving = self.spot_saving
+        record["spotSavingPercent"] = None if saving is None else round(saving, 1)
         return record
 
 
@@ -112,6 +143,20 @@ def _enum_name(value: Any) -> str:
 
 def _price_value(price: Price | None) -> float | None:
     return None if price is None else price.value
+
+
+def _per_vcpu(price: float | None, instance_type: InstanceType) -> float | None:
+    vcpus = instance_type.defaultVcpus
+    if price is None or not vcpus:
+        return None
+    return price / vcpus
+
+
+def gpu_count(instance_type: InstanceType) -> int:
+    """
+    The instance type's GPUs, of every model; 0 for a type that names none.
+    """
+    return sum((instance_type.defaultGpus or {}).values())
 
 
 # Each type's sort keys: a function giving an item's value, None for one
@@ -133,6 +178,9 @@ _PRICED_SORTS: dict[str, _SortKey] = {
     "ram": lambda p: p.instance_type.ramInMib,
     "spot": lambda p: _price_value(p.spot),
     "on-demand": lambda p: _price_value(p.on_demand),
+    "on-demand-per-vcpu": lambda p: p.on_demand_per_vcpu,
+    "spot-per-vcpu": lambda p: p.spot_per_vcpu,
+    "saving": lambda p: p.spot_saving,
 }
 _PRICE_SORTS: dict[str, _SortKey] = {
     "name": lambda p: (
@@ -319,6 +367,7 @@ def _instance_type_kept(
         and (arch is None or instance_type.processorArchitecture is arch)
         and _in_range(instance_type.defaultVcpus, query.vcpus)
         and _in_range(ram_gib, query.ram_gib)
+        and _in_range(gpu_count(instance_type), query.gpus)
         and _offered_in(instance_type, query.region, query.sub_region)
     )
 

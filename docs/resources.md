@@ -48,7 +48,7 @@
    * [Namespaces](#namespaces)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 09:45:22 GMT 2026 -->
+<!-- Added by: pwt, at: Sat Nov 21 14:06:57 GMT 2026 -->
 
 <!--te-->
 

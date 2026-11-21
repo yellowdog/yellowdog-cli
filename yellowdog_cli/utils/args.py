@@ -609,6 +609,17 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def gpus_range(self) -> tuple[float | None, float | None] | None:
+        # The validator has refused a malformed one
+        return None if self.args.gpus is None else parse_range(self.args.gpus)
+
+    @property
+    @allow_missing_attribute
+    def top(self) -> int | None:
+        return self.args.top
+
+    @property
+    @allow_missing_attribute
     def arch(self) -> str | None:
         return self.args.arch
 

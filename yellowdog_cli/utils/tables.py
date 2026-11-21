@@ -924,7 +924,8 @@ def priced_instance_types_table(
     priced: list[PricedInstanceType], region: str | None
 ) -> tuple[list[str], list[list]]:
     """
-    Instance types in a region with their on-demand and lowest spot prices.
+    Instance types in a region with their on-demand and lowest spot prices,
+    those prices per vCPU, and how much less spot costs.
     """
     headers = [
         *_INSTANCE_TYPE_HEADERS,
@@ -932,6 +933,9 @@ def priced_instance_types_table(
         "On-demand",
         "Spot (lowest)",
         "Spot Zone",
+        "On-demand/vCPU",
+        "Spot/vCPU",
+        "Spot saving",
         "Currency",
     ]
     rows = [
@@ -940,6 +944,9 @@ def priced_instance_types_table(
             _price_text(p.on_demand),
             _price_text(p.spot),
             _sub_region_text(p.spot_sub_region),
+            _value_text(p.on_demand_per_vcpu),
+            _value_text(p.spot_per_vcpu),
+            None if p.spot_saving is None else f"{p.spot_saving:.0f}%",
             _currency_text(p.on_demand or p.spot),
         ]
         for p in priced
@@ -1022,6 +1029,13 @@ def _number_text(value: float | None) -> str | None:
 
 def _price_text(price: Price | None) -> str | None:
     return None if price is None or price.value is None else f"{price.value:.4f}"
+
+
+def _value_text(value: float | None) -> str | None:
+    """
+    A price worked out from one the service gave, to the prices' 4 places.
+    """
+    return None if value is None else f"{value:.4f}"
 
 
 def _currency_text(price: Price | None) -> str | None:
