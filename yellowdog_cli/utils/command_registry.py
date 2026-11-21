@@ -3741,13 +3741,16 @@ COMMANDS["yd-status"] = Command(
 USAGE_GROUP_KEYS: tuple[str, ...] = (
     "namespace",
     "tag",
-    "requirement",
+    "cr",
+    "cr-id",
     "creator",
+    "creator-id",
     "provider",
     "region",
     "instance-type",
     "source",
     "pricing",
+    "instance",
 )
 
 

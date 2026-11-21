@@ -233,6 +233,12 @@ class TestGroupKeys:
         assert usage_report.GROUP_KEYS == USAGE_GROUP_KEYS
         assert "creator" in USAGE_GROUP_KEYS
 
+    @pytest.mark.parametrize("key", ["requirement", "requirement-id"])
+    def test_requirement_is_no_key(self, key):
+        # The Compute Requirement's keys are cr and cr-id
+        with pytest.raises(ArgumentTypeError, match=f"invalid grouping '{key}'"):
+            usage_group_keys(key)
+
     def test_spot_is_no_key(self):
         # Spot or on-demand is the pricing key's value, not a key of its own
         with pytest.raises(ArgumentTypeError, match="invalid grouping 'spot'"):
@@ -485,7 +491,7 @@ class TestGrouping:
         }
 
     def test_the_requirement_and_tag_come_from_its_row(self, platform):
-        groups = usage_report.grouped_usage(_report(_ctx()), ["requirement", "tag"])
+        groups = usage_report.grouped_usage(_report(_ctx()), ["cr", "tag"])
         assert {tuple(group.keys.values()) for group in groups} == {
             ("render-1", "nightly"),
             ("train-1", "-"),
@@ -496,8 +502,43 @@ class TestGrouping:
             instances=[INSTANCES_HEADER, _instance(CR_GONE, "t3a.small", 60)]
         )
         report = _report(_ctx())
-        (group,) = usage_report.grouped_usage(report, ["namespace", "requirement"])
-        assert group.keys == {"namespace": "-", "requirement": CR_GONE}
+        (group,) = usage_report.grouped_usage(report, ["namespace", "cr", "cr-id"])
+        assert group.keys == {"namespace": "-", "cr": CR_GONE, "cr-id": CR_GONE}
+
+    def test_by_cr_id_separates_requirements_sharing_a_name(self, platform):
+        # A name reused, here in two namespaces: one row by cr, two by cr-id
+        platform.content = _zip(
+            requirements=[
+                *REQUIREMENTS[:2],
+                f"team-train,render-1,,2026-11-02T00:00:00Z,,{USER_ALICE},{CR_TRAIN}",
+            ]
+        )
+        report = _report(_ctx())
+        by_name = usage_report.grouped_usage(report, ["cr"])
+        by_id = usage_report.grouped_usage(report, ["cr-id"])
+        assert [(g.keys["cr"], g.instances) for g in by_name] == [("render-1", 4)]
+        assert {g.keys["cr-id"]: g.instances for g in by_id} == {
+            CR_RENDER: 1,
+            CR_TRAIN: 3,
+        }
+
+    def test_by_instance_is_one_row_per_instance(self, platform):
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance"])
+        assert {g.keys["instance"]: g.instances for g in groups} == {
+            "i-1": 1,
+            "i-2": 1,
+            "i-3": 1,
+            "i-4": 1,
+        }
+
+    def test_by_creator_id_is_the_id_without_names(self, platform):
+        groups = usage_report.grouped_usage(
+            _report(_ctx()), ["creator-id"], creators=NAMES
+        )
+        assert {g.keys["creator-id"]: g.instances for g in groups} == {
+            APP_RENDER: 1,
+            USER_ALICE: 3,
+        }
 
 
 NAMES = usage_report.CreatorNames(
@@ -703,6 +744,23 @@ class TestTheCommandByCreator:
         assert calls == ["applications", "users"]
         assert "team-render" in out and "team-train" not in out
 
+    def test_creator_id_looks_nothing_up(self, platform, monkeypatch, capsys):
+        calls = _listings(monkeypatch)
+        out, _ = _show(
+            capsys,
+            usage_by=("creator-id",),
+            usage_where=[("creator-id", APP_RENDER)],
+        )
+        assert calls == []
+        assert APP_RENDER in out and USER_ALICE not in out
+
+    def test_where_creator_id_does_not_match_a_name(
+        self, platform, monkeypatch, capsys
+    ):
+        _listings(monkeypatch)
+        out, err = _show(capsys, usage_where=[("creator-id", "render-*")])
+        assert "No Instances in the window match the filters" in out + err
+
     def test_no_lookup_without_creator(self, platform, monkeypatch, capsys):
         calls = _listings(monkeypatch)
         _show(capsys, usage_by=("namespace", "tag"))
@@ -710,6 +768,27 @@ class TestTheCommandByCreator:
 
 
 class TestTheCommand:
+    def test_the_new_keys_are_headed_in_full(self, platform, monkeypatch, capsys):
+        _listings(monkeypatch)
+        out, _ = _show(capsys, usage_by=("cr", "cr-id", "creator-id", "instance"))
+        for heading in (
+            "Compute Requirement",
+            "Compute Requirement ID",
+            "Creator ID",
+            "Instance ID",
+        ):
+            assert heading in out
+
+    def test_json_names_the_new_keys_as_given(self, platform, monkeypatch, capsys):
+        out, _ = _show(
+            capsys,
+            usage_by=("cr", "cr-id", "creator-id", "instance"),
+            json_output=True,
+            json=True,
+        )
+        group = loads(out)["groups"][0]
+        assert list(group)[:4] == ["cr", "cr-id", "creator-id", "instance"]
+
     def test_the_table_and_its_total(self, platform, capsys):
         out, err = _show(capsys)
         assert err == ""

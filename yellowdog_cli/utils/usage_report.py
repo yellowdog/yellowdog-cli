@@ -88,13 +88,16 @@ STATUS_COLUMNS = {
 GROUP_KEYS = (
     "namespace",
     "tag",
-    "requirement",
+    "cr",
+    "cr-id",
     "creator",
+    "creator-id",
     "provider",
     "region",
     "instance-type",
     "source",
     "pricing",
+    "instance",
 )
 
 
@@ -907,11 +910,15 @@ def _value(
             return requirement.get("Namespace") or "-"
         case "tag":
             return requirement.get("Tag") or "-"
-        case "requirement":
+        case "cr":
             return requirement.get("Name") or instance["Compute Requirement ID"]
+        case "cr-id":
+            return instance["Compute Requirement ID"]
         case "creator":
             creator_id = requirement.get(CREATED_BY)
             return creators.shown(creator_id) if creator_id else "-"
+        case "creator-id":
+            return requirement.get(CREATED_BY) or "-"
         case "provider":
             return instance.get("Provider") or "-"
         case "region":
@@ -922,6 +929,8 @@ def _value(
             return instance.get("Source Name") or "-"
         case "pricing":
             return "spot" if instance.get("Spot") == "true" else "on-demand"
+        case "instance":
+            return instance.get("Instance ID") or "-"
     raise ValueError(f"Unknown usage grouping '{key}'")
 
 

@@ -144,7 +144,7 @@ def show_usage(ctx: RunContext) -> None:
             else "No Instances ran in the window"
         )
         return
-    headers = [key.replace("-", " ").capitalize() for key in by] + [
+    headers = [_heading(key) for key in by] + [
         "Instances",
         "Running (h:mm)",
         "Stopped (h:mm)",
@@ -213,6 +213,22 @@ def duration_text(seconds: float) -> str:
         return "<0:01"
     minutes = int(seconds / _SECONDS_PER_MINUTE + 0.5)
     return f"{minutes // 60:,}:{minutes % 60:02}"
+
+
+# The keys whose column heading is not the key itself, capitalised
+_HEADINGS = {
+    "cr": "Compute Requirement",
+    "cr-id": "Compute Requirement ID",
+    "creator-id": "Creator ID",
+    "instance": "Instance ID",
+}
+
+
+def _heading(key: str) -> str:
+    """
+    A '--by' key's column heading: 'instance-type' as 'Instance type'.
+    """
+    return _HEADINGS.get(key) or key.replace("-", " ").capitalize()
 
 
 def _group_json(group: UsageGroup) -> dict:

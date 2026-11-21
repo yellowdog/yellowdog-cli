@@ -9,6 +9,11 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 These changes alter what an existing script or configuration will see:
 
 - **`yd usage` totals spot against on-demand by `pricing`**, in place of `spot`: `--by pricing`, `--where pricing=spot`, a Pricing column and a `pricing` key in the `--json` groups. `--by spot` and `--where spot=...` are refused (exit code 2).
+- **`yd usage` names the Compute Requirement key `cr`**, in place of `requirement`: `--by cr`, `--where cr=`, a Compute Requirement column and a `cr` key in the `--json` groups. `--by requirement` is refused (exit code 2).
+
+### yd usage
+
+- **New `--by` and `--where` keys**: `cr-id` (a row per Compute Requirement, where `cr` totals those sharing a name), `creator-id` (the creator's ID, with no lookup of Applications or Users) and `instance` (a row per Instance).
 
 ### Commander
 
