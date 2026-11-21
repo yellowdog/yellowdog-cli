@@ -1738,8 +1738,16 @@ class TestTop:
         whole, _ = _show(capsys, usage_by=("instance",))
         cut, _ = _show(capsys, usage_by=("instance",), usage_top=1)
         assert "(3 more)" in cut and "i-2" not in cut
-        total = [line for line in whole.splitlines() if "Total:" in line]
-        assert total and total[0] in cut
+        # The text from 'Total:' on: the timestamps before it may differ
+        totals = [
+            [
+                line[line.index("Total:") :]
+                for line in out.splitlines()
+                if "Total:" in line
+            ]
+            for out in (whole, cut)
+        ]
+        assert totals[0] and totals[0] == totals[1]
 
     def test_json_more(self, platform, capsys):
         out, _ = _show(
