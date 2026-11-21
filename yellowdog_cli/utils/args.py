@@ -529,6 +529,21 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def usage_cost(self) -> bool | None:
+        return self.args.usage_cost
+
+    @property
+    @allow_missing_attribute
+    def usage_top(self) -> int | None:
+        return self.args.usage_top
+
+    @property
+    @allow_missing_attribute
+    def csv_output(self) -> bool | None:
+        return self.args.csv_output
+
+    @property
+    @allow_missing_attribute
     def usage_where(self) -> list[tuple[str, str]] | None:
         return self.args.usage_where
 

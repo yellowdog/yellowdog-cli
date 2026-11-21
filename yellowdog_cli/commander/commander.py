@@ -637,9 +637,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
     def _align_field_labels(self):
         """
         Start the left-hand column's input fields at one edge, by widening each
-        of their labels to the widest of them; and likewise the right-hand
-        column's Variables and Properties fields, one above the
-        other in separate grid rows.
+        of their labels to the widest of them.
 
         Their rows sit in three separate panel layouts, and Qt aligns nothing
         across layouts, so each field would begin wherever its own label happens
@@ -647,15 +645,10 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         commander.ui, because a width in pixels is a width for one font: these
         labels are the widest under this one, and need not be under the next.
         """
-        for labels in (
-            (self.wr_options_label, self.wp_options_label, self.object_path_label),
-            # The right-hand column's two, so that Properties lines up with the
-            # Variables field above it
-            (self.user_variables_label, self.properties_label),
-        ):
-            widest = max(label.sizeHint().width() for label in labels)
-            for label in labels:
-                label.setMinimumWidth(widest)
+        labels = (self.wr_options_label, self.wp_options_label, self.object_path_label)
+        widest = max(label.sizeHint().width() for label in labels)
+        for label in labels:
+            label.setMinimumWidth(widest)
 
     def _space_paired_checkboxes(self):
         """

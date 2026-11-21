@@ -336,7 +336,8 @@ class TestFixedArgs:
         assert schema["type"] == "array"
         assert schema["items"]["type"] == "string"
         pattern = re.compile(schema["items"]["pattern"])
-        assert pattern.match("provider=aws") and pattern.match("spot=spot")
+        assert pattern.match("provider=aws") and pattern.match("pricing=spot")
+        assert not pattern.match("spot=spot")
         assert not pattern.match("providr=aws") and not pattern.match("provider=")
         # The description names the arguments as the schema does
         for name in ("usage_by", "usage_where", "usage_from", "usage_until"):

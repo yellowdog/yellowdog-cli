@@ -26,6 +26,7 @@ from yellowdog_cli.utils import (
     completion_cache,
     entity_utils,
     output_settings,
+    usage_cost,
     usage_report,
 )
 from yellowdog_cli.utils.command_registry import (
@@ -179,6 +180,9 @@ def _ctx(**args) -> RunContext:
         "usage_by": ("namespace",),
         "usage_refresh": False,
         "usage_where": None,
+        "usage_cost": False,
+        "usage_top": None,
+        "csv_output": False,
         "namespace": None,
         **args,
     }
@@ -226,12 +230,23 @@ class TestGroupKeys:
             usage_group_keys("namespcae")
 
     def test_a_key_given_twice_is_refused(self):
-        with pytest.raises(ArgumentTypeError, match="more than once: spot"):
-            usage_group_keys("spot,namespace,spot")
+        with pytest.raises(ArgumentTypeError, match="more than once: pricing"):
+            usage_group_keys("pricing,namespace,pricing")
 
     def test_the_registry_offers_the_keys_the_report_reads(self):
         assert usage_report.GROUP_KEYS == USAGE_GROUP_KEYS
         assert "creator" in USAGE_GROUP_KEYS
+
+    @pytest.mark.parametrize("key", ["requirement", "requirement-id", "instance"])
+    def test_requirement_is_no_key(self, key):
+        # The Compute Requirement's keys are cr and cr-id
+        with pytest.raises(ArgumentTypeError, match=f"invalid grouping '{key}'"):
+            usage_group_keys(key)
+
+    def test_spot_is_no_key(self):
+        # Spot or on-demand is the pricing key's value, not a key of its own
+        with pytest.raises(ArgumentTypeError, match="invalid grouping 'spot'"):
+            usage_group_keys("spot")
 
 
 class TestTheReportsWait:
@@ -470,7 +485,7 @@ class TestGrouping:
 
     def test_by_several_keys(self, platform):
         groups = usage_report.grouped_usage(
-            _report(_ctx()), ["namespace", "instance-type", "spot"]
+            _report(_ctx()), ["namespace", "instance-type", "pricing"]
         )
         assert {tuple(group.keys.values()): group.instances for group in groups} == {
             ("team-render", "g4dn.xlarge", "on-demand"): 1,
@@ -480,7 +495,7 @@ class TestGrouping:
         }
 
     def test_the_requirement_and_tag_come_from_its_row(self, platform):
-        groups = usage_report.grouped_usage(_report(_ctx()), ["requirement", "tag"])
+        groups = usage_report.grouped_usage(_report(_ctx()), ["cr", "tag"])
         assert {tuple(group.keys.values()) for group in groups} == {
             ("render-1", "nightly"),
             ("train-1", "-"),
@@ -491,8 +506,43 @@ class TestGrouping:
             instances=[INSTANCES_HEADER, _instance(CR_GONE, "t3a.small", 60)]
         )
         report = _report(_ctx())
-        (group,) = usage_report.grouped_usage(report, ["namespace", "requirement"])
-        assert group.keys == {"namespace": "-", "requirement": CR_GONE}
+        (group,) = usage_report.grouped_usage(report, ["namespace", "cr", "cr-id"])
+        assert group.keys == {"namespace": "-", "cr": CR_GONE, "cr-id": CR_GONE}
+
+    def test_by_cr_id_separates_requirements_sharing_a_name(self, platform):
+        # A name reused, here in two namespaces: one row by cr, two by cr-id
+        platform.content = _zip(
+            requirements=[
+                *REQUIREMENTS[:2],
+                f"team-train,render-1,,2026-11-02T00:00:00Z,,{USER_ALICE},{CR_TRAIN}",
+            ]
+        )
+        report = _report(_ctx())
+        by_name = usage_report.grouped_usage(report, ["cr"])
+        by_id = usage_report.grouped_usage(report, ["cr-id"])
+        assert [(g.keys["cr"], g.instances) for g in by_name] == [("render-1", 4)]
+        assert {g.keys["cr-id"]: g.instances for g in by_id} == {
+            CR_RENDER: 1,
+            CR_TRAIN: 3,
+        }
+
+    def test_by_instance_is_one_row_per_instance(self, platform):
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id"])
+        assert {g.keys["instance-id"]: g.instances for g in groups} == {
+            "i-1": 1,
+            "i-2": 1,
+            "i-3": 1,
+            "i-4": 1,
+        }
+
+    def test_by_creator_id_is_the_id_without_names(self, platform):
+        groups = usage_report.grouped_usage(
+            _report(_ctx()), ["creator-id"], creators=NAMES
+        )
+        assert {g.keys["creator-id"]: g.instances for g in groups} == {
+            APP_RENDER: 1,
+            USER_ALICE: 3,
+        }
 
 
 NAMES = usage_report.CreatorNames(
@@ -698,6 +748,23 @@ class TestTheCommandByCreator:
         assert calls == ["applications", "users"]
         assert "team-render" in out and "team-train" not in out
 
+    def test_creator_id_looks_nothing_up(self, platform, monkeypatch, capsys):
+        calls = _listings(monkeypatch)
+        out, _ = _show(
+            capsys,
+            usage_by=("creator-id",),
+            usage_where=[("creator-id", APP_RENDER)],
+        )
+        assert calls == []
+        assert APP_RENDER in out and USER_ALICE not in out
+
+    def test_where_creator_id_does_not_match_a_name(
+        self, platform, monkeypatch, capsys
+    ):
+        _listings(monkeypatch)
+        out, err = _show(capsys, usage_where=[("creator-id", "render-*")])
+        assert "No Instances in the window match the filters" in out + err
+
     def test_no_lookup_without_creator(self, platform, monkeypatch, capsys):
         calls = _listings(monkeypatch)
         _show(capsys, usage_by=("namespace", "tag"))
@@ -705,6 +772,27 @@ class TestTheCommandByCreator:
 
 
 class TestTheCommand:
+    def test_the_new_keys_are_headed_in_full(self, platform, monkeypatch, capsys):
+        _listings(monkeypatch)
+        out, _ = _show(capsys, usage_by=("cr", "cr-id", "creator-id", "instance-id"))
+        for heading in (
+            "Compute Requirement",
+            "Compute Requirement ID",
+            "Creator ID",
+            "Instance ID",
+        ):
+            assert heading in out
+
+    def test_json_names_the_new_keys_as_given(self, platform, monkeypatch, capsys):
+        out, _ = _show(
+            capsys,
+            usage_by=("cr", "cr-id", "creator-id", "instance-id"),
+            json_output=True,
+            json=True,
+        )
+        group = loads(out)["groups"][0]
+        assert list(group)[:4] == ["cr", "cr-id", "creator-id", "instance-id"]
+
     def test_the_table_and_its_total(self, platform, capsys):
         out, err = _show(capsys)
         assert err == ""
@@ -1032,9 +1120,9 @@ class TestFilters:
     def test_different_keys_must_all_match(self, platform):
         assert self._groups(
             platform,
-            ["namespace", "spot"],
+            ["namespace", "pricing"],
             ("namespace", "team-train"),
-            ("spot", "on-demand"),
+            ("pricing", "on-demand"),
         ) == {("team-train", "on-demand"): 2}
 
     def test_the_same_key_again_matches_either(self, platform):
@@ -1046,7 +1134,7 @@ class TestFilters:
         ) == {("g4dn.xlarge",): 1, ("t2.small",): 1}
 
     def test_a_key_need_not_be_grouped_by(self, platform):
-        assert self._groups(platform, ["namespace"], ("spot", "spot")) == {
+        assert self._groups(platform, ["namespace"], ("pricing", "spot")) == {
             ("team-train",): 1
         }
 
@@ -1327,3 +1415,611 @@ def test_json_seconds_are_exact_where_hours_round(platform, capsys):
     (group,) = loads(_show(capsys, json_output=True, json=True)[0])["groups"]
     assert group["hours"]["running"] == 0.0
     assert group["seconds"]["running"] == 1
+
+
+def _price(
+    instance_type,
+    usage_type,
+    value,
+    currency="USD",
+    provider="AWS",
+    region="eu-west-2",
+    licence="NONE",
+):
+    """
+    A Cloud Info price row as the SDK gives one.
+    """
+    from yellowdog_client.model import (
+        CloudProvider,
+        Currency,
+        OperatingSystemLicence,
+        UsageType,
+    )
+
+    return SimpleNamespace(
+        provider=CloudProvider[provider],
+        region=region,
+        subRegion="N/A",
+        instanceType=instance_type,
+        usageType=UsageType[usage_type],
+        operatingSystemLicence=OperatingSystemLicence[licence],
+        price=SimpleNamespace(currency=Currency[currency], value=value),
+    )
+
+
+def _priced(ctx: RunContext, rows) -> MagicMock:
+    """
+    The price search answering with these rows (or raising this exception).
+    """
+    search = ctx.client.cloud_info_client.get_instance_type_prices
+    if isinstance(rows, BaseException):
+        search.return_value.list_all.side_effect = rows
+    else:
+        search.return_value.list_all.return_value = rows
+    return search
+
+
+# The fixture's Instances: i-1 g4dn.xlarge, no running time; i-2 t3a.small,
+# 3600s on-demand; i-3 t3a.small, 1800s spot; i-4 t2.small, 900s on-demand
+PRICES = [
+    _price("t2.small", "ON_DEMAND", 0.04),
+    _price("t3a.small", "ON_DEMAND", 0.02),
+    _price("t3a.small", "SPOT", 0.01),
+    _price("t3a.small", "SPOT", 0.03),
+]
+
+
+class TestCost:
+    def _costed(self, platform, rows=PRICES, by=("instance-id",), where=None):
+        ctx = _ctx()
+        _priced(ctx, rows)
+        report = _report(ctx)
+        found = usage_cost.list_prices(ctx, {("AWS", "eu-west-2")})
+        assert found.unreadable == [] and not found.refused
+        costing = usage_cost.Costing(found.prices)
+        groups = usage_report.grouped_usage(
+            report, list(by), usage_report.filter_of(where), costing=costing
+        )
+        return {g.keys[by[0]]: g for g in groups}, costing
+
+    def test_on_demand_is_running_hours_times_the_price(self, platform):
+        groups, _ = self._costed(platform)
+        assert groups["i-4"].cost == pytest.approx(0.25 * 0.04)
+        assert groups["i-2"].cost == pytest.approx(1.0 * 0.02)
+
+    def test_spot_is_the_mean_of_the_sub_region_prices(self, platform):
+        groups, _ = self._costed(platform)
+        assert groups["i-3"].cost == pytest.approx(0.5 * 0.02)
+
+    def test_an_unpriced_instance_is_noted_with_its_hours(self, platform):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        groups, costing = self._costed(platform, rows)
+        assert costing.unpriced == {
+            ("AWS", "eu-west-2", "t3a.small", "on-demand"): 3600,
+            ("AWS", "eu-west-2", "t3a.small", "spot"): 1800,
+        }
+        assert groups["i-2"].unpriced_seconds == 3600
+        assert groups["i-2"].cost == 0
+
+    def test_a_spot_instance_is_not_priced_on_demand(self, platform):
+        rows = [_price("t3a.small", "ON_DEMAND", 0.02)]
+        groups, costing = self._costed(platform, rows)
+        assert groups["i-3"].unpriced_seconds == 1800
+        assert ("AWS", "eu-west-2", "t3a.small", "spot") in costing.unpriced
+
+    def test_no_running_time_is_never_unpriced(self, platform):
+        groups, costing = self._costed(platform)
+        assert groups["i-1"].unpriced_seconds == 0
+        assert groups["i-1"].priced_seconds == 0
+        assert not any(key[2] == "g4dn.xlarge" for key in costing.unpriced)
+        assert usage_cost.cost_text(groups["i-1"]) == "0.00"
+
+    def test_cost_text(self, platform):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        groups, _ = self._costed(platform, rows, by=("pricing",))
+        on_demand, spot = groups["on-demand"], groups["spot"]
+        assert usage_cost.cost_text(on_demand) == "0.01+"  # t3a.small unpriced
+        assert usage_cost.cost_text(spot) == "-"
+        assert usage_cost.estimated_cost(spot) is None
+        assert usage_cost.estimated_cost(on_demand) == pytest.approx(0.01)
+        full, _ = self._costed(platform, by=("instance-id",))
+        assert usage_cost.cost_text(full["i-4"]) == "0.01"
+
+    def test_one_search_per_place_counted(self, platform):
+        ctx = _ctx()
+        search = _priced(ctx, PRICES)
+        report = _report(ctx)
+        places = usage_report.counted_places(
+            report, usage_report.filter_of([("provider", "aws")])
+        )
+        assert places == {("AWS", "eu-west-2")}
+        assert not usage_report.counted_places(
+            report, usage_report.filter_of([("provider", "oci")])
+        )
+        usage_cost.list_prices(ctx, places)
+        (call,) = search.call_args_list
+        sent = call.args[0]
+        assert [p.name for p in sent.providers] == ["AWS"]
+        assert sent.region == "eu-west-2"
+        assert [o.name for o in sent.operatingSystemLicences] == ["NONE"]
+
+    def test_an_unknown_provider_is_not_searched(self, platform):
+        ctx = _ctx()
+        search = _priced(ctx, PRICES)
+        assert usage_cost.list_prices(ctx, {("NEWCLOUD", "x")}) == usage_cost.Prices()
+        search.assert_not_called()
+
+    def test_a_failed_search_leaves_its_place_unreadable(self, platform):
+        ctx = _ctx()
+        _priced(ctx, HTTPError(response=SimpleNamespace(status_code=500)))
+        assert usage_cost.list_prices(ctx, {("AWS", "eu-west-2")}) == (
+            usage_cost.Prices(unreadable=[("AWS", "eu-west-2")])
+        )
+
+    def test_a_refusal_stops_the_searches(self, platform):
+        # Refused once is refused everywhere: no search of the other places
+        ctx = _ctx()
+        search = _priced(ctx, _refused())
+        found = usage_cost.list_prices(
+            ctx, {("AWS", "eu-west-2"), ("AZURE", "northeurope"), ("OCI", "x")}
+        )
+        assert search.call_count == 1
+        assert found.refused
+        assert found.unreadable == [
+            ("AWS", "eu-west-2"),
+            ("AZURE", "northeurope"),
+            ("OCI", "x"),
+        ]
+        assert found.prices == {}
+
+    def test_one_failed_place_leaves_the_others_priced(self, platform):
+        ctx = _ctx()
+        search = ctx.client.cloud_info_client.get_instance_type_prices
+        search.return_value.list_all.side_effect = [
+            HTTPError(response=SimpleNamespace(status_code=500)),
+            [
+                _price(
+                    "Standard_B2s",
+                    "ON_DEMAND",
+                    0.05,
+                    provider="AZURE",
+                    region="northeurope",
+                )
+            ],
+        ]
+        found = usage_cost.list_prices(
+            ctx, {("AWS", "eu-west-2"), ("AZURE", "northeurope")}
+        )
+        assert found.unreadable == [("AWS", "eu-west-2")] and not found.refused
+        assert found.prices == {
+            ("AZURE", "northeurope", "Standard_B2s", "on-demand"): 0.05
+        }
+
+    def test_a_session_failure_propagates(self, platform):
+        ctx = _ctx()
+        _priced(ctx, ConnectionError("down"))
+        with pytest.raises(ConnectionError):
+            usage_cost.list_prices(ctx, {("AWS", "eu-west-2")})
+
+    def test_a_non_usd_row_is_unpriced(self, platform):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04, currency="GBP")]
+        groups, costing = self._costed(platform, rows)
+        assert groups["i-4"].unpriced_seconds == 900
+        assert ("AWS", "eu-west-2", "t2.small", "on-demand") in costing.unpriced
+
+
+def _show_priced(capsys, rows=PRICES, **args) -> tuple[str, str, MagicMock]:
+    """
+    _show() with the price search answering with these rows.
+    """
+    ctx = _ctx(**args)
+    search = _priced(ctx, rows)
+    with output_settings.configured(ctx.args):
+        usage.show_usage(ctx)
+    captured = capsys.readouterr()
+    return captured.out, captured.err, search
+
+
+class TestTheCommandWithCost:
+    def test_cost_adds_a_column_and_the_total(self, platform, capsys):
+        out, _, _ = _show_priced(capsys, usage_cost=True)
+        assert "Est. cost (USD)" in out
+        # 0.25h at 0.04, 1h at 0.02, 0.5h at 0.02 (the spot mean)
+        assert "est. $0.04 at list prices" in out
+
+    def test_unpriced_are_noted_under_the_table(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        out, _, _ = _show_priced(capsys, rows, usage_cost=True)
+        lines = [line for line in out.splitlines() if "No list price" in line]
+        # Warnings, the most running time first
+        assert len(lines) == 2 and all("WARNING" in line for line in lines)
+        assert "AWS eu-west-2 t3a.small (on-demand): 1:00" in lines[0]
+        assert "AWS eu-west-2 t3a.small (spot): 0:30" in lines[1]
+        assert "est. $0.01+ at list prices" in out
+
+    def test_a_refusal_is_one_warning(self, platform, capsys):
+        out, err, _ = _show_priced(capsys, _refused(), usage_cost=True)
+        assert (out + err).count(
+            "This Application may not read cloud prices; no cost is estimated"
+        ) == 1
+        assert "Could not read the list prices in" not in out + err
+
+    def test_unreadable_prices_warn_and_leave_their_instances_unpriced(
+        self, platform, capsys
+    ):
+        failed = HTTPError(response=SimpleNamespace(status_code=500))
+        out, err, _ = _show_priced(capsys, failed, usage_cost=True)
+        assert (
+            "Could not read the list prices in AWS eu-west-2; its Instances are"
+            " not costed" in out + err
+        )
+        assert "Est. cost" in out
+        (row,) = [line for line in out.splitlines() if "team-train" in line]
+        assert row.rstrip().rstrip("│").rstrip().endswith("-")
+        # Nothing priced at all: the total says so rather than '$0.00+'
+        assert "est. $" not in out
+        assert "no running time priced" in out
+
+    def test_json_names_the_unreadable_places(self, platform, capsys):
+        out, _, _ = _show_priced(
+            capsys, _refused(), usage_cost=True, json_output=True, json=True
+        )
+        document = loads(out)
+        assert document["currency"] == "USD"
+        assert document["unreadablePrices"] == [
+            {"provider": "AWS", "region": "eu-west-2"}
+        ]
+        assert document["pricesRefused"] is True
+        assert {g["estimatedCost"] for g in document["groups"]} == {None, 0.0}
+
+    def test_json_with_cost(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        out, _, _ = _show_priced(
+            capsys,
+            rows,
+            usage_cost=True,
+            usage_by=("pricing",),
+            json_output=True,
+            json=True,
+        )
+        document = loads(out)
+        assert document["currency"] == "USD"
+        assert document["unreadablePrices"] == []
+        assert document["pricesRefused"] is False
+        groups = {g["pricing"]: g for g in document["groups"]}
+        assert groups["on-demand"]["estimatedCost"] == 0.01
+        assert groups["on-demand"]["unpricedRunningHours"] == 1.0
+        assert groups["spot"]["estimatedCost"] is None
+        assert {
+            "provider": "AWS",
+            "region": "eu-west-2",
+            "instanceType": "t3a.small",
+            "pricing": "spot",
+            "runningHours": 0.5,
+        } in document["unpriced"]
+
+    def test_no_cost_keys_without_cost(self, platform, capsys):
+        out, _ = _show(capsys, json_output=True, json=True)
+        document = loads(out)
+        assert "currency" not in document and "unpriced" not in document
+        assert "estimatedCost" not in document["groups"][0]
+
+    def test_no_price_search_without_cost(self, platform, capsys):
+        _, _, search = _show_priced(capsys)
+        search.assert_not_called()
+
+
+class TestTop:
+    def test_top_keeps_the_largest_and_sums_the_rest(self, platform):
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id"])
+        kept, rest = usage.top_groups(groups, 2)
+        assert [g.keys["instance-id"] for g in kept] == ["i-1", "i-2"]
+        assert rest is not None
+        assert rest.keys == {"instance-id": "(2 more)"}
+        assert rest.instances == 2
+        assert rest.total_seconds == 1800 + 900
+
+    def test_the_remainder_leaves_the_other_keys_blank(self, platform):
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id", "cr"])
+        _, rest = usage.top_groups(groups, 1)
+        assert rest is not None
+        assert rest.keys == {"instance-id": "(3 more)", "cr": ""}
+
+    def test_top_beyond_the_groups_cuts_nothing(self, platform, capsys):
+        groups = usage_report.grouped_usage(_report(_ctx()), ["namespace"])
+        assert usage.top_groups(groups, 5) == (groups, None)
+        assert usage.top_groups(groups, None) == (groups, None)
+        capsys.readouterr()  # the fetch's own lines
+        out, _ = _show(capsys, usage_top=5, json_output=True, json=True)
+        assert loads(out)["more"] is None
+
+    def test_no_more_key_without_top(self, platform, capsys):
+        out, _ = _show(capsys, json_output=True, json=True)
+        assert "more" not in loads(out)
+
+    def test_the_table_and_total_line(self, platform, capsys):
+        whole, _ = _show(capsys, usage_by=("instance-id",))
+        cut, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
+        assert "(3 more)" in cut and "i-2" not in cut
+        # The text from 'Total:' on: the timestamps before it may differ
+        totals = [
+            [
+                line[line.index("Total:") :]
+                for line in out.splitlines()
+                if "Total:" in line
+            ]
+            for out in (whole, cut)
+        ]
+        assert totals[0] and totals[0] == totals[1]
+
+    def test_json_more(self, platform, capsys):
+        out, _ = _show(
+            capsys, usage_by=("instance-id",), usage_top=2, json_output=True, json=True
+        )
+        document = loads(out)
+        assert [g["instance-id"] for g in document["groups"]] == ["i-1", "i-2"]
+        assert document["more"]["groups"] == 2
+        assert document["more"]["instances"] == 2
+        assert document["more"]["hours"]["total"] == 0.75
+
+    def test_a_partial_remainder_cost_shows_plus(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        out, _, _ = _show_priced(
+            capsys, rows, usage_by=("instance-id",), usage_top=1, usage_cost=True
+        )
+        (line,) = [line for line in out.splitlines() if "(3 more)" in line]
+        assert "0.01+" in line
+
+
+_CSV_HOURS = [
+    "pending_hours",
+    "running_hours",
+    "stopping_hours",
+    "stopped_hours",
+    "terminating_hours",
+    "unknown_hours",
+    "total_hours",
+]
+
+
+class TestCsv:
+    def _rows(self, out: str) -> list[list[str]]:
+        import csv
+
+        return list(csv.reader(io.StringIO(out)))
+
+    def test_csv_is_the_rows_alone(self, platform, capsys):
+        capsys.readouterr()
+        out, _ = _show(capsys, csv_output=True)
+        rows = self._rows(out)
+        assert rows[0] == ["namespace", "instances", *_CSV_HOURS]
+        assert rows[1][0] == "team-render"  # most total time first
+        assert rows[2] == [
+            "team-train",
+            "3",
+            "0.1",
+            "1.75",
+            "0.0",
+            "0.0",
+            "0.0",
+            "0.0",
+            "1.85",
+        ]
+        assert len(rows) == 3  # no info lines on stdout
+
+    def test_csv_with_cost_and_top(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        out, _, _ = _show_priced(
+            capsys,
+            rows,
+            usage_by=("instance-id",),
+            usage_top=1,
+            usage_cost=True,
+            csv_output=True,
+        )
+        table = self._rows(out)
+        assert table[0][-1] == "estimated_cost"
+        assert table[1][0] == "i-1" and table[1][-1] == "0.0"
+        assert table[2][0] == "(3 more)" and table[2][-1] == "0.01"
+        assert len(table) == 3
+
+    def test_csv_leaves_an_unpriced_cost_empty(self, platform, capsys):
+        out, _, _ = _show_priced(
+            capsys, [], usage_by=("pricing",), usage_cost=True, csv_output=True
+        )
+        assert [row[-1] for row in self._rows(out)[1:]] == ["", ""]
+
+    def test_csv_quotes_a_comma(self, platform, capsys):
+        platform.content = _zip(
+            requirements=[
+                REQUIREMENTS[0],
+                f'team-render,"render, nightly",nightly,2026-11-01T00:00:00Z,,{APP_RENDER},{CR_RENDER}',
+                REQUIREMENTS[2],
+            ]
+        )
+        out, _ = _show(capsys, usage_by=("cr",), csv_output=True)
+        assert ["render, nightly"] == [
+            row[0] for row in self._rows(out) if row[0].startswith("render")
+        ]
+
+    def test_csv_refused_with_json(self, capsys):
+        from yellowdog_cli.utils.args import CLIParser
+
+        with pytest.raises(SystemExit) as raised:
+            CLIParser("yd-usage", ["--csv", "--json"])
+        assert raised.value.code == 2
+        assert "--csv cannot be combined with --json" in capsys.readouterr().err
+
+    def test_warnings_go_to_stderr_under_csv(self, platform, capsys):
+        out, err, _ = _show_priced(capsys, _refused(), usage_cost=True, csv_output=True)
+        assert "This Application may not read cloud prices" in err
+        assert "This Application may not read cloud prices" not in out
+        assert self._rows(out)[0][0] == "namespace"
+
+    def test_csv_is_not_an_mcp_argument(self):
+        from yellowdog_cli.mcp.tools import tool_named
+
+        tool = tool_named("yd_usage")
+        assert tool is not None
+        properties = tool.input_schema["properties"]
+        assert "csv_output" not in properties
+        assert {"usage_cost", "usage_top"} <= set(properties)
+
+
+class TestReviewFixes:
+    def test_another_regions_rows_are_ignored(self, platform):
+        # The search matches the region as a substring: eu-west-2 also finds
+        # its Wavelength zones' rows, which must not price eu-west-2's
+        ctx = _ctx()
+        _priced(
+            ctx,
+            [
+                _price("t2.small", "ON_DEMAND", 0.04),
+                _price("t2.small", "ON_DEMAND", 0.09, region="eu-west-2-wl1-lon1"),
+                _price("t3a.small", "SPOT", 0.01),
+                _price("t3a.small", "SPOT", 0.05, region="eu-west-2-wl1-lon1"),
+                _price("t3a.small", "ON_DEMAND", 0.5, licence="WINDOWS"),
+            ],
+        )
+        prices = usage_cost.list_prices(ctx, {("AWS", "eu-west-2")}).prices
+        assert prices == {
+            ("AWS", "eu-west-2", "t2.small", "on-demand"): 0.04,
+            ("AWS", "eu-west-2", "t3a.small", "spot"): 0.01,
+        }
+
+    def test_places_are_only_those_with_running_time_and_a_region(self, platform):
+        platform.content = _zip(
+            instances=[
+                INSTANCES_HEADER,
+                _instance(CR_TRAIN, "t3a.small", running=0, pending=60),
+                _instance(CR_TRAIN, "t3a.small", running=60).replace(
+                    "AWS,eu-west-2,", "AWS,,"
+                ),
+            ]
+        )
+        assert usage_report.counted_places(_report(_ctx())) == set()
+
+    def test_csv_warns_of_unpriced_on_stderr(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        out, err, _ = _show_priced(capsys, rows, usage_cost=True, csv_output=True)
+        assert "No list price for AWS eu-west-2 t3a.small (on-demand)" in err
+        assert "No list price" not in out
+
+    def test_csv_gives_the_creator_id_beside_the_creator(
+        self, platform, monkeypatch, capsys
+    ):
+        _listings(monkeypatch)
+        out, _ = _show(capsys, usage_by=("creator",), csv_output=True)
+        import csv
+
+        rows = list(csv.reader(io.StringIO(out)))
+        assert rows[0][:2] == ["creator", "creatorId"]
+        assert {(row[0], row[1]) for row in rows[1:]} == {
+            ("render-farm (Application)", APP_RENDER),
+            ("alice (User)", USER_ALICE),
+        }
+
+
+class TestPricesRefused:
+    def test_a_regional_failure_is_not_a_refusal(self, platform, capsys):
+        failed = HTTPError(response=SimpleNamespace(status_code=500))
+        out, _, _ = _show_priced(
+            capsys, failed, usage_cost=True, json_output=True, json=True
+        )
+        document = loads(out)
+        assert document["pricesRefused"] is False
+        assert document["unreadablePrices"] == [
+            {"provider": "AWS", "region": "eu-west-2"}
+        ]
+
+
+class TestPriceFetchIsSaid:
+    def test_the_price_searches_are_announced(self, platform, capsys):
+        out, _, _ = _show_priced(capsys, usage_cost=True)
+        assert "Fetching list prices for 1 region (AWS eu-west-2)" in out
+
+    def test_not_announced_without_cost(self, platform, capsys):
+        out, _, _ = _show_priced(capsys)
+        assert "Fetching list prices" not in out
+
+    def test_not_announced_under_json(self, platform, capsys):
+        out, err, _ = _show_priced(capsys, usage_cost=True, json_output=True, json=True)
+        assert "Fetching list prices" not in out + err
+
+
+class TestKeptPrices:
+    def test_prices_are_kept_and_reused(self, platform, capsys):
+        _, _, first = _show_priced(capsys, usage_cost=True)
+        assert first.call_count == 1
+        out, _, second = _show_priced(capsys, usage_cost=True)
+        second.assert_not_called()
+        assert "Reusing list prices for 1 region (AWS eu-west-2)" in out
+        assert "Fetching list prices" not in out
+        assert "est. $0.04 at list prices" in out
+
+    def test_refresh_fetches_prices_again(self, platform, capsys):
+        _show_priced(capsys, usage_cost=True)
+        out, _, again = _show_priced(capsys, usage_cost=True, usage_refresh=True)
+        assert again.call_count == 1
+        assert "Fetching list prices for 1 region" in out
+
+    def test_kept_prices_last_24_hours(self, platform):
+        ctx = _ctx()
+        _priced(ctx, PRICES)
+        place = ("AWS", "eu-west-2")
+        usage_cost.list_prices(ctx, {place})
+        now = time.time()
+        kept, missing = usage_cost.kept_prices(ctx, {place}, now=now + 24 * 3600 - 60)
+        assert (
+            missing == set()
+            and kept[("AWS", "eu-west-2", "t2.small", "on-demand")] == 0.04
+        )
+        kept, missing = usage_cost.kept_prices(ctx, {place}, now=now + 24 * 3600 + 60)
+        assert missing == {place} and kept == {}
+
+    def test_a_failed_search_is_not_kept(self, platform, capsys):
+        failed = HTTPError(response=SimpleNamespace(status_code=500))
+        _show_priced(capsys, failed, usage_cost=True)
+        _, _, again = _show_priced(capsys, usage_cost=True)
+        assert again.call_count == 1
+
+    def test_a_place_with_no_prices_is_kept(self, platform, capsys):
+        # A region the Platform has no prices for is asked about once a day
+        _show_priced(capsys, [], usage_cost=True)
+        _, _, again = _show_priced(capsys, [], usage_cost=True)
+        again.assert_not_called()
+
+    def test_kept_per_application(self, platform):
+        ctx = _ctx()
+        _priced(ctx, PRICES)
+        usage_cost.list_prices(ctx, {("AWS", "eu-west-2")})
+        other = _ctx()
+        other.config.key = "another-key"
+        _, missing = usage_cost.kept_prices(other, {("AWS", "eu-west-2")})
+        assert missing == {("AWS", "eu-west-2")}
+
+
+class TestUnpricedWarnings:
+    def _costing(self, count: int) -> usage_cost.Costing:
+        costing = usage_cost.Costing({})
+        for n in range(count):
+            # Type n ran n+1 minutes
+            costing.unpriced[("AWS", "eu-west-2", f"type-{n}", "on-demand")] = 60.0 * (
+                n + 1
+            )
+        return costing
+
+    def test_all_are_named_up_to_the_limit(self):
+        lines = usage._unpriced_lines(self._costing(5))
+        assert len(lines) == 5
+        assert lines[0].startswith("No list price for AWS eu-west-2 type-4 (on-demand)")
+
+    def test_beyond_the_limit_the_rest_are_one_line(self):
+        lines = usage._unpriced_lines(self._costing(8))
+        assert len(lines) == 6
+        assert "type-7" in lines[0] and "type-3" in lines[4]
+        # type-0 to type-2: 1 + 2 + 3 minutes
+        assert lines[5] == (
+            "No list price for 3 more instance types: 0:06 running not costed;"
+            " '--json' lists them all"
+        )

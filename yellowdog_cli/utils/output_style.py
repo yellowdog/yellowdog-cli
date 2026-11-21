@@ -10,6 +10,9 @@ MAX_TABLE_DESCRIPTION = 50
 # The namespaces a namespace pattern matched that a progress line names,
 # before 'and N more' (the --debug trace names them all)
 NAMESPACE_SCOPE_SHOWN = 10
+# The instance types 'yd usage --cost' names as having no list price, the
+# most running time first, before one line for the rest ('--json' lists all)
+UNPRICED_TYPES_SHOWN = 5
 # Longer output is printed uncoloured: Rich's highlighting costs ~50us a
 # line for a table (a span per cell) and ~11us for JSON, on Apple silicon
 MAX_LINES_COLOURED_TABLE = 2000

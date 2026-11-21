@@ -20,12 +20,12 @@
    * [Which Value Wins](#which-value-wins)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 19 09:45:21 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 20 15:16:44 GMT 2026 -->
 
 <!--te-->
 
 
-Commands usually take their settings from a **TOML** configuration file, `config.toml` in the current directory. The file is optional: environment variables and command-line options can supply the same settings (see [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables)). To start a file, run `yd init`, which asks for the `[common]` properties and writes a `config.toml` (or, with `--user`, your own file; see [yd init](commands.md#yd-init)). A minimal file holds the Application's key and secret, and the namespace and tag to work in:
+Commands usually take their settings from a **TOML** configuration file, `config.toml` in the current directory. The file is optional: environment variables and command-line options can supply the same settings (see [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables)). To start a file, run `yd init`, which asks for the `[common]` properties and writes a `config.toml` (or, with `--user`, your own file; see [yd init](commands.md#yd-init)). A minimal file holds the Application's key and secret (see [Authentication](authentication.md)), and the namespace and tag to work in:
 
 ```toml
 [common]

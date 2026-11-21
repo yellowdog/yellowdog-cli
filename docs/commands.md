@@ -2087,10 +2087,13 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
 
 Key options:
 - `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
-- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `requirement` (the Compute Requirement's name), `creator` (the Application or user that provisioned the Compute Requirement, by name), `provider`, `region`, `instance-type`, `source` (the Compute Source's name) and `spot` (spot or on-demand)
+- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `cr` (the Compute Requirement's name), `cr-id` (its ID), `creator` (the Application or user that provisioned the Compute Requirement, by name), `creator-id` (its ID), `provider`, `region`, `instance-type`, `source` (the Compute Source's name), `pricing` (`spot` or `on-demand`) and `instance-id` (the Instance's ID)
 - `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
-- `--refresh`/`-R` — fetch the report again (see below)
+- `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
+- `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
+- `--top <n>` — show the `<n>` groups with the most total time, and the rest summed in one row
+- `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
 - `--json`/`-J` — print one JSON document holding the window, when the report was fetched and where it is kept, and each group's Instance count and its time in every status, in hours and in exact seconds:
 
 ```json
@@ -2104,7 +2107,7 @@ Some uses:
 yd usage
 
 # Where the hours went in one namespace: each Compute Requirement, by name
-yd usage -n image-processing --by requirement
+yd usage -n image-processing --by cr
 
 # Which Application, or user in the Portal, provisioned what
 yd usage --by creator
@@ -2113,7 +2116,7 @@ yd usage --by creator
 yd usage --by namespace,requirement
 
 # Spot against on-demand, per cloud provider, over the last 30 days
-yd usage --from '30 days ago' --by provider,spot
+yd usage --from '30 days ago' --by provider,pricing
 
 # AWS alone, region by region
 yd usage --where provider=aws --by region
@@ -2127,8 +2130,14 @@ yd usage --from 2026-10-01 --until 2026-11-01 --by namespace,instance-type
 # The last day, by tag (one per project or pipeline, say)
 yd usage --from '24 hours ago' --by tag
 
-# Running hours per namespace as tab-separated text, for a spreadsheet
-yd usage --json | jq -r '.groups[] | [.namespace, .hours.running] | @tsv'
+# What each instance type cost, roughly, over the last 30 days
+yd usage --from '30 days ago' --by provider,instance-type --cost
+
+# The ten Instances that ran longest, and the rest in one row
+yd usage --by instance-id --top 10
+
+# Every Compute Requirement's hours, for a spreadsheet
+yd usage --by namespace,cr --csv > usage.csv
 ```
 
 A date with no time, such as `2026-10-01`, is midnight in your local time zone; the summary line shows the window in UTC. To give a date in another time zone, add it: `--from '2026-10-01 UTC'` is midnight UTC wherever the command runs, and an offset (`'2026-10-01 09:00 +02:00'`) or an abbreviation (`EST`) works too, though a name such as `Europe/Paris` does not.
@@ -2137,7 +2146,15 @@ An Application allowed to read usage in some namespaces only is refused a report
 
 **A slow report.** On a terminal, the command shows how long it has waited for the Platform to build the report, then how much has arrived and how fast, on one line that it removes when the report is in (not with `--json`, `--quiet` or `--no-format`). The Platform has 5 minutes, or `readTimeout` if that is longer (see [Configuration](configuration.md)), to start sending the report and then between each part of it; a report that takes longer fails as a connection timeout (exit code 8), and a larger `readTimeout` gives it longer.
 
-**Creators.** A creator is shown by name and kind, `render-farm (Application)` or `alice (User)`, read from the account's Applications and Users only when `creator` is in `--by` or `--where`. One the listings cannot name, such as an Application since removed, is shown by its ID followed by `(?)`; where the Application may not list the account's Applications or Users at all, the command says so and shows those creators by ID. `--where creator=` matches a creator as the table shows it, its name alone or its ID, and `--json` gives each group's `creatorId` beside its `creator`.
+**Creators.** A creator is shown by name and kind, `render-farm (Application)` or `alice (User)`, read from the account's Applications and Users only when `creator` is in `--by` or `--where`. One the listings cannot name, such as an Application since removed, is shown by its ID followed by `(?)`; where the Application may not list the account's Applications or Users at all, the command says so and shows those creators by ID. `--where creator=` matches a creator as the table shows it, its name alone or its ID, and `--json` gives each group's `creatorId` beside its `creator`. The `creator-id` key gives the ID alone, without reading the account's Applications or Users, and `--where creator-id=` matches only the ID.
+
+**Compute Requirements.** The `cr` key totals Compute Requirements by name, so those sharing a name, in different namespaces or one after another, are one row; `cr-id` gives each its own row. A Compute Requirement the report does not list is shown by its ID under `cr` too.
+
+**Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a warning names each instance type left out with its running time, the five with the most first and the rest summed in one line (`--json`'s `unpriced` lists them all). A region's prices are kept for 24 hours and used again, saying so, until `--refresh` fetches them afresh; prices that could not be read are not kept. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
+
+**`--top` and `--csv`.** The row `--top` adds sums the groups it leaves out, so the columns still add up to the total line, which covers every group; under `--json` it is `more`, holding the number of groups left out and their sums (`null` when none are). `--csv` writes a header row naming the `--by` keys (`creator` followed by `creatorId`), `instances`, each status's hours, `total_hours` and, with `--cost`, `estimated_cost`, and nothing else on standard output; warnings, and the instance types `--cost` had no price for, go to standard error.
+
+**Sources.** The report names an Instance's Compute Source by its name alone, without its template or the template's namespace, which need not be the Compute Requirement's. Sources of the same name in different templates are therefore one row under `--by source` and are matched together by `--where source=`; add `namespace` or `requirement` to `--by` to tell them apart by where they were used.
 
 The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path. A later run with the same `--from`, `--until` and `--namespace`, as written, uses the report kept rather than fetching the report again while they still cover that window to within ten minutes at each end: a window of fixed dates in the past for as long as it is kept, since its usage no longer changes, and a window ending now (the default) for ten minutes after it was fetched, which is long enough to look at the same week `--by` several keys in turn. `--refresh` fetches a new one regardless. Each fetch removes the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
 

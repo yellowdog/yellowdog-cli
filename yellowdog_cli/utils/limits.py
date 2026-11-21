@@ -104,6 +104,10 @@ USAGE_REPORT_REUSE_SECONDS = 600
 # then the least recently used beyond this many
 USAGE_REPORTS_UNUSED_SECONDS = 7 * 24 * 60 * 60
 USAGE_REPORTS_KEPT = 20
+# How long 'yd usage --cost' keeps a region's list prices before searching
+# again: list prices change rarely, and the estimate uses today's spot prices
+# rather than those of the time anyway
+USAGE_PRICES_KEPT_SECONDS = 24 * 60 * 60
 
 # The most in-situ substitution passes a specification is given to settle; a
 # pass that changes nothing ends them. Real chains of references settle in two

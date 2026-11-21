@@ -900,6 +900,8 @@ MCP_EXCLUDED_OPTIONS: frozenset[str] = frozenset(
         # yd-usage's: the server always passes it (mcp/tools.py's
         # fixed_args()), since an agent has no reason to suspect a kept report
         "--refresh",
+        # yd-usage's other form of stdout, exclusive with the server's '--json'
+        "--csv",
         # Machine maintenance, not platform work
         "--upgrade-rclone",
         "--which-rclone",
@@ -1718,6 +1720,14 @@ def check_json_excludes_streaming(args: Namespace, parser: ArgumentParser) -> No
                 f"--json cannot be combined with {flag}: --progress and --report"
                 " write their own output"
             )
+
+
+def check_usage_csv_excludes_json(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    On yd-usage, refuse '--csv' with '--json': each is the whole of stdout.
+    """
+    if getattr(args, "csv_output", False) and getattr(args, "json", False):
+        parser.error("--csv cannot be combined with --json")
 
 
 def check_hide_user_data_requires_dry_run(
@@ -3741,13 +3751,16 @@ COMMANDS["yd-status"] = Command(
 USAGE_GROUP_KEYS: tuple[str, ...] = (
     "namespace",
     "tag",
-    "requirement",
+    "cr",
+    "cr-id",
     "creator",
+    "creator-id",
     "provider",
     "region",
     "instance-type",
     "source",
-    "spot",
+    "pricing",
+    "instance-id",
 )
 
 
@@ -3867,8 +3880,38 @@ COMMANDS["yd-usage"] = Command(
                 " earlier run with the same window and namespace"
             ),
         ),
+        option(
+            "--cost",
+            dest="usage_cost",
+            action="store_true",
+            required=False,
+            help=(
+                "estimate each group's cost from the cloud providers' list"
+                " prices: running time only, at today's prices, without"
+                " discounts"
+            ),
+        ),
+        option(
+            "--top",
+            dest="usage_top",
+            type=positive_int,
+            metavar="<n>",
+            required=False,
+            help=(
+                "show the <n> groups with the most total time, and the rest"
+                " summed in one row"
+            ),
+        ),
+        option(
+            "--csv",
+            dest="csv_output",
+            action="store_true",
+            required=False,
+            help="print the table's rows as CSV, hours as decimal hours",
+        ),
         JSON.variant(help="print one JSON document holding the window and the totals"),
     ),
+    validators=(check_usage_csv_excludes_json,),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Show the hours Instances spent in each status (pending, running,"

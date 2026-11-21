@@ -48,6 +48,7 @@ _DEFAULTS = {
     "quiet": False,
     "count_only": False,
     "ids_only": False,
+    "csv_output": False,
     "follow": False,
     "auto_cr": False,
     "yes": True,

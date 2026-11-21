@@ -10,10 +10,13 @@ afresh; the window it covers, when it was fetched and where it is kept are
 said above the table. '--json' prints one document holding the same.
 """
 
+import csv
+import sys
 from datetime import datetime, timezone
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.output_style import UNPRICED_TYPES_SHOWN
 from yellowdog_cli.utils.printing import (
     counted,
     print_info,
@@ -21,9 +24,20 @@ from yellowdog_cli.utils.printing import (
     print_warning,
 )
 from yellowdog_cli.utils.tables import print_table
+from yellowdog_cli.utils.usage_cost import (
+    COST_CURRENCY,
+    Costing,
+    cost_text,
+    estimated_cost,
+    kept_prices,
+    list_prices,
+)
 from yellowdog_cli.utils.usage_report import (
     STATUS_COLUMNS,
+    CreatorNames,
+    Report,
     UsageGroup,
+    counted_places,
     creator_names,
     filter_of,
     grouped_usage,
@@ -73,43 +87,8 @@ def show_usage(ctx: RunContext) -> None:
         namespace,
         refresh=bool(ctx.args.usage_refresh),
     )
-    if (
-        namespace
-        and not grouped_usage(report, [])
-        and not namespace_exists(ctx, namespace)
-    ):
-        # Nothing ran in it: say whether that is because it does not exist
-        raise NotFoundError(f"No namespace '{namespace}' exists")
-    where = filter_of(ctx.args.usage_where)
-    # The creators' names, read only when asked for, and only once the
-    # namespace is known to exist
-    creators = None
-    if "creator" in by or "creator" in where:
-        creators = creator_names(ctx)
-        if creators.unreadable:
-            print_warning(
-                f"Could not read the account's {' or '.join(creators.unreadable)};"
-                " their creators are shown by ID"
-            )
-    groups = grouped_usage(report, by, where, creators)
-
-    if ctx.args.json_output:
-        print_json(
-            {
-                "from": report.from_time,
-                "until": report.until_time,
-                "namespace": namespace,
-                "namespaces": report.namespaces,
-                "by": by,
-                "where": where,
-                "fetched": report.fetched.isoformat().replace("+00:00", "Z"),
-                "reportFile": str(report.path),
-                "groups": [_group_json(group) for group in groups],
-            }
-        )
-        return
-
-    # Where the report came from, then the heading of the table beneath it
+    # Where the report came from, said as soon as it is in hand, before
+    # any lookups and price searches that follow
     age = "from an earlier run" if report.from_cache else "fetched now"
     when = _shown(report.fetched)
     if report.fetched_bytes is not None:
@@ -131,6 +110,63 @@ def show_usage(ctx: RunContext) -> None:
                 else ""
             )
         )
+    if (
+        namespace
+        and not grouped_usage(report, [])
+        and not namespace_exists(ctx, namespace)
+    ):
+        # Nothing ran in it: say whether that is because it does not exist
+        raise NotFoundError(f"No namespace '{namespace}' exists")
+    where = filter_of(ctx.args.usage_where)
+    # The creators' names, read only when asked for, and only once the
+    # namespace is known to exist
+    creators = None
+    if "creator" in by or "creator" in where:
+        creators = creator_names(ctx)
+        if creators.unreadable:
+            print_warning(
+                f"Could not read the account's {' or '.join(creators.unreadable)};"
+                " their creators are shown by ID"
+            )
+    costing = _costing(ctx, report, where, creators) if ctx.args.usage_cost else None
+    groups = grouped_usage(report, by, where, creators, costing)
+    shown, rest = top_groups(groups, ctx.args.usage_top)
+
+    if ctx.args.json_output:
+        print_json(
+            {
+                "from": report.from_time,
+                "until": report.until_time,
+                "namespace": namespace,
+                "namespaces": report.namespaces,
+                "by": by,
+                "where": where,
+                "fetched": report.fetched.isoformat().replace("+00:00", "Z"),
+                "reportFile": str(report.path),
+                "groups": [_group_json(group, costing) for group in shown],
+                **(
+                    {"more": _more_json(rest, len(groups) - len(shown), costing)}
+                    if ctx.args.usage_top
+                    else {}
+                ),
+                **(_unpriced_json(costing) if costing is not None else {}),
+            }
+        )
+        return
+
+    if ctx.args.csv_output:
+        csv.writer(sys.stdout, lineterminator="\n").writerows(
+            csv_rows(by, shown, rest, costing is not None)
+        )
+        # A partial cost is the number alone in the CSV: what it leaves out
+        # is warned of on standard error
+        for line in _unpriced_lines(costing):
+            print_warning(line)
+        if not groups:
+            print_warning(_nothing_counted(where))
+        return
+
+    # The heading of the table beneath
     scope = f" in namespace '{namespace}'" if namespace else ""
     print_info(
         f"Instance usage{scope} from {_shown_text(report.from_time)} until"
@@ -138,18 +174,18 @@ def show_usage(ctx: RunContext) -> None:
         + (f", where {_filter_text(where)}" if where else "")
     )
     if not groups:
-        print_warning(
-            "No Instances in the window match the filters"
-            if where
-            else "No Instances ran in the window"
-        )
+        print_warning(_nothing_counted(where))
         return
-    headers = [key.replace("-", " ").capitalize() for key in by] + [
-        "Instances",
-        "Running (h:mm)",
-        "Stopped (h:mm)",
-        "Total (h:mm)",
-    ]
+    headers = (
+        [_heading(key) for key in by]
+        + [
+            "Instances",
+            "Running (h:mm)",
+            "Stopped (h:mm)",
+            "Total (h:mm)",
+        ]
+        + ([f"Est. cost ({COST_CURRENCY})"] if costing is not None else [])
+    )
     rows = [
         [
             *group.keys.values(),
@@ -157,17 +193,208 @@ def show_usage(ctx: RunContext) -> None:
             duration_text(group.seconds["running"]),
             duration_text(group.seconds["stopped"]),
             duration_text(group.total_seconds),
+            *([cost_text(group)] if costing is not None else []),
         ]
-        for group in groups
+        for group in shown + ([rest] if rest is not None else [])
     ]
     print_table(headers, rows)
+    for line in _unpriced_lines(costing):
+        print_warning(line)
     instances = sum(group.instances for group in groups)
     running = sum(group.seconds["running"] for group in groups)
     total = sum(group.total_seconds for group in groups)
     print_info(
         f"Total: {counted(instances, 'Instance')}, {duration_text(running)}"
         f" running of {duration_text(total)} in all statuses"
+        + (_total_cost_text(groups) if costing is not None else "")
     )
+
+
+def _unpriced_lines(costing: Costing | None) -> list[str]:
+    """
+    A warning for each instance type '--cost' had no price for, with its
+    running time, the most first; beyond UNPRICED_TYPES_SHOWN, one line for
+    the rest.
+    """
+    if costing is None:
+        return []
+    ordered = sorted(costing.unpriced.items(), key=lambda item: (-item[1], item[0]))
+    shown, rest = ordered[:UNPRICED_TYPES_SHOWN], ordered[UNPRICED_TYPES_SHOWN:]
+    lines = [
+        f"No list price for {provider} {region} {instance_type} ({pricing}):"
+        f" {duration_text(seconds)} running not costed"
+        for (provider, region, instance_type, pricing), seconds in shown
+    ]
+    if rest:
+        lines.append(
+            f"No list price for {len(rest):,} more instance types:"
+            f" {duration_text(sum(seconds for _, seconds in rest))} running not"
+            " costed; '--json' lists them all"
+        )
+    return lines
+
+
+def _nothing_counted(where: dict[str, list[str]]) -> str:
+    return (
+        "No Instances in the window match the filters"
+        if where
+        else "No Instances ran in the window"
+    )
+
+
+def csv_rows(
+    by: list[str],
+    groups: list[UsageGroup],
+    rest: UsageGroup | None,
+    cost: bool,
+) -> list[list[str]]:
+    """
+    '--csv''s rows, the header first: the '--by' keys as '--json' names
+    them, the Instances, each status's hours and the total as decimal hours,
+    and with '--cost' the estimate, a partial one as the number alone and
+    one with nothing priced empty; '--top''s remainder last.
+    """
+    header = [
+        # A creator's ID beside its name, as under '--json', since creators
+        # sharing a name are separate rows
+        *(
+            k
+            for key in by
+            for k in ((key, "creatorId") if key == "creator" else (key,))
+        ),
+        "instances",
+        *(f"{status}_hours" for status in STATUS_COLUMNS),
+        "total_hours",
+        *(["estimated_cost"] if cost else []),
+    ]
+    rows = [header]
+    for group in groups + ([rest] if rest is not None else []):
+        estimate = estimated_cost(group) if cost else None
+        rows.append(
+            [
+                *(
+                    v
+                    for key, value in group.keys.items()
+                    for v in (
+                        (value, group.creator_id or "")
+                        if key == "creator"
+                        else (value,)
+                    )
+                ),
+                str(group.instances),
+                *(
+                    str(round(group.seconds[status] / _SECONDS_PER_HOUR, 3))
+                    for status in STATUS_COLUMNS
+                ),
+                str(round(group.total_seconds / _SECONDS_PER_HOUR, 3)),
+                *(
+                    []
+                    if not cost
+                    else ["" if estimate is None else str(round(estimate, 2))]
+                ),
+            ]
+        )
+    return rows
+
+
+def top_groups(
+    groups: list[UsageGroup], top: int | None
+) -> tuple[list[UsageGroup], UsageGroup | None]:
+    """
+    The first 'top' groups, and the rest summed into one group whose first
+    key reads '(<n> more)' and whose others are blank; None for the rest
+    when nothing is cut.
+    """
+    if not top or len(groups) <= top:
+        return groups, None
+    shown, cut = groups[:top], groups[top:]
+    first, *others = cut[0].keys
+    rest = UsageGroup(keys={first: f"({len(cut):,} more)", **dict.fromkeys(others, "")})
+    for group in cut:
+        rest.instances += group.instances
+        for status, seconds in group.seconds.items():
+            rest.seconds[status] += seconds
+        rest.cost += group.cost
+        rest.priced_seconds += group.priced_seconds
+        rest.unpriced_seconds += group.unpriced_seconds
+    return shown, rest
+
+
+def _more_json(
+    rest: UsageGroup | None, count: int, costing: Costing | None
+) -> dict | None:
+    """
+    '--top''s remainder in the document: the groups cut and their sums.
+    """
+    if rest is None:
+        return None
+    summed = _group_json(rest, costing)
+    for key in rest.keys:
+        summed.pop(key, None)
+    summed.pop("creatorId", None)
+    return {"groups": count, **summed}
+
+
+def _costing(
+    ctx: RunContext,
+    report: Report,
+    where: dict[str, list[str]],
+    creators: CreatorNames | None,
+) -> Costing:
+    """
+    The prices '--cost' needs, for the places the Instances counted ran in,
+    with a warning for each place whose prices could not be read, whose
+    Instances go unpriced, or one warning when the Application may not read
+    cloud prices at all.
+    """
+    places = counted_places(report, where, creators)
+    kept: dict = {}
+    missing = places
+    if not ctx.args.usage_refresh:
+        kept, missing = kept_prices(ctx, places)
+    if kept_places := places - missing:
+        print_info(
+            f"Reusing list prices for {_regions_text(kept_places)} from the last"
+            " 24 hours; '--refresh' fetches them again"
+        )
+    if missing:
+        # The searches take a second or so each: say what the pause is
+        print_info(f"Fetching list prices for {_regions_text(missing)}")
+    found = list_prices(ctx, missing)
+    found.prices.update(kept)
+    if found.refused:
+        print_warning(
+            "This Application may not read cloud prices; no cost is estimated"
+        )
+    else:
+        for provider, region in found.unreadable:
+            print_warning(
+                f"Could not read the list prices in {provider} {region}; its"
+                " Instances are not costed"
+            )
+    return Costing(found.prices, found.unreadable, found.refused)
+
+
+def _regions_text(places: set[tuple[str, str]]) -> str:
+    """
+    '2 regions (AWS eu-west-2, OCI uk-london-1)'.
+    """
+    names = ", ".join(f"{provider} {region}" for provider, region in sorted(places))
+    return f"{counted(len(places), 'region')} ({names})"
+
+
+def _total_cost_text(groups: list[UsageGroup]) -> str:
+    """
+    The total line's estimate: ', est. $12.34 at list prices', with a '+'
+    when some running time had no price.
+    """
+    if not any(group.priced_seconds for group in groups) and any(
+        group.unpriced_seconds for group in groups
+    ):
+        return ", no running time priced at list prices"
+    cost = sum(group.cost for group in groups)
+    partial = any(group.unpriced_seconds for group in groups)
+    return f", est. ${cost:,.2f}{'+' if partial else ''} at list prices"
 
 
 def _parsed(flag: str, text: str) -> datetime:
@@ -196,7 +423,7 @@ def _shown_text(iso: str) -> str:
 
 def _filter_text(where: dict[str, list[str]]) -> str:
     """
-    The filters as the summary says them: 'provider=aws or azure, spot=spot'.
+    The filters as the summary says them: 'provider=aws or azure, pricing=spot'.
     """
     return ", ".join(
         f"{key}={' or '.join(patterns)}" for key, patterns in where.items()
@@ -215,7 +442,49 @@ def duration_text(seconds: float) -> str:
     return f"{minutes // 60:,}:{minutes % 60:02}"
 
 
-def _group_json(group: UsageGroup) -> dict:
+# The keys whose column heading is not the key itself, capitalised
+_HEADINGS = {
+    "cr": "Compute Requirement",
+    "cr-id": "Compute Requirement ID",
+    "creator-id": "Creator ID",
+    "instance-id": "Instance ID",
+}
+
+
+def _heading(key: str) -> str:
+    """
+    A '--by' key's column heading: 'instance-type' as 'Instance type'.
+    """
+    return _HEADINGS.get(key) or key.replace("-", " ").capitalize()
+
+
+def _unpriced_json(costing: Costing) -> dict:
+    """
+    The document's cost keys: the currency, and what had no price.
+    """
+    return {
+        "currency": COST_CURRENCY,
+        "pricesRefused": costing.refused,
+        "unreadablePrices": [
+            {"provider": provider, "region": region}
+            for provider, region in costing.unreadable
+        ],
+        "unpriced": [
+            {
+                "provider": provider,
+                "region": region,
+                "instanceType": instance_type,
+                "pricing": pricing,
+                "runningHours": round(seconds / _SECONDS_PER_HOUR, 3),
+            }
+            for (provider, region, instance_type, pricing), seconds in sorted(
+                costing.unpriced.items()
+            )
+        ],
+    }
+
+
+def _group_json(group: UsageGroup, costing: Costing | None = None) -> dict:
     keys: dict = {}
     for key, value in group.keys.items():
         keys[key] = value
@@ -237,6 +506,15 @@ def _group_json(group: UsageGroup) -> dict:
             **{status: round(group.seconds[status]) for status in STATUS_COLUMNS},
             "total": round(group.total_seconds),
         },
+        **(_cost_json(group) if costing is not None else {}),
+    }
+
+
+def _cost_json(group: UsageGroup) -> dict:
+    cost = estimated_cost(group)
+    return {
+        "estimatedCost": None if cost is None else round(cost, 2),
+        "unpricedRunningHours": round(group.unpriced_seconds / _SECONDS_PER_HOUR, 3),
     }
 
 

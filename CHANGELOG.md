@@ -2,6 +2,26 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.18.0 — 2026-11-21
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd usage` totals spot against on-demand by `pricing`**, in place of `spot`: `--by pricing`, `--where pricing=spot`, a Pricing column and a `pricing` key in the `--json` groups. `--by spot` and `--where spot=...` are refused (exit code 2).
+- **`yd usage` names the Compute Requirement key `cr`**, in place of `requirement`: `--by cr`, `--where cr=`, a Compute Requirement column and a `cr` key in the `--json` groups. `--by requirement` is refused (exit code 2).
+
+### yd usage
+
+- **`--cost`** adds an estimated cost to each group and the total, at the cloud providers' list prices: running time only, today's prices, no discounts. Instance types without a list price, and the Instances of a region whose prices can't be read, are named and left out, the group's cost marked as a lower bound. A region's prices are kept for 24 hours (`--refresh` fetches them again).
+- **`--top <n>`** shows the `<n>` groups with the most total time and sums the rest in one row (`more` under `--json`).
+- **`--csv`** prints the table's rows as CSV, with decimal hours.
+- **New `--by` and `--where` keys**: `cr-id` (a row per Compute Requirement, where `cr` totals those sharing a name), `creator-id` (the creator's ID, with no lookup of Applications or Users) and `instance-id` (a row per Instance).
+
+### Commander
+
+- **The Variables and Properties fields share a row**, side by side and equally wide, as Namespace, Tag and Name do.
+
 ## 15.17.0 — 2026-11-20
 
 - The CLI requires `yellowdog-sdk` 16.2.0 or later.
