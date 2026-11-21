@@ -2087,10 +2087,10 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
 
 Key options:
 - `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
-- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `cr` (the Compute Requirement's name), `cr-id` (its ID), `creator` (the Application or user that provisioned the Compute Requirement, by name), `creator-id` (its ID), `provider`, `region`, `instance-type`, `source` (the Compute Source's name), `pricing` (`spot` or `on-demand`) and `instance` (the Instance's ID)
+- `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `cr` (the Compute Requirement's name), `cr-id` (its ID), `creator` (the Application or user that provisioned the Compute Requirement, by name), `creator-id` (its ID), `provider`, `region`, `instance-type`, `source` (the Compute Source's name), `pricing` (`spot` or `on-demand`) and `instance-id` (the Instance's ID)
 - `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
-- `--refresh`/`-R` — fetch the report again (see below)
+- `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
 - `--top <n>` — show the `<n>` groups with the most total time, and the rest summed in one row
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
@@ -2134,7 +2134,7 @@ yd usage --from '24 hours ago' --by tag
 yd usage --from '30 days ago' --by provider,instance-type --cost
 
 # The ten Instances that ran longest, and the rest in one row
-yd usage --by instance --top 10
+yd usage --by instance-id --top 10
 
 # Every Compute Requirement's hours, for a spreadsheet
 yd usage --by namespace,cr --csv > usage.csv
@@ -2150,7 +2150,7 @@ An Application allowed to read usage in some namespaces only is refused a report
 
 **Compute Requirements.** The `cr` key totals Compute Requirements by name, so those sharing a name, in different namespaces or one after another, are one row; `cr-id` gives each its own row. A Compute Requirement the report does not list is shown by its ID under `cr` too.
 
-**Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a line under the table names each instance type left out with its running time. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
+**Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a line under the table names each instance type left out with its running time. A region's prices are kept for 24 hours and used again, saying so, until `--refresh` fetches them afresh; prices that could not be read are not kept. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
 
 **`--top` and `--csv`.** The row `--top` adds sums the groups it leaves out, so the columns still add up to the total line, which covers every group; under `--json` it is `more`, holding the number of groups left out and their sums (`null` when none are). `--csv` writes a header row naming the `--by` keys (`creator` followed by `creatorId`), `instances`, each status's hours, `total_hours` and, with `--cost`, `estimated_cost`, and nothing else on standard output; warnings, and the instance types `--cost` had no price for, go to standard error.
 

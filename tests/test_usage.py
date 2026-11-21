@@ -237,7 +237,7 @@ class TestGroupKeys:
         assert usage_report.GROUP_KEYS == USAGE_GROUP_KEYS
         assert "creator" in USAGE_GROUP_KEYS
 
-    @pytest.mark.parametrize("key", ["requirement", "requirement-id"])
+    @pytest.mark.parametrize("key", ["requirement", "requirement-id", "instance"])
     def test_requirement_is_no_key(self, key):
         # The Compute Requirement's keys are cr and cr-id
         with pytest.raises(ArgumentTypeError, match=f"invalid grouping '{key}'"):
@@ -527,8 +527,8 @@ class TestGrouping:
         }
 
     def test_by_instance_is_one_row_per_instance(self, platform):
-        groups = usage_report.grouped_usage(_report(_ctx()), ["instance"])
-        assert {g.keys["instance"]: g.instances for g in groups} == {
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id"])
+        assert {g.keys["instance-id"]: g.instances for g in groups} == {
             "i-1": 1,
             "i-2": 1,
             "i-3": 1,
@@ -774,7 +774,7 @@ class TestTheCommandByCreator:
 class TestTheCommand:
     def test_the_new_keys_are_headed_in_full(self, platform, monkeypatch, capsys):
         _listings(monkeypatch)
-        out, _ = _show(capsys, usage_by=("cr", "cr-id", "creator-id", "instance"))
+        out, _ = _show(capsys, usage_by=("cr", "cr-id", "creator-id", "instance-id"))
         for heading in (
             "Compute Requirement",
             "Compute Requirement ID",
@@ -786,12 +786,12 @@ class TestTheCommand:
     def test_json_names_the_new_keys_as_given(self, platform, monkeypatch, capsys):
         out, _ = _show(
             capsys,
-            usage_by=("cr", "cr-id", "creator-id", "instance"),
+            usage_by=("cr", "cr-id", "creator-id", "instance-id"),
             json_output=True,
             json=True,
         )
         group = loads(out)["groups"][0]
-        assert list(group)[:4] == ["cr", "cr-id", "creator-id", "instance"]
+        assert list(group)[:4] == ["cr", "cr-id", "creator-id", "instance-id"]
 
     def test_the_table_and_its_total(self, platform, capsys):
         out, err = _show(capsys)
@@ -1470,7 +1470,7 @@ PRICES = [
 
 
 class TestCost:
-    def _costed(self, platform, rows=PRICES, by=("instance",), where=None):
+    def _costed(self, platform, rows=PRICES, by=("instance-id",), where=None):
         ctx = _ctx()
         _priced(ctx, rows)
         report = _report(ctx)
@@ -1522,7 +1522,7 @@ class TestCost:
         assert usage_cost.cost_text(spot) == "-"
         assert usage_cost.estimated_cost(spot) is None
         assert usage_cost.estimated_cost(on_demand) == pytest.approx(0.01)
-        full, _ = self._costed(platform, by=("instance",))
+        full, _ = self._costed(platform, by=("instance-id",))
         assert usage_cost.cost_text(full["i-4"]) == "0.01"
 
     def test_one_search_per_place_counted(self, platform):
@@ -1708,19 +1708,19 @@ class TestTheCommandWithCost:
 
 class TestTop:
     def test_top_keeps_the_largest_and_sums_the_rest(self, platform):
-        groups = usage_report.grouped_usage(_report(_ctx()), ["instance"])
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id"])
         kept, rest = usage.top_groups(groups, 2)
-        assert [g.keys["instance"] for g in kept] == ["i-1", "i-2"]
+        assert [g.keys["instance-id"] for g in kept] == ["i-1", "i-2"]
         assert rest is not None
-        assert rest.keys == {"instance": "(2 more)"}
+        assert rest.keys == {"instance-id": "(2 more)"}
         assert rest.instances == 2
         assert rest.total_seconds == 1800 + 900
 
     def test_the_remainder_leaves_the_other_keys_blank(self, platform):
-        groups = usage_report.grouped_usage(_report(_ctx()), ["instance", "cr"])
+        groups = usage_report.grouped_usage(_report(_ctx()), ["instance-id", "cr"])
         _, rest = usage.top_groups(groups, 1)
         assert rest is not None
-        assert rest.keys == {"instance": "(3 more)", "cr": ""}
+        assert rest.keys == {"instance-id": "(3 more)", "cr": ""}
 
     def test_top_beyond_the_groups_cuts_nothing(self, platform, capsys):
         groups = usage_report.grouped_usage(_report(_ctx()), ["namespace"])
@@ -1735,8 +1735,8 @@ class TestTop:
         assert "more" not in loads(out)
 
     def test_the_table_and_total_line(self, platform, capsys):
-        whole, _ = _show(capsys, usage_by=("instance",))
-        cut, _ = _show(capsys, usage_by=("instance",), usage_top=1)
+        whole, _ = _show(capsys, usage_by=("instance-id",))
+        cut, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
         assert "(3 more)" in cut and "i-2" not in cut
         # The text from 'Total:' on: the timestamps before it may differ
         totals = [
@@ -1751,10 +1751,10 @@ class TestTop:
 
     def test_json_more(self, platform, capsys):
         out, _ = _show(
-            capsys, usage_by=("instance",), usage_top=2, json_output=True, json=True
+            capsys, usage_by=("instance-id",), usage_top=2, json_output=True, json=True
         )
         document = loads(out)
-        assert [g["instance"] for g in document["groups"]] == ["i-1", "i-2"]
+        assert [g["instance-id"] for g in document["groups"]] == ["i-1", "i-2"]
         assert document["more"]["groups"] == 2
         assert document["more"]["instances"] == 2
         assert document["more"]["hours"]["total"] == 0.75
@@ -1762,7 +1762,7 @@ class TestTop:
     def test_a_partial_remainder_cost_shows_plus(self, platform, capsys):
         rows = [_price("t2.small", "ON_DEMAND", 0.04)]
         out, _, _ = _show_priced(
-            capsys, rows, usage_by=("instance",), usage_top=1, usage_cost=True
+            capsys, rows, usage_by=("instance-id",), usage_top=1, usage_cost=True
         )
         (line,) = [line for line in out.splitlines() if "(3 more)" in line]
         assert "0.01+" in line
@@ -1809,7 +1809,7 @@ class TestCsv:
         out, _, _ = _show_priced(
             capsys,
             rows,
-            usage_by=("instance",),
+            usage_by=("instance-id",),
             usage_top=1,
             usage_cost=True,
             csv_output=True,
@@ -1928,3 +1928,69 @@ class TestPricesRefused:
         assert document["unreadablePrices"] == [
             {"provider": "AWS", "region": "eu-west-2"}
         ]
+
+
+class TestPriceFetchIsSaid:
+    def test_the_price_searches_are_announced(self, platform, capsys):
+        out, _, _ = _show_priced(capsys, usage_cost=True)
+        assert "Fetching list prices for 1 region (AWS eu-west-2)" in out
+
+    def test_not_announced_without_cost(self, platform, capsys):
+        out, _, _ = _show_priced(capsys)
+        assert "Fetching list prices" not in out
+
+    def test_not_announced_under_json(self, platform, capsys):
+        out, err, _ = _show_priced(capsys, usage_cost=True, json_output=True, json=True)
+        assert "Fetching list prices" not in out + err
+
+
+class TestKeptPrices:
+    def test_prices_are_kept_and_reused(self, platform, capsys):
+        _, _, first = _show_priced(capsys, usage_cost=True)
+        assert first.call_count == 1
+        out, _, second = _show_priced(capsys, usage_cost=True)
+        second.assert_not_called()
+        assert "Reusing list prices for 1 region (AWS eu-west-2)" in out
+        assert "Fetching list prices" not in out
+        assert "est. $0.04 at list prices" in out
+
+    def test_refresh_fetches_prices_again(self, platform, capsys):
+        _show_priced(capsys, usage_cost=True)
+        out, _, again = _show_priced(capsys, usage_cost=True, usage_refresh=True)
+        assert again.call_count == 1
+        assert "Fetching list prices for 1 region" in out
+
+    def test_kept_prices_last_24_hours(self, platform):
+        ctx = _ctx()
+        _priced(ctx, PRICES)
+        place = ("AWS", "eu-west-2")
+        usage_cost.list_prices(ctx, {place})
+        now = time.time()
+        kept, missing = usage_cost.kept_prices(ctx, {place}, now=now + 24 * 3600 - 60)
+        assert (
+            missing == set()
+            and kept[("AWS", "eu-west-2", "t2.small", "on-demand")] == 0.04
+        )
+        kept, missing = usage_cost.kept_prices(ctx, {place}, now=now + 24 * 3600 + 60)
+        assert missing == {place} and kept == {}
+
+    def test_a_failed_search_is_not_kept(self, platform, capsys):
+        failed = HTTPError(response=SimpleNamespace(status_code=500))
+        _show_priced(capsys, failed, usage_cost=True)
+        _, _, again = _show_priced(capsys, usage_cost=True)
+        assert again.call_count == 1
+
+    def test_a_place_with_no_prices_is_kept(self, platform, capsys):
+        # A region the Platform has no prices for is asked about once a day
+        _show_priced(capsys, [], usage_cost=True)
+        _, _, again = _show_priced(capsys, [], usage_cost=True)
+        again.assert_not_called()
+
+    def test_kept_per_application(self, platform):
+        ctx = _ctx()
+        _priced(ctx, PRICES)
+        usage_cost.list_prices(ctx, {("AWS", "eu-west-2")})
+        other = _ctx()
+        other.config.key = "another-key"
+        _, missing = usage_cost.kept_prices(other, {("AWS", "eu-west-2")})
+        assert missing == {("AWS", "eu-west-2")}

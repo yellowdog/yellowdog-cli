@@ -84,12 +84,18 @@ def cache_key(*parts: str) -> str:
     return digest.hexdigest()[:32]
 
 
-def read(key: str, now: float | None = None) -> list[dict] | None:
+def read(
+    key: str,
+    now: float | None = None,
+    *,
+    name: str = CACHE_DIRECTORY_NAME,
+    lifetime: float = COMPLETION_CACHE_SECONDS,
+) -> list[dict] | None:
     """
-    The items cached under 'key', or None: none cached, expired, or
-    unusable.
+    The items cached under 'key' in the cache directory 'name', or None:
+    none cached, older than 'lifetime' seconds, or unusable.
     """
-    directory = cache_directory()
+    directory = cache_directory(name)
     if directory is None:
         return None
     try:
@@ -104,17 +110,25 @@ def read(key: str, now: float | None = None) -> list[dict] | None:
         return None
     # An entry from the future (the clock set back since) has no known age
     age = (time.time() if now is None else now) - written
-    if not 0 <= age < COMPLETION_CACHE_SECONDS:
+    if not 0 <= age < lifetime:
         return None
     return items
 
 
-def write(key: str, items: list[dict], now: float | None = None) -> None:
+def write(
+    key: str,
+    items: list[dict],
+    now: float | None = None,
+    *,
+    name: str = CACHE_DIRECTORY_NAME,
+    lifetime: float = COMPLETION_CACHE_SECONDS,
+) -> None:
     """
-    Cache 'items' under 'key', atomically, then remove every file that has
-    expired. Any failure leaves the cache as it was.
+    Cache 'items' under 'key' in the cache directory 'name', atomically,
+    then remove every file there older than 'lifetime' seconds. Any failure
+    leaves the cache as it was.
     """
-    directory = cache_directory()
+    directory = cache_directory(name)
     if directory is None:
         return
     now = time.time() if now is None else now
@@ -134,20 +148,20 @@ def write(key: str, items: list[dict], now: float | None = None) -> None:
         except OSError:
             pass
         return
-    _remove_expired(directory, now)
+    _remove_expired(directory, now, lifetime)
 
 
-def _remove_expired(directory: Path, now: float) -> None:
+def _remove_expired(directory: Path, now: float, lifetime: float) -> None:
     """
     Remove every cache file, and every partial one left by a writer that
-    died, last modified COMPLETION_CACHE_SECONDS ago or more.
+    died, last modified 'lifetime' seconds ago or more.
     """
     for path in [
         *directory.glob(f"*{_SUFFIX}"),
         *directory.glob(f".*{_PARTIAL_SUFFIX}"),
     ]:
         try:
-            if now - path.stat().st_mtime >= COMPLETION_CACHE_SECONDS:
+            if now - path.stat().st_mtime >= lifetime:
                 path.unlink()
         except OSError:
             pass  # another process removed it first, or holds it open

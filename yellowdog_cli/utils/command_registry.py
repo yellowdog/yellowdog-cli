@@ -3760,7 +3760,7 @@ USAGE_GROUP_KEYS: tuple[str, ...] = (
     "instance-type",
     "source",
     "pricing",
-    "instance",
+    "instance-id",
 )
 
 

@@ -28,6 +28,7 @@ from yellowdog_cli.utils.usage_cost import (
     Costing,
     cost_text,
     estimated_cost,
+    kept_prices,
     list_prices,
 )
 from yellowdog_cli.utils.usage_report import (
@@ -85,6 +86,29 @@ def show_usage(ctx: RunContext) -> None:
         namespace,
         refresh=bool(ctx.args.usage_refresh),
     )
+    # Where the report came from, said as soon as it is in hand, before
+    # any lookups and price searches that follow
+    age = "from an earlier run" if report.from_cache else "fetched now"
+    when = _shown(report.fetched)
+    if report.fetched_bytes is not None:
+        when += f", {size_text(report.fetched_bytes)}"
+    age += f" ({when})"
+    print_info(
+        f"{'Reusing report' if report.from_cache else 'Report'} {age},"
+        f" in '{shown_path(report.path)}'"
+        + ("; '--refresh' fetches it again" if report.from_cache else "")
+    )
+    if namespace is None and report.namespaces is not None:
+        # The Application may read usage only in these (usage_report._fetch())
+        print_info(
+            f"Reporting on the {counted(len(report.namespaces), 'namespace')}"
+            f" this Application can read usage in: {', '.join(report.namespaces)}"
+            + (
+                f"; not on {', '.join(report.refused)}, where it cannot"
+                if report.refused
+                else ""
+            )
+        )
     if (
         namespace
         and not grouped_usage(report, [])
@@ -141,28 +165,7 @@ def show_usage(ctx: RunContext) -> None:
             print_warning(_nothing_counted(where))
         return
 
-    # Where the report came from, then the heading of the table beneath it
-    age = "from an earlier run" if report.from_cache else "fetched now"
-    when = _shown(report.fetched)
-    if report.fetched_bytes is not None:
-        when += f", {size_text(report.fetched_bytes)}"
-    age += f" ({when})"
-    print_info(
-        f"{'Reusing report' if report.from_cache else 'Report'} {age},"
-        f" in '{shown_path(report.path)}'"
-        + ("; '--refresh' fetches it again" if report.from_cache else "")
-    )
-    if namespace is None and report.namespaces is not None:
-        # The Application may read usage only in these (usage_report._fetch())
-        print_info(
-            f"Reporting on the {counted(len(report.namespaces), 'namespace')}"
-            f" this Application can read usage in: {', '.join(report.namespaces)}"
-            + (
-                f"; not on {', '.join(report.refused)}, where it cannot"
-                if report.refused
-                else ""
-            )
-        )
+    # The heading of the table beneath
     scope = f" in namespace '{namespace}'" if namespace else ""
     print_info(
         f"Instance usage{scope} from {_shown_text(report.from_time)} until"
@@ -335,7 +338,21 @@ def _costing(
     Instances go unpriced, or one warning when the Application may not read
     cloud prices at all.
     """
-    found = list_prices(ctx, counted_places(report, where, creators))
+    places = counted_places(report, where, creators)
+    kept: dict = {}
+    missing = places
+    if not ctx.args.usage_refresh:
+        kept, missing = kept_prices(ctx, places)
+    if kept_places := places - missing:
+        print_info(
+            f"Reusing list prices for {_regions_text(kept_places)} from the last"
+            " 24 hours; '--refresh' fetches them again"
+        )
+    if missing:
+        # The searches take a second or so each: say what the pause is
+        print_info(f"Fetching list prices for {_regions_text(missing)}")
+    found = list_prices(ctx, missing)
+    found.prices.update(kept)
     if found.refused:
         print_warning(
             "This Application may not read cloud prices; no cost is estimated"
@@ -347,6 +364,14 @@ def _costing(
                 " Instances are not costed"
             )
     return Costing(found.prices, found.unreadable, found.refused)
+
+
+def _regions_text(places: set[tuple[str, str]]) -> str:
+    """
+    '2 regions (AWS eu-west-2, OCI uk-london-1)'.
+    """
+    names = ", ".join(f"{provider} {region}" for provider, region in sorted(places))
+    return f"{counted(len(places), 'region')} ({names})"
 
 
 def _total_cost_text(groups: list[UsageGroup]) -> str:
@@ -413,7 +438,7 @@ _HEADINGS = {
     "cr": "Compute Requirement",
     "cr-id": "Compute Requirement ID",
     "creator-id": "Creator ID",
-    "instance": "Instance ID",
+    "instance-id": "Instance ID",
 }
 
 

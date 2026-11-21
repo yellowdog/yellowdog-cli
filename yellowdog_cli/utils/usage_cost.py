@@ -19,13 +19,18 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from yellowdog_cli.utils.completion_cache import cache_key, read, write
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ExitCode, classify
+from yellowdog_cli.utils.limits import USAGE_PRICES_KEPT_SECONDS
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_report import UsageGroup
 
 _LOG = logging.getLogger(__name__)
+
+# The private temporary directory the prices are kept in
+USAGE_PRICES_DIRECTORY_NAME = "yellowdog-cli-prices"
 
 # The one currency the estimate is given in
 COST_CURRENCY = "USD"
@@ -71,8 +76,7 @@ def list_prices(ctx: RunContext, places: set[tuple[str, str]]) -> Prices:
         UsageType,
     )
 
-    on_demand: dict[PriceKey, float] = {}
-    spot: dict[PriceKey, list[float]] = defaultdict(list)
+    prices: dict[PriceKey, float] = {}
     unreadable: list[tuple[str, str]] = []
     ordered = sorted(places)
     for index, (provider, region) in enumerate(ordered):
@@ -96,6 +100,8 @@ def list_prices(ctx: RunContext, places: set[tuple[str, str]]) -> Prices:
                 return Prices(unreadable=unreadable + ordered[index:], refused=True)
             unreadable.append((provider, region))
             continue
+        on_demand: dict[PriceKey, float] = {}
+        spot: dict[PriceKey, list[float]] = defaultdict(list)
         for row in rows:
             price = row.price
             if (
@@ -118,9 +124,68 @@ def list_prices(ctx: RunContext, places: set[tuple[str, str]]) -> Prices:
             elif row.usageType is UsageType.SPOT:
                 spot[(provider, region, row.instanceType, _SPOT)].append(price.value)
         _LOG.debug("searched the prices in %s %s: %d rows", provider, region, len(rows))
-    prices = dict(on_demand)
-    prices.update({key: sum(values) / len(values) for key, values in spot.items()})
+        found = dict(on_demand)
+        found.update({key: sum(values) / len(values) for key, values in spot.items()})
+        _keep(ctx, (provider, region), found)
+        prices.update(found)
     return Prices(prices, unreadable)
+
+
+def _cache_key(ctx: RunContext, place: tuple[str, str]) -> str:
+    """
+    A region's kept prices, per account and Application, as a kept usage
+    report is.
+    """
+    return cache_key("usage-prices", ctx.config.url, ctx.config.key or "", *place)
+
+
+def _keep(
+    ctx: RunContext, place: tuple[str, str], found: dict[PriceKey, float]
+) -> None:
+    """
+    Keep a region's prices, which may be none, for USAGE_PRICES_KEPT_SECONDS.
+    """
+    write(
+        _cache_key(ctx, place),
+        [
+            {"instanceType": instance_type, "pricing": pricing, "price": price}
+            for (_, _, instance_type, pricing), price in found.items()
+        ],
+        name=USAGE_PRICES_DIRECTORY_NAME,
+        lifetime=USAGE_PRICES_KEPT_SECONDS,
+    )
+
+
+def kept_prices(
+    ctx: RunContext, places: set[tuple[str, str]], now: float | None = None
+) -> tuple[dict[PriceKey, float], set[tuple[str, str]]]:
+    """
+    The prices kept from a search within USAGE_PRICES_KEPT_SECONDS, for the
+    places that have them, and the places that have none kept.
+    """
+    prices: dict[PriceKey, float] = {}
+    missing: set[tuple[str, str]] = set()
+    for place in places:
+        items = read(
+            _cache_key(ctx, place),
+            now,
+            name=USAGE_PRICES_DIRECTORY_NAME,
+            lifetime=USAGE_PRICES_KEPT_SECONDS,
+        )
+        try:
+            prices.update(
+                {
+                    (*place, str(item["instanceType"]), str(item["pricing"])): float(
+                        item["price"]
+                    )
+                    for item in items or ()
+                }
+            )
+        except (KeyError, TypeError, ValueError):
+            items = None
+        if items is None:
+            missing.add(place)
+    return prices, missing
 
 
 class Costing:
