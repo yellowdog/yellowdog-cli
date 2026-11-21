@@ -1630,8 +1630,11 @@ class TestTheCommandWithCost:
     def test_unpriced_are_noted_under_the_table(self, platform, capsys):
         rows = [_price("t2.small", "ON_DEMAND", 0.04)]
         out, _, _ = _show_priced(capsys, rows, usage_cost=True)
-        assert "No list price for AWS eu-west-2 t3a.small (on-demand): 1:00" in out
-        assert "No list price for AWS eu-west-2 t3a.small (spot): 0:30" in out
+        lines = [line for line in out.splitlines() if "No list price" in line]
+        # Warnings, the most running time first
+        assert len(lines) == 2 and all("WARNING" in line for line in lines)
+        assert "AWS eu-west-2 t3a.small (on-demand): 1:00" in lines[0]
+        assert "AWS eu-west-2 t3a.small (spot): 0:30" in lines[1]
         assert "est. $0.01+ at list prices" in out
 
     def test_a_refusal_is_one_warning(self, platform, capsys):
@@ -1994,3 +1997,29 @@ class TestKeptPrices:
         other.config.key = "another-key"
         _, missing = usage_cost.kept_prices(other, {("AWS", "eu-west-2")})
         assert missing == {("AWS", "eu-west-2")}
+
+
+class TestUnpricedWarnings:
+    def _costing(self, count: int) -> usage_cost.Costing:
+        costing = usage_cost.Costing({})
+        for n in range(count):
+            # Type n ran n+1 minutes
+            costing.unpriced[("AWS", "eu-west-2", f"type-{n}", "on-demand")] = 60.0 * (
+                n + 1
+            )
+        return costing
+
+    def test_all_are_named_up_to_the_limit(self):
+        lines = usage._unpriced_lines(self._costing(5))
+        assert len(lines) == 5
+        assert lines[0].startswith("No list price for AWS eu-west-2 type-4 (on-demand)")
+
+    def test_beyond_the_limit_the_rest_are_one_line(self):
+        lines = usage._unpriced_lines(self._costing(8))
+        assert len(lines) == 6
+        assert "type-7" in lines[0] and "type-3" in lines[4]
+        # type-0 to type-2: 1 + 2 + 3 minutes
+        assert lines[5] == (
+            "No list price for 3 more instance types: 0:06 running not costed;"
+            " '--json' lists them all"
+        )

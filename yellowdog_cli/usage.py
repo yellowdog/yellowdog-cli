@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.output_style import UNPRICED_TYPES_SHOWN
 from yellowdog_cli.utils.printing import (
     counted,
     print_info,
@@ -157,8 +158,8 @@ def show_usage(ctx: RunContext) -> None:
         csv.writer(sys.stdout, lineterminator="\n").writerows(
             csv_rows(by, shown, rest, costing is not None)
         )
-        # A partial cost is the number alone in the CSV: say what it leaves
-        # out where it is seen, standard error
+        # A partial cost is the number alone in the CSV: what it leaves out
+        # is warned of on standard error
         for line in _unpriced_lines(costing):
             print_warning(line)
         if not groups:
@@ -198,7 +199,7 @@ def show_usage(ctx: RunContext) -> None:
     ]
     print_table(headers, rows)
     for line in _unpriced_lines(costing):
-        print_info(line)
+        print_warning(line)
     instances = sum(group.instances for group in groups)
     running = sum(group.seconds["running"] for group in groups)
     total = sum(group.total_seconds for group in groups)
@@ -211,18 +212,26 @@ def show_usage(ctx: RunContext) -> None:
 
 def _unpriced_lines(costing: Costing | None) -> list[str]:
     """
-    A line for each instance type '--cost' had no price for, with its
-    running time.
+    A warning for each instance type '--cost' had no price for, with its
+    running time, the most first; beyond UNPRICED_TYPES_SHOWN, one line for
+    the rest.
     """
     if costing is None:
         return []
-    return [
+    ordered = sorted(costing.unpriced.items(), key=lambda item: (-item[1], item[0]))
+    shown, rest = ordered[:UNPRICED_TYPES_SHOWN], ordered[UNPRICED_TYPES_SHOWN:]
+    lines = [
         f"No list price for {provider} {region} {instance_type} ({pricing}):"
         f" {duration_text(seconds)} running not costed"
-        for (provider, region, instance_type, pricing), seconds in sorted(
-            costing.unpriced.items()
-        )
+        for (provider, region, instance_type, pricing), seconds in shown
     ]
+    if rest:
+        lines.append(
+            f"No list price for {len(rest):,} more instance types:"
+            f" {duration_text(sum(seconds for _, seconds in rest))} running not"
+            " costed; '--json' lists them all"
+        )
+    return lines
 
 
 def _nothing_counted(where: dict[str, list[str]]) -> str:
