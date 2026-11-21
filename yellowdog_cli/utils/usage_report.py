@@ -42,9 +42,11 @@ import re
 import shutil
 import time
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import requests
 
@@ -59,6 +61,9 @@ from yellowdog_cli.utils.limits import (
     USAGE_REPORTS_UNUSED_SECONDS,
 )
 from yellowdog_cli.utils.printing import print_info
+
+if TYPE_CHECKING:
+    from yellowdog_cli.utils.usage_cost import Costing
 
 _LOG = logging.getLogger(__name__)
 
@@ -215,6 +220,11 @@ class UsageGroup:
     seconds: dict[str, float] = field(
         default_factory=lambda: dict.fromkeys(STATUS_COLUMNS, 0.0)
     )
+    # With '--cost' (usage_cost.Costing): the estimated cost of the running
+    # time priced, and the running seconds priced and not
+    cost: float = 0.0
+    priced_seconds: float = 0.0
+    unpriced_seconds: float = 0.0
 
     @property
     def total_seconds(self) -> float:
@@ -814,25 +824,19 @@ def grouped_usage(
     by: list[str],
     where: dict[str, list[str]] | None = None,
     creators: CreatorNames | None = None,
+    costing: Costing | None = None,
 ) -> list[UsageGroup]:
     """
     The report's Instances totalled by the keys in 'by', most total time
     first; only those matching 'where' (filter_of()) when it is given. A
     creator is named from 'creators' (creator_names()), and grouped by its
-    ID, so that two creators sharing a name are never one group.
+    ID, so that two creators sharing a name are never one group. With a
+    'costing' (usage_cost.Costing), each Instance's running time is priced
+    into its group.
     """
     creators = creators or CreatorNames()
-    with zipfile.ZipFile(report.path) as archive:
-        requirements = {
-            row["Compute Requirement ID"]: row
-            for row in _records(archive, REQUIREMENTS)
-        }
-        instances = _records(archive, INSTANCES)
     groups: dict[tuple[str, ...], UsageGroup] = {}
-    for instance in instances:
-        requirement = requirements.get(instance["Compute Requirement ID"], {})
-        if where and not _matches(where, instance, requirement, creators):
-            continue
+    for instance, requirement in _counted(report, where, creators):
         creator_id = requirement.get(CREATED_BY) or None
         values = {key: _value(key, instance, requirement, creators) for key in by}
         identity = tuple(
@@ -847,10 +851,49 @@ def grouped_usage(
         group.instances += 1
         for status, column in STATUS_COLUMNS.items():
             group.seconds[status] += _seconds(instance.get(column))
+        if costing is not None:
+            costing.add(group, instance)
     return sorted(
         groups.values(),
         key=lambda group: (-group.total_seconds, tuple(group.keys.values())),
     )
+
+
+def counted_places(
+    report: Report,
+    where: dict[str, list[str]] | None = None,
+    creators: CreatorNames | None = None,
+) -> set[tuple[str, str]]:
+    """
+    The (provider, region) of every Instance 'where' counts that ran and
+    names its region: the places whose prices '--cost' needs, since one with
+    no running time costs nothing and one with no region cannot be priced.
+    """
+    return {
+        (instance.get("Provider") or "", instance["Region"])
+        for instance, _ in _counted(report, where, creators or CreatorNames())
+        if instance.get("Region") and _seconds(instance.get("Running (s)")) > 0
+    }
+
+
+def _counted(
+    report: Report, where: dict[str, list[str]] | None, creators: CreatorNames
+) -> Iterator[tuple[dict[str, str], dict]]:
+    """
+    Each Instance the report holds that 'where' matches, with its Compute
+    Requirement's row ({} where the report does not list it).
+    """
+    with zipfile.ZipFile(report.path) as archive:
+        requirements = {
+            row["Compute Requirement ID"]: row
+            for row in _records(archive, REQUIREMENTS)
+        }
+        instances = _records(archive, INSTANCES)
+    for instance in instances:
+        requirement = requirements.get(instance["Compute Requirement ID"], {})
+        if where and not _matches(where, instance, requirement, creators):
+            continue
+        yield instance, requirement
 
 
 def filter_of(where: list[tuple[str, str]] | None) -> dict[str, list[str]]:

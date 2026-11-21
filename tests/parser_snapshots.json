@@ -41747,6 +41747,45 @@
       "choices": null,
       "const": true,
       "default": false,
+      "dest": "usage_cost",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--cost"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "usage_top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
       "dest": "json",
       "kind": "_StoreTrueAction",
       "nargs": 0,

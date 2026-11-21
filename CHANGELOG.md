@@ -13,6 +13,9 @@ These changes alter what an existing script or configuration will see:
 
 ### yd usage
 
+- **`--cost`** adds an estimated cost to each group and the total, at the cloud providers' list prices: running time only, today's prices, no discounts. Instance types without a list price, and the Instances of a region whose prices can't be read, are named and left out, the group's cost marked as a lower bound.
+- **`--top <n>`** shows the `<n>` groups with the most total time and sums the rest in one row (`more` under `--json`).
+- **`--csv`** prints the table's rows as CSV, with decimal hours.
 - **New `--by` and `--where` keys**: `cr-id` (a row per Compute Requirement, where `cr` totals those sharing a name), `creator-id` (the creator's ID, with no lookup of Applications or Users) and `instance` (a row per Instance).
 
 ### Commander

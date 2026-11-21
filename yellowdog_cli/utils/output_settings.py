@@ -37,6 +37,8 @@ class OutputSettings:
     # yd-list's '--ids-only': stdout is the IDs alone, as '--json' makes it
     # the document alone
     ids_only: bool | None = False
+    # yd-usage's '--csv': stdout is the CSV alone, as '--ids-only' makes it
+    csv_output: bool | None = False
     no_format: bool | None = False
     print_pid: bool | None = False
     count_only: bool | None = False

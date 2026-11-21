@@ -255,6 +255,7 @@ def print_info(
         OUTPUT.quiet
         or OUTPUT.json_output
         or OUTPUT.ids_only
+        or OUTPUT.csv_output
         or OUTPUT.count_only
         or _INFO_SILENCED
     ) and override_quiet is False:
@@ -337,9 +338,12 @@ def print_warning(
     if warnings_suppressed() and override_quiet is False:
         return
 
-    # Under '--json' stdout is the result document alone, so a warning goes
-    # to stderr rather than being dropped
-    to_stderr = stderr or bool(OUTPUT.json_output or OUTPUT.ids_only)
+    # Under '--json' stdout is the result document alone (the IDs or the CSV
+    # alone under '--ids-only' or '--csv'), so a warning goes to stderr rather
+    # than being dropped
+    to_stderr = stderr or bool(
+        OUTPUT.json_output or OUTPUT.ids_only or OUTPUT.csv_output
+    )
 
     if OUTPUT.no_format:
         print(

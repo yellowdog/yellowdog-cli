@@ -208,6 +208,7 @@ class TestWarnings:
             quiet=False,
             count_only=False,
             ids_only=False,
+            csv_output=False,
             print_pid=False,
             no_format=True,
             debug=False,
@@ -382,6 +383,7 @@ _DEFAULTS = {
     "no_format": True,
     "count_only": False,
     "ids_only": False,
+    "csv_output": False,
     "print_pid": False,
     "debug": False,
     "validate": False,
@@ -988,6 +990,7 @@ class TestCreate:
             quiet=False,
             count_only=False,
             ids_only=False,
+            csv_output=False,
             print_pid=False,
             no_format=True,
         )
