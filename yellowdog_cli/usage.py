@@ -12,7 +12,9 @@ said above the table. '--json' prints one document holding the same.
 
 import csv
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Any
 
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import NotFoundError
@@ -129,7 +131,11 @@ def show_usage(ctx: RunContext) -> None:
                 " their creators are shown by ID"
             )
     costing = _costing(ctx, report, where, creators) if ctx.args.usage_cost else None
-    groups = grouped_usage(report, by, where, creators, costing)
+    groups = sorted_groups(
+        grouped_usage(report, by, where, creators, costing),
+        ctx.args.usage_sort or ("total",),
+        bool(ctx.args.reverse),
+    )
     shown, rest = top_groups(groups, ctx.args.usage_top)
 
     if ctx.args.json_output:
@@ -295,6 +301,46 @@ def csv_rows(
             ]
         )
     return rows
+
+
+# The '--sort' keys other than the '--by' keys, each a group's value, the
+# most first; None for a group without one (a cost with nothing priced),
+# which sorted_groups() puts last
+_SORT_VALUES: dict[str, Callable[[UsageGroup], float | None]] = {
+    "instances": lambda group: group.instances,
+    "running": lambda group: group.seconds["running"],
+    "stopped": lambda group: group.seconds["stopped"],
+    "total": lambda group: group.total_seconds,
+    "cost": estimated_cost,
+}
+
+
+def sorted_groups(
+    groups: list[UsageGroup], sort: tuple[str, ...], reverse: bool
+) -> list[UsageGroup]:
+    """
+    The groups ordered by each '--sort' key in turn, the first the most
+    significant: a '--by' key's value alphabetically, any other key the
+    most first, '--reverse' inverting both. A group without a value for a
+    key goes after those with one whichever the direction, and ties keep
+    grouped_usage()'s order: one stable sort per key, from the least
+    significant to the most.
+    """
+    ordered = list(groups)
+    for name in reversed(sort):
+        value = _sort_value(name)
+        present = [group for group in ordered if value(group) is not None]
+        present.sort(key=value, reverse=(name in _SORT_VALUES) != reverse)
+        ordered = present + [group for group in ordered if value(group) is None]
+    return ordered
+
+
+def _sort_value(name: str) -> Callable[[UsageGroup], Any]:
+    """
+    A '--sort' key's value for a group: a '--by' key's value, or one of
+    _SORT_VALUES.
+    """
+    return _SORT_VALUES.get(name) or (lambda group: group.keys[name])
 
 
 def top_groups(

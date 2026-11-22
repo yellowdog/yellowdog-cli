@@ -539,6 +539,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def usage_sort(self) -> tuple[str, ...] | None:
+        return self.args.usage_sort
+
+    @property
+    @allow_missing_attribute
     def csv_output(self) -> bool | None:
         return self.args.csv_output
 

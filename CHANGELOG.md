@@ -11,6 +11,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **`--top <n>`** lists only the first `<n>` items in the order `--sort` gives.
 - **`--csv`** prints the items as CSV, with raw values.
 
+### yd usage
+
+- **`--sort <key>[,...]` and `--reverse`** order the groups by any `--by` key (alphabetically) or by `instances`, `running`, `stopped`, `total` or `cost` (the most first); `total` is the default, as before. `--top` keeps the first groups in that order.
+
 ## 15.18.0 — 2026-11-21
 
 ### Upgrading

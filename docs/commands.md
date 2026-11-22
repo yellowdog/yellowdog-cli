@@ -98,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sat Nov 21 14:06:54 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 22 16:31:26 GMT 2026 -->
 
 <!--te-->
 
@@ -2108,7 +2108,9 @@ Key options:
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
-- `--top <n>` — show the `<n>` groups with the most total time, and the rest summed in one row
+- `--sort <key>[,...]` — the order of the groups, one key or several separated by commas, the most significant first: any `--by` key, in alphabetical order, or `instances`, `running`, `stopped`, `total` or `cost` (with `--cost`), the most first; `total` if not given. A key that is not one of the `--by` keys, or `cost` without `--cost`, is a usage error (exit code 2)
+- `--reverse` — invert the whole order `--sort` gives
+- `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
 - `--json`/`-J` — print one JSON document holding the window, when the report was fetched and where it is kept, and each group's Instance count and its time in every status, in hours and in exact seconds:
 
@@ -2152,6 +2154,9 @@ yd usage --from '30 days ago' --by provider,instance-type --cost
 # The ten Instances that ran longest, and the rest in one row
 yd usage --by instance-id --top 10
 
+# Each provider's Instances together, the costliest first within each
+yd usage --from '3 months' --cost --by provider,instance-id --sort provider,cost
+
 # Every Compute Requirement's hours, for a spreadsheet
 yd usage --by namespace,cr --csv > usage.csv
 ```
@@ -2167,6 +2172,8 @@ An Application allowed to read usage in some namespaces only is refused a report
 **Compute Requirements.** The `cr` key totals Compute Requirements by name, so those sharing a name, in different namespaces or one after another, are one row; `cr-id` gives each its own row. A Compute Requirement the report does not list is shown by its ID under `cr` too.
 
 **Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in; `yd cloudinfo instance-types --prices` shows the lowest), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a warning names each instance type left out with its running time, the five with the most first and the rest summed in one line (`--json`'s `unpriced` lists them all). A region's prices are kept for 24 hours and used again, saying so, until `--refresh` fetches them afresh; prices that could not be read are not kept. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
+
+**`--sort`.** Ties on every `--sort` key keep the default order, the most total time first. A group whose cost has nothing priced (`-`) sorts after the others whichever the direction.
 
 **`--top` and `--csv`.** The row `--top` adds sums the groups it leaves out, so the columns still add up to the total line, which covers every group; under `--json` it is `more`, holding the number of groups left out and their sums (`null` when none are). `--csv` writes a header row naming the `--by` keys (`creator` followed by `creatorId`), `instances`, each status's hours, `total_hours` and, with `--cost`, `estimated_cost`, and nothing else on standard output; warnings, and the instance types `--cost` had no price for, go to standard error.
 

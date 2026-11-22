@@ -3814,6 +3814,41 @@ def usage_filter(value: str) -> tuple[str, str]:
     return key, pattern
 
 
+# What yd-usage's '--sort' orders the groups by beyond the '--by' keys
+# (usage.py's _SORT_VALUES, which a test holds to these): each the most first
+USAGE_SORT_VALUE_KEYS: tuple[str, ...] = (
+    "instances",
+    "running",
+    "stopped",
+    "total",
+    "cost",
+)
+USAGE_SORT_KEYS: tuple[str, ...] = USAGE_GROUP_KEYS + USAGE_SORT_VALUE_KEYS
+
+
+def usage_sort_keys(value: str) -> tuple[str, ...]:
+    """
+    An argparse type for yd-usage's '--sort': any of its keys, which
+    check_usage_sort() then holds to the '--by' keys and '--cost'.
+    """
+    return parse_sort_keys(value, USAGE_SORT_KEYS)
+
+
+def check_usage_sort(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    On yd-usage, refuse a '--sort' key the groups do not have: a grouping
+    key '--by' does not name, or 'cost' without '--cost'.
+    """
+    by = getattr(args, "usage_by", None) or ("namespace",)
+    for key in getattr(args, "usage_sort", None) or ():
+        if key in USAGE_GROUP_KEYS and key not in by:
+            parser.error(
+                f"--sort {key} needs {key} in --by (the groups are by: {', '.join(by)})"
+            )
+        if key == "cost" and not getattr(args, "usage_cost", False):
+            parser.error("--sort cost needs --cost")
+
+
 COMMANDS["yd-usage"] = Command(
     name="yd-usage",
     purpose=(
@@ -3897,14 +3932,31 @@ COMMANDS["yd-usage"] = Command(
             ),
         ),
         option(
+            "--sort",
+            dest="usage_sort",
+            type=usage_sort_keys,
+            metavar="<key>[,...]",
+            required=False,
+            default="total",
+            help=(
+                "the order of the groups, one key or several separated by"
+                " commas, the most significant first: any '--by' key (in"
+                " alphabetical order), or instances, running, stopped, total or"
+                " cost (the most first; cost with '--cost'); 'total' if not"
+                " given"
+            ),
+        ),
+        REVERSE,
+        option(
             "--top",
             dest="usage_top",
             type=positive_int,
             metavar="<n>",
             required=False,
             help=(
-                "show the <n> groups with the most total time, and the rest"
-                " summed in one row"
+                "show the first <n> groups in the order '--sort' gives (the"
+                " most total time first if not given), and the rest summed in"
+                " one row"
             ),
         ),
         option(
@@ -3916,7 +3968,7 @@ COMMANDS["yd-usage"] = Command(
         ),
         JSON.variant(help="print one JSON document holding the window and the totals"),
     ),
-    validators=(check_csv_excludes_json,),
+    validators=(check_csv_excludes_json, check_usage_sort),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Show the hours Instances spent in each status (pending, running,"
@@ -3986,6 +4038,7 @@ SORT_KEY_TYPES: dict[Callable[[str], tuple[str, ...]], tuple[str, ...]] = {
     entity_sort_keys: ENTITY_SORT_KEYS,
     cloud_info_sort_keys: _CLOUD_INFO_SORT_CHOICES,
     usage_group_keys: USAGE_GROUP_KEYS,
+    usage_sort_keys: USAGE_SORT_KEYS,
 }
 
 # The types each filter applies to, as (dest, flag, types); '--provider' and
