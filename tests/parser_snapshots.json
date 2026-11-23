@@ -29614,7 +29614,11 @@
       "type": "lower_case"
     },
     {
-      "choices": null,
+      "choices": [
+        "aws",
+        "azure",
+        "google"
+      ],
       "const": null,
       "default": null,
       "dest": "cloud_provider",
@@ -29624,7 +29628,7 @@
         "--cloud-provider"
       ],
       "required": true,
-      "type": "str"
+      "type": "lower_case"
     },
     {
       "choices": null,

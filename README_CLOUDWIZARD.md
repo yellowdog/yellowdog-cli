@@ -55,7 +55,7 @@
 * [Options, Errors and Exit Codes](#options-errors-and-exit-codes)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Wed Oct 28 08:18:20 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 23 16:46:59 GMT 2026 -->
 
 <!--te-->
 
@@ -301,7 +301,7 @@ Ensure you have credentials (keys) for a **GCP Service Account** in a GCP projec
 To set up a GCP project for YellowDog, run `setup`, giving the Service Account's credentials file:
 
 ```commandline
-yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json setup
+yd cloudwizard --cloud-provider=google --credentials-file=credentials.json setup
 ```
 
 The command lists the GCP regions in which your Service Account has a default subnet. Select the regions for which to create YellowDog Compute Source Templates. For example:
@@ -343,7 +343,7 @@ The Compute Requirement Templates are then ready for provisioning, which must su
 To remove the YellowDog resources that Cloud Wizard created, run `teardown`:
 
 ```commandline
-yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
+yd cloudwizard --cloud-provider=google --credentials-file=credentials.json teardown
 ```
 
 Every destructive operation asks for confirmation first. To skip the confirmations, add `--yes`/`-y`.
@@ -385,7 +385,7 @@ Cloud Wizard performs the following actions in your YellowDog Platform account:
 To remove everything Cloud Wizard created, run:
 
 ```commandline
-yd cloudwizard --cloud-provider=gcp --credentials-file=credentials.json teardown
+yd cloudwizard --cloud-provider=google --credentials-file=credentials.json teardown
 ```
 
 Every destructive step asks for confirmation first, unless you add `--yes`/`-y`.
@@ -693,7 +693,7 @@ yd resource create -v instance_type=t3a.small cloudwizard-aws-yellowdog-resource
 
 # Options, Errors and Exit Codes
 
-**Provider names.** `--cloud-provider` takes `aws` (or `amazon`), `gcp` (or `gce`, `google`) or `azure` (or `microsoft`), in any case. Any other name is refused as the command line is read.
+**Provider names.** `--cloud-provider` takes `aws`, `google` or `azure`, in any case: the names the YellowDog Platform uses, as `yd list --provider` and `yd cloudinfo --provider` do. Any other name is refused as the command line is read.
 
 **Refused combinations.** These are also refused as the command line is read: GCP without `--credentials-file`, `add-ssh` and `remove-ssh` for GCP, and `add-ssh` and `remove-ssh` for Azure without `--region-name`.
 

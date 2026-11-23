@@ -14,8 +14,9 @@ from requests import ConnectionError as RequestsConnectionError
 
 from yellowdog_cli.utils import output_settings
 from yellowdog_cli.utils.command_registry import (
+    COMMANDS,
+    build_parser,
     check_cloudwizard_args,
-    cloud_provider_of,
 )
 from yellowdog_cli.utils.exit_codes import ReportedFailure
 
@@ -28,30 +29,37 @@ def _args(**values) -> Namespace:
 
 
 class TestTheCommandLine:
-    @pytest.mark.parametrize(
-        "spelling, provider",
-        [("aws", "AWS"), ("Amazon", "AWS"), ("gce", "GCP"), ("AZURE", "Azure")],
-    )
-    def test_the_provider_spellings(self, spelling, provider):
-        assert cloud_provider_of(spelling) == provider
+    @pytest.mark.parametrize("name", ["aws", "Azure", "GOOGLE"])
+    def test_the_platforms_provider_names(self, name):
+        parsed = build_parser(COMMANDS["yd-cloudwizard"]).parse_args(
+            ["setup", "--cloud-provider", name, "--credentials-file", "c.json"]
+        )
+        assert parsed.cloud_provider == name.lower()
+
+    @pytest.mark.parametrize("name", ["gcp", "amazon", "microsoft", "oci", "nimbus"])
+    def test_other_provider_names_are_refused(self, name, capsys):
+        with pytest.raises(SystemExit) as raised:
+            build_parser(COMMANDS["yd-cloudwizard"]).parse_args(
+                ["setup", "--cloud-provider", name]
+            )
+        assert raised.value.code == 2
+        assert "invalid choice" in capsys.readouterr().err
 
     @pytest.mark.parametrize(
         "values, message",
         [
-            ({"cloud_provider": "nimbus"}, "unknown or unsupported cloud provider"),
-            ({"cloud_provider": "oci"}, "unknown or unsupported cloud provider"),
-            ({"cloud_provider": "gcp"}, "--credentials-file is required for GCP"),
+            ({"cloud_provider": "google"}, "--credentials-file is required for google"),
             (
                 {
-                    "cloud_provider": "gcp",
+                    "cloud_provider": "google",
                     "credentials_file": "c.json",
                     "operation": "add-ssh",
                 },
-                "'add-ssh' is not supported for GCP",
+                "'add-ssh' is not supported for google",
             ),
             (
                 {"cloud_provider": "azure", "operation": "remove-ssh"},
-                "'remove-ssh' needs --region-name for Azure",
+                "'remove-ssh' needs --region-name for azure",
             ),
         ],
     )
@@ -67,7 +75,7 @@ class TestTheCommandLine:
         "values",
         [
             {},
-            {"cloud_provider": "gcp", "credentials_file": "c.json"},
+            {"cloud_provider": "google", "credentials_file": "c.json"},
             {
                 "cloud_provider": "azure",
                 "operation": "add-ssh",

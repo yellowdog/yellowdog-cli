@@ -1954,11 +1954,9 @@ OPERATION = option(
 CLOUD_PROVIDER = option(
     "--cloud-provider",
     required=True,
-    metavar="<name of cloud provider>",
-    type=str,
-    help=(
-        "the name of the cloud provider (AWS, GCP, and Azure are currently supported)"
-    ),
+    choices=("aws", "azure", "google"),
+    metavar="<aws|azure|google>",
+    help="the cloud provider, named as the Platform names it",
 )
 CREDENTIALS_FILE = option(
     "--credentials-file",
@@ -1991,43 +1989,29 @@ INSTANCE_TYPE = option(
     ),
 )
 
-# The providers Cloud Wizard supports, by each spelling it accepts
+# The provider Cloud Wizard sets up for each '--cloud-provider' choice, by
+# the name its configuration classes use (the namespace, cloudwizard-gcp,
+# among what they name with it)
 CLOUD_PROVIDERS: dict[str, str] = {
     "aws": "AWS",
-    "amazon": "AWS",
-    "gcp": "GCP",
-    "gce": "GCP",
-    "google": "GCP",
     "azure": "Azure",
-    "microsoft": "Azure",
+    "google": "GCP",
 }
-
-
-def cloud_provider_of(name: str) -> str | None:
-    """
-    The provider a '--cloud-provider' spelling names, or None.
-    """
-    return CLOUD_PROVIDERS.get(name.strip().lower())
 
 
 def check_cloudwizard_args(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-cloudwizard's provider, and what each operation needs from it, refused
+    What each of yd-cloudwizard's operations needs from its provider, refused
     as the command line is parsed rather than reported and exited 0.
     """
-    provider = cloud_provider_of(args.cloud_provider)
-    if provider is None:
-        parser.error(
-            f"unknown or unsupported cloud provider '{args.cloud_provider}'; one of"
-            f" {', '.join(CLOUD_PROVIDERS)}"
-        )
-    if provider == "GCP" and args.credentials_file is None:
-        parser.error("--credentials-file is required for GCP")
+    provider = args.cloud_provider
+    if provider == "google" and args.credentials_file is None:
+        parser.error("--credentials-file is required for google")
     if args.operation in ("add-ssh", "remove-ssh"):
-        if provider == "GCP":
-            parser.error(f"'{args.operation}' is not supported for GCP")
-        if provider == "Azure" and args.region_name is None:
-            parser.error(f"'{args.operation}' needs --region-name for Azure")
+        if provider == "google":
+            parser.error(f"'{args.operation}' is not supported for google")
+        if provider == "azure" and args.region_name is None:
+            parser.error(f"'{args.operation}' needs --region-name for azure")
 
 
 COMMANDS["yd-cloudwizard"] = Command(

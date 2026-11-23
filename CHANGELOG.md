@@ -4,6 +4,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd cloudwizard --cloud-provider` takes the Platform's provider names alone:** `aws`, `azure` and `google`, as `yd list --provider` and `yd cloudinfo --provider` do. `gcp`, `gce`, `amazon` and `microsoft` are refused (exit code 2); use `google` in place of `gcp`. The resources Cloud Wizard creates keep their names (`cloudwizard-gcp`), so a teardown finds what an earlier setup made.
+
 ### Commands
 
 - **Capitals are accepted** in nouns, verbs and commands (`yd CloudInfo Regions`) and in every option's fixed choice of words: `--provider AWS`, `--arch ARM64`, `--usage Spot`, `--sort Name`, `yd usage --by Provider` and `--where Provider=aws`, the `yd cloudinfo` type, `yd schema`'s family and `yd completion`'s shell.
