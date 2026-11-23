@@ -182,6 +182,8 @@ def _ctx(**args) -> RunContext:
         "usage_where": None,
         "usage_cost": False,
         "usage_top": None,
+        "usage_sort": ("total",),
+        "reverse": False,
         "csv_output": False,
         "namespace": None,
         **args,
@@ -1769,6 +1771,140 @@ class TestTop:
         )
         (line,) = [line for line in out.splitlines() if "(3 more)" in line]
         assert "0.01+" in line
+
+
+def _parsed_usage(*argv: str):
+    from yellowdog_cli.utils.args import CLIParser
+
+    return CLIParser("yd-usage", list(argv))
+
+
+class TestSort:
+    def _ids(self, groups) -> list[str]:
+        return [group.keys["instance-id"] for group in groups]
+
+    def _groups(self, by=("instance-id",)):
+        return usage_report.grouped_usage(_report(_ctx()), list(by))
+
+    def test_total_is_grouped_usages_order(self, platform):
+        groups = self._groups()
+        assert usage.sorted_groups(groups, ("total",), False) == groups
+
+    def test_a_by_key_sorts_alphabetically(self, platform):
+        groups = self._groups(("instance-type", "instance-id"))
+        ordered = usage.sorted_groups(groups, ("instance-type",), False)
+        assert [g.keys["instance-type"] for g in ordered] == [
+            "g4dn.xlarge",
+            "t2.small",
+            "t3a.small",
+            "t3a.small",
+        ]
+        # Ties keep grouped_usage()'s order, the most total time first
+        assert self._ids(ordered)[2:] == ["i-2", "i-3"]
+
+    def test_values_sort_the_most_first(self, platform):
+        groups = self._groups()
+        assert self._ids(usage.sorted_groups(groups, ("running",), False)) == [
+            "i-2",
+            "i-3",
+            "i-4",
+            "i-1",
+        ]
+        assert self._ids(usage.sorted_groups(groups, ("stopped",), False))[0] == "i-1"
+
+    def test_reverse_inverts_both_directions(self, platform):
+        groups = self._groups()
+        assert self._ids(usage.sorted_groups(groups, ("total",), True)) == [
+            "i-4",
+            "i-3",
+            "i-2",
+            "i-1",
+        ]
+        assert self._ids(usage.sorted_groups(groups, ("instance-id",), True)) == [
+            "i-4",
+            "i-3",
+            "i-2",
+            "i-1",
+        ]
+
+    def test_several_keys_the_first_most_significant(self, platform):
+        groups = self._groups(("pricing", "instance-id"))
+        ordered = usage.sorted_groups(groups, ("pricing", "running"), False)
+        assert [(g.keys["pricing"], g.keys["instance-id"]) for g in ordered] == [
+            ("on-demand", "i-2"),
+            ("on-demand", "i-4"),
+            ("on-demand", "i-1"),
+            ("spot", "i-3"),
+        ]
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_a_cost_with_nothing_priced_goes_last(self, platform, reverse):
+        groups = self._groups()
+        for group in groups:
+            if group.keys["instance-id"] == "i-2":
+                group.unpriced_seconds = 3600
+            else:
+                group.cost = {"i-1": 0.0, "i-3": 2.0, "i-4": 1.0}[
+                    group.keys["instance-id"]
+                ]
+                group.priced_seconds = 1
+        ordered = self._ids(usage.sorted_groups(groups, ("cost",), reverse))
+        assert ordered == (
+            ["i-1", "i-4", "i-3", "i-2"] if reverse else ["i-3", "i-4", "i-1", "i-2"]
+        )
+
+    def test_the_registry_offers_every_value_key(self):
+        from yellowdog_cli.utils.command_registry import USAGE_SORT_VALUE_KEYS
+
+        assert tuple(usage._SORT_VALUES) == USAGE_SORT_VALUE_KEYS
+
+    def test_the_command_sorts_and_top_takes_the_first(self, platform, capsys):
+        out, _ = _show(
+            capsys,
+            usage_by=("instance-id",),
+            usage_sort=("instance-id",),
+            reverse=True,
+            usage_top=2,
+            json_output=True,
+            json=True,
+        )
+        document = loads(out)
+        assert [g["instance-id"] for g in document["groups"]] == ["i-4", "i-3"]
+        assert document["more"]["groups"] == 2
+
+    def test_the_parser_reads_sort_and_reverse(self):
+        parsed = _parsed_usage(
+            "--by", "provider,instance-id", "--sort", "provider", "--reverse"
+        )
+        assert parsed.usage_sort == ("provider",)
+        assert parsed.reverse is True
+
+    @pytest.mark.parametrize(
+        "argv, message",
+        [
+            (
+                ["--sort", "provider"],
+                "--sort provider needs provider in --by (the groups are by: namespace)",
+            ),
+            (
+                ["--by", "region", "--sort", "namespace"],
+                "--sort namespace needs namespace in --by (the groups are by: region)",
+            ),
+            (["--sort", "cost"], "--sort cost needs --cost"),
+            (["--sort", "hours"], "invalid sort key 'hours'"),
+        ],
+    )
+    def test_a_sort_key_the_groups_lack_is_refused(self, argv, message, capsys):
+        with pytest.raises(SystemExit) as raised:
+            _parsed_usage(*argv)
+        assert raised.value.code == 2
+        assert message in capsys.readouterr().err
+
+    def test_cost_with_cost_is_accepted(self):
+        assert _parsed_usage("--cost", "--sort", "cost,namespace").usage_sort == (
+            "cost",
+            "namespace",
+        )
 
 
 _CSV_HOURS = [

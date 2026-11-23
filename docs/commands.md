@@ -66,6 +66,7 @@
       * [yd data delete](#yd-data-delete)
       * [yd data copy](#yd-data-copy)
    * [yd cloudinfo](#yd-cloudinfo)
+         * [Details](#details-2)
       * [yd cloudinfo regions](#yd-cloudinfo-regions)
       * [yd cloudinfo sub-regions](#yd-cloudinfo-sub-regions)
       * [yd cloudinfo instance-types](#yd-cloudinfo-instance-types)
@@ -75,10 +76,10 @@
          * [Writing Files](#writing-files)
       * [yd jsonnet fromjson](#yd-jsonnet-fromjson)
       * [yd jsonnet factor](#yd-jsonnet-factor)
-         * [Details](#details-2)
+         * [Details](#details-3)
    * [yd list](#yd-list)
       * [Listing Several Namespaces](#listing-several-namespaces)
-         * [Details](#details-3)
+         * [Details](#details-4)
    * [yd show](#yd-show)
    * [yd follow](#yd-follow)
    * [yd wait](#yd-wait)
@@ -97,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 20 12:39:53 GMT 2026 -->
+<!-- Added by: pwt, at: Sun Nov 22 16:31:26 GMT 2026 -->
 
 <!--te-->
 
@@ -1587,7 +1588,7 @@ yd data copy -R --dry-run input/ output/
 
 ## yd cloudinfo
 
-The `yd cloudinfo` verbs list what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. They answer questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, and which of them is cheapest on spot.
+The `yd cloudinfo` verbs list what the YellowDog Platform knows about the cloud providers: their regions and sub-regions (availability zones), their instance types, and the instance types' prices. They answer questions such as which instance types with 4 to 8 vCPUs and at least 16 GiB of RAM are offered in a region, which of them is cheapest per vCPU on spot, and how much spot saves.
 
 ```shell
 yd cloudinfo <regions|sub-regions|instance-types|prices> [options]
@@ -1601,22 +1602,35 @@ Key options:
 - `--sub-region <sub-region>` — the sub-region, which needs `--region` (instance-types, prices); prices for a sub-region include the region's on-demand prices, which apply to every sub-region
 - `--name <glob>` — the item's name; for prices, the instance type's (every verb)
 - `--vcpus <n|n-m>`, `--ram <GiB|GiB-GiB>` — the number of vCPUs, and the RAM in GiB: `n` exactly, `n-m` inclusive, `n-` at least, `-m` at most (instance-types)
+- `--gpus <n|n-m>` — the number of GPUs, in the same forms; `--gpus 0` lists the types without one, `--gpus 1-` those with one (instance-types)
 - `--arch <x86_64|arm64>` — the processor architecture (instance-types)
 - `--usage <spot|on-demand>` — one kind of price only (prices)
 - `--os <none|windows>` — prices for this operating system licence, `none` by default (prices, and instance-types with `--prices`)
-- `--prices` — add each instance type's on-demand price and lowest spot price in the region, and the sub-region the spot price is found in; needs `--region` (instance-types)
-- `--sort <name|vcpus|ram|price|spot|on-demand>[,...]` — `name` (the default) for every verb, `vcpus` and `ram` for instance types, `price` for prices, `spot` and `on-demand` for instance types with `--prices`; give several keys, separated by commas, to sort by each in turn (`--sort spot,vcpus`: cheapest first, the smaller of equally priced types first); items without a value for a key come after those with one, with `--reverse` too
+- `--prices` — add each instance type's on-demand price and lowest spot price in the region, the sub-region the spot price is found in, both prices per vCPU, and the spot saving (how much less spot costs than on-demand); needs `--region` (instance-types)
+- `--sort <name|vcpus|ram|price|spot|on-demand|...>[,...]` — `name` (the default) for every verb, `vcpus` and `ram` for instance types, `price` for prices, and for instance types with `--prices` `spot`, `on-demand`, `spot-per-vcpu`, `on-demand-per-vcpu` and `saving`; give several keys, separated by commas, to sort by each in turn (`--sort spot,vcpus`: cheapest first, the smaller of equally priced types first); items without a value for a key come after those with one, with `--reverse` too
 - `--reverse` — reverse the whole order `--sort` gives
+- `--top <n>` — list only the first `<n>` items, in the order `--sort` gives (every verb)
 - `--count`/`-C` — print only the number of items
 - `--json`/`-J` — emit the items as a JSON array (see [Machine-readable Output and Exit Codes](json-output.md))
+- `--csv` — print the items as CSV (every verb)
 
 ```shell
 yd cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd cloudinfo instance-types --region eu-west-2 --vcpus 16- --prices --sort spot-per-vcpu --top 10
+yd cloudinfo instance-types --region eu-west-2 --gpus 1- --prices --csv > gpu-prices.csv
 yd cloudinfo prices --region eu-west-2 --name 't3.*' --usage spot
 yd cloudinfo sub-regions --provider aws --region us-east-1
 ```
 
 Prices are per hour, as the Platform reports them, in the currency it gives them in.
+
+#### Details
+
+**Spot prices.** `--prices` shows the region's lowest spot price for each instance type, with the sub-region it is found in. `yd usage --cost` prices spot time at the mean of the region's spot prices instead, since the usage report does not say which sub-region an Instance ran in, so its spot figures can be higher than those shown here.
+
+**Per vCPU and saving.** The per-vCPU prices are each price divided by the type's vCPUs. The spot saving is `1 − spot ÷ on-demand` as a percentage, negative where spot costs more. A per-vCPU price is blank where its price or the vCPU count is missing, and the saving where either price is missing or the on-demand price is 0; an item with a blank sorts after those with a value, with `--reverse` too, so `--sort saving --reverse` lists the biggest savings first.
+
+**`--top` and `--csv`.** `--top` cuts the listing after sorting, and a line under the table says how many it shows of how many; under `--json` the array holds the first `<n>`. It cannot be combined with `--count`. `--csv` prints a header of the table's columns in snake_case and then the rows, with raw values: numbers unformatted, a missing value empty, GPUs as a count, and enums by name (`ON_DEMAND`). It cannot be combined with `--json` or `--count`.
 
 | Verb | What it does | Replaces |
 |---|---|---|
@@ -1667,10 +1681,12 @@ yd cloudinfo instance-types [options]
 
 Key options:
 - `--vcpus <n|n-m>`, `--ram <GiB|GiB-GiB>` — the number of vCPUs, and the RAM in GiB
-- `--prices` — add each instance type's on-demand price and lowest spot price in the region; needs `--region`
+- `--gpus <n|n-m>` — the number of GPUs
+- `--prices` — add each instance type's on-demand price and lowest spot price in the region, both per vCPU, and the spot saving; needs `--region`
 
 ```shell
 yd cloudinfo instance-types --region eu-west-2 --vcpus 4-8 --ram 16- --prices --sort spot
+yd cloudinfo instance-types --region eu-west-2 --vcpus 16- --prices --sort spot-per-vcpu --top 10
 ```
 
 ### yd cloudinfo prices
@@ -2092,7 +2108,9 @@ Key options:
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
-- `--top <n>` — show the `<n>` groups with the most total time, and the rest summed in one row
+- `--sort <key>[,...]` — the order of the groups, one key or several separated by commas, the most significant first: any `--by` key, in alphabetical order, or `instances`, `running`, `stopped`, `total` or `cost` (with `--cost`), the most first; `total` if not given. A key that is not one of the `--by` keys, or `cost` without `--cost`, is a usage error (exit code 2)
+- `--reverse` — invert the whole order `--sort` gives
+- `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
 - `--json`/`-J` — print one JSON document holding the window, when the report was fetched and where it is kept, and each group's Instance count and its time in every status, in hours and in exact seconds:
 
@@ -2136,6 +2154,9 @@ yd usage --from '30 days ago' --by provider,instance-type --cost
 # The ten Instances that ran longest, and the rest in one row
 yd usage --by instance-id --top 10
 
+# Each provider's Instances together, the costliest first within each
+yd usage --from '3 months' --cost --by provider,instance-id --sort provider,cost
+
 # Every Compute Requirement's hours, for a spreadsheet
 yd usage --by namespace,cr --csv > usage.csv
 ```
@@ -2150,7 +2171,9 @@ An Application allowed to read usage in some namespaces only is refused a report
 
 **Compute Requirements.** The `cr` key totals Compute Requirements by name, so those sharing a name, in different namespaces or one after another, are one row; `cr-id` gives each its own row. A Compute Requirement the report does not list is shown by its ID under `cr` too.
 
-**Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a warning names each instance type left out with its running time, the five with the most first and the rest summed in one line (`--json`'s `unpriced` lists them all). A region's prices are kept for 24 hours and used again, saying so, until `--refresh` fetches them afresh; prices that could not be read are not kept. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
+**Cost.** `--cost` prices each Instance's running time at its instance type's hourly list price in its region, from the Platform's cloud information (the prices `yd cloudinfo prices` shows), and adds an *Est. cost (USD)* column and a total. It is an estimate: list prices for Linux, today's prices rather than those at the time, the mean of the region's spot prices for a spot Instance (the report does not say which sub-region it ran in; `yd cloudinfo instance-types --prices` shows the lowest), and no discounts, savings plans, licences or disks. Time in any status other than running is not costed. An Instance with no list price is left out of its group's cost, which is then shown with a `+` as a lower bound, or as `-` where nothing in the group has a price, and a warning names each instance type left out with its running time, the five with the most first and the rest summed in one line (`--json`'s `unpriced` lists them all). A region's prices are kept for 24 hours and used again, saying so, until `--refresh` fetches them afresh; prices that could not be read are not kept. Where the prices in a region cannot be read, the command says so and treats that region's Instances as having no list price, the other regions still costed; an Application that may not read cloud prices at all gets one warning, and no cost. Under `--json`, each group has `estimatedCost` (`null` where nothing in it has a price) and `unpricedRunningHours`, and the document has `currency`, `unpriced`, `unreadablePrices` and `pricesRefused`.
+
+**`--sort`.** Ties on every `--sort` key keep the default order, the most total time first. A group whose cost has nothing priced (`-`) sorts after the others whichever the direction.
 
 **`--top` and `--csv`.** The row `--top` adds sums the groups it leaves out, so the columns still add up to the total line, which covers every group; under `--json` it is `more`, holding the number of groups left out and their sums (`null` when none are). `--csv` writes a header row naming the `--by` keys (`creator` followed by `creatorId`), `instances`, each status's hours, `total_hours` and, with `--cost`, `estimated_cost`, and nothing else on standard output; warnings, and the instance types `--cost` had no price for, go to standard error.
 

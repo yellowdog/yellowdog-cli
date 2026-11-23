@@ -1328,6 +1328,19 @@
       "type": "str"
     },
     {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "gpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--gpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
       "choices": [
         "x86_64",
         "arm64"
@@ -1384,6 +1397,32 @@
       "nargs": 0,
       "option_strings": [
         "--prices"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
       ],
       "required": false,
       "type": null
@@ -1717,6 +1756,19 @@
       "type": "str"
     },
     {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "gpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--gpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
       "choices": [
         "x86_64",
         "arm64"
@@ -1773,6 +1825,32 @@
       "nargs": 0,
       "option_strings": [
         "--prices"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
       ],
       "required": false,
       "type": null
@@ -2106,6 +2184,19 @@
       "type": "str"
     },
     {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "gpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--gpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
       "choices": [
         "x86_64",
         "arm64"
@@ -2162,6 +2253,32 @@
       "nargs": 0,
       "option_strings": [
         "--prices"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
       ],
       "required": false,
       "type": null
@@ -2495,6 +2612,19 @@
       "type": "str"
     },
     {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "gpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--gpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
       "choices": [
         "x86_64",
         "arm64"
@@ -2551,6 +2681,32 @@
       "nargs": 0,
       "option_strings": [
         "--prices"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
       ],
       "required": false,
       "type": null
@@ -29135,6 +29291,19 @@
       "type": "str"
     },
     {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "gpus",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--gpus"
+      ],
+      "required": false,
+      "type": "str"
+    },
+    {
       "choices": [
         "x86_64",
         "arm64"
@@ -29191,6 +29360,32 @@
       "nargs": 0,
       "option_strings": [
         "--prices"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": null,
+      "dest": "top",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--top"
+      ],
+      "required": false,
+      "type": "positive_int"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "csv_output",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--csv"
       ],
       "required": false,
       "type": null
@@ -41752,6 +41947,32 @@
       "nargs": 0,
       "option_strings": [
         "--cost"
+      ],
+      "required": false,
+      "type": null
+    },
+    {
+      "choices": null,
+      "const": null,
+      "default": "total",
+      "dest": "usage_sort",
+      "kind": "_StoreAction",
+      "nargs": null,
+      "option_strings": [
+        "--sort"
+      ],
+      "required": false,
+      "type": "usage_sort_keys"
+    },
+    {
+      "choices": null,
+      "const": true,
+      "default": false,
+      "dest": "reverse",
+      "kind": "_StoreTrueAction",
+      "nargs": 0,
+      "option_strings": [
+        "--reverse"
       ],
       "required": false,
       "type": null

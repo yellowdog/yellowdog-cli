@@ -51,6 +51,7 @@ def _args(**overrides: Any) -> SimpleNamespace:
         "name_glob": None,
         "vcpus_range": None,
         "ram_range": None,
+        "gpus_range": None,
         "arch": None,
         "usage": None,
         "os_licence": None,
@@ -59,6 +60,8 @@ def _args(**overrides: Any) -> SimpleNamespace:
         "reverse": False,
         "count_only": False,
         "json_output": False,
+        "csv_output": False,
+        "top": None,
         "quiet": False,
     }
     values.update(overrides)
@@ -128,6 +131,10 @@ class TestQueryFromArgs:
             reverse=True,
         )
 
+    def test_the_gpus_range_is_kept(self):
+        query = yd_cloud_info.query_from_args(_args(gpus_range=(1.0, None)))
+        assert query.gpus == (1.0, None)
+
     def test_the_os_licence_given_is_kept(self):
         query = yd_cloud_info.query_from_args(_args(os_licence="windows"))
         assert query.os_licence == "windows"
@@ -179,11 +186,14 @@ class TestOutput:
             prices=True,
         )
         [(headers, rows)] = output.tables
-        assert headers[-5:] == [
+        assert headers[-8:] == [
             "Sub-regions",
             "On-demand",
             "Spot (lowest)",
             "Spot Zone",
+            "On-demand/vCPU",
+            "Spot/vCPU",
+            "Spot saving",
             "Currency",
         ]
         assert rows == [
@@ -198,9 +208,29 @@ class TestOutput:
                 "0.1880",
                 "0.0500",
                 "eu-west-2b",
+                "0.0470",
+                "0.0125",
+                "73%",
                 "USD",
             ]
         ]
+
+    def test_top_keeps_the_first_n_and_says_so(self, output):
+        _run(cloud_info_type="regions", top=2)
+        [(_, rows)] = output.tables
+        assert len(rows) == 2
+        assert output.info == ["Showing the first 2 of 4 Regions ('--top')"]
+
+    def test_top_above_the_count_says_nothing(self, output):
+        _run(cloud_info_type="regions", top=10)
+        [(_, rows)] = output.tables
+        assert len(rows) == 4
+        assert output.info == []
+
+    def test_top_with_json_records_n(self, output):
+        _run(cloud_info_type="regions", top=1, json_output=True)
+        assert len(output.records) == 1
+        assert output.info == []
 
 
 class TestTables:
@@ -256,13 +286,22 @@ class TestTables:
             ],
         ]
 
+    def test_a_negative_saving_shows_its_sign(self):
+        fake = FakeCloudInfo()
+        [t3] = instance_types(fake.ctx, CloudInfoQuery(name_glob="t3.xlarge"))
+        _, rows = tables.priced_instance_types_table(
+            [PricedInstanceType(t3, Price(value=0.1), Price(value=0.12), "a")],
+            "eu-west-2",
+        )
+        assert rows[0][-2] == "-20%"
+
     def test_a_priced_type_without_prices_shows_blanks(self):
         fake = FakeCloudInfo()
         [g4dn] = instance_types(fake.ctx, CloudInfoQuery(name_glob="g4dn.xlarge"))
         _, rows = tables.priced_instance_types_table(
             [PricedInstanceType(g4dn, None, None, None)], "eu-west-2"
         )
-        assert rows[0][-5:] == ["eu-west-2a, eu-west-2b", None, None, None, None]
+        assert rows[0][-8:] == ["eu-west-2a, eu-west-2b", *[None] * 7]
 
 
 def _parse(*argv: str) -> CLIParser:
@@ -351,6 +390,22 @@ class TestParsing:
     def test_prices_are_bounded_by_a_region_or_a_name(self, argv):
         assert _parse(*argv).cloud_info_type == "prices"
 
+    def test_gpus_top_and_csv_parse(self):
+        assert _parse("inst", "--gpus", "1-").gpus_range == (1.0, None)
+        assert _parse("inst").gpus_range is None
+        assert _parse("regions", "--top", "5").top == 5
+        assert _parse("prices", "--region", "r", "--csv").csv_output is True
+
+    def test_the_per_vcpu_sort_keys_parse_with_prices(self):
+        parsed = _parse(
+            "inst", "--region", "r", "--prices", "--sort", "saving,spot-per-vcpu"
+        )
+        assert parsed.sort == ("saving", "spot-per-vcpu")
+        parsed = _parse(
+            "inst", "--region", "r", "--prices", "--sort", "on-demand-per-vcpu"
+        )
+        assert parsed.sort == ("on-demand-per-vcpu",)
+
     def test_no_range_is_none(self):
         parsed = _parse("instance-types")
         assert (parsed.vcpus_range, parsed.ram_range) == (None, None)
@@ -388,6 +443,22 @@ class TestParsing:
             (["instance-types", "--vcpus", "8-4"], "--vcpus:"),
             (["instance-types", "--ram", "lots"], "--ram:"),
             (["regions", "--provider", "AWS"], "invalid choice"),
+            (["regions", "--gpus", "1"], "--gpus does not apply to regions"),
+            (["instance-types", "--gpus", "x"], "--gpus:"),
+            (["regions", "--top", "0"], "--top"),
+            (
+                ["regions", "--top", "3", "--count"],
+                "--top cannot be combined with --count",
+            ),
+            (["regions", "--csv", "--json"], "--csv cannot be combined with --json"),
+            (
+                ["regions", "--csv", "--count"],
+                "--csv cannot be combined with --count",
+            ),
+            (
+                ["instance-types", "--region", "r", "--sort", "saving"],
+                "--sort saving does not apply",
+            ),
             (["everything"], "unknown type"),
         ],
     )
@@ -491,3 +562,105 @@ class TestMain:
             reset_results()
         assert stopped.value.code == 0
         assert capsys.readouterr().out == "4\n"
+
+
+class TestCsv:
+    def test_regions_as_csv(self, output, capsys):
+        _run(cloud_info_type="regions", csv_output=True)
+        assert capsys.readouterr().out.splitlines() == [
+            "provider,name",
+            "AWS,eu-west-2",
+            "AWS,eu-west-2-wl1-lon1",
+            "Azure,uksouth",
+            "AWS,us-east-1",
+        ]
+        assert output.tables == []
+
+    def test_priced_types_as_csv(self, output, capsys):
+        _run(
+            cloud_info_type="instance-types",
+            region="eu-west-2",
+            prices=True,
+            csv_output=True,
+        )
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0] == (
+            "provider,name,arch,vcpus,ram_gib,gpus,sub_regions,on_demand,spot,"
+            "spot_zone,on_demand_per_vcpu,spot_per_vcpu,spot_saving_percent,"
+            "currency"
+        )
+        assert (
+            "AWS,t3.xlarge,X86_64,4,16,0,eu-west-2a eu-west-2b eu-west-2c,"
+            "0.188,0.05,eu-west-2b,0.047,0.0125,73.4,USD"
+        ) in lines
+
+    def test_a_missing_value_is_empty(self, output, capsys):
+        _run(
+            cloud_info_type="instance-types",
+            region="eu-west-2",
+            name_glob="g4dn.xlarge",
+            prices=True,
+            csv_output=True,
+        )
+        assert capsys.readouterr().out.splitlines()[1] == (
+            "AWS,g4dn.xlarge,X86_64,4,16,1,eu-west-2a eu-west-2b,,,,,,,"
+        )
+
+    def test_instance_types_without_a_region_give_a_region_count(self, output, capsys):
+        _run(cloud_info_type="instance-types", name_glob="t3.micro", csv_output=True)
+        assert capsys.readouterr().out.splitlines() == [
+            "provider,name,arch,vcpus,ram_gib,gpus,regions",
+            "AWS,t3.micro,X86_64,2,1,0,1",
+        ]
+
+    def test_nothing_matched_is_the_header_alone(self, output, capsys):
+        _run(cloud_info_type="regions", name_glob="nowhere", csv_output=True)
+        assert capsys.readouterr().out == "provider,name\n"
+        assert output.info == []
+
+    def test_prices_as_csv(self, output, capsys):
+        _run(
+            cloud_info_type="prices",
+            region="eu-west-2",
+            name_glob="t3a.micro",
+            csv_output=True,
+        )
+        assert capsys.readouterr().out.splitlines() == [
+            "provider,region,sub_region,instance_type,usage,os_licence,price,currency",
+            "AWS,eu-west-2,,t3a.micro,ON_DEMAND,NONE,0.0118,USD",
+        ]
+
+    def test_top_cuts_the_csv_too(self, output, capsys):
+        _run(cloud_info_type="regions", csv_output=True, top=1)
+        assert len(capsys.readouterr().out.splitlines()) == 2
+
+    def test_csv_through_main_is_stdout_alone(self, monkeypatch, capsys):
+        # Through main() and the real wrapper: no info line or results flush
+        # after the rows, '--top' line included
+        from yellowdog_cli.utils import wrapper
+        from yellowdog_cli.utils.results import reset_results
+
+        reset_results()
+        monkeypatch.setattr(
+            wrapper,
+            "ARGS_PARSER",
+            CLIParser("yd-cloud-info", argv=["regions", "--csv", "--top", "1"]),
+        )
+        monkeypatch.setattr(wrapper, "CLIENT", FakeCloudInfo().ctx.client)
+        try:
+            with pytest.raises(SystemExit) as stopped:
+                yd_cloud_info.main()
+        finally:
+            reset_results()
+        assert stopped.value.code == 0
+        assert capsys.readouterr().out == "provider,name\nAWS,eu-west-2\n"
+
+
+class TestMcpArguments:
+    def test_the_tools_take_gpus_and_top_but_not_csv(self):
+        from yellowdog_cli.mcp.tools import build_tools
+
+        tools = {t.name: t for t in build_tools()}
+        properties = tools["yd_cloudinfo_instance_types"].input_schema["properties"]
+        assert {"gpus", "top"} <= set(properties)
+        assert "csv_output" not in properties

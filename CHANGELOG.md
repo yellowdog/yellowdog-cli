@@ -2,6 +2,19 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.19.0 — 2026-11-23
+
+### yd cloudinfo
+
+- **Prices per vCPU and the spot saving.** `instance-types --prices` adds On-demand/vCPU, Spot/vCPU and Spot saving columns (`onDemandPricePerVcpu`, `spotPricePerVcpu` and `spotSavingPercent` under `--json`), and `--sort` takes `spot-per-vcpu`, `on-demand-per-vcpu` and `saving`.
+- **`--gpus <n|n-m>`** lists the instance types with that many GPUs, in the forms `--vcpus` takes.
+- **`--top <n>`** lists only the first `<n>` items in the order `--sort` gives.
+- **`--csv`** prints the items as CSV, with raw values.
+
+### yd usage
+
+- **`--sort <key>[,...]` and `--reverse`** order the groups by any `--by` key (alphabetically) or by `instances`, `running`, `stopped`, `total` or `cost` (the most first); `total` is the default, as before. `--top` keeps the first groups in that order.
+
 ## 15.18.0 — 2026-11-21
 
 ### Upgrading

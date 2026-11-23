@@ -12,14 +12,18 @@ Covers:
     spot price's zone, a sub-region, Windows prices, missing prices
   - sorting: each key, several keys in turn, '--reverse', values missing
     last both ways
-  - PricedInstanceType's JSON record
+  - PricedInstanceType's JSON record, and its per-vCPU prices and spot
+    saving (None, never a division by zero, where a side is missing)
+  - '--gpus': the count summed over the models, a type without any as 0
 """
 
 import pytest
 from yellowdog_client.model import (
     CloudProvider,
     DoubleRange,
+    InstanceType,
     OperatingSystemLicence,
+    Price,
     ProcessorArchitecture,
     UsageType,
 )
@@ -27,6 +31,8 @@ from yellowdog_client.model import (
 from tests.cloud_info_fixtures import WAVELENGTH, FakeCloudInfo, last_search
 from yellowdog_cli.utils.cloud_info import (
     CloudInfoQuery,
+    PricedInstanceType,
+    gpu_count,
     instance_types,
     instance_types_with_prices,
     prices,
@@ -333,3 +339,107 @@ class TestJoin:
             record["spotPrice"],
             record["spotSubRegion"],
         ) == (None, None, None)
+
+
+def _one(
+    vcpus: float | None, on_demand: float | None, spot: float | None
+) -> PricedInstanceType:
+    return PricedInstanceType(
+        InstanceType(name="x", defaultVcpus=vcpus),
+        None if on_demand is None else Price(value=on_demand),
+        None if spot is None else Price(value=spot),
+        "a",
+    )
+
+
+class TestDerivedPrices:
+    def test_per_vcpu_prices_and_the_saving(self, fake):
+        t3 = _priced(fake)["t3.xlarge"]
+        assert t3.on_demand_per_vcpu == pytest.approx(0.047)
+        assert t3.spot_per_vcpu == pytest.approx(0.0125)
+        assert t3.spot_saving == pytest.approx((1 - 0.05 / 0.188) * 100)
+
+    def test_a_missing_price_gives_none(self, fake):
+        t4g = _priced(fake)["t4g.xlarge"]
+        assert t4g.on_demand_per_vcpu is None
+        assert t4g.spot_saving is None
+        assert t4g.spot_per_vcpu == pytest.approx(0.01)
+
+    @pytest.mark.parametrize("vcpus", [None, 0])
+    def test_no_vcpus_gives_no_per_vcpu_price(self, vcpus):
+        priced = _one(vcpus, 0.1, 0.05)
+        assert (priced.on_demand_per_vcpu, priced.spot_per_vcpu) == (None, None)
+        assert priced.spot_saving == pytest.approx(50.0)
+
+    def test_a_zero_on_demand_price_gives_no_saving(self):
+        assert _one(4, 0.0, 0.05).spot_saving is None
+
+    def test_a_dearer_spot_price_is_a_negative_saving(self):
+        assert _one(4, 0.1, 0.12).spot_saving == pytest.approx(-20.0)
+
+    def test_sorting_by_spot_per_vcpu(self, fake):
+        found = instance_types_with_prices(
+            fake.ctx,
+            CloudInfoQuery(
+                region="eu-west-2", providers=("aws",), sort=("spot-per-vcpu",)
+            ),
+        )
+        assert [p.instance_type.name for p in found] == [
+            "t4g.xlarge",
+            "t3.xlarge",
+            "g4dn.xlarge",
+            "t3.micro",
+            "t3a.micro",
+        ]
+
+    def test_sorting_by_on_demand_per_vcpu(self, fake):
+        found = instance_types_with_prices(
+            fake.ctx,
+            CloudInfoQuery(
+                region="eu-west-2", providers=("aws",), sort=("on-demand-per-vcpu",)
+            ),
+        )
+        assert [p.instance_type.name for p in found] == [
+            "t3a.micro",
+            "t3.xlarge",
+            "g4dn.xlarge",
+            "t3.micro",
+            "t4g.xlarge",
+        ]
+
+    def test_sorting_by_saving(self, fake):
+        found = instance_types_with_prices(
+            fake.ctx,
+            CloudInfoQuery(region="eu-west-2", providers=("aws",), sort=("saving",)),
+        )
+        assert found[0].instance_type.name == "t3.xlarge"
+
+    def test_the_record_adds_the_derived_prices(self, fake):
+        record = _priced(fake)["t3.xlarge"].as_record()
+        assert record["onDemandPricePerVcpu"] == pytest.approx(0.047)
+        assert record["spotPricePerVcpu"] == pytest.approx(0.0125)
+        assert record["spotSavingPercent"] == 73.4
+        none = _priced(fake)["g4dn.xlarge"].as_record()
+        assert (
+            none["onDemandPricePerVcpu"],
+            none["spotPricePerVcpu"],
+            none["spotSavingPercent"],
+        ) == (None, None, None)
+
+
+class TestGpus:
+    def test_at_least_one_gpu(self, fake):
+        found = instance_types(fake.ctx, CloudInfoQuery(gpus=(1.0, None)))
+        assert _names(found) == ["g4dn.xlarge"]
+
+    def test_no_gpus_includes_a_type_without_a_gpu_field(self, fake):
+        names = _names(instance_types(fake.ctx, CloudInfoQuery(gpus=(0.0, 0.0))))
+        assert "u-unknown" in names
+        assert "g4dn.xlarge" not in names
+
+    def test_the_join_honours_gpus(self, fake):
+        assert sorted(_priced(fake, gpus=(1.0, None))) == ["g4dn.xlarge"]
+
+    def test_the_count_sums_the_models(self):
+        assert gpu_count(InstanceType(defaultGpus={"T4": 2, "A10G": 1})) == 3
+        assert gpu_count(InstanceType()) == 0

@@ -7,6 +7,8 @@ joining and sorting are utils/cloud_info.py's; this module turns the command
 line into a query and prints, records or counts what comes back.
 """
 
+import csv
+import sys
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -19,6 +21,7 @@ from yellowdog_cli.utils.cloud_info import (
     regions,
     sub_regions,
 )
+from yellowdog_cli.utils.cloud_info_csv import csv_table
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import (
     CI_INSTANCE_TYPES,
@@ -27,7 +30,7 @@ from yellowdog_cli.utils.entity_names import (
     CI_SUB_REGIONS,
 )
 from yellowdog_cli.utils.output_settings import configure_output
-from yellowdog_cli.utils.printing import print_info, print_simple
+from yellowdog_cli.utils.printing import counted, print_info, print_simple
 from yellowdog_cli.utils.results import record
 from yellowdog_cli.utils.tables import (
     cloud_regions_table,
@@ -44,6 +47,14 @@ _DISPLAY_NAMES = {
     CI_SUB_REGIONS: "Sub-regions",
     CI_INSTANCE_TYPES: "Instance Types",
     CI_PRICES: "Instance Type Prices",
+}
+
+# The singular of each, for counted()
+_ITEM_NAMES = {
+    CI_REGIONS: "Region",
+    CI_SUB_REGIONS: "Sub-region",
+    CI_INSTANCE_TYPES: "Instance Type",
+    CI_PRICES: "Instance Type Price",
 }
 
 _FETCHERS: dict[str, Callable[[RunContext, CloudInfoQuery], list[Any]]] = {
@@ -72,6 +83,7 @@ def query_from_args(args: Any) -> CloudInfoQuery:
         name_glob=args.name_glob,
         vcpus=args.vcpus_range,
         ram_gib=args.ram_range,
+        gpus=args.gpus_range,
         arch=args.arch,
         usage=args.usage,
         os_licence=args.os_licence or "none",
@@ -82,8 +94,9 @@ def query_from_args(args: Any) -> CloudInfoQuery:
 
 def list_cloud_info(ctx: RunContext) -> None:
     """
-    Fetch what the command line asks for, then print its count, record it for
-    '--json', or print it as a table.
+    Fetch what the command line asks for, keep the first '--top' of it, then
+    print its count, record it for '--json', write it as CSV, or print it as
+    a table.
     """
     _settle_output(ctx)
     # The positional is required, so the type is always set
@@ -95,6 +108,10 @@ def list_cloud_info(ctx: RunContext) -> None:
         if with_prices
         else _FETCHERS[info_type](ctx, query)
     )
+    found = len(items)
+    top = ctx.args.top
+    if top is not None:
+        items = items[:top]
 
     if ctx.args.count_only:
         print_simple(str(len(items)), override_quiet=True)
@@ -103,10 +120,21 @@ def list_cloud_info(ctx: RunContext) -> None:
         for item in items:
             record(item.as_record() if isinstance(item, PricedInstanceType) else item)
         return
+    if ctx.args.csv_output:
+        headers, rows = csv_table(info_type, items, query.region, with_prices)
+        writer = csv.writer(sys.stdout, lineterminator="\n")
+        writer.writerow(headers)
+        writer.writerows(rows)
+        return
     if not items:
         print_info(f"No matching {_DISPLAY_NAMES[info_type]} found")
         return
     print_table(*_table(info_type, items, query.region, with_prices))
+    if len(items) < found:
+        print_info(
+            f"Showing the first {len(items)} of"
+            f" {counted(found, _ITEM_NAMES[info_type])} ('--top')"
+        )
 
 
 def _settle_output(ctx: RunContext) -> None:

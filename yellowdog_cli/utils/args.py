@@ -539,6 +539,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def usage_sort(self) -> tuple[str, ...] | None:
+        return self.args.usage_sort
+
+    @property
+    @allow_missing_attribute
     def csv_output(self) -> bool | None:
         return self.args.csv_output
 
@@ -606,6 +611,17 @@ class CLIParser:
     def ram_range(self) -> tuple[float | None, float | None] | None:
         # The validator has refused a malformed one
         return None if self.args.ram is None else parse_range(self.args.ram)
+
+    @property
+    @allow_missing_attribute
+    def gpus_range(self) -> tuple[float | None, float | None] | None:
+        # The validator has refused a malformed one
+        return None if self.args.gpus is None else parse_range(self.args.gpus)
+
+    @property
+    @allow_missing_attribute
+    def top(self) -> int | None:
+        return self.args.top
 
     @property
     @allow_missing_attribute
