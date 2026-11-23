@@ -147,3 +147,14 @@ def test_a_standalone_parser_shows_its_prog(monkeypatch, capsys, words):
         _run(monkeypatch, *words, "--help")
     assert exit_.value.code == ExitCode.SUCCESS
     assert f"usage: yd {' '.join(words)}" in capsys.readouterr().out
+
+
+def test_a_noun_and_verb_in_capitals(monkeypatch, ran):
+    _run(monkeypatch, "WR", "Submit", "wr.json")
+    assert ran.module == "yellowdog_cli.submit"
+    assert ran.selected == ("yd workrequirement submit", "yd wr submit")
+
+
+def test_a_command_in_capitals(monkeypatch, ran):
+    _run(monkeypatch, "List", "work-requirements")
+    assert ran.selected == ("yd-list", "yd list")

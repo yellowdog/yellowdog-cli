@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commands
+
+- **Capitals are accepted** in nouns, verbs and commands (`yd CloudInfo Regions`) and in every option's fixed choice of words: `--provider AWS`, `--arch ARM64`, `--usage Spot`, `--sort Name`, `yd usage --by Provider` and `--where Provider=aws`, the `yd cloudinfo` type, `yd schema`'s family and `yd completion`'s shell.
+
 ## 15.19.0 — 2026-11-23
 
 ### yd cloudinfo

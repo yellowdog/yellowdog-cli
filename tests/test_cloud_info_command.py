@@ -442,7 +442,7 @@ class TestParsing:
             (["prices", "--provider", "aws"], "prices needs --region or --name"),
             (["instance-types", "--vcpus", "8-4"], "--vcpus:"),
             (["instance-types", "--ram", "lots"], "--ram:"),
-            (["regions", "--provider", "AWS"], "invalid choice"),
+            (["regions", "--provider", "gcp"], "invalid choice"),
             (["regions", "--gpus", "1"], "--gpus does not apply to regions"),
             (["instance-types", "--gpus", "x"], "--gpus:"),
             (["regions", "--top", "0"], "--top"),

@@ -473,7 +473,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -1260,7 +1260,7 @@
         "-p"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -1354,7 +1354,7 @@
         "--arch"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -1370,7 +1370,7 @@
         "--usage"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -1386,7 +1386,7 @@
         "--os"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -1688,7 +1688,7 @@
         "-p"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -1782,7 +1782,7 @@
         "--arch"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -1798,7 +1798,7 @@
         "--usage"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -1814,7 +1814,7 @@
         "--os"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -2116,7 +2116,7 @@
         "-p"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -2210,7 +2210,7 @@
         "--arch"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -2226,7 +2226,7 @@
         "--usage"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -2242,7 +2242,7 @@
         "--os"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -2544,7 +2544,7 @@
         "-p"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -2638,7 +2638,7 @@
         "--arch"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -2654,7 +2654,7 @@
         "--usage"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -2670,7 +2670,7 @@
         "--os"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -4074,7 +4074,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -8879,7 +8879,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -11819,7 +11819,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -15040,7 +15040,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -17585,7 +17585,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -18762,7 +18762,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -19968,7 +19968,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -21162,7 +21162,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -25212,7 +25212,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -29223,7 +29223,7 @@
         "-p"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -29317,7 +29317,7 @@
         "--arch"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -29333,7 +29333,7 @@
         "--usage"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": [
@@ -29349,7 +29349,7 @@
         "--os"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -29611,7 +29611,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": "str"
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -30114,7 +30114,7 @@
       "nargs": null,
       "option_strings": [],
       "required": null,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -35097,7 +35097,7 @@
         "--provider"
       ],
       "required": false,
-      "type": null
+      "type": "lower_case"
     },
     {
       "choices": null,
@@ -38962,7 +38962,7 @@
       "nargs": "?",
       "option_strings": [],
       "required": null,
-      "type": "str"
+      "type": "lower_case"
     },
     {
       "choices": null,

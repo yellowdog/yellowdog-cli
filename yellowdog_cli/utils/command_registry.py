@@ -161,7 +161,31 @@ class Option:
         )
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
-        return target.add_argument(*self.flags, **self.kwargs)
+        kwargs = dict(self.kwargs)
+        if _any_case(kwargs):
+            kwargs["type"] = lower_case
+        return target.add_argument(*self.flags, **kwargs)
+
+
+def lower_case(value: str) -> str:
+    """
+    An argparse type for an option whose choices are lower-case words, so
+    that 'AWS' is 'aws': Option.register() gives it to every such option.
+    """
+    return value.lower()
+
+
+def _any_case(kwargs: Mapping[str, Any]) -> bool:
+    """
+    Whether an option's value is taken in any case: its choices are all
+    lower-case strings and it has no type of its own beyond str.
+    """
+    choices = kwargs.get("choices")
+    return (
+        choices is not None
+        and kwargs.get("type") in (None, str)
+        and all(isinstance(c, str) and c == c.lower() for c in choices)
+    )
 
 
 def option(*flags: str, completes: Completes = Completes.NONE, **kwargs: Any) -> Option:
@@ -613,7 +637,7 @@ def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
     A '--sort' value: one sort key, or several separated by commas, the most
     significant first, each one of 'valid' and none given twice.
     """
-    keys = tuple(key.strip() for key in value.split(","))
+    keys = tuple(key.strip().lower() for key in value.split(","))
     for key in keys:
         if not key:
             raise ArgumentTypeError(f"empty sort key in '{value}'")
@@ -3774,7 +3798,7 @@ def usage_group_keys(value: str) -> tuple[str, ...]:
     A '--by' value: one grouping key, or several separated by commas, each
     one of USAGE_GROUP_KEYS and none given twice.
     """
-    keys = tuple(key.strip() for key in value.split(","))
+    keys = tuple(key.strip().lower() for key in value.split(","))
     for key in keys:
         if key not in USAGE_GROUP_KEYS:
             raise ArgumentTypeError(
@@ -3797,7 +3821,7 @@ def usage_filter(value: str) -> tuple[str, str]:
     the pattern a glob, which may not be empty.
     """
     key, equals, pattern = value.partition("=")
-    key = key.strip()
+    key = key.strip().lower()
     if not equals:
         raise ArgumentTypeError(f"'{value}' is not 'key=pattern' (e.g. 'provider=aws')")
     if key not in USAGE_GROUP_KEYS:
@@ -4079,9 +4103,10 @@ def parse_range(text: str) -> tuple[float | None, float | None]:
 
 def resolve_cloud_info_type(value: str) -> str:
     """
-    A yd-cloud-info TYPE: its full name or an unambiguous prefix.
+    A yd-cloud-info TYPE: its full name or an unambiguous prefix, in any
+    case.
     """
-    matches = [t for t in CLOUD_INFO_TYPES if value and t.startswith(value)]
+    matches = [t for t in CLOUD_INFO_TYPES if value and t.startswith(value.lower())]
     if len(matches) == 1:
         return matches[0]
     raise ArgumentTypeError(
