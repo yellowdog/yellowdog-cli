@@ -73,7 +73,7 @@ PROCESS_EXIT_CODES = "processExitCodes"  # List of Ints
 PROVIDERS = "providers"  # List of Strings
 PROVISIONING_PRIORITY = "provisioningPriority"  # Float
 RAM = "ram"  # List of two Floats
-READ_TIMEOUT = "readTimeout"  # Float (seconds; 0 for no limit)
+REQUEST_TIMEOUT = "requestTimeout"  # Float (seconds; 0 for no limit)
 REGIONS = "regions"  # List of Strings
 RESUBMISSION_DESTINATIONS = "resubmissionDestinations"  # List of Dicts
 RESUBMIT_ERRORS = "resubmitErrors"  # Dict (Selection<TaskErrorSelector>)
@@ -202,7 +202,7 @@ ALL_KEYS = [
     PROVIDERS,
     PROVISIONING_PRIORITY,
     RAM,
-    READ_TIMEOUT,
+    REQUEST_TIMEOUT,
     REGIONS,
     RESUBMISSION_DESTINATIONS,
     RESUBMIT_ERRORS,

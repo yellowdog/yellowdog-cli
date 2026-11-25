@@ -42,7 +42,14 @@ def isolated(monkeypatch):
     monkeypatch.setattr(load_config, "CONFIG_SOURCES", {})
     monkeypatch.setattr(load_config, "ENVIRONMENT_OUTRANKED", {})
     monkeypatch.setattr(load_config, "CONFIG_FILE", "chosen.toml")
-    for var in (YD_KEY, YD_SECRET, YD_NAMESPACE, "YD_TAG", "YD_URL", "YD_READ_TIMEOUT"):
+    for var in (
+        YD_KEY,
+        YD_SECRET,
+        YD_NAMESPACE,
+        "YD_TAG",
+        "YD_URL",
+        "YD_REQUEST_TIMEOUT",
+    ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(
         load_config, "add_substitutions_without_overwriting", lambda subs: None

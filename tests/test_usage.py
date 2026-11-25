@@ -271,7 +271,7 @@ class TestTheReportsWait:
             raise ReadTimeout("read timed out")
 
         monkeypatch.setattr(usage_report.requests, "put", timed_out)
-        with pytest.raises(ReadTimeout, match=r"5 minutes.*readTimeout") as raised:
+        with pytest.raises(ReadTimeout, match=r"5 minutes.*requestTimeout") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
 
@@ -299,7 +299,9 @@ class TestTheReportsWait:
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
         monkeypatch.setattr(usage_report.requests, "put", stalls)
-        with pytest.raises(ConnectionError, match=r"5 minutes.*readTimeout") as raised:
+        with pytest.raises(
+            ConnectionError, match=r"5 minutes.*requestTimeout"
+        ) as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
 

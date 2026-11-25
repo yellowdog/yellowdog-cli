@@ -79,7 +79,7 @@ def _create_client() -> PlatformClient:
     client = PlatformClient.create(
         ServicesSchema(
             defaultUrl=CONFIG_COMMON.url,
-            # None, from readTimeout = 0, is no limit, as for the SDK
+            # None, from requestTimeout = 0, is no limit, as for the SDK
             requestTimeout=(
                 None
                 if CONFIG_COMMON.read_timeout is None

@@ -29,7 +29,7 @@ from yellowdog_cli.utils.file_substitution import (
 from yellowdog_cli.utils.glob_utils import contains_glob_chars
 from yellowdog_cli.utils.limits import (
     CR_MAX_INSTANCES,
-    PLATFORM_READ_TIMEOUT,
+    PLATFORM_REQUEST_TIMEOUT,
     TASK_BATCH_SIZE_DEFAULT,
 )
 from yellowdog_cli.utils.misc_utils import (
@@ -63,7 +63,7 @@ from yellowdog_cli.utils.settings import (
     YD_KEY,
     YD_KEY_ALT,
     YD_NAMESPACE,
-    YD_READ_TIMEOUT,
+    YD_REQUEST_TIMEOUT,
     YD_SECRET,
     YD_SECRET_ALT,
     YD_TAG,
@@ -693,7 +693,7 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
                 # Optional
                 url=url,
                 use_pac=(True if _ARGS.use_pac else common_section.get(USE_PAC, False)),
-                read_timeout=_read_timeout(common_section.get(READ_TIMEOUT)),
+                read_timeout=_request_timeout(common_section.get(REQUEST_TIMEOUT)),
             )
         )
 
@@ -702,15 +702,15 @@ def load_config_common(strict: bool = True) -> ConfigCommon:
         exit(ExitCode.CONFIGURATION)
 
 
-def _read_timeout(value: Any) -> float | None:
+def _request_timeout(value: Any) -> float | None:
     """
-    [common] readTimeout as seconds: PLATFORM_READ_TIMEOUT when unset, and
-    None (no limit) for 0. Anything but a finite number of seconds, 0 or
+    [common] requestTimeout as seconds: PLATFORM_REQUEST_TIMEOUT when unset,
+    and None (no limit) for 0. Anything but a finite number of seconds, 0 or
     more, is a configuration error and exits; from the environment it is
     text, so a number written as text is taken.
     """
     if value is None:
-        return PLATFORM_READ_TIMEOUT
+        return PLATFORM_REQUEST_TIMEOUT
     seconds: float | None = None
     if isinstance(value, str):
         try:
@@ -721,7 +721,7 @@ def _read_timeout(value: Any) -> float | None:
         seconds = float(value)
     if seconds is None or not math.isfinite(seconds) or seconds < 0:
         print_error(
-            f"'{READ_TIMEOUT}' must be a number of seconds, 0 or more (0 for no"
+            f"'{REQUEST_TIMEOUT}' must be a number of seconds, 0 or more (0 for no"
             f" limit), not {value!r}"
         )
         exit(ExitCode.CONFIGURATION)
@@ -788,8 +788,8 @@ def _apply_common_overrides(
         (NAMESPACE, _ARGS.namespace, YD_NAMESPACE, "--namespace"),
         (NAME_TAG, _ARGS.tag, YD_TAG, "--tag"),
         (URL, _ARGS.url, YD_URL, "--url"),
-        # No command-line option: '--property common.readTimeout=...' sets it
-        (READ_TIMEOUT, None, YD_READ_TIMEOUT, None),
+        # No command-line option: '--property common.requestTimeout=...' sets it
+        (REQUEST_TIMEOUT, None, YD_REQUEST_TIMEOUT, None),
     ]:
         if args_parser_value is not None:
             common_section[key_name] = args_parser_value
@@ -840,8 +840,8 @@ def _apply_common_defaults(common_section: dict) -> None:
             )
     if common_section.get(URL) is None:
         CONFIG_SOURCES[URL] = "default"
-    if common_section.get(READ_TIMEOUT) is None:
-        CONFIG_SOURCES[READ_TIMEOUT] = "default"
+    if common_section.get(REQUEST_TIMEOUT) is None:
+        CONFIG_SOURCES[REQUEST_TIMEOUT] = "default"
 
 
 def _resolved_url(common_section: dict, strict: bool = True) -> str:

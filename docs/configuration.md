@@ -138,7 +138,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
-| `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. `yd usage`'s report request waits at least 5 minutes, since the Platform builds the report before it answers. A Task batch whose response times out is resubmitted only when all its Tasks have names |
+| `requestTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. `yd usage`'s report request waits at least 5 minutes, since the Platform builds the report before it answers. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable); a relative path is relative to the current directory, not the configuration file's |
 
@@ -213,7 +213,7 @@ The **environment variables** are as follows:
 - `YD_URL` (or `YD_API_URL`)
 - `YD_NAMESPACE`
 - `YD_TAG`
-- `YD_READ_TIMEOUT` (`readTimeout`)
+- `YD_REQUEST_TIMEOUT` (`requestTimeout`)
 
 A property set on the command line takes precedence over one set in an environment variable, and both take precedence over the configuration file; [Which Value Wins](#which-value-wins) gives the whole order.
 
@@ -223,7 +223,7 @@ If all the required common properties are set using the command line or environm
 
 #### Details
 
-**Properties without an option or a variable.** `usePAC` has an option (`--pac`) but no environment variable. `readTimeout` has an environment variable but no option; `--property common.readTimeout=<seconds>` sets it on the command line. `certificates`, `importCommon` and `variables` have neither.
+**Properties without an option or a variable.** `usePAC` has an option (`--pac`) but no environment variable. `requestTimeout` has an environment variable but no option; `--property common.requestTimeout=<seconds>` sets it on the command line. `certificates`, `importCommon` and `variables` have neither.
 
 ### Overriding Arbitrary TOML Properties on the Command Line
 
@@ -308,7 +308,7 @@ Variable substitutions are described in detail in [Variable Substitutions](varia
 
 ## Which Value Wins
 
-A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `readTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
+A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `requestTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
 
 | Source | `[common]` | Variables | `[dataClient]` | Other sections |
 |:---|:---:|:---:|:---:|:---:|

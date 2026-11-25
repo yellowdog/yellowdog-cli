@@ -1,6 +1,6 @@
 """
 Live: reading the run's own objects, by 'yd list' and 'yd show' and by the
-resource noun's 'list' and 'show'; and reading with [common] readTimeout set,
+resource noun's 'list' and 'show'; and reading with [common] requestTimeout set,
 and set to 0 (no limit), as the SDK client and the CLI's own requests take it.
 """
 
@@ -73,7 +73,7 @@ def test_a_read_timeout_set_or_switched_off_still_reads(live_run, seconds):
         "--name",
         run.keyring,
         "--property",
-        f"common.readTimeout={seconds}",
+        f"common.requestTimeout={seconds}",
         "--json",
         "--quiet",
     ).records

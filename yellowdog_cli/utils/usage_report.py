@@ -484,9 +484,9 @@ def _fetch_shown(
 
 def _report_timeout(read_timeout: float | None) -> tuple[float, float | None]:
     """
-    (connect, read) for the report request: readTimeout, but at least
+    (connect, read) for the report request: requestTimeout, but at least
     USAGE_REPORT_READ_TIMEOUT, since the Platform builds the report before
-    it answers; None (readTimeout = 0) is no limit, as everywhere.
+    it answers; None (requestTimeout = 0) is no limit, as everywhere.
     """
     if read_timeout is None:
         return (RAW_CONNECT_TIMEOUT, None)
@@ -633,8 +633,8 @@ def _timed_out(wait: float | None) -> str:
     """
     return (
         f"The Platform sent nothing of the usage report for {_waited(wait or 0)};"
-        " a larger [common] readTimeout (or --property"
-        " common.readTimeout=<seconds>) gives it longer"
+        " a larger [common] requestTimeout (or --property"
+        " common.requestTimeout=<seconds>) gives it longer"
     )
 
 
