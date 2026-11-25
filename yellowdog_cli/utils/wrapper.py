@@ -80,7 +80,7 @@ def _create_client() -> PlatformClient:
         ServicesSchema(
             defaultUrl=CONFIG_COMMON.url,
             # None, from readTimeout = 0, is no limit, as for the SDK
-            readTimeout=(
+            requestTimeout=(
                 None
                 if CONFIG_COMMON.read_timeout is None
                 else timedelta(seconds=CONFIG_COMMON.read_timeout)

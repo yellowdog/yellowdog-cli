@@ -1,7 +1,8 @@
 """
-The read timeout each Platform client is built with: the commands' ([common]
-readTimeout, the SDK's own 90 seconds when unset, none for 0), yd-doctor's
-(its --timeout) and a Tab lookup's (its two seconds).
+The request timeout each Platform client is built with: the commands'
+([common] readTimeout, the SDK's own 90 seconds when unset, none for 0),
+yd-doctor's (its --timeout) and a Tab lookup's (its two seconds); and none
+built with a field the SDK has deprecated.
 """
 
 import dataclasses
@@ -16,6 +17,9 @@ import yellowdog_cli.utils.doctor_checks as doctor_checks
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.lazy import value
 from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS, PLATFORM_READ_TIMEOUT
+
+# A deprecated ServicesSchema field warns as the schema is built
+pytestmark = pytest.mark.filterwarnings("error::DeprecationWarning")
 
 
 @pytest.fixture
@@ -48,14 +52,14 @@ def test_the_commands_client_waits_the_configured_read_timeout(
     )
     monkeypatch.setattr(wrapper_module, "CONFIG_COMMON", config)
     wrapper_module._create_client()
-    assert schemas[0].readTimeout == expected
+    assert schemas[0].requestTimeout == expected
 
 
 def test_the_platform_read_timeout_is_the_sdks_default():
     # The CLI's default, shared by its direct requests; held to the SDK's
     from yellowdog_client.model import ServicesSchema
 
-    assert ServicesSchema.DEFAULT_READ_TIMEOUT == timedelta(
+    assert ServicesSchema.DEFAULT_REQUEST_TIMEOUT == timedelta(
         seconds=PLATFORM_READ_TIMEOUT
     )
 
@@ -63,10 +67,10 @@ def test_the_platform_read_timeout_is_the_sdks_default():
 def test_doctors_client_waits_its_timeout(schemas):
     config = SimpleNamespace(url="https://x", key="k", secret="s")
     doctor_checks._build_client(config, 7)
-    assert schemas[0].readTimeout == timedelta(seconds=7)
+    assert schemas[0].requestTimeout == timedelta(seconds=7)
 
 
 def test_a_lookups_client_waits_no_longer_than_a_tab(schemas):
     common = SimpleNamespace(url="https://x", key="k", secret="s")
     completion_lookups._client(common)  # type: ignore[arg-type]
-    assert schemas[0].readTimeout == timedelta(seconds=LOOKUP_TIMEOUT_SECONDS)
+    assert schemas[0].requestTimeout == timedelta(seconds=LOOKUP_TIMEOUT_SECONDS)

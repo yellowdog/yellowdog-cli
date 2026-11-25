@@ -12,6 +12,7 @@ These changes alter what an existing script or configuration will see:
 
 ### Commands
 
+- The CLI requires `yellowdog-sdk` 16.3.0 or later.
 - **Capitals are accepted** in nouns, verbs and commands (`yd CloudInfo Regions`) and in every option's fixed choice of words: `--provider AWS`, `--arch ARM64`, `--usage Spot`, `--sort Name`, `yd usage --by Provider` and `--where Provider=aws`, the `yd cloudinfo` type, `yd schema`'s family and `yd completion`'s shell.
 
 ## 15.19.0 — 2026-11-23
