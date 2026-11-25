@@ -75,7 +75,9 @@ local frames = std.parseInt("{{frames:=3}}");
 
 `yd workrequirement submit --jsonnet-dry-run -v frames=2 frames.jsonnet` shows the two Tasks it generates.
 
-In **Worker Pool** and **Compute Requirement** specifications, a substitution the Jsonnet code computes with must be written with double underscores before and after it: `std.parseInt("__{{count}}__")`; in any other Jsonnet file it may take either form. One that is simply part of a string can take either form, except in User Data and Node Actions, which take only the `__` form and leave a plain `{{...}}` for the Platform (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
+In **Worker Pool** and **Compute Requirement** specifications, a substitution the Jsonnet code computes with must be written with double underscores before and after it: `std.parseInt("__{{count}}__")`. In any other Jsonnet file it may take either form.
+
+A substitution that is simply part of a string can take either form, except in User Data and Node Actions, which take only the `__` form and leave a plain `{{...}}` for the Platform (see [which form to use](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 This Worker Pool starts with two nodes and may grow to `max_nodes`, kept between its starting size and four times it:
 

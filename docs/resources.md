@@ -134,7 +134,11 @@ yd resource create --yes templates.json
 
 **Never compared.** A Credential, an Allowance and a Configured Worker Pool are always sent (see the exceptions below), and an Application is always updated under `--regenerate-app-keys`, since its key is regenerated.
 
-**The summary.** At the end of a run, a line counts the resources created, updated, unchanged, skipped and failed, leaving out an outcome no resource had: `2 created, 1 updated, 7 unchanged`. A resource is `skipped` when its update is declined at the prompt, or when an authentication or connection failure stops the run before it is reached. An Image Family's Image Groups and Images are counted as well as the family. Under `--dry-run` or `--json` there is no summary; the `--json` records carry the same outcomes.
+**The summary.** At the end of a run, a line counts the resources created, updated, unchanged, skipped and failed, leaving out an outcome no resource had: `2 created, 1 updated, 7 unchanged`.
+
+- **A resource is `skipped`** when its update is declined at the prompt, or when an authentication or connection failure stops the run before it is reached.
+- **An Image Family's Image Groups and Images** are counted as well as the family.
+- **Under `--dry-run` or `--json`** there is no summary. The `--json` records carry the same outcomes.
 
 **Exceptions.** Four resource types behave differently:
 
@@ -289,11 +293,27 @@ yd resource export compute-requirement-templates --name 'render-*' --with-depend
 
 #### Details
 
-**Which resources are exported.** With no types named, export takes the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy, and warns that the account-wide types were left out. The account-wide types (Namespaces, Keyrings, Attribute Definitions, Groups, Applications, Users and Allowances) are exported when named or with `--all`. Configured Worker Pools are exported when named or with `--all`. Credentials are exported only when named or with `--include-credentials`, never with `--all` alone. YellowDog's public Image Families are never exported. A type can be given in any case, in the singular (`keyring`, `image-family`), as the resource name a specification uses (`Keyring`, `ComputeSourceTemplate`) or as an unambiguous prefix (`key` for `keyrings`), and `--all` cannot be given with types. The namespace must not be empty: an empty `-n` is refused, and so is an empty configured namespace when a namespaced type is exported.
+**Which resources are exported.** With no types named, export takes the namespace's Compute Source Templates, Compute Requirement Templates, Image Families and Namespace Policy, and warns that the account-wide types were left out.
 
-**Matching by name.** `--name` matches each type's name without its namespace: a glob with no wildcards is an exact match. An Allowance, which has no name, is matched by its description, a Namespace Policy by its namespace, a Credential by its Keyring's name, and a User by its `name`, an Internal User's included. A pattern naming a namespace (`'render/*'`) is refused: give the namespace with `-n`, which takes no pattern either. `--interactive`/`-i` lists the resources of each type, after the filters, to pick from.
+- **The account-wide types** (Namespaces, Keyrings, Attribute Definitions, Groups, Applications, Users and Allowances) are exported when named or with `--all`.
+- **Configured Worker Pools** are exported when named or with `--all`.
+- **Credentials** are exported only when named or with `--include-credentials`, never with `--all` alone.
+- **YellowDog's public Image Families** are never exported.
 
-**How references are written.** Every reference is written as a name: a Compute Source Template as `namespace/name`, and an Image Family in a namespace of your own as `yd/<namespace>/<family>`. A reference to one of YellowDog's public Image Families is kept as it is and never followed by `--with-dependencies`, which reads each Image Family it would follow by name, once, to tell; an export without it reads none. A reference that cannot be named, such as one to a deleted resource, is written as its ID, with a warning.
+**A type can be given** in any case, in the singular (`keyring`, `image-family`), as the resource name a specification uses (`Keyring`, `ComputeSourceTemplate`) or as an unambiguous prefix (`key` for `keyrings`), and `--all` cannot be given with types.
+
+**The namespace must not be empty:** an empty `-n` is refused, and so is an empty configured namespace when a namespaced type is exported.
+
+**Matching by name.** `--name` matches each type's name without its namespace: a glob with no wildcards is an exact match.
+
+- **An Allowance**, which has no name, is matched by its description, a Namespace Policy by its namespace, a Credential by its Keyring's name, and a User by its `name`, an Internal User's included.
+- **A pattern naming a namespace** (`'render/*'`) is refused: give the namespace with `-n`, which takes no pattern either.
+- **`--interactive`/`-i`** lists the resources of each type, after the filters, to pick from.
+
+**How references are written.** Every reference is written as a name: a Compute Source Template as `namespace/name`, and an Image Family in a namespace of your own as `yd/<namespace>/<family>`.
+
+- **A reference to one of YellowDog's public Image Families** is kept as it is and never followed by `--with-dependencies`, which reads each Image Family it would follow by name, once, to tell. An export without it reads none.
+- **A reference that cannot be named**, such as one to a deleted resource, is written as its ID, with a warning.
 
 **Values holding `{{...}}`.** A value on the Platform holding `{{...}}`, such as User Data with a template in it, is written as a `{{raw:...}}` literal, so that `yd resource create` reads back the value exactly as it was, with nothing substituted (see [Variable Substitution](variables.md)).
 
@@ -301,7 +321,12 @@ yd resource export compute-requirement-templates --name 'render-*' --with-depend
 
 **Applications' Keyring access.** An Application is written with its Groups but without its Keyring access, with a warning naming it. Granting access to an existing Application needs `yd resource create --regenerate-app-keys`, so add `keyrings` to its specification by hand when that is what you want.
 
-**Credentials.** The Platform returns a Credential's name, description and type, but none of its other fields. Each of its required fields other than its name and description, such as an AWS Credential's `accessKeyId` and `secretAccessKey` or an Azure Credential's `clientId`, is written as a variable, named `<keyring>_<credential>_<field>` (lower case, each character other than a letter, digit or `_` written as `_`), and a warning lists the variables. Where two Credentials would give a variable the same name (Keyring `aws-keys` with Credential `prod`, and Keyring `aws` with Credential `keys-prod`), the variable of the later by `keyring/credential` name is numbered (`aws_keys_prod_accesskeyid_2`), and its warning says so. Supply the variables with `-v` or `YD_VAR_*` when creating the resources:
+**Credentials.** The Platform returns a Credential's name, description and type, but none of its other fields.
+
+- **Each of its required fields** other than its name and description, such as an AWS Credential's `accessKeyId` and `secretAccessKey` or an Azure Credential's `clientId`, is written as a variable, named `<keyring>_<credential>_<field>` (lower case, each character other than a letter, digit or `_` written as `_`), and a warning lists the variables.
+- **Where two Credentials would give a variable the same name** (Keyring `aws-keys` with Credential `prod`, and Keyring `aws` with Credential `keys-prod`), the variable of the later by `keyring/credential` name is numbered (`aws_keys_prod_accesskeyid_2`), and its warning says so.
+
+Supply the variables with `-v` or `YD_VAR_*` when creating the resources:
 
 ```shell
 yd resource export credentials --name render-keys -o credentials.json
@@ -409,7 +434,11 @@ generate-keyrings | yd resource create -
 
 #### Details
 
-**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text. A property that takes text keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value. A Compute Source Template's `source` is read as JSON, being an object: `--set 'source={"type": "co.yellowdog.platform.model.SimulatorComputeSource", "name": "sim"}'`. Variables are substituted in the values, as in a file's (`--set name='{{tag}}-keys'`).
+**How `--set` values are read.** A value is read as JSON where it can be, so `10` is a number, `true` a boolean, `null` null, and `[...]` and `{...}` a list and an object. Anything else is read as text.
+
+- **A property that takes text** keeps the text as typed (`--set name=123` is the name `123`), as `--property` reads a value.
+- **A Compute Source Template's `source`** is read as JSON, being an object: `--set 'source={"type": "co.yellowdog.platform.model.SimulatorComputeSource", "name": "sim"}'`.
+- **Variables are substituted** in the values, as in a file's (`--set name='{{tag}}-keys'`).
 
 **Rules for `--type` and `--set`.** A property is given once. The type is given with `--type` alone, not as `--set resource=...`. A resource given this way is checked against the schema, processed, reported and recorded exactly as one in a file is, and can be given with files too.
 
@@ -708,7 +737,9 @@ A Configured Worker Pool cannot be updated: `yd resource create` adds a new pool
 
 **Node types and events.** Each entry in `nodeTypes` gives either a `count` or a `min`, never both, and whichever it gives must be at least 1. An event in `nodeEvents`, if given, must have at least one action group.
 
-**Variables in Node Actions.** The Node Actions in `nodeEvents` are processed by the Platform's own Mustache templating (`{{node.details.hostname}}`, `{{nodesByType.slurmctld.0.details.privateIpAddress}}`). So a CLI variable substitution within them is written `__{{variable}}__`, and a plain `{{...}}` there is left for the Platform (see [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
+**Variables in Node Actions.** The Node Actions in `nodeEvents` are processed by the Platform's own Mustache templating (`{{node.details.hostname}}`, `{{nodesByType.slurmctld.0.details.privateIpAddress}}`).
+
+A CLI variable substitution within them is therefore written `__{{variable}}__`, and a plain `{{...}}` there is left for the Platform (see [Variable Substitutions in Worker Pool and Compute Requirement Specifications, and in User Data](variables.md#variable-substitutions-in-worker-pool-and-compute-requirement-specifications-and-in-user-data)).
 
 **Removing a pool by name.** A pool that has been shut down stays listed under its name, so a name can match several pools. `yd resource remove` shuts down those that have not finished, and leaves the rest.
 
@@ -770,7 +801,12 @@ Allowances can be **boosted** (have extra hours added) with the `yd allowance bo
 
 **Source Allowances.** A Source Allowance (type `co.yellowdog.platform.model.SourceAllowance`) takes the Compute Source ID itself in its `sourceId` property, **not** the Compute Source Template ID.
 
-**Replacing by `id`.** `yd resource create` asks to confirm the replacement, then creates the new Allowance, then removes the old one, so a creation that fails leaves it in place. An `id` that finds no Allowance fails the specification (exit code 6) and creates nothing: an Allowance that has been replaced is gone, and its replacement has an ID of its own, which `yd resource create` reports, for the next replacement. A specification with an `id` is not matched by `description`, even with `-M`. `yd resource plan` lists the Allowance an `id` replaces. With `yd resource remove`, an `id` that finds no Allowance is skipped, with a warning.
+**Replacing by `id`.** `yd resource create` asks to confirm the replacement, then creates the new Allowance, then removes the old one, so a creation that fails leaves it in place.
+
+- **An `id` that finds no Allowance** fails the specification (exit code 6) and creates nothing. An Allowance that has been replaced is gone, and its replacement has an ID of its own, which `yd resource create` reports, for the next replacement.
+- **A specification with an `id`** is not matched by `description`, even with `-M`.
+- **`yd resource plan`** lists the Allowance an `id` replaces.
+- **With `yd resource remove`**, an `id` that finds no Allowance is skipped, with a warning.
 
 **Replacing with `-M`.** When matches are found, `yd resource create` asks which ones to remove, selecting from them when there are several (a selection `--yes` does not skip), and asks to confirm each removal, all before the new Allowance is created. The chosen ones are removed once it exists, so a creation that fails leaves the existing ones in place. A run that cannot ask (no terminal to answer from) fails before anything has changed.
 

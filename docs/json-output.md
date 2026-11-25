@@ -1,9 +1,16 @@
 # Machine-readable Output and Exit Codes
 
-For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred. For an action or data client command with a `--dry-run`, the real run's document has the same shape as the dry run's, without the `would ` prefix; the commands that create something from a specification (`yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create`) are the exception, their dry run's document being the processed specification. The contract is:
+For scripting, every command family below follows one rule: with `--json`, stdout carries exactly one JSON document, the command's result, and the exit code says what kind of failure occurred.
+
+For an action or data client command with a `--dry-run`, the real run's document has the same shape as the dry run's, without the `would ` prefix. The commands that create something from a specification (`yd workrequirement submit`, `yd workerpool provision`, `yd computerequirement instantiate`, `yd resource create`) are the exception, their dry run's document being the processed specification.
+
+The contract is:
 
 1. With `--json`, stdout carries one JSON document and nothing else: no status messages, no tables, no bare IDs. A command that acted on nothing emits an empty array (`[]`). In every family, any record whose `action` or `outcome` is `failed` makes the exit code non-zero, even where the command carried on and completed: the code the failures share where the command records their cause (6 if every target was not found, for example; see below), else 1. This holds with or without `--json`.
-2. Warnings go to stderr under `--json`, as errors and the `--debug` trace always do. A confirmation or selection prompt also writes to stderr under `--json`, so an interactive run still parses on stdout; a prompt that finds stdin at end of input (a script that omitted `--yes`, or a redirect from `/dev/null`) fails with an error saying so and exit code 1, with the document holding whatever was recorded before it. Items not chosen in an interactive selection (`--interactive`) are absent from the document rather than recorded as `skipped`, except in `yd task abort`, which records each Task not chosen as `skipped` with the error `not selected`.
+2. Warnings go to stderr under `--json`, as errors and the `--debug` trace always do.
+    - **A confirmation or selection prompt** also writes to stderr under `--json`, so an interactive run still parses on stdout.
+    - **A prompt that finds stdin at end of input** (a script that omitted `--yes`, or a redirect from `/dev/null`) fails with an error saying so and exit code 1, with the document holding whatever was recorded before it.
+    - **Items not chosen in an interactive selection** (`--interactive`) are absent from the document rather than recorded as `skipped`. The exception is `yd task abort`, which records each Task not chosen as `skipped` with the error `not selected`.
 3. There is no envelope: the document is a bare array or object, as `yd list`, `yd show` and `yd doctor` emit.
 4. `--dry-run` with `--json` gives the same shape for the action and data client commands, with each outcome prefixed `would ` (e.g., `would cancel`, `would delete`); for the commands that create from a specification it gives the processed specification.
 5. Without `--json`, `--quiet` prints the bare result (an ID, or the token or password of a command that creates one); with `--json`, stdout holds the document alone, `--quiet` or not.
@@ -60,7 +67,13 @@ A failure a command handles per item, such as a 404 for one of several IDs, is r
 
 The exception is a failure every later request would repeat, an authentication failure (4) or a connection failure (8): it stops the action commands (those above), which record the item that failed as `failed` and those not attempted as `skipped`, and exit with that failure's code.
 
-`yd resource create` and `yd resource remove` stop in the same way, recording the resources not attempted as `skipped`, and otherwise carry on past a failed resource and exit with the code their failures share (6 if every one was a resource not found, for example), or 1 if they had different causes. `yd resource export` carries on past a resource it cannot read in the same way, writing the rest and exiting with that failure's code, but an authentication or connection failure stops it before anything is written. `yd show` likewise exits with the code the IDs it could not show share (6 if none of them exists, 5 if the Application may read none of them), or 1 if their causes differed. Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
+`yd resource create` and `yd resource remove` stop in the same way, recording the resources not attempted as `skipped`. Otherwise they carry on past a failed resource and exit with the code their failures share (6 if every one was a resource not found, for example), or 1 if they had different causes.
+
+`yd resource export` carries on past a resource it cannot read in the same way, writing the rest and exiting with that failure's code, but an authentication or connection failure stops it before anything is written.
+
+`yd show` likewise exits with the code the IDs it could not show share (6 if none of them exists, 5 if the Application may read none of them), or 1 if their causes differed.
+
+Codes 4 to 8 are otherwise for a failure that reaches the command's top level before, or instead of, a record.
 
 Exit codes 2 (usage) and 3 (configuration) occur before the command runs, so stdout is empty: a script should check the exit code before parsing stdout.
 

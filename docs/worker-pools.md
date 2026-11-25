@@ -58,7 +58,12 @@ The only mandatory property is `templateId`, the Compute Requirement Template to
 
 Each example runs in a directory whose `config.toml` holds your Application key and secret, namespace and tag in its `[common]` section, as `yd init` writes them. `templateId` names a Compute Requirement Template you have already created, with the Keyring and Compute Source Templates it uses: see [Keyrings](resources.md#keyrings), [Compute Source Templates](resources.md#compute-source-templates) and [Compute Requirement Templates](resources.md#compute-requirement-templates).
 
-Every instance must run the YellowDog Agent. **YellowDog provides no stock images**: use an image of your own with the Agent installed, built with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), or a stock operating system image with the installer as User Data, as in [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own). The first two examples assume that the template names an image with the Agent installed; where it doesn't, `imagesId` names one.
+Every instance must run the YellowDog Agent. **YellowDog provides no stock images**. Use one of these:
+
+- an image of your own with the Agent installed, built with the [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md), or
+- a stock operating system image with the installer as User Data, as in [A First Run, with No Image of Your Own](#a-first-run-with-no-image-of-your-own).
+
+The first two examples assume that the template names an image with the Agent installed; where it doesn't, `imagesId` names one.
 
 ### A Worker Pool from the Configuration File
 
@@ -125,7 +130,11 @@ The file is found next to `config.toml`, or in the `--content-path` directory if
 - Software the Tasks need goes **before** the installer, because the installer starts the Agent, which may then give a Task to the node: `userDataFiles = ["install-ffmpeg.sh", "yd-agent-installer.sh"]`.
 - Scripts that change the Agent's configuration, such as [`add-task-type.sh`, `add-docker-task-type.sh` and `add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#additional-user-data-scripts), go **after** it, because the installer writes that configuration afresh.
 
-**User Data size.** A Worker Pool leaves less room for User Data than the cloud provider's limit suggests. The Platform adds the Agent's configuration to it and encodes the result, and the provider's limit applies to what is sent. On AWS, whose limit is 16 KB, a Worker Pool's User Data can be only about two thirds of that; a Compute Requirement's is sent unchanged. User Data that is too large is refused as the instances are requested. The refusal appears in the status message of the pool's Compute Source, which `yd show` of the Worker Pool's Compute Requirement includes. To make room, trim the script, or download larger scripts as it runs instead of including them.
+**User Data size.** A Worker Pool leaves less room for User Data than the cloud provider's limit suggests. The Platform adds the Agent's configuration to it and encodes the result, and the provider's limit applies to what is sent.
+
+- **On AWS**, whose limit is 16 KB, a Worker Pool's User Data can be only about two thirds of that. A Compute Requirement's is sent unchanged.
+- **User Data that is too large** is refused as the instances are requested. The refusal appears in the status message of the pool's Compute Source, which `yd show` of the Worker Pool's Compute Requirement includes.
+- **To make room**, trim the script, or download larger scripts as it runs instead of including them.
 
 ## Worker Pools vs. Compute Requirements
 
@@ -171,7 +180,10 @@ The following properties are available:
 
 ### Details
 
-**Provisioning priority.** When work could be done by more than one Worker Pool, the Platform scales up the pool with the highest `provisioningPriority` first, so a pool of cheaper or preferred instances can be given a higher priority than a fallback. It only orders pools that could take the same work: a pool whose Workers the work does not match is not scaled up for it whatever its priority. The priority is fixed when the pool is provisioned and cannot be changed afterwards; `yd workerpool list` shows it, and `--sort priority` lists the pools highest first.
+**Provisioning priority.** When work could be done by more than one Worker Pool, the Platform scales up the pool with the highest `provisioningPriority` first, so a pool of cheaper or preferred instances can be given a higher priority than a fallback.
+
+- **It only orders pools that could take the same work.** A pool whose Workers the work does not match is not scaled up for it whatever its priority.
+- **The priority is fixed when the pool is provisioned** and cannot be changed afterwards. `yd workerpool list` shows it, and `--sort priority` lists the pools highest first.
 
 ## Using Textual Names instead of IDs for Compute Requirement Templates and Image Families
 

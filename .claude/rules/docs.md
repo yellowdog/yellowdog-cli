@@ -26,6 +26,17 @@ The user documentation is a guide first and a reference second. Users come to it
 - **Images and Task Types are the reader's own.** YellowDog provides no stock images: an example names an image of the reader's own (an Image Family in their namespace) or a stock operating system image with the Agent installer as User Data, never a name that looks like a YellowDog-supplied image. The Agent installer defines only the `bash` Task Type, which runs `/bin/bash` with the Task's arguments; an example using any other Task Type says where it comes from (the `docker` one from `add-docker-task-type.sh`).
 - **A section that lists every property is a reference**, and is titled as one ("Properties at the Task Group Level", not "Examples"). It may stay on a guide page, below the sections that show how to use them.
 
+### Paragraph length, on every page
+
+Reference pages and guide pages alike are broken into pieces a reader can scan; a prose paragraph or bullet past about 500 characters is too dense.
+
+- **A short lead, then the detail.** A paragraph opens with what the feature does, in a sentence or two; the rest follows as separate sentences, bullets or short paragraphs.
+- **An enumeration is a list.** A run of cases, limits or qualifiers joined by commas and semicolons becomes a bullet list.
+- **One behaviour per bullet, led in bold.** Each distinct behaviour gets its own bullet or short paragraph opening with a bold lead phrase (`- **Prices are kept** for 24 hours ...`), two sentences at most; `yd usage`'s *Cost* paragraph in `docs/commands.md` is the model.
+- **Split before qualifying.** A sentence carrying a semicolon, or more than one "which", "since" or "unless" clause, is usually two sentences.
+
+In `docs/commands.md`, a bullet that starts with a backticked flag is an option bullet (`tests/test_docs_command_list.py`), so a behaviour bullet starts with a bold phrase instead, unless the flag is the section's command's own.
+
 ### When a change adds behaviour
 
 Before adding a clause to an existing guide sentence, decide whether a reader doing the common task needs it. If not, it goes in the section's Details, creating one if needed, or on the reference page. A fix to an edge case never lengthens the main path's sentence that covers the usual case.

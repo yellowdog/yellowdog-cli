@@ -128,7 +128,12 @@ Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note o
 
 **What `--yes` skips.** `-y`/`--yes` disables, for the session, the destructive-action confirmation dialogs, the download chooser, and the **Add to…** chooser where there is only one choice.
 
-**What Commander remembers.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it, and in Dark Mode if you last turned it on (until you choose, it follows your system's appearance). Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it. `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
+**What Commander remembers.** Commander remembers its window and the configuration file you last selected:
+
+- **Size and place.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it.
+- **Dark Mode.** It opens in Dark Mode if you last turned it on (until you choose, it follows your system's appearance).
+- **The configuration file.** Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+- **Forgetting.** `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
 
@@ -500,7 +505,13 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 
 **Saving.** The save dialog suggests a timestamped name in the configuration directory, so repeated saves do not overwrite one another. There is nothing to save when the window is empty.
 
-**The file windows.** Each file opens in one window: showing it again brings that window forward. The text is coloured: the configuration file and any `.toml` file as TOML, a `.jsonnet` or `.libsonnet` file as Jsonnet (its keywords, comments and `|||` text blocks included), the others as JSON. It is read again when the file changes on disk, keeping your place. **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous, Esc closes the window, and **Open in Editor** opens the file in the default application for its type. The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode. The output window notes each file shown.
+**The file windows.** Each file opens in one window: showing it again brings that window forward. The output window notes each file shown.
+
+- **Colouring.** The text is coloured: the configuration file and any `.toml` file as TOML, a `.jsonnet` or `.libsonnet` file as Jsonnet (its keywords, comments and `|||` text blocks included), the others as JSON.
+- **Changes on disk.** The text is read again when the file changes on disk, keeping your place.
+- **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous.
+- **Esc** closes the window, and **Open in Editor** opens the file in the default application for its type.
+- **Size and Dark Mode.** The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
@@ -672,7 +683,11 @@ Check the namespace, tag, and path you have set before confirming.
 
 **Don't Ask Again.** After **Yes to All (Don't Ask Again)**, that action always applies to everything in scope for the rest of the session.
 
-**Waiting for the listing.** Working out what an action would affect means asking the platform or the object store, which takes a moment. The output window says so while it happens, and the eight action buttons in panels 2, 3 and 4 are greyed until it finishes (**Add to…** and **Resize…** among them, since they list their targets the same way). That wait keeps the window responsive rather than freezing it, which is why the buttons need greying: without it, a second action could be started against a listing that was still being assembled. A click that lands anyway is refused with a note in the output window, rather than silently ignored.
+**Waiting for the listing.** Working out what an action would affect means asking the platform or the object store, which takes a moment.
+
+- **While it happens**, the output window says so, and the eight action buttons in panels 2, 3 and 4 are greyed until it finishes (**Add to…** and **Resize…** among them, since they list their targets the same way).
+- **Why the buttons are greyed.** That wait keeps the window responsive rather than freezing it. Without the greying, a second action could be started against a listing that was still being assembled.
+- **A click that lands anyway** is refused with a note in the output window, rather than silently ignored.
 
 **Dry runs.** A real object deletion is confirmed, but a dry-run deletion is not, since it changes nothing.
 

@@ -29,7 +29,12 @@ On the compute side:
 
 ## How the Matching Works
 
-A Task Group **claims** Workers that match its run specification, and its Tasks are given to the Workers it has claimed. A Provisioned Worker Pool whose Workers match a Task Group that needs more of them is a candidate for scaling up, up to its `maxNodes`. A candidate pool that has never had a Node has no Task Types, RAM or vCPUs to match yet, so it scales up to one Node first: what that Node reports establishes the pool's properties, and decides whether it scales further. The pool keeps those properties from then on, so once it has had a Node, it scales up for a matching Task Group even after it has scaled down to none. A Worker Pool whose Workers no Task Group matches never grows, and shuts down when it has been idle for `idlePoolTimeout`.
+A Task Group **claims** Workers that match its run specification, and its Tasks are given to the Workers it has claimed. How Worker Pools respond:
+
+- **A matching pool is a candidate for scaling up.** A Provisioned Worker Pool whose Workers match a Task Group that needs more of them is a candidate for scaling up, up to its `maxNodes`.
+- **A candidate pool that has never had a Node scales up to one first.** It has no Task Types, RAM or vCPUs to match yet. What that Node reports establishes the pool's properties, and decides whether it scales further.
+- **A pool keeps those properties from then on**, so once it has had a Node, it scales up for a matching Task Group even after it has scaled down to none.
+- **A Worker Pool whose Workers no Task Group matches** never grows, and shuts down when it has been idle for `idlePoolTimeout`.
 
 These are the properties matched, and where each side's value comes from:
 
@@ -79,8 +84,15 @@ The Task Group needs `bash`, which the Agent installer provides, and accepts the
 
 **Tasks queued on a Node.** By default, the Scheduler can allocate Tasks to a Node ahead of its Workers becoming free, where they wait their turn. `disablePreallocation` stops that, allocating each Task only as a Worker becomes idle.
 
-**Instance pricing.** `SPOT_ONLY` and `ON_DEMAND_ONLY` restrict a Task Group differently when it claims Workers and when a pool scales up for it. Claiming is per Worker, so a Spot Worker in a pool that mixes Spot and On-Demand sources can be claimed by a `SPOT_ONLY` Task Group. Scaling up is per pool, so the same mixed pool is never scaled up for it. `SPOT_THEN_ON_DEMAND` and `ON_DEMAND_THEN_SPOT` exclude nothing: they set the order in which pools are scaled up and Workers claimed, with Workers on Configured Worker Pools last.
+**Instance pricing.** `SPOT_ONLY` and `ON_DEMAND_ONLY` restrict a Task Group differently when it claims Workers and when a pool scales up for it:
 
-**Configured Worker Pools.** A Configured Worker Pool's Nodes have no Compute Sources: the Agent reports a provider of `ON_PREMISE`, and the region and instance type set as it was installed (`YD_REGION` and `YD_INSTANCE_TYPE`, which are empty by default; see [Configured Worker Pool Installation](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#configured-worker-pool-installation)). A Task Group that sets `providers`, `regions` or `instanceTypes` therefore matches such a pool only where the Agent was installed with matching values. `yd workrequirement compare` doesn't compare Configured Worker Pools.
+- **Claiming is per Worker**, so a Spot Worker in a pool that mixes Spot and On-Demand sources can be claimed by a `SPOT_ONLY` Task Group.
+- **Scaling up is per pool**, so the same mixed pool is never scaled up for it.
+
+`SPOT_THEN_ON_DEMAND` and `ON_DEMAND_THEN_SPOT` exclude nothing: they set the order in which pools are scaled up and Workers claimed, with Workers on Configured Worker Pools last.
+
+**Configured Worker Pools.** A Configured Worker Pool's Nodes have no Compute Sources. The Agent reports a provider of `ON_PREMISE`, and the region and instance type set as it was installed (`YD_REGION` and `YD_INSTANCE_TYPE`, which are empty by default; see [Configured Worker Pool Installation](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#configured-worker-pool-installation)).
+
+A Task Group that sets `providers`, `regions` or `instanceTypes` therefore matches such a pool only where the Agent was installed with matching values. `yd workrequirement compare` doesn't compare Configured Worker Pools.
 
 **No fixed pairing.** A Worker Pool serves every Task Group that matches it, from any Work Requirement, and a Task Group can claim Workers from several Worker Pools at once.
