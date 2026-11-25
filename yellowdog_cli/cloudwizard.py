@@ -14,7 +14,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from yellowdog_cli.utils.check_imports import check_cloudwizard_imports
-from yellowdog_cli.utils.command_registry import cloud_provider_of
+from yellowdog_cli.utils.command_registry import CLOUD_PROVIDERS
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, ReportedFailure
 from yellowdog_cli.utils.printing import counted, print_error, print_info
@@ -33,7 +33,7 @@ def main(ctx: RunContext):
 
     check_cloudwizard_imports()
 
-    provider = cloud_provider_of(ctx.args.cloud_provider)  # type: ignore[arg-type]
+    provider = CLOUD_PROVIDERS[ctx.args.cloud_provider]  # type: ignore[index]
     print_info(f"YellowDog automated cloud provider setup/teardown for '{provider}'")
     if provider == "AWS":
         from yellowdog_cli.utils.cloudwizard.aws import AWSConfig

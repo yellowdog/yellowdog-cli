@@ -202,6 +202,10 @@ class Noun:
     alias: str | None = None  # "wr"
 
     def verb(self, name: str) -> Verb | None:
+        """
+        The verb named, in any case: every verb is lower-case.
+        """
+        name = name.lower()
         return next((verb for verb in self.verbs if verb.name == name), None)
 
     def invoked_names(self) -> tuple[str, ...]:

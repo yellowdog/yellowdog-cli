@@ -55,12 +55,14 @@ def main() -> None:
 
         docs()
         sys.exit(ExitCode.SUCCESS)
-    entry = TOP_LEVEL.get(word)
+    # In any case: every command word is lower-case
+    entry = TOP_LEVEL.get(word.lower())
     if entry is None:
         if word.startswith("-"):
             _refuse(f"a command must come before '{word}'")
         _refuse(f"unknown command '{word}'", word)
 
+    word = word.lower()
     sys.argv = [sys.argv[0], *arguments[1:]]
     if entry.kind is Kind.NOUN:
         run_noun(entry.target, invoked=f"yd {word}")

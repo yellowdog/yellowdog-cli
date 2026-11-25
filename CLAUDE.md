@@ -12,7 +12,7 @@ Current version: defined in `yellowdog_cli/_version.py`.
 
 ```bash
 # Install in editable/development mode
-make install          # builds, then uv pip install -U -e ".[commander,mcp,jsonnet,cloudwizard]"
+make install          # builds, then uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]" (every extra, as make update)
 
 # Format code (ruff check --fix + ruff format)
 make format
@@ -44,7 +44,7 @@ make complexity
 make pre_push_hook
 
 # Update dependencies
-make update           # uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+make update           # uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]"
 ```
 
 ## Architecture
@@ -68,7 +68,7 @@ utils/completion_cache.py           # A JSON file per lookup in a private per-us
 utils/suggestions.py                # did_you_mean(): the word meant by a misspelt command, verb, option (command_registry._Parser), sort key or resource type; the closest, or those equally close; stdlib only
 utils/invocation.py                 # How the command was invoked: select_command()/selected() (the dispatcher's choice, read by CLIParser), selected_prog() for a standalone parser, invoked_name(); stdlib only
 utils/output_encoding.py            # use_utf8_output(): on Windows, stdout and stderr to a pipe or a file switched to UTF-8 (a console is already); every entry point calls it before printing (prepare_run() for the wrapped commands, the first statement of yd.py's and each standalone command's main()), held by tests/test_output_encoding.py; stdlib only
-utils/limits.py                     # Sizes, retries, timeouts, concurrency; imports nothing. PLATFORM_READ_TIMEOUT, the default of [common] readTimeout (ConfigCommon.read_timeout, None for 0: no limit), which sets the SDK client's ServicesSchema.readTimeout and, through ConfigCommon.request_timeout, the direct requests' read; yd-doctor's and the Tab lookups' clients take their own shorter ones
+utils/limits.py                     # Sizes, retries, timeouts, concurrency; imports nothing. PLATFORM_READ_TIMEOUT, the default of [common] readTimeout (ConfigCommon.read_timeout, None for 0: no limit), which sets the SDK client's ServicesSchema.requestTimeout (its readTimeout is deprecated, and governs only the SDK's subscriptions, which the CLI never uses) and, through ConfigCommon.request_timeout, the direct requests' read; yd-doctor's and the Tab lookups' clients take their own shorter ones
 utils/results.py                    # The --json accumulator: record*(), flush_results(), any_failed(); never imports wrapper or load_config
 utils/debug_log.py                  # The '--debug' trace: set_debug_logging() (output_settings.configure_output() and restore() call it) puts one stderr handler on the 'yellowdog_cli' and 'urllib3' loggers, never the root one (rclone_api's), neither propagating while on; '<date> <time> : DEBUG : [+<s>s] <module>: ...' (the module by its path less 'yellowdog_cli' and 'utils': 'dataclient.operations'), the info lines' prefix (the PID too under --print-pid), plain text; stdlib only
 utils/doctor_checks.py              # yd-doctor's checks; no SDK, load_config or dataclient.operations import at module level, and never wrapper: builds its own client

@@ -161,7 +161,31 @@ class Option:
         )
 
     def register(self, target: ArgumentParser | _ArgumentGroup) -> Action:
-        return target.add_argument(*self.flags, **self.kwargs)
+        kwargs = dict(self.kwargs)
+        if _any_case(kwargs):
+            kwargs["type"] = lower_case
+        return target.add_argument(*self.flags, **kwargs)
+
+
+def lower_case(value: str) -> str:
+    """
+    An argparse type for an option whose choices are lower-case words, so
+    that 'AWS' is 'aws': Option.register() gives it to every such option.
+    """
+    return value.lower()
+
+
+def _any_case(kwargs: Mapping[str, Any]) -> bool:
+    """
+    Whether an option's value is taken in any case: its choices are all
+    lower-case strings and it has no type of its own beyond str.
+    """
+    choices = kwargs.get("choices")
+    return (
+        choices is not None
+        and kwargs.get("type") in (None, str)
+        and all(isinstance(c, str) and c == c.lower() for c in choices)
+    )
 
 
 def option(*flags: str, completes: Completes = Completes.NONE, **kwargs: Any) -> Option:
@@ -613,7 +637,7 @@ def parse_sort_keys(value: str, valid: tuple[str, ...]) -> tuple[str, ...]:
     A '--sort' value: one sort key, or several separated by commas, the most
     significant first, each one of 'valid' and none given twice.
     """
-    keys = tuple(key.strip() for key in value.split(","))
+    keys = tuple(key.strip().lower() for key in value.split(","))
     for key in keys:
         if not key:
             raise ArgumentTypeError(f"empty sort key in '{value}'")
@@ -1930,11 +1954,9 @@ OPERATION = option(
 CLOUD_PROVIDER = option(
     "--cloud-provider",
     required=True,
-    metavar="<name of cloud provider>",
-    type=str,
-    help=(
-        "the name of the cloud provider (AWS, GCP, and Azure are currently supported)"
-    ),
+    choices=("aws", "azure", "google"),
+    metavar="<aws|azure|google>",
+    help="the cloud provider, named as the Platform names it",
 )
 CREDENTIALS_FILE = option(
     "--credentials-file",
@@ -1967,43 +1989,29 @@ INSTANCE_TYPE = option(
     ),
 )
 
-# The providers Cloud Wizard supports, by each spelling it accepts
+# The provider Cloud Wizard sets up for each '--cloud-provider' choice, by
+# the name its configuration classes use (the namespace, cloudwizard-gcp,
+# among what they name with it)
 CLOUD_PROVIDERS: dict[str, str] = {
     "aws": "AWS",
-    "amazon": "AWS",
-    "gcp": "GCP",
-    "gce": "GCP",
-    "google": "GCP",
     "azure": "Azure",
-    "microsoft": "Azure",
+    "google": "GCP",
 }
-
-
-def cloud_provider_of(name: str) -> str | None:
-    """
-    The provider a '--cloud-provider' spelling names, or None.
-    """
-    return CLOUD_PROVIDERS.get(name.strip().lower())
 
 
 def check_cloudwizard_args(args: Namespace, parser: ArgumentParser) -> None:
     """
-    yd-cloudwizard's provider, and what each operation needs from it, refused
+    What each of yd-cloudwizard's operations needs from its provider, refused
     as the command line is parsed rather than reported and exited 0.
     """
-    provider = cloud_provider_of(args.cloud_provider)
-    if provider is None:
-        parser.error(
-            f"unknown or unsupported cloud provider '{args.cloud_provider}'; one of"
-            f" {', '.join(CLOUD_PROVIDERS)}"
-        )
-    if provider == "GCP" and args.credentials_file is None:
-        parser.error("--credentials-file is required for GCP")
+    provider = args.cloud_provider
+    if provider == "google" and args.credentials_file is None:
+        parser.error("--credentials-file is required for google")
     if args.operation in ("add-ssh", "remove-ssh"):
-        if provider == "GCP":
-            parser.error(f"'{args.operation}' is not supported for GCP")
-        if provider == "Azure" and args.region_name is None:
-            parser.error(f"'{args.operation}' needs --region-name for Azure")
+        if provider == "google":
+            parser.error(f"'{args.operation}' is not supported for google")
+        if provider == "azure" and args.region_name is None:
+            parser.error(f"'{args.operation}' needs --region-name for azure")
 
 
 COMMANDS["yd-cloudwizard"] = Command(
@@ -3774,7 +3782,7 @@ def usage_group_keys(value: str) -> tuple[str, ...]:
     A '--by' value: one grouping key, or several separated by commas, each
     one of USAGE_GROUP_KEYS and none given twice.
     """
-    keys = tuple(key.strip() for key in value.split(","))
+    keys = tuple(key.strip().lower() for key in value.split(","))
     for key in keys:
         if key not in USAGE_GROUP_KEYS:
             raise ArgumentTypeError(
@@ -3797,7 +3805,7 @@ def usage_filter(value: str) -> tuple[str, str]:
     the pattern a glob, which may not be empty.
     """
     key, equals, pattern = value.partition("=")
-    key = key.strip()
+    key = key.strip().lower()
     if not equals:
         raise ArgumentTypeError(f"'{value}' is not 'key=pattern' (e.g. 'provider=aws')")
     if key not in USAGE_GROUP_KEYS:
@@ -4079,9 +4087,10 @@ def parse_range(text: str) -> tuple[float | None, float | None]:
 
 def resolve_cloud_info_type(value: str) -> str:
     """
-    A yd-cloud-info TYPE: its full name or an unambiguous prefix.
+    A yd-cloud-info TYPE: its full name or an unambiguous prefix, in any
+    case.
     """
-    matches = [t for t in CLOUD_INFO_TYPES if value and t.startswith(value)]
+    matches = [t for t in CLOUD_INFO_TYPES if value and t.startswith(value.lower())]
     if len(matches) == 1:
         return matches[0]
     raise ArgumentTypeError(

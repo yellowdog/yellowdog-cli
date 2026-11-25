@@ -39,7 +39,7 @@ BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for ea
 
 # How long a Platform request waits for its response before failing, unless
 # [common] readTimeout says otherwise (ConfigCommon.read_timeout): the SDK
-# client's (ServicesSchema.readTimeout), and the CLI's direct requests'
+# client's (ServicesSchema.requestTimeout), and the CLI's direct requests'
 # (ConfigCommon.request_timeout). A POST that times out is not resent (the
 # Platform may still be processing it), but for a Task batch whose Tasks all
 # have names (submit_with_retries())

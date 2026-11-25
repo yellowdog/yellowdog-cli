@@ -98,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Sun Nov 22 16:31:26 GMT 2026 -->
+<!-- Added by: pwt, at: Mon Nov 23 15:12:02 GMT 2026 -->
 
 <!--te-->
 
@@ -134,6 +134,8 @@ Since the noun says what a name stands for, the `show`, `follow`, `wait` and `co
 `yd show`, `yd follow` and `yd wait` themselves take IDs alone, not knowing the type. Those four commands remain, for any type of object, as do the commands that act on no particular object, from [`yd list`](#yd-list) to [`yd completion`](#yd-completion): each is `yd <command>`, such as `yd list` or `yd doctor`. `yd` alone, or `yd help`, lists them all.
 
 The deprecated `yd-*` commands, such as `yd-submit` and `yd-list`, still work, with a warning, until a future release: see [Deprecated Commands](#deprecated-commands) for what replaces each.
+
+Nouns, verbs and commands are taken in any case (`yd CloudInfo Regions`), as is an option's fixed choice of words (`--provider AWS`, `--sort Name`); an option's own names are not (`--Provider` is refused), nor any name or pattern of yours.
 
 Help is available for every command with the `--help` or `-h` option. The two tables below describe the options shared across commands; the sections that follow describe each command individually, along with its own command-specific options.
 

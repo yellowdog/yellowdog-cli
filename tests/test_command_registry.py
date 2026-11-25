@@ -812,3 +812,43 @@ def test_the_usage_line_is_built_uncoloured(monkeypatch):
     usage = _usage(COMMANDS["yd-list"].options, "yd list")
     assert "\x1b[" not in usage
     assert not usage.lstrip().startswith("usage")
+
+
+def _all_options():
+    for command in COMMANDS.values():
+        for entry in (*command.options, *COMMON_OPTIONS[command.kind]):
+            yield from entry.options if isinstance(entry, Exclusive) else (entry,)
+
+
+def test_every_choice_is_taken_in_any_case():
+    """
+    An option of fixed choices takes its value in any case: lower-case
+    choices through Option.register()'s lower_case, any others through a
+    type of the option's own, which must accept them in any case.
+    """
+    for option_ in _all_options():
+        choices = option_.kwargs.get("choices")
+        if choices is None or option_.kwargs.get("type") not in (None, str):
+            continue
+        assert all(choice == choice.lower() for choice in choices), option_.name
+
+
+@pytest.mark.parametrize(
+    "command, argv, dest, expected",
+    [
+        ("yd-list", ["Tasks"], "entity_type", "tasks"),
+        ("yd-cloud-info", ["REGIONS"], "cloud_info_type", "regions"),
+        ("yd-list", ["instances", "--provider", "AWS"], "provider", "aws"),
+        ("yd-list", ["Tasks", "--sort", "Name,CREATED"], "sort", ("name", "created")),
+        ("yd-cloud-info", ["Regions", "-p", "Azure"], "providers", ["azure"]),
+        ("yd-cloud-info", ["Inst", "--arch", "ARM64"], "arch", "arm64"),
+        ("yd-cloud-info", ["prices", "--usage", "On-Demand"], "usage", "on-demand"),
+        ("yd-usage", ["--by", "Provider,REGION"], "usage_by", ("provider", "region")),
+        ("yd-usage", ["--where", "Provider=AWS"], "usage_where", [("provider", "AWS")]),
+        ("yd-completion", ["Bash"], "shell", "bash"),
+        ("yd-schema", ["Worker-Pool"], "family", "worker-pool"),
+    ],
+)
+def test_values_in_capitals(command, argv, dest, expected):
+    parsed = build_parser(COMMANDS[command]).parse_args(argv)
+    assert getattr(parsed, dest) == expected

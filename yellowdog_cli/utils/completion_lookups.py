@@ -158,7 +158,7 @@ def _client(common: ConfigCommon) -> PlatformClient:
     return PlatformClient.create(
         ServicesSchema(
             defaultUrl=common.url,
-            readTimeout=timedelta(seconds=LOOKUP_TIMEOUT_SECONDS),
+            requestTimeout=timedelta(seconds=LOOKUP_TIMEOUT_SECONDS),
         ),
         ApiKey(common.key, common.secret),
     )

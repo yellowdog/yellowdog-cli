@@ -6,6 +6,10 @@ TESTS = tests/*.py conftest.py
 MANIFEST = LICENSE README.md
 BUILD_DIST = build dist yellowdog_cli.egg-info
 PYCACHE = __pycache__ yellowdog_cli/__pycache__ yellowdog_cli/utils/__pycache__ yellowdog_cli/utils/*/__pycache__
+# Every extra, for 'make install' and 'make update' alike: the dev extra's
+# constraints (pyproject.toml) hold for both, or each would undo the other's
+# versions
+EXTRAS = dev,commander,mcp,jsonnet,cloudwizard,docs
 TOC_BACKUP = README.md.* README_CLOUDWIZARD.md.* yellowdog_cli/commander/README.md.* yellowdog_cli/mcp/README.md.*
 
 build: $(SRC) $(MANIFEST)
@@ -15,7 +19,7 @@ clean:
 	rm -rf $(BUILD_DIST) $(PYCACHE) $(TOC_BACKUP) sphinx/_build
 
 install: build
-	uv pip install -U -e ".[commander,mcp,jsonnet,cloudwizard]"
+	uv pip install -U -e ".[$(EXTRAS)]"
 
 uninstall:
 	uv pip uninstall yellowdog-cli
@@ -114,7 +118,7 @@ live_config:
 	python tests/live/check_config.py
 
 update:
-	uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]"
+	uv pip install -U -e ".[$(EXTRAS)]"
 
 no_op:
 	# Available targets are: build, clean, docs, docs_linkcheck, format, install, test, tox, uninstall, update, pypi_upload, pypi_check
