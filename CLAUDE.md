@@ -12,7 +12,7 @@ Current version: defined in `yellowdog_cli/_version.py`.
 
 ```bash
 # Install in editable/development mode
-make install          # builds, then uv pip install -U -e ".[commander,mcp,jsonnet,cloudwizard]"
+make install          # builds, then uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]" (every extra, as make update)
 
 # Format code (ruff check --fix + ruff format)
 make format
@@ -44,7 +44,7 @@ make complexity
 make pre_push_hook
 
 # Update dependencies
-make update           # uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard]"
+make update           # uv pip install -U -e ".[dev,commander,mcp,jsonnet,cloudwizard,docs]"
 ```
 
 ## Architecture
