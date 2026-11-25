@@ -10,15 +10,17 @@ zip of three CSV files -- a summary, the Compute Requirements active in the
 window, and one row per Instance with the seconds it spent in each status
 within the window -- kept as it arrives, the CSV files read from it in
 place (a tenth of their size extracted, and as quick to read), in a
-directory named by a digest of what the report depends on (the URL, the
-key ID, the window as given and the namespace filter). A report found
-there is used, unless refreshed, while each end of its window is within
-USAGE_REPORT_REUSE_SECONDS of the window asked for, whose end is taken as
-now at the latest, since the Platform's report ends there: a window of
-fixed past dates is used until it is removed, being one that no longer
-changes, and one ending now for ten minutes after it was fetched. The
-window, the time it was fetched and the report's size are said with every
-summary. Each fetch removes the reports unused (neither fetched nor read)
+directory named by a digest of its scope (the URL, the key ID and the
+namespace filter: report_scope()) and the window it was fetched for. A
+kept report of the same scope is used, unless refreshed, while each end of
+its window is within USAGE_REPORT_REUSE_SECONDS of the window asked for,
+whose end is taken as now at the latest, since the Platform's report ends
+there; however the window was written, so a window given as '24h' to
+'now' is found again by the dates its summary shows. A window of fixed
+past dates is used until it is removed, being one that no longer changes,
+and one ending now for ten minutes after it was fetched; of several that
+match, the one fetched last. The window, the time it was fetched and the
+report's size are said with every summary. Each fetch removes the reports unused (neither fetched nor read)
 for USAGE_REPORTS_UNUSED_SECONDS, a week, and then the least recently used
 beyond USAGE_REPORTS_KEPT, so the directory stays bounded on any platform
 (Windows clears its temporary directory only if told to); a report's
@@ -231,67 +233,59 @@ class UsageGroup:
         return sum(self.seconds.values())
 
 
-def report_key(
-    ctx: RunContext, from_text: str, until_text: str, namespace: str | None
-) -> str:
+def report_scope(ctx: RunContext, namespace: str | None) -> str:
     """
-    The digest naming a report's directory: what the report depends on,
-    in 16 hex digits, enough to tell a user's reports apart and short
-    enough to read.
+    The digest of what a report depends on besides its window: the URL,
+    the key ID and the namespace filter. Kept with the report, so that one
+    of another account or namespace is never used.
     """
     return cache_key(
-        "usage-report",
-        ctx.config.url,
-        ctx.config.key or "",
-        from_text,
-        until_text,
-        namespace or "",
-    )[:16]
+        "usage-report", ctx.config.url, ctx.config.key or "", namespace or ""
+    )
+
+
+def report_key(scope: str, from_time: datetime, until_time: datetime) -> str:
+    """
+    The digest naming a report's directory: its scope and the window it was
+    fetched for, in 16 hex digits, enough to tell a user's reports apart
+    and short enough to read.
+    """
+    return cache_key(scope, _iso(from_time), _iso(until_time))[:16]
 
 
 def usage_report(
     ctx: RunContext,
     from_time: datetime,
     until_time: datetime,
-    from_text: str,
-    until_text: str,
     namespace: str | None,
     refresh: bool,
     now: datetime | None = None,
 ) -> Report:
     """
-    The report for the window: the one kept for it unless refreshed, absent
-    or no longer the window asked for (window_matches()), else fetched from
-    the Platform and kept. Without a usable cache directory, it is kept in a
+    The report for the window: a kept one of the same scope whose window
+    matches it (window_matches()) unless refreshed, else fetched from the
+    Platform and kept. Without a usable cache directory, it is kept in a
     fresh temporary one.
     """
+    now = now or datetime.now(timezone.utc)
     root = cache_directory(USAGE_CACHE_DIRECTORY_NAME)
-    key = report_key(ctx, from_text, until_text, namespace)
+    scope = report_scope(ctx, namespace)
+    key = report_key(scope, from_time, min(until_time, now))
     if root is not None:
-        directory = root / key
         if not refresh:
-            cached = _read_kept(directory)
-            if cached is not None and window_matches(
-                cached, from_time, until_time, now or datetime.now(timezone.utc)
-            ):
-                _LOG.debug("Using the usage report kept in %s", directory)
-                _touch(directory)
-                return cached
+            cached = kept_report(root, scope, from_time, until_time, now)
             if cached is not None:
-                _LOG.debug(
-                    "Not using the usage report kept in %s: its window, %s to %s,"
-                    " is no longer the one asked for",
-                    directory,
-                    cached.from_time,
-                    cached.until_time,
-                )
+                _LOG.debug("Using the usage report kept in %s", cached.directory)
+                _touch(cached.directory)
+                return cached
     else:
         import tempfile
 
         root = Path(tempfile.mkdtemp(prefix=f"{USAGE_CACHE_DIRECTORY_NAME}-"))
-        directory = root / key
+    directory = root / key
     print_info("Fetching the usage report from the Platform")
     fetched = _fetch(ctx, from_time, until_time, namespace)
+    fetched.scope = scope
     _keep(root, directory, fetched)
     prune(root, keep=directory)
     report = _read_kept(directory)
@@ -301,6 +295,52 @@ def usage_report(
         )
     report.from_cache = False
     return report
+
+
+def kept_report(
+    root: Path, scope: str, from_time: datetime, until_time: datetime, now: datetime
+) -> Report | None:
+    """
+    The kept report of this scope whose window matches the one asked for,
+    the last fetched of several; None for none. A report kept without its
+    scope is never used, and is pruned in time.
+    """
+    try:
+        entries = [path for path in root.iterdir() if ".part-" not in path.name]
+    except OSError:
+        _LOG.debug("Cannot list the kept usage reports in %s", root, exc_info=True)
+        return None
+    matching: list[Report] = []
+    for directory in entries:
+        if _kept_scope(directory) != scope:
+            continue
+        report = _read_kept(directory)
+        if report is None:
+            continue
+        if window_matches(report, from_time, until_time, now):
+            matching.append(report)
+        else:
+            _LOG.debug(
+                "Not using the usage report kept in %s: its window, %s to %s,"
+                " is not the one asked for",
+                directory,
+                report.from_time,
+                report.until_time,
+            )
+    return max(matching, key=lambda report: report.fetched, default=None)
+
+
+def _kept_scope(directory: Path) -> str | None:
+    """
+    The scope a report was kept with, read without opening its zip; None
+    for none.
+    """
+    try:
+        fetched = json.loads((directory / FETCHED_JSON).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    scope = fetched.get("scope") if isinstance(fetched, dict) else None
+    return scope if isinstance(scope, str) else None
 
 
 def prune(root: Path, keep: Path, now: float | None = None) -> None:
@@ -408,6 +448,8 @@ class Fetched:
     content: bytes
     namespaces: list[str] | None
     refused: list[str] = field(default_factory=list)
+    # report_scope(), kept with the report
+    scope: str = ""
 
 
 def _fetch(
@@ -749,6 +791,7 @@ def _keep(root: Path, directory: Path, fetched: Fetched) -> None:
                     "bytes": len(fetched.content),
                     "namespaces": fetched.namespaces,
                     "refused": fetched.refused,
+                    "scope": fetched.scope,
                 }
             ),
             encoding="utf-8",

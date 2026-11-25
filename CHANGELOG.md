@@ -10,6 +10,10 @@ These changes alter what an existing script or configuration will see:
 
 - **`[common] readTimeout` is renamed `requestTimeout`**, matching the YellowDog SDK's own name for it, and its environment variable `YD_READ_TIMEOUT` is renamed `YD_REQUEST_TIMEOUT` (`--property common.requestTimeout=<seconds>` on the command line). The old names are not read: a configuration file still setting `readTimeout` is refused as holding an invalid property (exit code 3) until it is renamed, and `YD_READ_TIMEOUT` is ignored, leaving the default of 90 seconds.
 
+### yd usage
+
+- **A kept report is found by its window, however the window is written.** A report fetched with `--from 24h --until now` is used again by `--from '2026-11-24 10:52 UTC' --until '2026-11-25 10:52 UTC'`, the window its summary showed, and the other way round, while each end is within ten minutes. Reports kept by earlier versions are not used again; they are removed after a week unused.
+
 ## 15.20.0 — 2026-11-25
 
 ### Upgrading

@@ -84,8 +84,6 @@ def show_usage(ctx: RunContext) -> None:
         ctx,
         from_time,
         until_time,
-        from_text,
-        until_text,
         namespace,
         refresh=bool(ctx.args.usage_refresh),
     )

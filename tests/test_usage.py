@@ -13,7 +13,7 @@ import time
 import zipfile
 from argparse import ArgumentTypeError
 from datetime import datetime, timedelta, timezone
-from json import loads
+from json import dumps, loads
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -212,8 +212,6 @@ def _report(ctx: RunContext, refresh: bool = False) -> usage_report.Report:
         ctx,
         from_time,
         until_time,
-        ctx.args.usage_from,
-        ctx.args.usage_until,
         ctx.args.namespace,
         refresh=refresh,
     )
@@ -950,8 +948,6 @@ class TestWhenAKeptReportIsUsed:
                 _ctx(),
                 KEPT_FROM + elapsed,
                 KEPT_UNTIL + elapsed,
-                "7 days ago",
-                "now",
                 None,
                 refresh=False,
                 now=KEPT_UNTIL + elapsed,
@@ -963,12 +959,56 @@ class TestWhenAKeptReportIsUsed:
         assert not run(timedelta(minutes=11)).from_cache
         assert len(platform.calls) == 2
 
+    @staticmethod
+    def _run(
+        from_time: datetime,
+        until_time: datetime,
+        now: datetime,
+        refresh: bool = False,
+        namespace: str | None = None,
+    ) -> usage_report.Report:
+        return usage_report.usage_report(
+            _ctx(), from_time, until_time, namespace, refresh=refresh, now=now
+        )
+
+    def test_a_window_ending_now_is_found_again_by_the_dates_it_shows(self, platform):
+        # Fetched as '--from 7d --until now' 39 seconds past the minute, then
+        # asked for days later by the minutes its summary showed
+        fetched = KEPT_UNTIL + timedelta(seconds=39)
+        first = self._run(KEPT_FROM + timedelta(seconds=39), fetched, fetched)
+        later = self._run(KEPT_FROM, KEPT_UNTIL, fetched + timedelta(days=2))
+        assert later.from_cache and later.directory == first.directory
+        assert len(platform.calls) == 1
+
+    def test_of_several_that_match_the_last_fetched_is_used(self, platform):
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        refreshed = self._run(
+            KEPT_FROM + timedelta(minutes=1), KEPT_UNTIL, KEPT_UNTIL, refresh=True
+        )
+        assert self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).directory == (
+            refreshed.directory
+        )
+        assert len(platform.calls) == 2
+
+    def test_a_matching_window_of_another_namespace_is_not_used(self, platform):
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        assert not self._run(
+            KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-render"
+        ).from_cache
+
+    def test_a_report_kept_without_its_scope_is_not_used(self, platform):
+        report = self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        (report.directory / "fetched.json").write_text(
+            dumps({"fetched": 1795000000.0}), encoding="utf-8"
+        )
+        assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+
 
 def test_a_report_kept_without_its_size_is_shown_without_it(platform, capsys):
     report = _report(_ctx())
-    (report.directory / "fetched.json").write_text(
-        '{"fetched": 1795000000.0}', encoding="utf-8"
-    )
+    kept = report.directory / "fetched.json"
+    scope = loads(kept.read_text(encoding="utf-8"))["scope"]
+    kept.write_text(dumps({"fetched": 1795000000.0, "scope": scope}), encoding="utf-8")
     out, _ = _show(capsys)
     line = next(line for line in out.splitlines() if "Reusing report" in line)
     assert "UTC), in '" in line and "kB" not in line and "bytes" not in line
