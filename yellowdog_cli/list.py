@@ -12,7 +12,7 @@ from itertools import chain, islice
 from os.path import exists
 from typing import Any, TypeVar, cast
 
-from requests import HTTPError, get
+from requests import HTTPError
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
     Allowance,
@@ -131,6 +131,7 @@ from yellowdog_cli.utils.glob_utils import (
     glob_literal_hint,
     glob_search_prefix,
 )
+from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import resolved_each

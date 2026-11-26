@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import yellowdog_client.model as model
 from dateparser import parse as date_parse
-from requests import Response, post, put
+from requests import Response
 from requests.exceptions import HTTPError
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
@@ -96,6 +96,7 @@ from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
     classify,
 )
+from yellowdog_cli.utils.http import post, put
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,

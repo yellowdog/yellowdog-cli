@@ -9,7 +9,6 @@ fetches it, and compares the two, changing nothing.
 
 from typing import Any, cast
 
-from requests import get
 from requests.exceptions import HTTPError
 from yellowdog_client.model import InternalUser, NamespaceSearch
 
@@ -45,6 +44,7 @@ from yellowdog_cli.utils.entity_utils import (
     keyring_credential_names,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
+from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.property_names import (
     PROP_AUTOSCALING_MAX_NODES,

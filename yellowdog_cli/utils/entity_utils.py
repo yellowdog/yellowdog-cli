@@ -13,7 +13,7 @@ from functools import lru_cache
 from json import loads as json_loads
 from typing import Any, TypeVar, cast
 
-from requests import HTTPError, get
+from requests import HTTPError
 from yellowdog_client import PlatformClient
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
@@ -81,6 +81,7 @@ from yellowdog_cli.utils.glob_utils import (
     glob_literal_hint,
     glob_search_prefix,
 )
+from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import (
     KEYRING_FETCH_WORKERS,

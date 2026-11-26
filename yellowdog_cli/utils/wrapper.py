@@ -9,9 +9,8 @@ whatever else the command's module holds lazily, before the command runs
 (command_runner.prepare_run()), so a broken configuration still exits
 before it starts; CLIENT is left to the command's first use of it, since
 importing the SDK at all builds the whole Platform client (~140ms) and a
-command that never uses it -- yd-variables -- need not pay for it. The
-User-Agent is applied as it is built, before any request can be made, and
-pypac and 'requests' are imported only when used.
+command that never uses it -- yd-variables -- need not pay for it. pypac
+and 'requests' are imported only when used.
 """
 
 from __future__ import annotations
@@ -69,9 +68,6 @@ def _create_client() -> PlatformClient:
 
     from yellowdog_cli.utils.user_agent import cli_product, set_default_user_agent
 
-    # The CLI's User-Agent on its direct requests, before any is made: every
-    # command that makes one uses CLIENT; the SDK's own requests name the CLI
-    # through the product the client is created with
     set_default_user_agent()
     # A strict load, which every command using the client has, never
     # returns None for either
@@ -113,15 +109,10 @@ def set_proxy():
     """
     proxy_var = "HTTPS_PROXY"
     if CONFIG_COMMON.use_pac:
-        from pypac import pac_context_for_url
+        from yellowdog_cli.utils.http import pac_context
 
-        from yellowdog_cli.utils.user_agent import set_default_user_agent
-
-        # The PAC file is fetched with 'requests', as the CLI's own request;
-        # the baseline only, which imports no SDK (yd-variables uses none)
-        set_default_user_agent()
         print_debug("Using Proxy Auto-Configuration (PAC)")
-        with pac_context_for_url(CONFIG_COMMON.url):
+        with pac_context(CONFIG_COMMON.url):
             https_proxy = os.getenv(proxy_var, None)
         if https_proxy is not None:
             os.environ[proxy_var] = https_proxy

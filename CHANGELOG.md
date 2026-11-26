@@ -13,7 +13,7 @@ These changes alter what an existing script or configuration will see:
 ### Commands
 
 - The CLI requires `yellowdog-sdk` 16.4.0 or later.
-- **Requests made through the YellowDog SDK identify the CLI with the SDK's own User-Agent**, `yd/1.1.0 yellowdog-sdk-python/<version> python/<version> yellowdog-cli/<version>`, in place of the CLI's own form; `yd doctor`'s requests now identify the CLI too. The CLI's direct requests keep `yellowdog-cli/<version> python-requests/<version>`.
+- **Requests made through the YellowDog SDK identify the CLI with the SDK's own User-Agent**, `yd/1.1.0 yellowdog-sdk-python/<version> python/<version> yellowdog-cli/<version>`, in place of the CLI's own form; `yd doctor`'s requests now identify the CLI too. The CLI's direct requests, the PAC file's fetch included, send `yd/1.1.0 yellowdog-cli/<version> python/<version>`, in place of `yellowdog-cli/<version> python-requests/<version>`.
 
 ### yd usage
 
