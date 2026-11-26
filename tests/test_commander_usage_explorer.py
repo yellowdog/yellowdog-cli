@@ -890,14 +890,15 @@ def test_custom_dates_are_not_remembered(explorer, commander_dialog_settings):
     )
 
 
-def tick(explorer, key: str) -> None:
+def tick(explorer, *keys: str) -> None:
     """
-    Tick or untick a key in Total by's menu.
+    Tick or untick keys in Total by's menu, then close it, which applies them.
     """
-    [action] = [
-        a for a in explorer._total_by.menu().actions() if a.text() == heading(key)
-    ]
-    action.trigger()
+    menu = explorer._total_by.menu()
+    for key in keys:
+        [action] = [a for a in menu.actions() if a.text() == heading(key)]
+        action.trigger()
+    menu.aboutToHide.emit()
 
 
 def ticked(explorer) -> list[str]:
@@ -928,6 +929,58 @@ def test_total_by_adds_and_removes_keys_and_keeps_the_filter(explorer, children)
     QApplication.processEvents()
     assert len(children.started) == started
     assert ticked(explorer) == ["Region"]
+
+
+def test_total_by_changes_several_keys_in_one_run(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    started = len(children.started)
+    menu = explorer._total_by.menu()
+    for key in ("region", "tag", "cr"):
+        [action] = [a for a in menu.actions() if a.text() == heading(key)]
+        action.trigger()
+    # Staged while the menu is open: nothing runs yet
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert sorted(ticked(explorer)) == sorted(["Region", heading("tag")])
+    menu.aboutToHide.emit()
+    settle(explorer)
+    views = [a for c, a in children.started[started:] if is_view(c, a)]
+    assert len(views) == 1
+    assert value_of(usage_args(children), "--by") == "region,tag"
+
+
+def test_total_by_closed_unchanged_runs_nothing(explorer, children):
+    started = len(children.started)
+    tick(explorer, "region", "region")
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert ticked(explorer) == ["Namespace"]
+
+
+def test_the_total_by_menu_stays_open_while_ticking(explorer, children):
+    menu = explorer._total_by.menu()
+    menu.popup(explorer.mapToGlobal(explorer._total_by.geometry().bottomLeft()))
+    QApplication.processEvents()
+    assert menu.isVisible()
+    started = len(children.started)
+    [region] = [a for a in menu.actions() if a.text() == "Region"]
+    QTest.mouseClick(
+        menu, Qt.MouseButton.LeftButton, pos=menu.actionGeometry(region).center()
+    )
+    assert menu.isVisible()
+    assert region.isChecked()
+    menu.setActiveAction(region)
+    QTest.keyClick(menu, Qt.Key.Key_Space)
+    assert menu.isVisible()
+    assert not region.isChecked()
+    QTest.keyClick(menu, Qt.Key.Key_Return)
+    assert menu.isVisible() and region.isChecked()
+    QApplication.processEvents()
+    assert len(children.started) == started
+    menu.hide()
+    settle(explorer)
+    assert value_of(usage_args(children), "--by") == "namespace,region"
 
 
 def test_total_by_offers_only_the_keys_left_open(explorer, children):

@@ -36,6 +36,7 @@ from PyQt6.QtGui import (
     QFontMetrics,
     QKeyEvent,
     QKeySequence,
+    QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
@@ -444,6 +445,33 @@ def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
     return widget
 
 
+class _TickMenu(QMenu):
+    """
+    A menu of ticks that stays open while they are ticked and unticked, by
+    click or by Return, Enter or Space, so that several can be changed in one
+    pass; it closes as any menu does otherwise (Esc, a click outside it).
+    """
+
+    def _ticked(self, action: QAction | None) -> bool:
+        if action is None or not action.isCheckable() or not action.isEnabled():
+            return False
+        action.trigger()
+        return True
+
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        if event is None or not self._ticked(self.actionAt(event.position().toPoint())):
+            super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:
+        keys = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)
+        if (
+            event is None
+            or event.key() not in keys
+            or not self._ticked(self.activeAction())
+        ):
+            super().keyPressEvent(event)
+
+
 class _Notes(QTextEdit):
     """
     The notes beneath the table: read-only plain text with no frame or
@@ -821,10 +849,14 @@ class UsageExplorer(QDialog):
         # _show_total_by() fills it for the view shown
         self._total_by = QPushButton(self)
         self._total_by.setAutoDefault(False)
-        self._total_by.setMenu(QMenu(self._total_by))
+        self._total_by.setMenu(_TickMenu(self._total_by))
+        # The keys ticked while the menu is open, applied as one regrouping
+        # when it closes
+        self._staged_by: tuple[str, ...] = TOP_LEVEL.by
+        cast(QMenu, self._total_by.menu()).aboutToHide.connect(self._apply_total_by)
         self._total_by.setToolTip(
             "What this level's rows total by (--by): tick keys to add columns,"
-            " each row one combination"
+            " each row one combination; applied when the menu closes"
         )
 
     def _build_table(self, font: QFont) -> None:
@@ -1407,15 +1439,26 @@ class UsageExplorer(QDialog):
             return
         self._request(_View(replace(shown.scope, cost=checked), shown.levels))
 
-    def _total_by_toggled(self, key: str) -> None:
+    def _stage_total_by(self, key: str) -> None:
         """
-        A key ticked or unticked in Total by: the level regrouped by the keys
-        then ticked (toggled_by()); the last key unticked stays.
+        A key ticked or unticked in Total by's menu, which stays open: the
+        ticks staged (toggled_by()), the last key unticked staying ticked.
+        """
+        by = toggled_by(self._staged_by, key)
+        if by is not None:
+            self._staged_by = by
+        for action in cast(QMenu, self._total_by.menu()).actions():
+            action.setChecked(action.data() in self._staged_by)
+
+    def _apply_total_by(self) -> None:
+        """
+        Total by's menu closed: the level regrouped by the keys then ticked,
+        in one run, if they differ from those shown.
         """
         current = self._shown
         level = current.levels[-1] if current is not None else None
-        by = toggled_by(level.by, key) if level is not None else None
-        if current is None or level is None or by is None or self._busy:
+        by = self._staged_by
+        if current is None or level is None or by == level.by or self._busy:
             self._show_total_by()
             return
         # A sort by a key this level no longer shows is dropped
@@ -1756,13 +1799,15 @@ class UsageExplorer(QDialog):
             levels = self._shown.levels if self._shown else (TOP_LEVEL,)
         by = levels[-1].by
         self._total_by.setText(", ".join(heading(key) for key in by))
+        self._staged_by = by
         menu = cast(QMenu, self._total_by.menu())
         menu.clear()
         for key in eligible_keys(levels):
             action = cast(QAction, menu.addAction(heading(key)))
+            action.setData(key)
             action.setCheckable(True)
             action.setChecked(key in by)
-            action.triggered.connect(partial(self._total_by_toggled, key))
+            action.triggered.connect(partial(self._stage_total_by, key))
 
     def _on_namespaces(self, result: RunResult) -> None:
         document = result.document
