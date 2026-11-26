@@ -7,6 +7,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
+- **`yd commander --usage-explorer` has a Dark Mode checkbox**, at the end of the Configuration row, sharing Commander's Dark Mode setting.
 
 ## 15.21.0 — 2026-11-26
 

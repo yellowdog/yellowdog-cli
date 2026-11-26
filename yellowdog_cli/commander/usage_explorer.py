@@ -674,6 +674,9 @@ class UsageExplorer(QDialog):
     # Select... beside the configuration, shown only when the explorer runs on
     # its own (show_configuration())
     select_configuration = pyqtSignal()
+    # Dark Mode ticked or unticked, shown only when the explorer runs on its
+    # own (offer_dark_mode()): in Commander the main window's checkbox sets it
+    dark_mode_chosen = pyqtSignal(bool)
 
     def __init__(
         self,
@@ -948,8 +951,8 @@ class UsageExplorer(QDialog):
 
     def _build_configuration_row(self) -> None:
         """
-        The configuration and Select..., hidden until show_configuration():
-        in Commander the main window chooses it.
+        The configuration, Dark Mode and Select..., hidden until
+        show_configuration(): in Commander the main window has them.
         """
         self._config_label = QLabel("Configuration:", self)
         self._config_path = QLabel(self)
@@ -966,6 +969,10 @@ class UsageExplorer(QDialog):
         self._select_config.setAutoDefault(False)
         self._select_config.setToolTip("Choose another configuration file")
         self._select_config.clicked.connect(self.select_configuration.emit)
+        self._dark_mode = QCheckBox("Dark Mode", self)
+        self._dark_mode.setToolTip("Show the explorer in dark colours")
+        self._dark_mode.hide()
+        self._dark_mode.clicked.connect(self.dark_mode_chosen.emit)
 
     def _lay_out(self) -> None:
         window_row = QHBoxLayout()
@@ -998,8 +1005,9 @@ class UsageExplorer(QDialog):
         # right, as in the main window
         config_row = QHBoxLayout()
         config_row.addWidget(self._config_label)
-        config_row.addWidget(self._config_path, 1)
         config_row.addWidget(self._select_config)
+        config_row.addWidget(self._config_path, 1)
+        config_row.addWidget(self._dark_mode)
         # Each row in a widget of its own, so that the rows can be set close
         # together while each keeps the style's spacing between its controls
         # (a row's layout would otherwise take the column's spacing)
@@ -1087,6 +1095,14 @@ class UsageExplorer(QDialog):
         self._config_path.setText(path)
         self._config_path.setToolTip(path)
         self._config_row.show()
+
+    def offer_dark_mode(self, dark: bool) -> None:
+        """
+        Show Dark Mode in the configuration row, ticked if 'dark': for the
+        explorer run on its own, which has no main window to set it from.
+        """
+        self._dark_mode.setChecked(dark)
+        self._dark_mode.show()
 
     def set_namespace(self, namespace: str) -> None:
         """

@@ -575,7 +575,11 @@ yd commander --usage-explorer ~/projects/render/config.toml
 
 The configuration is the file named (as an argument or with `-c`), else the one the CLI reads by default (`config.toml` in the current directory, else your own), else one you choose in a dialog as the window opens. A **Configuration** row at the top of the window names it, and its **Select…** chooses another, which starts the explorer again at the top, awaiting **Fetch Report**. `--property` is given to every run, as Commander's Properties field is, and `-n` sets the Namespace to start on; the other launch options belong to the main window, and are refused with `--usage-explorer`.
 
-Everything else is as in Commander: Dark Mode is the one last chosen there (else your system's), the explorer's own preferences are shared with it, and closing the window quits. With no output window, nothing is logged or printed to the terminal; a failure is said beneath the table, as in Commander.
+![The Usage Explorer run on its own on macOS, with the Configuration row, Select… and Dark Mode above the window and namespace controls](screenshots/screenshot_usage_explorer_standalone_macos.png)
+
+**Dark Mode**, in the Configuration row, switches the window between light and dark. It shares Commander's setting: the explorer opens as Dark Mode was last chosen in either, else as your system's appearance.
+
+Everything else is as in Commander: the explorer's own preferences are shared with it, and closing the window quits. With no output window, nothing is logged or printed to the terminal; a failure is said beneath the table, as in Commander.
 
 ### Usage Explorer Details
 

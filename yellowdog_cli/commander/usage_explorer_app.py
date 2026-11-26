@@ -2,7 +2,8 @@
 The Usage Explorer run on its own (`yd commander --usage-explorer`), without
 Commander's main window: StandaloneExplorer stands in for the main window,
 giving the explorer its configuration (with a Select... button to change it),
-its `yd usage` base arguments, its working directory and its appearance.
+its `yd usage` base arguments, its working directory and its appearance (with
+a Dark Mode checkbox, sharing Commander's setting).
 With no output window its log lines go nowhere: a failure is said beneath
 the table, and nothing is printed to the terminal it was launched from.
 """
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import QWidget
 from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.arguments import split_arguments
 from yellowdog_cli.commander.commander import (
+    SETTING_DARK_MODE,
     apply_application_appearance,
     initial_dark_mode,
     make_application,
@@ -76,6 +78,8 @@ class StandaloneExplorer:
         self._dialogs = file_dialogs.FileDialogs(self.explorer, default_output_font())
         self.explorer.select_configuration.connect(self._select_configuration)
         self.explorer.show_configuration(config_file)
+        self.explorer.offer_dark_mode(dark)
+        self.explorer.dark_mode_chosen.connect(self._set_dark_mode)
         if settings.namespace:
             self.explorer.set_namespace(settings.namespace)
 
@@ -103,6 +107,16 @@ class StandaloneExplorer:
             "--json",
             *(f"--property={entry}" for entry in self._properties),
         ]
+
+    def _set_dark_mode(self, dark: bool) -> None:
+        """
+        Dark Mode ticked or unticked: the application's appearance and the
+        explorer's colours, remembered as Commander's checkbox remembers it,
+        so that the next start, of either, opens the same way.
+        """
+        apply_application_appearance(dark)
+        self.explorer.set_dark(dark)
+        file_dialogs.dialog_settings().setValue(SETTING_DARK_MODE, dark)
 
     def _select_configuration(self) -> None:
         """
