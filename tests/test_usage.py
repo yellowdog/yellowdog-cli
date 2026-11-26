@@ -37,6 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
+from yellowdog_cli.utils.usage_text import cost_text_of, duration_text
 
 URL = "https://api.example.com"
 KEY = "key-id"
@@ -1205,6 +1206,92 @@ class TestFilters:
         assert "No Instances in the window match the filters" in out + err
 
 
+class TestExactFilters:
+    """
+    '--where key==value': the value after '=' exactly, with its case.
+    """
+
+    @pytest.fixture
+    def rows(self, platform):
+        platform.content = _zip(
+            instances=[
+                INSTANCES_HEADER,
+                _instance(CR_RENDER, "g4dn.xlarge", 60, instance_id="i-1"),
+                _instance(CR_TRAIN, "t3a.small", 60, instance_id="i-2"),
+                _instance(CR_GONE, "t3a.small", 60, instance_id="i-3"),
+            ],
+            requirements=[
+                REQUIREMENTS[0],
+                f"team-a,Render,team[1],2026-11-01T00:00:00Z,,{APP_RENDER},{CR_RENDER}",
+                f"team-b,render,=odd,2026-11-01T00:00:00Z,,{USER_ALICE},{CR_TRAIN}",
+                f"team-c,other,,2026-11-01T00:00:00Z,,,{CR_GONE}",
+            ],
+        )
+
+    def _keys(self, by, where, creators=NAMES):
+        groups = usage_report.grouped_usage(
+            _report(_ctx()),
+            by,
+            usage_report.filter_of(where),
+            creators=creators,
+        )
+        return sorted(next(iter(g.keys.values())) for g in groups)
+
+    def test_exact_matches_with_case(self, rows):
+        assert self._keys(["cr"], [("cr", "=Render")]) == ["Render"]
+
+    def test_exact_takes_glob_characters_literally(self, rows):
+        assert self._keys(["tag"], [("tag", "=team[1]")]) == ["team[1]"]
+        assert self._keys(["tag"], [("tag", "=team?1?")]) == []
+
+    def test_exact_dash_is_the_missing_value(self, rows):
+        assert self._keys(["namespace"], [("tag", "=-")]) == ["team-c"]
+
+    def test_exact_creator_by_id_and_by_shown_name(self, rows):
+        by_id = self._keys(["namespace"], [("creator", f"={APP_RENDER}")])
+        by_shown = self._keys(
+            ["namespace"], [("creator", "=render-farm (Application)")]
+        )
+        by_name = self._keys(["namespace"], [("creator", "=render-farm")])
+        assert by_id == by_shown == by_name == ["team-a"]
+
+    def test_exact_and_glob_mix(self, rows):
+        assert self._keys(["namespace"], [("cr", "=Render"), ("provider", "aws")]) == [
+            "team-a"
+        ]
+        assert (
+            self._keys(["namespace"], [("cr", "=Render"), ("provider", "azure")]) == []
+        )
+
+    def test_glob_is_unchanged(self, rows):
+        assert self._keys(["cr"], [("cr", "render")]) == ["Render", "render"]
+
+    def test_a_leading_equals_value(self, rows):
+        assert self._keys(["tag"], [("tag", "==odd")]) == ["=odd"]
+
+    def test_the_summary_and_json_name_the_exact_filter(self, rows, capsys):
+        where = [("cr", "=Render")]
+        out, _ = _show(capsys, usage_where=where)
+        assert "where cr==Render" in out
+        document = loads(
+            _show(capsys, usage_where=where, json_output=True, json=True)[0]
+        )
+        assert document["where"] == {"cr": ["=Render"]}
+
+
+@pytest.mark.parametrize(
+    "text, parsed",
+    [("cr==Render", ("cr", "=Render")), ("tag===odd", ("tag", "==odd"))],
+)
+def test_usage_filter_keeps_the_exact_form(text, parsed):
+    assert usage_filter(text) == parsed
+
+
+def test_usage_filter_refuses_an_empty_exact_value():
+    with pytest.raises(ArgumentTypeError, match="has no value after '=='"):
+        usage_filter("cr==")
+
+
 class _ScopedPlatform(_Platform):
     """
     The report endpoint as it answers an Application that may read usage in
@@ -1449,7 +1536,15 @@ class TestANamespaceThatDoesNotExist:
     ],
 )
 def test_duration_text(seconds, text):
-    assert usage.duration_text(seconds) == text
+    assert duration_text(seconds) == text
+
+
+@pytest.mark.parametrize(
+    "cost, partial, text",
+    [(None, False, "-"), (1234.5, False, "1,234.50"), (1.0, True, "1.00+")],
+)
+def test_cost_text_of(cost, partial, text):
+    assert cost_text_of(cost, partial) == text
 
 
 def test_json_seconds_are_exact_where_hours_round(platform, capsys):
@@ -1819,6 +1914,65 @@ def _parsed_usage(*argv: str):
     from yellowdog_cli.utils.args import CLIParser
 
     return CLIParser("yd-usage", list(argv))
+
+
+class TestTheJsonTotals:
+    def test_reused_is_false_then_true(self, platform, capsys):
+        assert loads(_show(capsys, json_output=True, json=True)[0])["reused"] is False
+        assert loads(_show(capsys, json_output=True, json=True)[0])["reused"] is True
+
+    def test_total_sums_every_group(self, platform, capsys):
+        whole = loads(
+            _show(capsys, usage_by=("instance-id",), json_output=True, json=True)[0]
+        )
+        cut = loads(
+            _show(
+                capsys,
+                usage_by=("instance-id",),
+                usage_top=1,
+                json_output=True,
+                json=True,
+            )[0]
+        )
+        assert cut["total"]["groups"] == len(cut["groups"]) + cut["more"]["groups"]
+        assert cut["total"] == whole["total"]
+        assert whole["total"]["groups"] == len(whole["groups"])
+        assert whole["total"]["instances"] == sum(
+            g["instances"] for g in whole["groups"]
+        )
+        assert whole["total"]["seconds"]["total"] == sum(
+            g["seconds"]["total"] for g in whole["groups"]
+        )
+        assert "creator" not in whole["total"] and "instance-id" not in whole["total"]
+
+    def test_no_cost_keys_in_the_total_without_cost(self, platform, capsys):
+        total = loads(_show(capsys, json_output=True, json=True)[0])["total"]
+        assert "estimatedCost" not in total
+
+    def test_total_cost_matches_the_total_line(self, platform, capsys):
+        text, _, _ = _show_priced(capsys, usage_cost=True)
+        total = loads(
+            _show_priced(capsys, usage_cost=True, json_output=True, json=True)[0]
+        )["total"]
+        assert f"est. ${total['estimatedCost']:,.2f} at list prices" in text
+        assert total["unpricedRunningHours"] == 0.0
+
+    def test_partial_total_cost(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        text, _, _ = _show_priced(capsys, rows, usage_cost=True)
+        total = loads(
+            _show_priced(capsys, rows, usage_cost=True, json_output=True, json=True)[0]
+        )["total"]
+        assert f"est. ${total['estimatedCost']:,.2f}+ at list prices" in text
+        assert total["unpricedRunningHours"] == 1.5
+
+    def test_total_cost_is_null_when_nothing_is_priced(self, platform, capsys):
+        total = loads(
+            _show_priced(
+                capsys, _refused(), usage_cost=True, json_output=True, json=True
+            )[0]
+        )["total"]
+        assert total["estimatedCost"] is None
 
 
 class TestSort:

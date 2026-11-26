@@ -98,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Mon Nov 23 15:12:02 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 26 10:32:05 GMT 2026 -->
 
 <!--te-->
 
@@ -2345,7 +2345,7 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
 Key options:
 - `--from` and `--until` — the window, each a date and time in any form the [dateparser](https://dateparser.readthedocs.io/) library reads (`2026-11-01`, `3 days ago`); `7 days ago` and `now` if not given
 - `--by` — what to total by, one key or several separated by commas: `namespace` (the default), `tag`, `cr` (the Compute Requirement's name), `cr-id` (its ID), `creator` (the Application or user that provisioned the Compute Requirement, by name), `creator-id` (its ID), `provider`, `region`, `instance-type`, `source` (the Compute Source's name), `pricing` (`spot` or `on-demand`) and `instance-id` (the Instance's ID)
-- `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`); repeatable, different keys all having to match and the same key again matching either
+- `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`), or `key==value`, the value exactly and with its case (`cr==Render`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
@@ -2353,10 +2353,10 @@ Key options:
 - `--reverse` — invert the whole order `--sort` gives
 - `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
-- `--json`/`-J` — print one JSON document holding the window, when the report was fetched and where it is kept, and each group's Instance count and its time in every status, in hours and in exact seconds:
+- `--json`/`-J` — print one JSON document holding the window, when the report was fetched, whether it was reused from an earlier run (`reused`) and where it is kept, each group's Instance count and its time in every status, in hours and in exact seconds, and `total`, every group summed:
 
 ```json
-{"from": "...", "until": "...", "namespace": null, "namespaces": null, "by": ["namespace"], "where": {}, "fetched": "...", "reportFile": "...", "groups": [{"namespace": "team-render", "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}]}
+{"from": "...", "until": "...", "namespace": null, "namespaces": null, "by": ["namespace"], "where": {}, "fetched": "...", "reused": false, "reportFile": "...", "groups": [{"namespace": "team-render", "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}], "total": {"groups": 1, "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}}
 ```
 
 Some uses:
@@ -2422,6 +2422,8 @@ A namespace given with `--namespace` that the Application may not read usage in 
 - **Where the Application may not list the account's Applications or Users at all**, the command says so and shows those creators by ID.
 - **`--where creator=`** matches a creator as the table shows it, its name alone or its ID, and `--json` gives each group's `creatorId` beside its `creator`.
 - **The `creator-id` key** gives the ID alone, without reading the account's Applications or Users, and `--where creator-id=` matches only the ID.
+
+**Exact filters.** `--where key==value` matches the value as shown, character for character, so `*`, `?` and `[` are themselves and `-` is the missing value (`--where tag==-`); a glob whose first character is a literal `=` is written `[=]...`.
 
 **Compute Requirements.** The `cr` key totals Compute Requirements by name, so those sharing a name, in different namespaces or one after another, are one row; `cr-id` gives each its own row. A Compute Requirement the report does not list is shown by its ID under `cr` too.
 
@@ -2771,7 +2773,7 @@ The `yd completion` command prints a shell completion script for `yd`, for bash,
 
 Where the shell shows descriptions (zsh, fish and PowerShell), each verb is shown with its summary and each option with its help.
 
-The deprecated `yd-*` commands, such as `yd-submit`, are not completed. `yd commander` and `yd mcp` complete by name, and their arguments as local files, as the shell would without the script, but not their options.
+The deprecated `yd-*` commands, such as `yd-submit`, are not completed. `yd commander` and `yd mcp` complete their options too (`yd commander --usage-explorer`), and their configuration and definition files as local files.
 
 ```shell
 yd completion bash | zsh | fish | powershell [--names]

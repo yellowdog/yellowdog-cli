@@ -30,6 +30,10 @@ class StartupSettings:
     # Forget the remembered appearance (window size and place, Dark Mode, the
     # output's text size) before the window opens
     reset_appearance: bool = False
+    # Open the Usage Explorer alone, without the main window
+    # (usage_explorer_app.run_usage_explorer()): the configuration file, the
+    # properties and the namespace are its only other settings
+    usage_explorer: bool = False
 
 
 def variable_is_complete(variable: str) -> bool:

@@ -59,6 +59,7 @@ WIRING = [
     ("prev_command", "_prev_command_action"),
     ("output_filter_clear", "_clear_filters"),
     ("show_help", "_show_help_action"),
+    ("show_usage_explorer", "_show_usage_explorer_action"),
 ]
 
 # The class an action belongs to, where that is not the window: a collaborator
@@ -80,6 +81,8 @@ def test_clicking_the_button_invokes_its_action(
 
     button = getattr(window, button_name)
     assert isinstance(button, QPushButton), f"{button_name} is not a button"
+    # Some buttons start disabled (Usage Explorer, until a configuration is selected)
+    button.setEnabled(True)
     button.click()
 
     assert fired == [action_name], (

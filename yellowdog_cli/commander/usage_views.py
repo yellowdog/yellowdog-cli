@@ -1,0 +1,257 @@
+"""
+The Usage Explorer's logic that needs no Qt: the window a view covers, the
+`yd usage` arguments of a view, drilling down the breadcrumb, and a row's cell
+text. Commander groups and adds up nothing itself: every figure shown is the
+CLI's, read from its `--json` document.
+"""
+
+import shlex
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from yellowdog_cli.utils.command_registry import (
+    USAGE_GROUP_KEYS,
+    USAGE_SORT_VALUE_KEYS,
+)
+from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, heading
+
+__all__ = [
+    "DEFAULT_PRESET",
+    "DRILL_PATH",
+    "INSTANCE_KEYS",
+    "INSTANCE_LEVEL",
+    "KEY_VALUE_SEPARATOR",
+    "PRESETS",
+    "USAGE_GROUP_KEYS",
+    "USAGE_SORT_VALUE_KEYS",
+    "Level",
+    "Scope",
+    "command_line",
+    "drill",
+    "eligible_keys",
+    "heading",
+    "preset_window",
+    "row_cells",
+    "toggled_by",
+    "view_args",
+]
+
+# The default path down the breadcrumb, each level the next key to total by
+DRILL_PATH: tuple[str, ...] = ("namespace", "cr", "instance-type", "instance-id")
+
+# Between a multi-key row's values in its crumb (a spaced middle dot)
+KEY_VALUE_SEPARATOR = " \u00b7 "
+
+# The key that makes a level the Instance level, the last
+INSTANCE_LEVEL = "instance-id"
+
+# What the Instance level totals by, so that each row says what the Instance was
+INSTANCE_KEYS: tuple[str, ...] = (
+    "instance-id",
+    "instance-type",
+    "provider",
+    "region",
+    "pricing",
+    "cr",
+)
+
+PRESETS: tuple[str, ...] = (
+    "Last 24 hours",
+    "Last 7 days",
+    "Last 30 days",
+    "This month",
+    "Last month",
+)
+DEFAULT_PRESET = "Last 7 days"
+
+_RELATIVE_PRESETS = {
+    "Last 24 hours": "24 hours ago",
+    "Last 7 days": "7 days ago",
+    "Last 30 days": "30 days ago",
+}
+
+# The seconds columns after Total, hidden until asked for, in the order shown
+_OTHER_STATE_KEYS = ("pending", "stopping", "terminating", "unknown")
+
+
+def _month_start(year: int, month: int) -> str:
+    """
+    The first instant of a calendar month, as a UTC ISO 8601 text.
+    """
+    return datetime(year, month, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def preset_window(preset: str, now: datetime) -> tuple[str, str]:
+    """
+    The `--from` and `--until` texts of a preset: relative for the last hours
+    or days, UTC calendar months for this and last month.
+    """
+    if preset in _RELATIVE_PRESETS:
+        return _RELATIVE_PRESETS[preset], "now"
+    now = now.astimezone(timezone.utc)
+    if preset == "This month":
+        return _month_start(now.year, now.month), "now"
+    if preset == "Last month":
+        year, month = (
+            (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+        )
+        return _month_start(year, month), _month_start(now.year, now.month)
+    raise ValueError(f"Unknown preset: {preset}")
+
+
+@dataclass(frozen=True)
+class Scope:
+    """
+    What one fetched report covers. The window is as typed until a report has
+    been fetched, then pinned to the report's own ISO 'from' and 'until', so
+    that every later view regroups that same report.
+    """
+
+    from_text: str
+    until_text: str
+    namespace: str | None
+    cost: bool
+    pinned: bool = False
+
+    def pinned_to(self, from_iso: str, until_iso: str) -> "Scope":
+        """
+        A copy pinned to the report's window.
+        """
+        return Scope(from_iso, until_iso, self.namespace, self.cost, pinned=True)
+
+
+@dataclass(frozen=True)
+class Level:
+    """
+    One breadcrumb level: the keys it totals by (columns, in this order), the
+    exact filters the row drilled into gave it, how it sorts.
+    """
+
+    by: tuple[str, ...]
+    filters: tuple[tuple[str, str], ...] = ()
+    label: str = "All"
+    sort: str | None = None
+    reverse: bool = False
+
+    @property
+    def leaf(self) -> bool:
+        """
+        Whether this is the Instance level, the last.
+        """
+        return INSTANCE_LEVEL in self.by
+
+
+def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[str]:
+    """
+    The `yd usage` arguments of the view the last level describes (the
+    runner adds '--json' and the configuration arguments).
+    """
+    current = levels[-1]
+    args = ["--from", scope.from_text, "--until", scope.until_text]
+    if scope.namespace:
+        args += ["-n", scope.namespace]
+    args += ["--by", ",".join(INSTANCE_KEYS if current.leaf else current.by)]
+    for level in levels:
+        for key, value in level.filters:
+            args += ["--where", f"{key}=={value}"]
+    if current.sort:
+        args += ["--sort", current.sort]
+        if current.reverse:
+            args.append("--reverse")
+    if scope.cost:
+        args.append("--cost")
+    if refresh:
+        args.append("--refresh")
+    return args
+
+
+def _fixed_keys(levels: list[Level] | tuple[Level, ...]) -> set[str]:
+    """
+    The keys the breadcrumb's filters fix to one value (a creator by its ID
+    fixing its name too).
+    """
+    fixed = {key for level in levels for key, _ in level.filters}
+    if "creator-id" in fixed:
+        fixed.add("creator")
+    return fixed
+
+
+def eligible_keys(levels: list[Level] | tuple[Level, ...]) -> tuple[str, ...]:
+    """
+    The keys the last level may total by: those no filter above fixes.
+    """
+    fixed = _fixed_keys(levels)
+    return tuple(key for key in USAGE_GROUP_KEYS if key not in fixed)
+
+
+def toggled_by(by: tuple[str, ...], key: str) -> tuple[str, ...] | None:
+    """
+    The keys to total by after ticking or unticking one: a key ticked is
+    added after the others, the Instance level's replacing them (and any
+    other replacing it); None for the last key unticked, which stays.
+    """
+    if key in by:
+        return None if len(by) == 1 else tuple(k for k in by if k != key)
+    if key == INSTANCE_LEVEL:
+        return (INSTANCE_LEVEL,)
+    return (*(k for k in by if k != INSTANCE_LEVEL), key)
+
+
+def drill(levels: list[Level], row: dict) -> list[Level] | None:
+    """
+    The levels after drilling into a row: each of the row's keys as an
+    exact filter, and the next key down the default path, after the row's
+    keys and not fixed above, to total by. None at the Instance level, which
+    is a leaf. A creator is filtered by its ID.
+    """
+    current = levels[-1]
+    if current.leaf:
+        return None
+    filters: list[tuple[str, str]] = []
+    shown: list[str] = []
+    for key in current.by:
+        if key == "creator":
+            # No creator (null) is '-', as the CLI shows and matches it
+            filter_ = ("creator-id", str(row.get("creatorId") or "-"))
+        else:
+            filter_ = (key, str(row.get(key, "")))
+        filters.append(filter_)
+        shown.append(str(row.get(key, filter_[1])))
+    fixed = _fixed_keys([*levels, Level(current.by, tuple(filters))])
+    fixed.update(current.by)
+    places = [DRILL_PATH.index(key) for key in current.by if key in DRILL_PATH]
+    after = max(places) + 1 if places else 0
+    next_by = next(
+        (key for key in DRILL_PATH[after:] if key not in fixed), INSTANCE_LEVEL
+    )
+    label = KEY_VALUE_SEPARATOR.join(shown)
+    return [*levels, Level((next_by,), tuple(filters), label)]
+
+
+def command_line(arguments: list[str]) -> str:
+    """
+    The command as typed in a shell, for display and copying.
+    """
+    return " ".join(["yd usage", *(shlex.quote(a) for a in arguments)])
+
+
+def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
+    """
+    A row's cell texts, as `yd usage` writes them: the `--by` keys' values,
+    Instances, the running, stopped and total times, the cost when asked for,
+    then the pending, stopping, terminating and unknown times.
+    """
+    seconds = row.get("seconds", {})
+    cells = [str(row.get(key, "-")) for key in by]
+    cells.append(f"{row.get('instances', 0):,}")
+    cells += [
+        duration_text(seconds.get(key, 0)) for key in ("running", "stopped", "total")
+    ]
+    if cost:
+        cells.append(
+            cost_text_of(
+                row.get("estimatedCost"), row.get("unpricedRunningHours", 0) > 0
+            )
+        )
+    cells += [duration_text(seconds.get(key, 0)) for key in _OTHER_STATE_KEYS]
+    return cells

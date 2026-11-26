@@ -194,3 +194,44 @@ def test_a_property_with_both_quotes_and_a_space_is_refused(capsys):
 def test_a_path_may_contain_spaces():
     # Unlike a variable, the Path field is taken whole
     assert parse_args(["-P", "my results/*"]).object_path == "my results/*"
+
+
+def test_the_usage_explorer_takes_a_config_properties_and_a_namespace(files):
+    settings = parse_args(
+        [
+            "--usage-explorer",
+            "-c",
+            "config.toml",
+            "--property",
+            "common.requestTimeout=30",
+            "-n",
+            "team-render",
+        ]
+    )
+    assert settings == StartupSettings(
+        config_file=join(files, "config.toml"),
+        namespace="team-render",
+        properties=("common.requestTimeout=30",),
+        usage_explorer=True,
+    )
+    assert parse_args(["--usage-explorer"]) == StartupSettings(usage_explorer=True)
+
+
+@pytest.mark.parametrize(
+    "extra, named",
+    [
+        (["-y"], "-y/--yes"),
+        (["--reset-appearance"], "--reset-appearance"),
+        (["-t", "tag"], "-t/--tag"),
+        (["--name", "x*"], "--name"),
+        (["-P", "p*"], "-P/--path"),
+        (["-v", "a=1"], "-v/--variable"),
+        (["-r", "wr.json"], "-r/--work-requirement"),
+        (["-p", "wp.jsonnet"], "-p/--worker-pool"),
+    ],
+)
+def test_the_usage_explorer_refuses_the_main_windows_options(
+    files, capsys, extra, named
+):
+    said = refused(["--usage-explorer", *extra], capsys)
+    assert f"--usage-explorer does not take {named}" in said

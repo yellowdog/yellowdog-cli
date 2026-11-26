@@ -61,6 +61,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi  # pyright: ignore[reportPrivateImportUsage]
 
 from yellowdog_cli.commander import file_dialogs
+from yellowdog_cli.commander.arguments import QuotingError
+from yellowdog_cli.commander.branding import branding_pixmap
 from yellowdog_cli.commander.command_history import CommandHistory
 from yellowdog_cli.commander.compute_panel import ComputePanel
 from yellowdog_cli.commander.config_discovery import ConfigDiscovery
@@ -77,12 +79,17 @@ from yellowdog_cli.commander.output_model import COMMANDER_RUN
 from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
     ERROR_RGB_LIGHT,
+    MAX_OUTPUT_FONT_SIZE,
+    MIN_OUTPUT_FONT_SIZE,
+    OUTPUT_FONT_SIZE,
     OutputPane,
     arrow_font,
+    default_output_font,
 )
 from yellowdog_cli.commander.results_panel import ResultsPanel
 from yellowdog_cli.commander.startup import StartupSettings
 from yellowdog_cli.commander.stderr_filter import install_stderr_filter
+from yellowdog_cli.commander.usage_explorer import UnusableArguments, UsageExplorer
 from yellowdog_cli.commander.window_base import (
     CWD,
     UNDECORATED_YD_COMMANDS,
@@ -106,10 +113,6 @@ DESELECT_ROW_PREFIX = "Deselect "  # keeps the checkbox polarity unambiguous
 # output window itself.
 SAVED_OUTPUT_NAME_FORMAT = "commander-output-%Y%m%d-%H%M%S.txt"
 SAVED_OUTPUT_FILTER = "Text files (*.txt);;All files (*)"
-# The YellowDog dog in YellowDog yellow (#FAB842), which reads on the light and
-# the dark window alike, so one image serves both
-BRANDING_IMAGE = join(_PKG_DIR, "images", "IconYellowDog.svg")
-BRANDING_IMAGE_SIZE = 54
 # The destructive actions' label colour, one per appearance: the light one is
 # too dark to read on a dark button, the dark one too pale on a light one
 # What Commander remembers of a session, in its own settings
@@ -120,12 +123,6 @@ SETTING_WINDOW_GEOMETRY = "session/windowGeometry"
 SETTING_DARK_MODE = "session/darkMode"
 SETTING_CONFIG_FILE = "session/configFile"
 SETTING_OUTPUT_FONT_SIZE = "session/outputFontSize"
-# The output window's text size in points, as it opens and as Cmd/Ctrl+0
-# resets it (displayed sizes differ, so it is smaller off macOS), and the
-# range Cmd/Ctrl+= and Cmd/Ctrl+- zoom it within
-OUTPUT_FONT_SIZE = 12 if MACOS else 8
-MIN_OUTPUT_FONT_SIZE = 6
-MAX_OUTPUT_FONT_SIZE = 32
 DESTRUCTIVE_TEXT_LIGHT = "rgb({}, {}, {})".format(*ERROR_RGB_LIGHT)
 DESTRUCTIVE_TEXT_DARK = "rgb({}, {}, {})".format(*ERROR_RGB_DARK)
 ICON_IMAGE = join(_PKG_DIR, "images", "IconApi.ico")
@@ -153,20 +150,12 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         self._pid = os.getpid()
 
-        # The branding pixmap drawn from the SVG at its size, crisp on any screen
-        self.branding.setPixmap(
-            QIcon(BRANDING_IMAGE).pixmap(
-                QSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE)
-            )
-        )
+        self.branding.setPixmap(branding_pixmap())
         self._colour_destructive_buttons(self._color_scheme() == Qt.ColorScheme.Dark)
 
         # Actual displayed font sizes differ across platforms;
         # use a smaller point size on Windows and Linux for the output window
-        self._font = QFont()
-        self._font.setPointSize(OUTPUT_FONT_SIZE)
-        self._font.setFamily("Courier New")
-        self._font.setWeight(500)
+        self._font = default_output_font()
         # The output's own copy, which zooms, at the size last left; the file
         # previews and dialog listings keep the shared one
         self._output_font = QFont(self._font)
@@ -271,6 +260,11 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._help_dialog: HelpDialog | None = None
         # The open file viewers, by absolute path (_display_file())
         self._file_viewers = {}
+        # The Usage Explorer, once opened; like them it has no parent. The
+        # button follows the configuration selection (_follow_config_selection)
+        self._usage_explorer = None
+        self.show_usage_explorer.setEnabled(False)
+        self.show_usage_explorer.clicked.connect(self._show_usage_explorer_action)
         self.show_help.clicked.connect(self._show_help_action)
         help_keys = QKeySequence.keyBindings(QKeySequence.StandardKey.HelpContents)
         for key in {*help_keys, QKeySequence(Qt.Key.Key_F1)}:
@@ -286,7 +280,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._dry_run_worker_pool_set
         )
         self.dark_mode.checkStateChanged.connect(self._dark_mode_action)
-        self.dark_mode.setChecked(self._initial_dark_mode())
+        self.dark_mode.setChecked(initial_dark_mode())
         # 'clicked', not 'checkStateChanged': only the user's own choice is
         # remembered, not the system's appearance it starts from
         self.dark_mode.clicked.connect(self._remember_dark_mode)
@@ -500,15 +494,6 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self.move(frame.topLeft())
         self._output.log("Window appearance reset to its defaults")
 
-    def _initial_dark_mode(self) -> bool:
-        """
-        Dark Mode as last chosen, or the system's appearance if it never was.
-        """
-        settings = file_dialogs.dialog_settings()
-        if settings.contains(SETTING_DARK_MODE):
-            return bool(settings.value(SETTING_DARK_MODE, type=bool))
-        return self._color_scheme() == Qt.ColorScheme.Dark
-
     @staticmethod
     def _remember_dark_mode(checked: bool) -> None:
         file_dialogs.dialog_settings().setValue(SETTING_DARK_MODE, checked)
@@ -596,6 +581,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         if config_file is None:
             self._config_file = None
             self._show_config_selection()
+            self._follow_config_selection()
             self._discovery.clear()
             self._discovery.reparse_placeholders()
             return
@@ -613,6 +599,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             SETTING_CONFIG_FILE, abspath(selected_config_file)
         )
         self._show_config_selection()
+        self._follow_config_selection()
         self._discovery.reparse_placeholders()
         self._file_watcher.addPath(abspath(selected_config_file))
 
@@ -861,6 +848,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             viewer.close()
         if self._help_dialog is not None:
             self._help_dialog.close()
+        if self._usage_explorer is not None:
+            self._usage_explorer.shut_down()
 
         # Release any nested event loop (config parsing, entity enumeration):
         # the close was delivered from inside it, so it must be told to exit or
@@ -1088,38 +1077,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
     def _dark_mode_action(self, checked_state: Qt.CheckState):
         is_dark = checked_state == Qt.CheckState.Checked
-        application = cast(QApplication, QApplication.instance())
-        if LINUX:
-            if is_dark:
-                application.setStyle("Fusion")
-                dark = QPalette()
-                dark.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-                dark.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
-                dark.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
-                dark.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-                dark.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
-                dark.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
-                dark.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
-                dark.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-                dark.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
-                dark.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
-                dark.setColor(QPalette.ColorRole.Light, QColor(80, 80, 80))
-                dark.setColor(QPalette.ColorRole.Midlight, QColor(65, 65, 65))
-                dark.setColor(QPalette.ColorRole.Mid, QColor(45, 45, 45))
-                dark.setColor(QPalette.ColorRole.Dark, QColor(35, 35, 35))
-                dark.setColor(QPalette.ColorRole.Shadow, QColor(20, 20, 20))
-                dark.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-                dark.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-                dark.setColor(QPalette.ColorRole.HighlightedText, QColor(35, 35, 35))
-                dark.setColor(QPalette.ColorRole.PlaceholderText, QColor(160, 160, 160))
-                application.setPalette(dark)
-            else:
-                application.setStyle("")
-                application.setPalette(QPalette())
-        else:
-            cast(QStyleHints, application.styleHints()).setColorScheme(
-                Qt.ColorScheme.Dark if is_dark else Qt.ColorScheme.Light
-            )
+        apply_application_appearance(is_dark)
         if is_dark:
             self.setStyleSheet(
                 "#line_3, #line_4, #line_6, #line_7, #line_8 {"
@@ -1144,6 +1102,80 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
         self._help_dialog.show()
         self._help_dialog.raise_()
         self._help_dialog.activateWindow()
+
+    def _usage_base_args(self) -> list[str]:
+        """
+        What every 'yd usage' run of the Usage Explorer is given: the
+        configuration source, '--nf', '--quiet' and '--json', and the options
+        'yd usage' takes of those from the top of the window (the properties;
+        it takes no '-v'), never its Namespace and Tag, which the explorer
+        has controls for. Read for each
+        run, so a change to the fields reaches the next one; raises
+        UnusableArguments for a Properties field that cannot be split.
+        """
+        try:
+            options = self._namespace_tag_and_user_vars("yd usage")
+        except QuotingError as error:
+            raise UnusableArguments(
+                f"The Properties field cannot be split: {error}"
+            ) from error
+        kept: list[str] = []
+        entries = iter(options)
+        for entry in entries:
+            if entry in ("-n", "-t"):
+                next(entries, None)
+            else:
+                kept.append(entry)
+        return [*self._config_source_args(), "--nf", "-q", "--json", *kept]
+
+    def _usage_explorer_title(self) -> str:
+        """
+        The explorer's title, naming the configuration file by its full path,
+        since one of the same name may sit in many directories.
+        """
+        return f"Usage Explorer \N{EM DASH} {abspath(cast(str, self._config_file))}"
+
+    def _show_usage_explorer_action(self) -> None:
+        """
+        Open the Usage Explorer, creating it the first time and raising it
+        after that, with no parent as the file viewers have none
+        (_display_file()).
+        """
+        if not self._check_config_file() or not self._properties_are_usable():
+            return
+        if self._usage_explorer is None:
+            explorer = UsageExplorer(
+                self._usage_explorer_title(),
+                self._working_dir,
+                self._usage_base_args,
+                self._font,
+                self.dark_mode.isChecked(),
+            )
+            explorer.logged.connect(self._output.log)
+            explorer.finished.connect(lambda *_: self._forget_usage_explorer())
+            self._usage_explorer = explorer
+        self._usage_explorer.show()
+        self._usage_explorer.raise_()
+        self._usage_explorer.activateWindow()
+
+    def _forget_usage_explorer(self) -> None:
+        self._usage_explorer = None
+
+    def _follow_config_selection(self) -> None:
+        """
+        After the configuration file is selected or deselected: the Usage
+        Explorer button is enabled only with one, and an open explorer is
+        run again against the new one, or closed when there is none.
+        """
+        selected = self._config_file is not None
+        self.show_usage_explorer.setEnabled(selected)
+        explorer = self._usage_explorer
+        if explorer is None:
+            return
+        if selected:
+            explorer.reset(self._usage_explorer_title())
+        else:
+            explorer.close()
 
     def _run_any_command_action(self):
         self._run_any_command_core(self.any_command.toPlainText())
@@ -1234,23 +1266,85 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._set_cursor_to_end(self.any_command)
 
 
+def apply_application_appearance(is_dark: bool) -> None:
+    """
+    The application dark or light: on Linux, Fusion with a dark palette (its
+    platform styles have no dark scheme) or the platform's own style and
+    palette; elsewhere, the colour scheme the platform style follows. Shared
+    by the main window's Dark Mode and the Usage Explorer run on its own.
+    """
+    application = cast(QApplication, QApplication.instance())
+    if LINUX:
+        if is_dark:
+            application.setStyle("Fusion")
+            dark = QPalette()
+            dark.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+            dark.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.white)
+            dark.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+            dark.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+            dark.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+            dark.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
+            dark.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
+            dark.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+            dark.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
+            dark.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+            dark.setColor(QPalette.ColorRole.Light, QColor(80, 80, 80))
+            dark.setColor(QPalette.ColorRole.Midlight, QColor(65, 65, 65))
+            dark.setColor(QPalette.ColorRole.Mid, QColor(45, 45, 45))
+            dark.setColor(QPalette.ColorRole.Dark, QColor(35, 35, 35))
+            dark.setColor(QPalette.ColorRole.Shadow, QColor(20, 20, 20))
+            dark.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+            dark.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+            dark.setColor(QPalette.ColorRole.HighlightedText, QColor(35, 35, 35))
+            dark.setColor(QPalette.ColorRole.PlaceholderText, QColor(160, 160, 160))
+            application.setPalette(dark)
+        else:
+            application.setStyle("")
+            application.setPalette(QPalette())
+    else:
+        cast(QStyleHints, application.styleHints()).setColorScheme(
+            Qt.ColorScheme.Dark if is_dark else Qt.ColorScheme.Light
+        )
+
+
+def initial_dark_mode() -> bool:
+    """
+    Dark Mode as last chosen in Commander, or the system's appearance if it
+    never was.
+    """
+    settings = file_dialogs.dialog_settings()
+    if settings.contains(SETTING_DARK_MODE):
+        return bool(settings.value(SETTING_DARK_MODE, type=bool))
+    hints = cast(QStyleHints, QApplication.styleHints())
+    return hints.colorScheme() == Qt.ColorScheme.Dark
+
+
+def make_application() -> QApplication:
+    """
+    The QApplication, set up as both Commander and the Usage Explorer run on
+    its own need it: its Windows identity, macOS's log noise silenced, and the
+    window icon.
+    """
+    if WINDOWS:
+        # noinspection PyUnresolvedReferences
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
+            "yellowdog.commander"
+        )
+    if MACOS:
+        # Silence macOS / Qt platform plugin system warnings
+        os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
+        # And the Text Services Manager's, which bypass Qt's logging
+        install_stderr_filter()
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(ICON_IMAGE))
+    return app
+
+
 def run_app(settings: StartupSettings | None = None):
     try:
-        if WINDOWS:
-            # noinspection PyUnresolvedReferences
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(  # type: ignore[attr-defined]
-                "yellowdog.commander"
-            )
-        if MACOS:
-            # Silence macOS / Qt platform plugin system warnings
-            os.environ["QT_LOGGING_RULES"] = "qt.qpa.*=false"
-            # And the Text Services Manager's, which bypass Qt's logging
-            install_stderr_filter()
-        app = QApplication(sys.argv)
-        icon = QIcon(ICON_IMAGE)
-        app.setWindowIcon(icon)
+        app = make_application()
         win = YellowDogApp(settings)
-        win.setWindowIcon(icon)
+        win.setWindowIcon(app.windowIcon())
         # Covers quits that don't close the window first (macOS Cmd-Q, the Dock)
         app.aboutToQuit.connect(win.shutdown)
 

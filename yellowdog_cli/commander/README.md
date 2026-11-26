@@ -41,6 +41,9 @@
       * [Utility Action Details](#utility-action-details)
    * [Running Arbitrary Commands](#running-arbitrary-commands)
       * [How Typed Commands Are Run](#how-typed-commands-are-run)
+   * [Exploring Usage](#exploring-usage)
+      * [Running the Explorer on Its Own](#running-the-explorer-on-its-own)
+      * [Usage Explorer Details](#usage-explorer-details)
    * [The Command Output](#the-command-output)
       * [Reading the Output](#reading-the-output)
          * [Reading Details](#reading-details)
@@ -60,7 +63,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 20 12:10:50 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 26 10:16:09 GMT 2026 -->
 
 <!--te-->
 
@@ -111,7 +114,7 @@ yd commander config.toml -t render-test -v frames=120 -r render.json
 | `-r`, `--work-requirement <file>` | The selected Work Requirement definition, as if chosen with **Select Work Requirement JSON** |
 | `-p`, `--worker-pool <file>` | The selected Worker Pool definition, as if chosen with **Select Worker Pool JSON** |
 
-Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)), and `--reset-appearance` to open with the window's default size and place, Dark Mode following your system, and the default output text size, forgetting what was remembered of them.
+Pass `--usage-explorer` to open only the Usage Explorer (see [Running the Explorer on Its Own](#running-the-explorer-on-its-own)). Pass `-y`/`--yes` to run the session without confirmation dialogs (see [A Note on Confirmations](#a-note-on-confirmations)), and `--reset-appearance` to open with the window's default size and place, Dark Mode following your system, and the default output text size, forgetting what was remembered of them.
 
 ### Launch Details
 
@@ -495,6 +498,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Deselect...** — clears selected files: the configuration file, and any explicitly selected Work Requirement and Worker Pool definition files (reverting to the definitions in the configuration file). A dialog lets you choose which.
 - **Clear Command Output** / **Copy Command Output** / **Save Command Output** — clear the output window, copy its contents to the clipboard, or write them to a file you nominate.
 - **Dark Mode** — toggle between light and dark appearance.
+- **Usage Explorer...** — opens a window of its own showing the account's Instance usage and estimated cost, which you can drill into from namespaces down to single Instances; enabled once a configuration file is selected. See [Exploring Usage](#exploring-usage).
 - **Help** — opens this guide in a window of its own, which can stay open beside the main window while you work. **F1** opens it too (as does **Cmd+?** on macOS).
 
 ### Utility Action Details
@@ -511,7 +515,7 @@ A backslash has no special meaning, so Windows paths can be entered as they are.
 - **Changes on disk.** The text is read again when the file changes on disk, keeping your place.
 - **Find** (Cmd+F, Ctrl+F on Windows and Linux) searches it, Return for the next match and Shift+Return for the previous.
 - **Esc** closes the window, and **Open in Editor** opens the file in the default application for its type.
-- **Size and Dark Mode.** The text follows the output window's size (Cmd/Ctrl+= and Cmd/Ctrl+−) and Dark Mode.
+- **Size and Dark Mode.** The table's text has a size of its own: Cmd/Ctrl+= and Cmd/Ctrl+− make it larger or smaller, and Cmd/Ctrl+0 puts it back to its default, leaving the output window's size alone. The table follows Dark Mode.
 
 **Help.** Section links jump within the Help window, and **Back** returns to where you followed one from. Closing and reopening it keeps your place.
 
@@ -546,6 +550,69 @@ The **←** and **→** buttons step back and forth through your command history
 **Commands that need no configuration.** `yd version`, `yd help`, `yd schema`, `yd init`, `yd completion`, `yd format-json`, `yd jsonnet tojson`, `yd jsonnet fromjson` and `yd jsonnet factor` need no configuration and take none of those options, so they are run as typed. Only `--nf` is added, unless you typed it, to those that accept it: all of them but `yd jsonnet fromjson`, `yd jsonnet factor` and `yd completion`.
 
 **The shell.** Any other command is run through the system shell: `%ComSpec%`, normally `cmd.exe`, on Windows, and `/bin/sh` elsewhere.
+
+## Exploring Usage
+
+**Usage Explorer...** (beside Help, enabled once a configuration file is selected) opens a window over `yd usage`: the hours your Instances spent running and stopped, and what they cost, which you drill into rather than ask for one grouping at a time. Every figure is the CLI's, so the window shows what `yd usage --json` reports for the same arguments.
+
+![The Usage Explorer on macOS, drilled into the team-render namespace and totalled by Compute Requirement, with estimated costs](screenshots/screenshot_usage_explorer_macos.png)
+
+1. Select a configuration file and click **Usage Explorer...**. The window opens on the last seven days for all namespaces on first use (it then opens on the window preset last chosen), and fetches nothing until you click **Fetch Report** at the centre of the table, so you can choose the window and namespace first. The table then has one row per namespace and a **Total** row beneath.
+2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
+3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
+4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
+5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
+
+Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, which **Copy** puts on the clipboard. **Export CSV**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown.
+
+### Running the Explorer on Its Own
+
+`yd commander --usage-explorer` opens the Usage Explorer without Commander's main window, for when usage is all you want to look at:
+
+```bash
+yd commander --usage-explorer ~/projects/render/config.toml
+```
+
+The configuration is the file named (as an argument or with `-c`), else the one the CLI reads by default (`config.toml` in the current directory, else your own), else one you choose in a dialog as the window opens. A **Configuration** row at the top of the window names it, and its **Select…** chooses another, which starts the explorer again at the top, awaiting **Fetch Report**. `--property` is given to every run, as Commander's Properties field is, and `-n` sets the Namespace to start on; the other launch options belong to the main window, and are refused with `--usage-explorer`.
+
+Everything else is as in Commander: Dark Mode is the one last chosen there (else your system's), the explorer's own preferences are shared with it, and closing the window quits. With no output window, nothing is logged or printed to the terminal; a failure is said beneath the table, as in Commander.
+
+### Usage Explorer Details
+
+**Where the figures come from.** Each view is one `yd usage --json` run in the configuration file's directory, with the configuration file and the Properties field given as every other action gives them. Commander groups, sorts and adds up nothing itself.
+
+**The window is pinned after its first run.** A relative window such as the last seven days moves on with the clock, so once a run of a window succeeds the explorer uses the report's own dates, and every drill-down, sort and **Total by** regroups that one kept report. Changing the window or namespace, **Refresh** or a new configuration starts again.
+
+**Totalling by several keys.** **Total by** lists the keys the breadcrumb leaves open (once you have drilled into a namespace, Namespace is no longer offered). Each key ticked adds a column after those already there, and each row is one combination of their values; unticking a key removes its column, though the last one stays. **Instance ID** is the last level, so ticking it replaces the other keys. Double-clicking a row of several keys filters on all of them, and its crumb names each value (`team-render · eu-west-2`).
+
+**Drill-downs match exactly.** Drilling into a row filters by its value with `--where key==value`, so the match is case-sensitive (`Render` does not match `render`) and a `*` or `?` in the value matches itself, not any characters. A creator row is filtered by the creator's ID.
+
+**Fetch Report.** Changing **Window**, **From**, **Until** or **Namespace** dims the table under **Fetch Report** rather than fetching at once, so several can be changed and fetched together; putting them back to the report shown clears it. Drilling, sorting, **Total by**, **Estimated cost** and **Back** regroup the report already fetched and run straight away. A new configuration also waits for **Fetch Report**.
+
+**Waiting for a new window.** While a new window or namespace awaits **Fetch Report** or is loading, double-clicking, sorting, **Back**, the crumbs and **Total by** wait, since there is no report to regroup yet. After a short delay the table dims, saying how long the run has taken, with **Stop**.
+
+**A failed or stopped first run.** A failure shows the CLI's message beneath the table in red, with what its exit code means where that helps; **Stop** shows `Stopped` there, plainly. Either way the Window, From, Until and Namespace controls go back to the window shown before. If nothing was shown yet they keep what you typed, with **Fetch Report** back, so you can correct it and fetch again.
+
+**Overlapping runs.** If you change the view, change a control or press **Refresh** or Cmd/Ctrl+R while a run is going, only the latest request's result is shown. The older run is left to finish, so a report it was fetching is kept for the views that follow, and its result is discarded.
+
+**Estimated cost.** The **Estimated cost** checkbox, ticked when the window first opens and remembered after that, adds the cost column (`--cost`). Instance types with no list price are not costed: a line says how many, and **Details** lists them. An Application that may not read cloud prices gets no estimate, and says so.
+
+**Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
+
+**Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, the **Total** row included. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
+
+- **Raw Numbers…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
+- **As Shown…**: the headings and cells exactly as displayed (`47:12`, `248.10+`).
+
+**Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
+
+**The Properties field.** `yd usage` takes `--property` but not `-v`, and the explorer has its own Namespace control, so the Namespace and Tag fields at the top of Commander and the Variables field are not passed. A Properties field that cannot be split refuses the button, and fails a run of an open window visibly in its notes line, running nothing.
+
+**The configuration.** Selecting another configuration file resets an open explorer to the top for it, awaiting **Fetch Report**, and deselecting the configuration closes it. Commander closing closes it too, stopping any run.
+
+**The output window.** Only a report being fetched, a failure and an export are logged there, not each regrouping of a kept report. An export that fails is also said beneath the table.
+
+**What is remembered.** Between sessions: the window's size and place, the window preset, whether **Estimated cost** is ticked, which figure columns are shown, and the table's text size.
 
 ## The Command Output
 

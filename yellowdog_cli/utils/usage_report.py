@@ -957,12 +957,15 @@ def _matches(
 ) -> bool:
     """
     Whether the Instance's value for every key matches one of its patterns,
-    as globs in any case ('provider=aws' matching 'AWS'); a creator's
-    pattern matches its name or its ID.
+    as globs in any case ('provider=aws' matching 'AWS'), or exactly, with
+    its case, where the pattern begins '=' ('cr==Render' matching 'Render'
+    alone); a creator's pattern matches its name or its ID.
     """
     return all(
         any(
-            fnmatch.fnmatchcase(value.casefold(), pattern.casefold())
+            (value == pattern[1:])
+            if pattern.startswith("=")
+            else fnmatch.fnmatchcase(value.casefold(), pattern.casefold())
             for pattern in patterns
             for value in _matched(key, instance, requirement, creators)
         )

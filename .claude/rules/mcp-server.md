@@ -24,7 +24,7 @@ The server runs over stdio alone; a `streamable-http` transport with per-session
 ```
 ├── mcp/                         # yd-mcp: the MCP server over the yd-* commands (see MCP Server above)
 │   ├── __init__.py
-│   ├── launcher.py              # Entry point: argparse into a ServerSettings, the missing-extra guard, then the server; mcp-free, SDK-free, Qt-free
+│   ├── launcher.py              # Entry point: argparse (build_parser(), which shell completion reads too) into a ServerSettings, the missing-extra guard, then the server; mcp-free, SDK-free, Qt-free
 │   ├── __main__.py              # 'python -m yellowdog_cli.mcp'
 │   ├── tools.py                 # The tool catalogue from the command registry: ToolSpec, build_tools(), fixed_args(), to_argv() (a call's arguments to the child's command line, inline specifications included); imports nothing from mcp
 │   ├── runner.py                # run(): one command line as a child process with a bound, returning a Run (document, stderr, exit code, stopped); parse_event_documents() for yd-follow's stream; imports nothing from mcp

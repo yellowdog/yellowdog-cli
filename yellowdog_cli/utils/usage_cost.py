@@ -23,6 +23,7 @@ from yellowdog_cli.utils.completion_cache import cache_key, read, write
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, ExitCode, classify
 from yellowdog_cli.utils.limits import USAGE_PRICES_KEPT_SECONDS
+from yellowdog_cli.utils.usage_text import cost_text_of
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_report import UsageGroup
@@ -247,7 +248,4 @@ def cost_text(group: UsageGroup) -> str:
     The cost as the table shows it: '12.34', '12.34+' when some of the
     running time had no price (a lower bound), '-' when none had one.
     """
-    cost = estimated_cost(group)
-    if cost is None:
-        return "-"
-    return f"{cost:,.2f}" + ("+" if group.unpriced_seconds else "")
+    return cost_text_of(estimated_cost(group), bool(group.unpriced_seconds))

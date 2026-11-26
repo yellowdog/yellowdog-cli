@@ -84,7 +84,21 @@ def _existing_file(value: str) -> str:
     return abspath(value)
 
 
-def parse_args(argv: list[str] | None = None) -> StartupSettings:
+# The arguments that name a local file, which shell completion completes as
+# files (utils/completion.py reads this parser for the launcher's options)
+FILE_ARGUMENTS: tuple[str, ...] = (
+    "config_file",
+    "config_option",
+    "work_requirement",
+    "worker_pool",
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """
+    The launcher's options: parse_args() reads them, and shell completion
+    offers them.
+    """
     parser = argparse.ArgumentParser(
         prog=selected_prog("yd-commander"),
         description="Launch the YellowDog Commander desktop GUI.",
@@ -181,12 +195,46 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         type=_existing_file,
         help="select a Worker Pool definition file",
     )
+    parser.add_argument(
+        "--usage-explorer",
+        action="store_true",
+        help=(
+            "open the Usage Explorer on its own, without the main window; it"
+            " takes the configuration file, --property and -n (its starting"
+            " namespace) and nothing else"
+        ),
+    )
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> StartupSettings:
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.config_file is not None and args.config_option is not None:
         parser.error(
             "give the configuration file once, either as an argument or with -c"
         )
+    if args.usage_explorer:
+        unused = [
+            option
+            for option, given in (
+                ("-y/--yes", args.yes),
+                ("--reset-appearance", args.reset_appearance),
+                ("-t/--tag", args.tag is not None),
+                ("--name", args.name is not None),
+                ("-P/--path", args.path is not None),
+                ("-v/--variable", bool(args.variable)),
+                ("-r/--work-requirement", args.work_requirement is not None),
+                ("-p/--worker-pool", args.worker_pool is not None),
+            )
+            if given
+        ]
+        if unused:
+            parser.error(
+                f"--usage-explorer does not take {', '.join(unused)}: it takes"
+                " the configuration file, --property and -n only"
+            )
 
     return StartupSettings(
         config_file=args.config_file or args.config_option,
@@ -200,6 +248,7 @@ def parse_args(argv: list[str] | None = None) -> StartupSettings:
         wr_file=args.work_requirement,
         wp_file=args.worker_pool,
         reset_appearance=args.reset_appearance,
+        usage_explorer=args.usage_explorer,
     )
 
 
@@ -216,10 +265,15 @@ def main():
         print(str(exc), file=sys.stderr)
         sys.exit(1)
 
-    # Imported only after the guard passes (this import pulls in PyQt6).
-    from yellowdog_cli.commander.commander import run_app
+    # Imported only after the guard passes (these imports pull in PyQt6).
+    if settings.usage_explorer:
+        from yellowdog_cli.commander.usage_explorer_app import run_usage_explorer
 
-    run_app(settings)
+        run_usage_explorer(settings)
+    else:
+        from yellowdog_cli.commander.commander import run_app
+
+        run_app(settings)
 
 
 if __name__ == "__main__":

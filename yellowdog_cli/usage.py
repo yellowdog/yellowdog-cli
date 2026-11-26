@@ -48,10 +48,10 @@ from yellowdog_cli.utils.usage_report import (
     size_text,
     usage_report,
 )
+from yellowdog_cli.utils.usage_text import duration_text, heading
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 _SECONDS_PER_HOUR = 3600
-_SECONDS_PER_MINUTE = 60
 _DATEPARSER_SETTINGS = {
     "RETURN_AS_TIMEZONE_AWARE": True,
     "TO_TIMEZONE": "UTC",
@@ -146,8 +146,10 @@ def show_usage(ctx: RunContext) -> None:
                 "by": by,
                 "where": where,
                 "fetched": report.fetched.isoformat().replace("+00:00", "Z"),
+                "reused": report.from_cache,
                 "reportFile": str(report.path),
                 "groups": [_group_json(group, costing) for group in shown],
+                "total": _total_json(_total_group(groups, {}), len(groups), costing),
                 **(
                     {"more": _more_json(rest, len(groups) - len(shown), costing)}
                     if ctx.args.usage_top
@@ -181,7 +183,7 @@ def show_usage(ctx: RunContext) -> None:
         print_warning(_nothing_counted(where))
         return
     headers = (
-        [_heading(key) for key in by]
+        [heading(key) for key in by]
         + [
             "Instances",
             "Running (h:mm)",
@@ -204,13 +206,12 @@ def show_usage(ctx: RunContext) -> None:
     print_table(headers, rows)
     for line in _unpriced_lines(costing):
         print_warning(line)
-    instances = sum(group.instances for group in groups)
-    running = sum(group.seconds["running"] for group in groups)
-    total = sum(group.total_seconds for group in groups)
+    total = _total_group(groups, {})
     print_info(
-        f"Total: {counted(instances, 'Instance')}, {duration_text(running)}"
-        f" running of {duration_text(total)} in all statuses"
-        + (_total_cost_text(groups) if costing is not None else "")
+        f"Total: {counted(total.instances, 'Instance')},"
+        f" {duration_text(total.seconds['running'])} running of"
+        f" {duration_text(total.total_seconds)} in all statuses"
+        + (_total_cost_text(total) if costing is not None else "")
     )
 
 
@@ -353,15 +354,33 @@ def top_groups(
         return groups, None
     shown, cut = groups[:top], groups[top:]
     first, *others = cut[0].keys
-    rest = UsageGroup(keys={first: f"({len(cut):,} more)", **dict.fromkeys(others, "")})
-    for group in cut:
-        rest.instances += group.instances
-        for status, seconds in group.seconds.items():
-            rest.seconds[status] += seconds
-        rest.cost += group.cost
-        rest.priced_seconds += group.priced_seconds
-        rest.unpriced_seconds += group.unpriced_seconds
+    rest = _total_group(
+        cut, {first: f"({len(cut):,} more)", **dict.fromkeys(others, "")}
+    )
     return shown, rest
+
+
+def _total_group(groups: list[UsageGroup], keys: dict[str, str]) -> UsageGroup:
+    """
+    The groups summed into one, holding these keys: the figures of the
+    '--top' remainder, the total line and the document's 'total'.
+    """
+    total = UsageGroup(keys=keys)
+    for group in groups:
+        total.instances += group.instances
+        for status, seconds in group.seconds.items():
+            total.seconds[status] += seconds
+        total.cost += group.cost
+        total.priced_seconds += group.priced_seconds
+        total.unpriced_seconds += group.unpriced_seconds
+    return total
+
+
+def _total_json(total: UsageGroup, count: int, costing: Costing | None) -> dict:
+    """
+    The document's 'total': every group, those '--top' cut included.
+    """
+    return {"groups": count, **_group_json(total, costing)}
 
 
 def _more_json(
@@ -427,18 +446,15 @@ def _regions_text(places: set[tuple[str, str]]) -> str:
     return f"{counted(len(places), 'region')} ({names})"
 
 
-def _total_cost_text(groups: list[UsageGroup]) -> str:
+def _total_cost_text(total: UsageGroup) -> str:
     """
     The total line's estimate: ', est. $12.34 at list prices', with a '+'
     when some running time had no price.
     """
-    if not any(group.priced_seconds for group in groups) and any(
-        group.unpriced_seconds for group in groups
-    ):
+    cost = estimated_cost(total)
+    if cost is None:
         return ", no running time priced at list prices"
-    cost = sum(group.cost for group in groups)
-    partial = any(group.unpriced_seconds for group in groups)
-    return f", est. ${cost:,.2f}{'+' if partial else ''} at list prices"
+    return f", est. ${cost:,.2f}{'+' if total.unpriced_seconds else ''} at list prices"
 
 
 def _parsed(flag: str, text: str) -> datetime:
@@ -472,34 +488,6 @@ def _filter_text(where: dict[str, list[str]]) -> str:
     return ", ".join(
         f"{key}={' or '.join(patterns)}" for key, patterns in where.items()
     )
-
-
-def duration_text(seconds: float) -> str:
-    """
-    A duration as the table gives it, hours and minutes ('351:24', thousands
-    of hours separated), to the nearest minute; under a minute but more than
-    none is '<0:01', so that time spent never reads as none.
-    """
-    if 0 < seconds < _SECONDS_PER_MINUTE:
-        return "<0:01"
-    minutes = int(seconds / _SECONDS_PER_MINUTE + 0.5)
-    return f"{minutes // 60:,}:{minutes % 60:02}"
-
-
-# The keys whose column heading is not the key itself, capitalised
-_HEADINGS = {
-    "cr": "Compute Requirement",
-    "cr-id": "Compute Requirement ID",
-    "creator-id": "Creator ID",
-    "instance-id": "Instance ID",
-}
-
-
-def _heading(key: str) -> str:
-    """
-    A '--by' key's column heading: 'instance-type' as 'Instance type'.
-    """
-    return _HEADINGS.get(key) or key.replace("-", " ").capitalize()
 
 
 def _unpriced_json(costing: Costing) -> dict:

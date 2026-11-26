@@ -3802,7 +3802,8 @@ def usage_group_keys(value: str) -> tuple[str, ...]:
 def usage_filter(value: str) -> tuple[str, str]:
     """
     A '--where' value: 'key=pattern', the key one of USAGE_GROUP_KEYS and
-    the pattern a glob, which may not be empty.
+    the pattern a glob, which may not be empty; or 'key==value', kept as the
+    pattern '=value', which matches that value exactly.
     """
     key, equals, pattern = value.partition("=")
     key = key.strip().lower()
@@ -3819,6 +3820,8 @@ def usage_filter(value: str) -> tuple[str, str]:
         )
     if not pattern:
         raise ArgumentTypeError(f"'{value}' has no pattern after '='")
+    if pattern == "=":
+        raise ArgumentTypeError(f"'{value}' has no value after '=='")
     return key, pattern
 
 
@@ -3909,7 +3912,8 @@ COMMANDS["yd-usage"] = Command(
             required=False,
             help=(
                 "count only the Instances whose key matches the pattern, a glob"
-                " in any case ('provider=aws', 'instance-type=g4dn.*'), the key"
+                " in any case ('provider=aws', 'instance-type=g4dn.*'), or the"
+                " value exactly, with its case ('cr==Render'), the key"
                 " any '--by' takes; repeatable: different keys must all match,"
                 " the same key given again matches either"
             ),
@@ -3984,8 +3988,9 @@ COMMANDS["yd-usage"] = Command(
         " window, totalled by namespace or by the keys 'usage_by' lists, from"
         " the Platform's compute usage report, which counts only the time"
         " inside the window. 'usage_where' narrows the Instances counted, each"
-        " entry 'key=pattern' (a glob in any case, over the keys 'usage_by'"
-        " takes): different keys must all match, the same key again matches"
+        " entry 'key=pattern' (a glob in any case) or 'key==value' (exactly,"
+        " with its case), over the keys 'usage_by'"
+        " takes: different keys must all match, the same key again matches"
         " either. 'usage_from' and 'usage_until' take any date and time the"
         " dateparser"
         " library reads ('2026-11-01', '3 days ago'; '7 days ago' and 'now'"

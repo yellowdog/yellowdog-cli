@@ -89,6 +89,10 @@ ALLOWED: dict[str, str] = {
         "Commander's start-up failure, printed with ERROR_MARKER, exit 1; it makes"
         " no Platform calls itself"
     ),
+    "yellowdog_cli/commander/usage_explorer_app.py::run_usage_explorer#0": (
+        "The Usage Explorer's own start-up failure, printed with ERROR_MARKER,"
+        " exit 1, as run_app()'s; its runs are child processes"
+    ),
     "yellowdog_cli/commander/config_discovery.py::ConfigDiscovery._parse_yd_config#0": (
         "Commander: a child's output that cannot be read is reported in the"
         " window, which stays up"

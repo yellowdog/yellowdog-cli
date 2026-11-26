@@ -35,6 +35,7 @@ from yellowdog_cli.commander.file_dialogs import FileDialogs
 from yellowdog_cli.commander.file_viewer import FileViewer, language_of
 from yellowdog_cli.commander.output_pane import OutputPane
 from yellowdog_cli.commander.selection import path_would_be_globbed
+from yellowdog_cli.commander.usage_explorer import UsageExplorer
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     NAMESPACE,
@@ -161,6 +162,7 @@ class WindowBase(QMainWindow):
     next_command: QPushButton
     prev_command: QPushButton
     show_help: QPushButton
+    show_usage_explorer: QPushButton
 
     # Set up by the window's __init__ (commander.py)
     _confirmations_disabled: bool
@@ -168,6 +170,7 @@ class WindowBase(QMainWindow):
     _output_font: QFont
     _file_dialogs: FileDialogs
     _file_viewers: dict[str, FileViewer]
+    _usage_explorer: UsageExplorer | None
     _output: OutputPane
     _config_file: str | None
     _wr_file: str | None
@@ -609,11 +612,14 @@ class WindowBase(QMainWindow):
     def _restyle_file_viewers(self) -> None:
         """
         Give the open viewers the output window's text size and the
-        appearance, after either changes.
+        appearance, after either changes, and the Usage Explorer the
+        appearance (its text has a size of its own).
         """
         for viewer in self._file_viewers.values():
             viewer.set_font(self._output_font)
             viewer.set_dark(self.dark_mode.isChecked())
+        if self._usage_explorer is not None:
+            self._usage_explorer.set_dark(self.dark_mode.isChecked())
 
 
 def _before_end_of_options(args: list[str], options: list[str]) -> list[str]:
