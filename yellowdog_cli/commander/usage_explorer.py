@@ -687,6 +687,9 @@ class UsageExplorer(QDialog):
         self.setWindowTitle(title)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setModal(False)
+        # A dialog on Windows has a close button alone: a window of this
+        # size wants maximising and minimising as any other does
+        self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
         self._base_args = base_args
         self._working_dir = working_dir
         # The export's save dialog, Commander's own

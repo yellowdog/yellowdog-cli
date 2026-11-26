@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commander
+
+- **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
+
 ## 15.21.0 — 2026-11-26
 
 ### Upgrading

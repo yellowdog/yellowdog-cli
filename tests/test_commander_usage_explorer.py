@@ -1262,6 +1262,13 @@ def test_a_rule_sets_the_scope_controls_apart(explorer):
     assert explorer._separator.styleSheet() == ""
 
 
+def test_the_window_can_be_maximised_and_minimised(explorer):
+    flags = explorer.windowFlags()
+    assert flags & Qt.WindowType.WindowMaximizeButtonHint
+    assert flags & Qt.WindowType.WindowMinimizeButtonHint
+    assert flags & Qt.WindowType.WindowCloseButtonHint
+
+
 def test_the_dog_is_shown_at_the_top_right(explorer):
     branding = explorer._branding
     pixmap = branding.pixmap()
