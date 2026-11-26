@@ -178,6 +178,13 @@ class UsageTableModel(QAbstractTableModel):
         """
         return self._groups[row] if 0 <= row < len(self._groups) else None
 
+    @property
+    def has_total(self) -> bool:
+        """
+        Whether the last row is the Total row (none with no groups).
+        """
+        return self._has_total
+
     def is_total(self, row: int) -> bool:
         return self._has_total and row == len(self._rows) - 1
 

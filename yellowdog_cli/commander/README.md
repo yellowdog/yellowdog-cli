@@ -63,7 +63,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 26 10:54:13 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 26 10:59:54 GMT 2026 -->
 
 <!--te-->
 
@@ -561,7 +561,7 @@ The **←** and **→** buttons step back and forth through your command history
 2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
 3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
 4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
-5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own, and **Fetch Report** then shows it again without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
+5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
 
 Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, which **Copy** puts on the clipboard. **Export CSV**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown.
 
@@ -599,7 +599,7 @@ Everything else is as in Commander: Dark Mode is the one last chosen there (else
 
 **Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
 
-**Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, the **Total** row included. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
+**Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row**, ticked at first, is unticked in its menu. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
 
 - **Raw Numbers…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
 - **As Shown…**: the headings and cells exactly as displayed (`47:12`, `248.10+`).
@@ -614,7 +614,7 @@ Everything else is as in Commander: Dark Mode is the one last chosen there (else
 
 **Kept Reports.** The menu lists the reports `yd usage` keeps for this configuration's account and Application, the last fetched first, each by its window (in UTC) and namespace, its tooltip saying when it was fetched and last used. It is listed again whenever a report is fetched, and is disabled while none is kept. A report fetched for a window ending now is listed by its fixed dates, so choosing it shows that report as it was. Reports are kept for a week unused, at most 20 of them.
 
-**What is remembered.** Between sessions: the window's size and place, the window preset, whether **Estimated cost** is ticked, which figure columns are shown, and the table's text size.
+**What is remembered.** Between sessions: the window's size and place, the window preset, whether **Estimated cost** is ticked, which figure columns are shown, the table's text size, and whether an export includes the Total row.
 
 ## The Command Output
 

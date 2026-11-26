@@ -329,6 +329,7 @@ SETTING_EXPLORER_PRESET = "usageExplorer/preset"
 SETTING_EXPLORER_COST = "usageExplorer/cost"
 SETTING_EXPLORER_HIDDEN_COLUMNS = "usageExplorer/hiddenColumns"
 SETTING_EXPLORER_FONT_SIZE = "usageExplorer/fontSize"
+SETTING_EXPLORER_EXPORT_TOTAL = "usageExplorer/exportTotal"
 # The CSV export's suggested name (hyphenated, no colons, which Windows refuses
 # in a file name) and the save dialog's filter
 EXPORT_NAME_FORMAT = "usage-%Y%m%d-%H%M%S.csv"
@@ -349,6 +350,13 @@ OVERLAY_TICK_MS = 1000
 OVERLAY_ALPHA = 190
 # The table's inset from its frame's left and top edges, in pixels
 TABLE_INDENT = 6
+# The scope rows set close together, and the window's margins narrowed: the
+# style's own spacing (20px between rows on macOS) spreads the controls over
+# twice the height they need
+CONTROL_ROW_SPACING = 4
+WINDOW_MARGINS = (16, 12, 16, 12)
+# The main window's separator style in Dark Mode (commander.py)
+DARK_SEPARATOR_STYLE = "background-color: #555555; border: none; max-height: 2px;"
 # How much of the text colour tints the headings
 HEADING_TINT = 0.15
 RUNNING_TEXT = "Running yd usage… {elapsed}"
@@ -424,6 +432,16 @@ def error_lines(error: str) -> list[str]:
 
 def _plural(count: int, noun: str) -> str:
     return f"{count:,} {noun}" + ("" if count == 1 else "s")
+
+
+def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
+    """
+    A row of controls as a widget of its own, without margins.
+    """
+    widget = QWidget(parent)
+    widget.setLayout(row)
+    row.setContentsMargins(0, 0, 0, 0)
+    return widget
 
 
 class _Notes(QTextEdit):
@@ -905,6 +923,23 @@ class UsageExplorer(QDialog):
         export_menu.addAction(self._export_shown)
         self._export_shown.setToolTip("Every cell as the table shows it")
         self._export_shown.triggered.connect(partial(self._export_csv, False))
+        export_menu.addSeparator()
+        self._export_total = QAction("Include Total Row", export_menu)
+        self._export_total.setCheckable(True)
+        self._export_total.setChecked(
+            bool(
+                file_dialogs.dialog_settings().value(
+                    SETTING_EXPLORER_EXPORT_TOTAL, True, type=bool
+                )
+            )
+        )
+        self._export_total.setToolTip("End the file with the table's Total row")
+        self._export_total.toggled.connect(
+            lambda checked: file_dialogs.dialog_settings().setValue(
+                SETTING_EXPLORER_EXPORT_TOTAL, checked
+            )
+        )
+        export_menu.addAction(self._export_total)
         export_menu.setToolTipsVisible(True)
         self._export.setMenu(export_menu)
 
@@ -928,8 +963,6 @@ class UsageExplorer(QDialog):
         self._select_config.setAutoDefault(False)
         self._select_config.setToolTip("Choose another configuration file")
         self._select_config.clicked.connect(self.select_configuration.emit)
-        for widget in (self._config_label, self._config_path, self._select_config):
-            widget.hide()
 
     def _lay_out(self) -> None:
         window_row = QHBoxLayout()
@@ -960,14 +993,20 @@ class UsageExplorer(QDialog):
         command_row.addWidget(self._copy_command)
         # The two rows of scope controls, with the dog beside them at the top
         # right, as in the main window
-        controls = QVBoxLayout()
         config_row = QHBoxLayout()
         config_row.addWidget(self._config_label)
         config_row.addWidget(self._config_path, 1)
         config_row.addWidget(self._select_config)
-        controls.addLayout(config_row)
-        controls.addLayout(window_row)
-        controls.addLayout(scope_row)
+        # Each row in a widget of its own, so that the rows can be set close
+        # together while each keeps the style's spacing between its controls
+        # (a row's layout would otherwise take the column's spacing)
+        self._config_row = _row_of(config_row, self)
+        self._config_row.hide()
+        controls = QVBoxLayout()
+        controls.setSpacing(CONTROL_ROW_SPACING)
+        controls.addWidget(self._config_row)
+        controls.addWidget(_row_of(window_row, self))
+        controls.addWidget(_row_of(scope_row, self))
         self._branding = QLabel(self)
         self._branding.setPixmap(branding_pixmap())
         self._branding.setFixedSize(BRANDING_IMAGE_SIZE, BRANDING_IMAGE_SIZE)
@@ -975,7 +1014,15 @@ class UsageExplorer(QDialog):
         top.addLayout(controls, 1)
         top.addWidget(self._branding, 0, Qt.AlignmentFlag.AlignVCenter)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(*WINDOW_MARGINS)
         layout.addLayout(top)
+        # A rule under the scope controls, as under the main window's
+        # configuration row, setting them apart from the view below
+        self._separator = QFrame(self)
+        self._separator.setFrameShape(QFrame.Shape.HLine)
+        self._separator.setFrameShadow(QFrame.Shadow.Sunken)
+        self._style_separator()
+        layout.addWidget(self._separator)
         layout.addLayout(crumb_row)
         layout.addWidget(_TableFrame(self._table, self), 1)
         layout.addLayout(notes_row)
@@ -1036,8 +1083,7 @@ class UsageExplorer(QDialog):
         """
         self._config_path.setText(path)
         self._config_path.setToolTip(path)
-        for widget in (self._config_label, self._config_path, self._select_config):
-            widget.show()
+        self._config_row.show()
 
     def set_namespace(self, namespace: str) -> None:
         """
@@ -1078,6 +1124,7 @@ class UsageExplorer(QDialog):
     def set_dark(self, dark: bool) -> None:
         self._dark = dark
         self._colour_notes()
+        self._style_separator()
         self._grid_style = _GridStyle(dark)
         self._table.setStyle(self._grid_style)
         header = self._table.horizontalHeader()
@@ -1086,6 +1133,13 @@ class UsageExplorer(QDialog):
         frame = self._table.parentWidget()
         if frame is not None:
             frame.update()
+
+    def _style_separator(self) -> None:
+        """
+        The rule under the scope controls painted by hand in Dark Mode, where
+        the native sunken line all but disappears, as the main window's are.
+        """
+        self._separator.setStyleSheet(DARK_SEPARATOR_STYLE if self._dark else "")
 
     def shut_down(self) -> None:
         """
@@ -1182,7 +1236,8 @@ class UsageExplorer(QDialog):
     def _use_kept_report(self, item: dict) -> None:
         """
         A kept report chosen: the controls set to its window and namespace
-        (the window as Custom), awaiting Fetch Report, which uses it again.
+        (the window as Custom), and the report shown at once, at the top
+        level: it is used again, not fetched, so it waits for no Fetch Report.
         """
         self._preset.blockSignals(True)
         self._preset.setCurrentText(CUSTOM_PRESET)
@@ -1190,7 +1245,7 @@ class UsageExplorer(QDialog):
         self._from.setText(str(item.get("from", "")))
         self._until.setText(str(item.get("until", "")))
         self._namespace.setCurrentText(str(item.get("namespace") or ALL_NAMESPACES))
-        self._await_fetch()
+        self._resolve(refresh=False)
 
     def _list_namespaces(self) -> None:
         """
@@ -1432,8 +1487,9 @@ class UsageExplorer(QDialog):
     def _export_csv(self, raw: bool) -> None:
         """
         The table's visible columns, saved to a CSV file the user names, in
-        UTF-8: raw figures (UsageTableModel.raw_rows()) or the cells as shown;
-        the outcome logged, and a failure shown too.
+        UTF-8: raw figures (UsageTableModel.raw_rows()) or the cells as shown,
+        the Total row left out unless Include Total Row is ticked; the outcome
+        logged, and a failure shown too.
         """
         columns = [
             column
@@ -1443,6 +1499,8 @@ class UsageExplorer(QDialog):
         if not columns:
             return
         rows = self._model.raw_rows(columns) if raw else self._model.text_rows(columns)
+        if self._model.has_total and not self._export_total.isChecked():
+            rows = rows[:-1]
         name = datetime.now().strftime(EXPORT_NAME_FORMAT)
         path = self._file_dialogs.save_file(
             caption="Export CSV",

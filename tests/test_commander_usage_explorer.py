@@ -35,8 +35,10 @@ from yellowdog_cli.commander.output_pane import (
 )
 from yellowdog_cli.commander.usage_explorer import (
     CRUMB_SEPARATOR,
+    DARK_SEPARATOR_STYLE,
     KEPT_SEPARATOR,
     SETTING_EXPLORER_COST,
+    SETTING_EXPLORER_EXPORT_TOTAL,
     SETTING_EXPLORER_FONT_SIZE,
     SETTING_EXPLORER_GEOMETRY,
     SETTING_EXPLORER_HIDDEN_COLUMNS,
@@ -830,7 +832,9 @@ def test_a_fetch_is_logged_and_a_regroup_is_not(explorer, children):
     assert "2026-11-18 15:02 → 2026-11-25 15:02 UTC" in explorer._report.text()
 
 
-def test_preferences_are_remembered(explorer, children, commander_dialog_settings):
+def test_preferences_are_remembered(
+    explorer, children, commander_dialog_settings, monkeypatch
+):
     explorer._preset.setCurrentText("Last 30 days")
     fetch(explorer)
     explorer._cost.click()
@@ -838,17 +842,22 @@ def test_preferences_are_remembered(explorer, children, commander_dialog_setting
     explorer._show_column("pending", True)
     explorer._show_column("unknown", True)
     explorer._show_column("unknown", False)
-    # Above the window's own minimum, which Qt holds a restored size to
-    # (wider on Windows, where the controls are)
-    least = explorer.minimumSizeHint()
-    size = (max(700, least.width() + 40), max(500, least.height() + 40))
-    explorer.resize(*size)
     explorer.close()
     QApplication.processEvents()
     settings = commander_dialog_settings
     assert settings.value(SETTING_EXPLORER_PRESET) == "Last 30 days"
     assert settings.value(SETTING_EXPLORER_COST, type=bool) is False
-    assert settings.value(SETTING_EXPLORER_GEOMETRY) is not None
+    saved = settings.value(SETTING_EXPLORER_GEOMETRY)
+    assert saved is not None
+    # What is handed back to restoreGeometry(), not the size it gives: Qt
+    # holds a restored window to its screen and its own minimum, which on
+    # Windows is close to the test machine's screen width
+    restored: list = []
+    monkeypatch.setattr(
+        UsageExplorer,
+        "restoreGeometry",
+        lambda self, geometry: restored.append(geometry) or True,
+    )
     again = UsageExplorer(
         "Usage Explorer — config.toml",
         lambda: ".",
@@ -866,7 +875,7 @@ def test_preferences_are_remembered(explorer, children, commander_dialog_setting
         assert "--cost" not in usage_args(children)
         assert not again._table.isColumnHidden(column_of(again, "Pending"))
         assert again._table.isColumnHidden(column_of(again, "Unknown"))
-        assert (again.width(), again.height()) == size
+        assert restored == [saved]
     finally:
         again.shut_down()
 
@@ -1234,6 +1243,25 @@ def test_the_grid_is_the_command_outputs_table_blue(explorer):
     assert image.pixelColor(20, y).getRgb()[:3] == TABLE_OUTLINE_RGB_DARK
 
 
+def test_a_rule_sets_the_scope_controls_apart(explorer):
+    rule = explorer._separator.geometry()
+    assert (
+        rule.top()
+        > explorer._namespace.mapTo(
+            explorer, explorer._namespace.rect().bottomLeft()
+        ).y()
+    )
+    assert (
+        rule.bottom()
+        < explorer._back.mapTo(explorer, explorer._back.rect().topLeft()).y()
+    )
+    assert explorer._separator.styleSheet() == ""
+    explorer.set_dark(True)
+    assert explorer._separator.styleSheet() == DARK_SEPARATOR_STYLE
+    explorer.set_dark(False)
+    assert explorer._separator.styleSheet() == ""
+
+
 def test_the_dog_is_shown_at_the_top_right(explorer):
     branding = explorer._branding
     pixmap = branding.pixmap()
@@ -1269,7 +1297,48 @@ def test_export_offers_raw_numbers_first(explorer):
     assert [action.text() for action in menu.actions()] == [
         "Raw Numbers…",
         "As Shown…",
+        "",
+        "Include Total Row",
     ]
+    # The Total row included unless unticked
+    assert explorer._export_total.isCheckable()
+    assert explorer._export_total.isChecked()
+
+
+@pytest.mark.parametrize("raw", [True, False])
+def test_the_total_row_can_be_left_out_of_an_export(
+    explorer, tmp_path, monkeypatch, raw, commander_dialog_settings
+):
+    explorer._export_total.trigger()
+    assert not explorer._export_total.isChecked()
+    assert (
+        commander_dialog_settings.value(SETTING_EXPLORER_EXPORT_TOTAL, type=bool)
+        is False
+    )
+    target = tmp_path / "out.csv"
+    export_to(explorer, target, monkeypatch, raw=raw)
+    rows = read_csv(target)
+    assert len(rows) == 1 + explorer._model.rowCount() - 1
+    assert "Total" not in [row[0] for row in rows[1:]]
+    # Ticked again, it is back
+    explorer._export_total.trigger()
+    export_to(explorer, target, monkeypatch, raw=raw)
+    assert read_csv(target)[-1][0] == "Total"
+
+
+def test_leaving_out_the_total_row_is_remembered(
+    qapp, children, tmp_path, commander_dialog_settings
+):
+    children.answer = usage_answer
+    commander_dialog_settings.setValue(SETTING_EXPLORER_EXPORT_TOTAL, False)
+    window = UsageExplorer(
+        "Usage Explorer", lambda: str(tmp_path), lambda: list(BASE_ARGS), QFont(), False
+    )
+    try:
+        assert not window._export_total.isChecked()
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
 
 
 def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
@@ -1457,7 +1526,9 @@ def test_kept_reports_lists_them_the_last_fetched_first(explorer, children):
     assert args == [*BASE_ARGS, "--reports"]
 
 
-def test_choosing_a_kept_report_awaits_fetching_it_again(explorer, children):
+def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
     explorer._kept.menu().actions()[0].trigger()
     QApplication.processEvents()
     assert explorer._preset.currentText() == "Custom"
@@ -1466,7 +1537,10 @@ def test_choosing_a_kept_report_awaits_fetching_it_again(explorer, children):
         "2026-11-01T00:00:00Z",
     )
     assert explorer._namespace.currentText() == "team-render"
-    fetch(explorer)
+    # No Fetch Report: it is used again, at the top level
+    assert not explorer._fetch_overlay.isVisible()
+    settle(explorer)
+    assert explorer.breadcrumb_text() == "All"
     args = usage_args(children)
     assert args[:4] == [
         "--from",
