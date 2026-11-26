@@ -98,7 +98,7 @@
    * [Deprecated Commands](#deprecated-commands)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 26 10:32:05 GMT 2026 -->
+<!-- Added by: pwt, at: Thu Nov 26 10:54:14 GMT 2026 -->
 
 <!--te-->
 
@@ -2348,6 +2348,7 @@ Key options:
 - `--where` — count only the Instances matching a filter, `key=pattern`, over the keys `--by` takes, the pattern a glob in any case (`provider=aws`, `instance-type='g4dn.*'`), or `key==value`, the value exactly and with its case (`cr==Render`); repeatable, different keys all having to match and the same key again matching either
 - `--namespace`/`-n` — report on one namespace; every namespace if not given. A namespace that does not exist is an error (exit code 6) when nothing ran in it
 - `--refresh`/`-R` — fetch the report again (see below), and with `--cost` the list prices
+- `--reports` — list the reports kept from earlier runs for this account and Application, rather than show one (see below); it takes no other report option
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
 - `--sort <key>[,...]` — the order of the groups, one key or several separated by commas, the most significant first: any `--by` key, in alphabetical order, or `instances`, `running`, `stopped`, `total` or `cost` (with `--cost`), the most first; `total` if not given. A key that is not one of the `--by` keys, or `cost` without `--cost`, is a usage error (exit code 2)
 - `--reverse` — invert the whole order `--sort` gives
@@ -2459,6 +2460,13 @@ A later run for the same `--namespace` uses a report kept rather than fetching t
 - **Of several kept reports that match**, the last fetched is used.
 - **`--refresh`** fetches a new one regardless.
 - **Each fetch removes** the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
+
+**Listing the kept reports.** `yd usage --reports` lists the reports kept for the configuration's account and Application, the last fetched first: each one's window, the namespace it was fetched for (`(all)` for every namespace), when it was fetched and last used, and its size. Beneath the table is the command that uses each again, its window and namespace as `--from`, `--until` and `-n`; add `--by` and the rest as usual. Listing a report does not count as using it. With `--json` the list is an array, each report with `from`, `until`, `namespace`, `namespaces`, `fetched`, `lastUsed`, `bytes`, `reportFile` and `command`.
+
+```shell
+yd usage --reports
+yd usage --from 2026-10-01T00:00:00Z --until 2026-11-01T00:00:00Z -n team-render --by cr
+```
 
 ## yd application
 

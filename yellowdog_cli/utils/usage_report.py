@@ -244,6 +244,14 @@ def report_scope(ctx: RunContext, namespace: str | None) -> str:
     )
 
 
+def report_account(ctx: RunContext) -> str:
+    """
+    The digest of the account and Application a report was fetched with
+    (the URL and the key ID), any namespace: what yd usage --reports lists by.
+    """
+    return cache_key("usage-account", ctx.config.url, ctx.config.key or "")
+
+
 def report_key(scope: str, from_time: datetime, until_time: datetime) -> str:
     """
     The digest naming a report's directory: its scope and the window it was
@@ -286,6 +294,8 @@ def usage_report(
     print_info("Fetching the usage report from the Platform")
     fetched = _fetch(ctx, from_time, until_time, namespace)
     fetched.scope = scope
+    fetched.account = report_account(ctx)
+    fetched.namespace = namespace
     _keep(root, directory, fetched)
     prune(root, keep=directory)
     report = _read_kept(directory)
@@ -328,6 +338,62 @@ def kept_report(
                 report.until_time,
             )
     return max(matching, key=lambda report: report.fetched, default=None)
+
+
+@dataclass
+class KeptReport:
+    """
+    A kept report as yd usage --reports lists it: the report, the namespace
+    it was fetched for (None for every one) and when it was last used.
+    """
+
+    report: Report
+    namespace: str | None
+    last_used: datetime
+
+
+def kept_reports(root: Path, account: str) -> list[KeptReport]:
+    """
+    The whole reports kept in 'root' for the account and Application,
+    the last fetched first, read without marking any of them used. A report
+    kept without its account (by an earlier version) is not listed, and is
+    pruned in time.
+    """
+    try:
+        entries = [path for path in root.iterdir() if ".part-" not in path.name]
+    except OSError:
+        _LOG.debug("Cannot list the kept usage reports in %s", root, exc_info=True)
+        return []
+    kept: list[KeptReport] = []
+    for directory in entries:
+        try:
+            fetched = json.loads((directory / FETCHED_JSON).read_text(encoding="utf-8"))
+            last_used = directory.stat().st_mtime
+        except (OSError, ValueError):
+            continue
+        if not isinstance(fetched, dict) or fetched.get("account") != account:
+            continue
+        report = _read_kept(directory)
+        if report is None:
+            continue
+        namespace = fetched.get("namespace")
+        kept.append(
+            KeptReport(
+                report,
+                namespace if isinstance(namespace, str) else None,
+                datetime.fromtimestamp(last_used, tz=timezone.utc),
+            )
+        )
+    return sorted(kept, key=lambda item: item.report.fetched, reverse=True)
+
+
+def reports_kept(ctx: RunContext) -> list[KeptReport]:
+    """
+    yd usage --reports: the reports kept for the configuration's account
+    and Application; none without a usable cache directory.
+    """
+    root = cache_directory(USAGE_CACHE_DIRECTORY_NAME)
+    return [] if root is None else kept_reports(root, report_account(ctx))
 
 
 def _kept_scope(directory: Path) -> str | None:
@@ -450,6 +516,10 @@ class Fetched:
     refused: list[str] = field(default_factory=list)
     # report_scope(), kept with the report
     scope: str = ""
+    # report_account() and the namespace asked for (None for every one),
+    # kept readable for yd usage --reports
+    account: str = ""
+    namespace: str | None = None
 
 
 def _fetch(
@@ -792,6 +862,8 @@ def _keep(root: Path, directory: Path, fetched: Fetched) -> None:
                     "namespaces": fetched.namespaces,
                     "refused": fetched.refused,
                     "scope": fetched.scope,
+                    "account": fetched.account,
+                    "namespace": fetched.namespace,
                 }
             ),
             encoding="utf-8",

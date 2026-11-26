@@ -15,6 +15,7 @@ from test_commander_usage_explorer import (  # noqa: F401
     BASE_ARGS,
     children,
     fetch,
+    is_view,
     settle,
     usage_answer,
 )
@@ -93,9 +94,9 @@ def test_runs_are_given_the_config_and_properties_in_its_directory(
     assert explorer._config_path.text() == str(project)
     # Starting on the namespace given, awaiting Fetch Report
     assert explorer._namespace.currentText() == "team-render"
-    assert [c for c, _ in children.started] == ["yd list"]
+    assert not [a for c, a in children.started if is_view(c, a)]
     fetch(explorer)
-    [args] = [a for c, a in children.started if c == "yd usage"]
+    [args] = [a for c, a in children.started if is_view(c, a)]
     assert args[:7] == [
         "-c",
         "config.toml",
@@ -123,16 +124,16 @@ def test_select_resets_the_explorer_for_another_config(
         return str(other)
 
     monkeypatch.setattr(standalone._dialogs, "select_file", select_file)
-    runs = len([c for c, _ in children.started if c == "yd usage"])
+    runs = len([c for c, a in children.started if is_view(c, a)])
     explorer._select_config.click()
     settle(explorer)
     assert asked[0]["directory"] == str(project.parent)
     assert explorer.windowTitle() == explorer_title(str(other))
     assert explorer._config_path.text() == str(other)
     assert explorer._model.rowCount() == 0
-    assert len([c for c, _ in children.started if c == "yd usage"]) == runs
+    assert len([c for c, a in children.started if is_view(c, a)]) == runs
     fetch(explorer)
-    args = [a for c, a in children.started if c == "yd usage"][-1]
+    args = [a for c, a in children.started if is_view(c, a)][-1]
     assert args[:2] == ["-c", "staging.toml"]
     assert standalone._working_dir() == str(other.parent)
 

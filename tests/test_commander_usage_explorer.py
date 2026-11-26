@@ -35,6 +35,7 @@ from yellowdog_cli.commander.output_pane import (
 )
 from yellowdog_cli.commander.usage_explorer import (
     CRUMB_SEPARATOR,
+    KEPT_SEPARATOR,
     SETTING_EXPLORER_COST,
     SETTING_EXPLORER_FONT_SIZE,
     SETTING_EXPLORER_GEOMETRY,
@@ -384,6 +385,41 @@ def wheres(args: list[str]) -> list[str]:
     return [args[i + 1] for i, arg in enumerate(args) if arg == "--where"]
 
 
+# Two reports kept, as yd usage --reports --json lists them
+KEPT = [
+    {
+        "from": "2026-10-01T00:00:00Z",
+        "until": "2026-11-01T00:00:00Z",
+        "namespace": "team-render",
+        "namespaces": ["team-render"],
+        "fetched": "2026-11-20T09:00:00Z",
+        "lastUsed": "2026-11-24T09:00:00Z",
+        "bytes": 12345,
+        "reportFile": "/tmp/a/report.zip",
+        "command": "yd usage --from 2026-10-01T00:00:00Z --until"
+        " 2026-11-01T00:00:00Z -n team-render",
+    },
+    {
+        "from": FROM_ISO,
+        "until": UNTIL_ISO,
+        "namespace": None,
+        "namespaces": None,
+        "fetched": "2026-11-25T15:02:30Z",
+        "lastUsed": "2026-11-25T15:02:30Z",
+        "bytes": 23456,
+        "reportFile": "/tmp/b/report.zip",
+        "command": f"yd usage --from {FROM_ISO} --until {UNTIL_ISO}",
+    },
+]
+
+
+def is_view(command: str, args: list[str]) -> bool:
+    """
+    Whether a child is a view's yd usage run, not the kept reports' listing.
+    """
+    return command == "yd usage" and "--reports" not in args
+
+
 def usage_answer(command: str, args: list[str]):
     """
     The fake CLI: namespaces for 'yd list', else a document by '--by' and
@@ -392,6 +428,8 @@ def usage_answer(command: str, args: list[str]):
     """
     if command == "yd list":
         return json.dumps(NAMESPACES), "", 0, 0
+    if "--reports" in args:
+        return json.dumps(KEPT), "", 0, 0
     by = value_of(args, "--by") or "namespace"
     reused = value_of(args, "--from") == FROM_ISO and "--refresh" not in args
     if by == "namespace":
@@ -416,7 +454,7 @@ def usage_args(children) -> list[str]:
     """
     The view's own arguments of the latest 'yd usage' child.
     """
-    [args] = [a for c, a in children.started if c == "yd usage"][-1:]
+    [args] = [a for c, a in children.started if is_view(c, a)][-1:]
     assert args[: len(BASE_ARGS)] == BASE_ARGS
     return args[len(BASE_ARGS) :]
 
@@ -434,7 +472,14 @@ def fetch(explorer) -> None:
 def settle(explorer) -> None:
     wait_for(
         lambda: (
-            not explorer._runner.running() and not explorer._namespace_runner.running()
+            not any(
+                runner.running()
+                for runner in (
+                    explorer._runner,
+                    explorer._namespace_runner,
+                    explorer._reports_runner,
+                )
+            )
         )
     )
 
@@ -757,7 +802,7 @@ def test_cost_notes_and_partial_costs(explorer, children):
 
 
 def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qapp):
-    started = [a for c, a in children.started if c == "yd usage"][-1]
+    started = [a for c, a in children.started if is_view(c, a)][-1]
     assert explorer._command_line.text() == (
         "yd usage -c config.toml --nf -q --json --from '7 days ago' --until now"
         " --by namespace --cost"
@@ -793,7 +838,11 @@ def test_preferences_are_remembered(explorer, children, commander_dialog_setting
     explorer._show_column("pending", True)
     explorer._show_column("unknown", True)
     explorer._show_column("unknown", False)
-    explorer.resize(700, 500)
+    # Above the window's own minimum, which Qt holds a restored size to
+    # (wider on Windows, where the controls are)
+    least = explorer.minimumSizeHint()
+    size = (max(700, least.width() + 40), max(500, least.height() + 40))
+    explorer.resize(*size)
     explorer.close()
     QApplication.processEvents()
     settings = commander_dialog_settings
@@ -817,7 +866,7 @@ def test_preferences_are_remembered(explorer, children, commander_dialog_setting
         assert "--cost" not in usage_args(children)
         assert not again._table.isColumnHidden(column_of(again, "Pending"))
         assert again._table.isColumnHidden(column_of(again, "Unknown"))
-        assert (again.width(), again.height()) == (700, 500)
+        assert (again.width(), again.height()) == size
     finally:
         again.shut_down()
 
@@ -969,13 +1018,13 @@ def test_a_slow_view_dims_the_table_and_stop_ends_it(explorer, children):
 def test_reset_starts_again_at_the_top(explorer, children):
     double_click_row(explorer, 0)
     settle(explorer)
-    runs = len([c for c, _ in children.started if c == "yd usage"])
+    runs = len([c for c, a in children.started if is_view(c, a)])
     explorer.reset("Usage Explorer — other.toml")
     settle(explorer)
     assert explorer.windowTitle() == "Usage Explorer — other.toml"
     assert explorer.breadcrumb_text() == "All"
     assert explorer._model.rowCount() == 0
-    assert len([c for c, _ in children.started if c == "yd usage"]) == runs
+    assert len([c for c, a in children.started if is_view(c, a)]) == runs
     fetch(explorer)
     args = usage_args(children)
     assert args[:2] == ["--from", "7 days ago"] and wheres(args) == []
@@ -1393,6 +1442,71 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     assert "Stopped (hours)" not in read_csv(target)[0]
 
 
+def reports_runs(children) -> int:
+    return len([a for c, a in children.started if "--reports" in a])
+
+
+def test_kept_reports_lists_them_the_last_fetched_first(explorer, children):
+    assert explorer._kept.isEnabled()
+    labels = [a.text() for a in explorer._kept.menu().actions()]
+    assert labels == [
+        f"2026-10-01 00:00 \u2192 2026-11-01 00:00 UTC{KEPT_SEPARATOR}team-render",
+        f"2026-11-18 15:02 \u2192 2026-11-25 15:02 UTC{KEPT_SEPARATOR}All namespaces",
+    ]
+    [args] = [a for c, a in children.started if "--reports" in a][:1]
+    assert args == [*BASE_ARGS, "--reports"]
+
+
+def test_choosing_a_kept_report_awaits_fetching_it_again(explorer, children):
+    explorer._kept.menu().actions()[0].trigger()
+    QApplication.processEvents()
+    assert explorer._preset.currentText() == "Custom"
+    assert (explorer._from.text(), explorer._until.text()) == (
+        "2026-10-01T00:00:00Z",
+        "2026-11-01T00:00:00Z",
+    )
+    assert explorer._namespace.currentText() == "team-render"
+    fetch(explorer)
+    args = usage_args(children)
+    assert args[:4] == [
+        "--from",
+        "2026-10-01T00:00:00Z",
+        "--until",
+        "2026-11-01T00:00:00Z",
+    ]
+    assert value_of(args, "-n") == "team-render"
+
+
+def test_kept_reports_is_listed_again_after_a_fetch_only(explorer, children):
+    listed = reports_runs(children)
+    # A regroup of the report shown reuses it: no new report kept
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert reports_runs(children) == listed
+    explorer._refresh.click()
+    settle(explorer)
+    assert reports_runs(children) == listed + 1
+
+
+def test_with_none_kept_the_button_is_disabled(qapp, children, tmp_path):
+    def none_kept(command, args):
+        if "--reports" in args:
+            return "[]", "", 0, 0
+        return usage_answer(command, args)
+
+    children.answer = none_kept
+    window = UsageExplorer(
+        "Usage Explorer", lambda: str(tmp_path), lambda: list(BASE_ARGS), QFont(), False
+    )
+    try:
+        settle(window)
+        assert not window._kept.isEnabled()
+        assert window._kept.menu().actions() == []
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
+
+
 def test_a_partial_account_report_says_which_namespaces(explorer, children):
     assert (
         "Reporting on the 2 namespaces this Application can read usage in:"
@@ -1456,7 +1570,7 @@ def config(window, tmp_path):
 
 
 def usage_children(children) -> list[list[str]]:
-    return [args for command, args in children.started if command == "yd usage"]
+    return [args for command, args in children.started if is_view(command, args)]
 
 
 def test_the_button_needs_a_configuration(window):
@@ -1556,13 +1670,13 @@ def test_a_later_unusable_properties_field_fails_the_run(window, config, childre
     window.show_usage_explorer.click()
     explorer = window._usage_explorer
     settle(explorer)
-    runs = len(children.started)
+    runs = len(usage_children(children))
     logged: list[str] = []
     explorer.logged.connect(logged.append)
     window.properties.setPlainText("'common.requestTimeout=30")
     explorer._rerun()
     QApplication.processEvents()
-    assert len(children.started) == runs
+    assert len(usage_children(children)) == runs
     assert explorer._notes.text().startswith("The Properties field cannot be split: ")
     assert explorer._error_showing
     assert any(
@@ -1573,7 +1687,7 @@ def test_a_later_unusable_properties_field_fails_the_run(window, config, childre
     window.properties.setPlainText("")
     explorer._rerun()
     settle(explorer)
-    assert len(children.started) == runs + 1
+    assert len(usage_children(children)) == runs + 1
     assert not explorer._error_showing
 
 

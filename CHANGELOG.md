@@ -17,6 +17,7 @@ These changes alter what an existing script or configuration will see:
 
 ### yd usage
 
+- **`--reports` lists the reports kept from earlier runs** for the account and Application, the last fetched first: each one's window, namespace, when it was fetched and last used, and the command that uses it again (`--json` for an array).
 - **`--json` adds `reused` and `total`.** `reused` is `true` when the kept report of an earlier run was used and `false` when it was fetched, and `total` sums every group (those `--top` cuts too), with `--cost` its `estimatedCost` and `unpricedRunningHours`: the figures of the total line.
 - **`--where key==value` matches a value exactly**, with its case and with no glob characters (`--where 'cr==Render'`), where `key=pattern` matches a glob in any case.
 - **A kept report is found by its window, however the window is written.** A report fetched with `--from 24h --until now` is used again by `--from '2026-11-24 10:52 UTC' --until '2026-11-25 10:52 UTC'`, the window its summary showed, and the other way round, while each end is within ten minutes. Reports kept by earlier versions are not used again; they are removed after a week unused.
@@ -24,6 +25,7 @@ These changes alter what an existing script or configuration will see:
 ### Commander
 
 - **A Usage Explorer window** (`Usage Explorer...`, beside Help, with a configuration selected) shows Instance usage and estimated cost for the account, drilling from namespaces down to Instances, over `yd usage`, the window pinned to the report's dates once it has run; a new report is fetched only when asked for (**Fetch Report**), so the window and namespace can be chosen first. It names the namespaces a report covers when an Application may read usage in some only, shows the CLI's warnings from a successful run, totals by several keys at once (**Total by**), lets any figure column be hidden, and exports the table shown as a CSV file (**Export CSV**), with raw numbers or as displayed.
+- **The Usage Explorer's Kept Reports menu** lists the reports kept from earlier runs; choosing one sets its window and namespace, and Fetch Report shows it again without fetching it.
 - **`yd commander --usage-explorer`** opens the Usage Explorer on its own, without Commander's main window, on the configuration file given (else the default one, else one chosen in a dialog), with a **Select…** button to change it.
 - **Tab completes `yd commander`'s and `yd mcp`'s options** (`--usage-explorer`, `--reset-appearance`, `--transport`, ...), as it does every other command's; their configuration and definition files still complete as files.
 

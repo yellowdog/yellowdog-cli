@@ -3860,6 +3860,38 @@ def check_usage_sort(args: Namespace, parser: ArgumentParser) -> None:
             parser.error("--sort cost needs --cost")
 
 
+# yd-usage's options that shape a report, each with its default: none of
+# them applies to '--reports', which lists the kept reports instead
+_USAGE_REPORT_OPTIONS: tuple[tuple[str, str, object], ...] = (
+    ("usage_from", "--from", "7 days ago"),
+    ("usage_until", "--until", "now"),
+    ("usage_by", "--by", "namespace"),
+    ("usage_where", "--where", None),
+    ("namespace", "--namespace", None),
+    ("usage_refresh", "--refresh", False),
+    ("usage_cost", "--cost", False),
+    ("usage_sort", "--sort", "total"),
+    ("reverse", "--reverse", False),
+    ("usage_top", "--top", None),
+    ("csv_output", "--csv", False),
+)
+
+
+def check_usage_reports_alone(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    On yd-usage, refuse '--reports' with an option that shapes a report: it
+    lists the reports kept, and shows none of them.
+    """
+    if not getattr(args, "usage_reports", False):
+        return
+    for dest, flag, default in _USAGE_REPORT_OPTIONS:
+        given = getattr(args, dest, default)
+        if dest in ("usage_by", "usage_sort") and isinstance(given, tuple):
+            given = ",".join(given)
+        if given not in (default, None, False):
+            parser.error(f"--reports lists the kept reports: it takes no {flag}")
+
+
 COMMANDS["yd-usage"] = Command(
     name="yd-usage",
     purpose=(
@@ -3933,6 +3965,17 @@ COMMANDS["yd-usage"] = Command(
             ),
         ),
         option(
+            "--reports",
+            dest="usage_reports",
+            action="store_true",
+            required=False,
+            help=(
+                "list the reports kept from earlier runs for this account and"
+                " Application, each with the window and namespace that use it"
+                " again, rather than show one"
+            ),
+        ),
+        option(
             "--cost",
             dest="usage_cost",
             action="store_true",
@@ -3980,7 +4023,7 @@ COMMANDS["yd-usage"] = Command(
         ),
         JSON.variant(help="print one JSON document holding the window and the totals"),
     ),
-    validators=(check_csv_excludes_json, check_usage_sort),
+    validators=(check_csv_excludes_json, check_usage_sort, check_usage_reports_alone),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Show the hours Instances spent in each status (pending, running,"

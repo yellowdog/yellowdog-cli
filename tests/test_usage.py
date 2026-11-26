@@ -2355,3 +2355,128 @@ class TestUnpricedWarnings:
             "No list price for 3 more instance types: 0:06 running not costed;"
             " '--json' lists them all"
         )
+
+
+def _reports(capsys, **args) -> tuple[str, str]:
+    capsys.readouterr()  # what fetching the reports printed
+    ctx = _ctx(usage_reports=True, **args)
+    with output_settings.configured(ctx.args):
+        usage.show_reports(ctx)
+    captured = capsys.readouterr()
+    return captured.out, captured.err
+
+
+def _kept_two(platform) -> None:
+    """
+    Two reports kept for the account: every namespace's, then team-a's.
+    """
+    _report(_ctx())
+    time.sleep(0.02)
+    _report(_ctx(namespace="team-a"))
+    assert len(platform.calls) == 2
+
+
+class TestTheReportsKept:
+    def test_none_kept_is_said(self, platform, capsys):
+        out, _ = _reports(capsys)
+        assert "No usage reports are kept for this account and Application" in out
+        assert loads(_reports(capsys, json_output=True, json=True)[0]) == []
+
+    def test_the_last_fetched_first_each_with_its_window_and_namespace(
+        self, platform, capsys
+    ):
+        _kept_two(platform)
+        listed = loads(_reports(capsys, json_output=True, json=True)[0])
+        assert [item["namespace"] for item in listed] == ["team-a", None]
+        first = listed[0]
+        assert (first["from"], first["until"]) == (
+            "2026-11-01T00:00:00Z",
+            "2026-11-08T00:00:00Z",
+        )
+        assert first["command"] == (
+            "yd usage --from 2026-11-01T00:00:00Z --until 2026-11-08T00:00:00Z"
+            " -n team-a"
+        )
+        assert listed[1]["command"].endswith("--until 2026-11-08T00:00:00Z")
+        assert set(first) >= {"fetched", "lastUsed", "bytes", "reportFile"}
+
+    def test_its_command_uses_it_again(self, platform, capsys):
+        _kept_two(platform)
+        listed = loads(_reports(capsys, json_output=True, json=True)[0])
+        for item in listed:
+            words = item["command"].split()
+            report = _report(
+                _ctx(
+                    usage_from=words[words.index("--from") + 1],
+                    usage_until=words[words.index("--until") + 1],
+                    namespace=item["namespace"],
+                )
+            )
+            assert report.from_cache
+        assert len(platform.calls) == 2
+
+    def test_listing_marks_none_used(self, platform, capsys):
+        _kept_two(platform)
+        directories = [p for p in platform_root(platform).iterdir() if p.is_dir()]
+        before = {p: p.stat().st_mtime for p in directories}
+        time.sleep(0.02)
+        _reports(capsys, json_output=True, json=True)
+        assert {p: p.stat().st_mtime for p in directories} == before
+
+    def test_another_accounts_reports_are_not_listed(self, platform, capsys):
+        _kept_two(platform)
+        capsys.readouterr()
+        ctx = _ctx(usage_reports=True, json_output=True, json=True)
+        ctx.config.key = "another-key"
+        with output_settings.configured(ctx.args):
+            usage.show_reports(ctx)
+        assert loads(capsys.readouterr().out) == []
+
+    def test_a_report_kept_without_its_account_is_not_listed(self, platform, capsys):
+        _report(_ctx())
+        [directory] = [p for p in platform_root(platform).iterdir() if p.is_dir()]
+        fetched = directory / usage_report.FETCHED_JSON
+        record = loads(fetched.read_text(encoding="utf-8"))
+        del record["account"]
+        fetched.write_text(dumps(record), encoding="utf-8")
+        assert loads(_reports(capsys, json_output=True, json=True)[0]) == []
+
+    def test_the_table_and_the_commands(self, platform, capsys):
+        _kept_two(platform)
+        out, _ = _reports(capsys)
+        assert "2 usage reports kept for this account and Application" in out
+        assert "Last Used" in out and "(all)" in out and "team-a" in out
+        assert "1: yd usage --from 2026-11-01T00:00:00Z" in out
+        assert "-n team-a" in out
+
+
+def platform_root(platform) -> Path:
+    """
+    The cache directory the reports are kept in, under the test's own.
+    """
+    root = completion_cache.cache_directory(usage_report.USAGE_CACHE_DIRECTORY_NAME)
+    assert root is not None
+    return root
+
+
+@pytest.mark.parametrize(
+    "extra, flag",
+    [
+        (["--cost"], "--cost"),
+        (["--from", "3 days ago"], "--from"),
+        (["--by", "region"], "--by"),
+        (["-n", "team-a"], "--namespace"),
+        (["--csv"], "--csv"),
+        (["--refresh"], "--refresh"),
+    ],
+)
+def test_reports_takes_no_report_option(extra, flag, capsys):
+    with pytest.raises(SystemExit):
+        _parsed_usage("--reports", *extra)
+    assert f"--reports lists the kept reports: it takes no {flag}" in (
+        capsys.readouterr().err
+    )
+
+
+def test_reports_takes_the_output_options():
+    assert _parsed_usage("--reports", "--json").usage_reports

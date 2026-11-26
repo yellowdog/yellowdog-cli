@@ -529,6 +529,11 @@ class CLIParser:
 
     @property
     @allow_missing_attribute
+    def usage_reports(self) -> bool | None:
+        return self.args.usage_reports
+
+    @property
+    @allow_missing_attribute
     def usage_cost(self) -> bool | None:
         return self.args.usage_cost
 

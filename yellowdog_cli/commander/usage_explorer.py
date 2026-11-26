@@ -353,6 +353,12 @@ TABLE_INDENT = 6
 HEADING_TINT = 0.15
 RUNNING_TEXT = "Running yd usage… {elapsed}"
 FETCH_BUTTON = "Fetch Report"
+KEPT_SEPARATOR = " \u00b7 "
+KEPT_TOOLTIP = (
+    "The reports kept from earlier runs (yd usage --reports): choose one to"
+    " see it again, without fetching it"
+)
+NO_KEPT_TOOLTIP = "No reports are kept for this configuration yet"
 FETCH_TEXT = "Fetch the usage report for this window and namespace"
 FETCHED_LOG = "Fetched the usage report: {command}"
 FAILED_LOG = "{command} failed (exit {code}): {message}"
@@ -724,11 +730,16 @@ class UsageExplorer(QDialog):
             self, working_dir, base_args, command="yd list"
         )
         self._namespace_runner.finished.connect(self._on_namespaces)
+        # The reports kept for this configuration (yd usage --reports), for
+        # Kept Reports
+        self._reports_runner = UsageRunner(self, working_dir, base_args)
+        self._reports_runner.finished.connect(self._on_reports)
         self._tick = QTimer(self)
         self._tick.setInterval(OVERLAY_TICK_MS)
         self._tick.timeout.connect(self._show_elapsed)
 
         self._list_namespaces()
+        self._list_reports()
         self._await_fetch()
 
     # Construction -----------------------------------------------------------
@@ -744,6 +755,11 @@ class UsageExplorer(QDialog):
         self._until.setToolTip("When the window ends, as yd usage --until reads it")
         self._fill_window(preset)
         self._preset.currentIndexChanged.connect(self._preset_chosen)
+        self._kept = QPushButton("Kept Reports", self)
+        self._kept.setAutoDefault(False)
+        self._kept.setMenu(QMenu(self._kept))
+        self._kept.setEnabled(False)
+        self._kept.setToolTip(NO_KEPT_TOOLTIP)
         for field in (self._from, self._until):
             field.textEdited.connect(self._typed_window)
             field.editingFinished.connect(self._await_fetch)
@@ -923,6 +939,7 @@ class UsageExplorer(QDialog):
         window_row.addWidget(self._from, 1)
         window_row.addWidget(QLabel("Until", self))
         window_row.addWidget(self._until, 1)
+        window_row.addWidget(self._kept)
         scope_row = QHBoxLayout()
         scope_row.addWidget(QLabel("Namespace:", self))
         scope_row.addWidget(self._namespace, 1)
@@ -1009,6 +1026,7 @@ class UsageExplorer(QDialog):
         self._report.clear()
         self._command_line.clear()
         self._list_namespaces()
+        self._list_reports()
         self._await_fetch()
 
     def show_configuration(self, path: str) -> None:
@@ -1075,6 +1093,7 @@ class UsageExplorer(QDialog):
         """
         self._runner.stop_all()
         self._namespace_runner.stop_all()
+        self._reports_runner.stop_all()
         self._tick.stop()
         self.close()
 
@@ -1117,6 +1136,61 @@ class UsageExplorer(QDialog):
         super().closeEvent(a0)
 
     # Requests ---------------------------------------------------------------
+
+    def _list_reports(self) -> None:
+        """
+        Start listing the kept reports (yd usage --reports); with base
+        arguments Commander cannot build, nothing.
+        """
+        try:
+            self._base_args()
+        except UnusableArguments:
+            return
+        self._reports_runner.run(["--reports"])
+
+    def _on_reports(self, result: RunResult) -> None:
+        """
+        Kept Reports filled with the reports listed, the last fetched first;
+        disabled with none, or when they could not be listed.
+        """
+        document = result.document
+        reports = (
+            [item for item in document if isinstance(item, dict)]
+            if result.exit_code == 0 and isinstance(document, list)
+            else []
+        )
+        menu = cast(QMenu, self._kept.menu())
+        menu.clear()
+        for item in reports:
+            namespace = item.get("namespace")
+            action = cast(
+                QAction,
+                menu.addAction(
+                    f"{_shown_time(item.get('from', ''))} \u2192"
+                    f" {_shown_time(item.get('until', ''))} UTC"
+                    f"{KEPT_SEPARATOR}{namespace or ALL_NAMESPACES}"
+                ),
+            )
+            action.setToolTip(
+                f"Fetched {_shown_time(item.get('fetched', ''))} UTC, last used"
+                f" {_shown_time(item.get('lastUsed', ''))} UTC"
+            )
+            action.triggered.connect(partial(self._use_kept_report, item))
+        self._kept.setEnabled(bool(reports))
+        self._kept.setToolTip(KEPT_TOOLTIP if reports else NO_KEPT_TOOLTIP)
+
+    def _use_kept_report(self, item: dict) -> None:
+        """
+        A kept report chosen: the controls set to its window and namespace
+        (the window as Custom), awaiting Fetch Report, which uses it again.
+        """
+        self._preset.blockSignals(True)
+        self._preset.setCurrentText(CUSTOM_PRESET)
+        self._preset.blockSignals(False)
+        self._from.setText(str(item.get("from", "")))
+        self._until.setText(str(item.get("until", "")))
+        self._namespace.setCurrentText(str(item.get("namespace") or ALL_NAMESPACES))
+        self._await_fetch()
 
     def _list_namespaces(self) -> None:
         """
@@ -1505,6 +1579,8 @@ class UsageExplorer(QDialog):
         )
         if not reused:
             self.logged.emit(FETCHED_LOG.format(command=self._requested_line))
+            # A report fetched is kept: Kept Reports lists it
+            self._list_reports()
 
     @staticmethod
     def _notes_of(document: dict) -> tuple[list[str], list[str]]:
