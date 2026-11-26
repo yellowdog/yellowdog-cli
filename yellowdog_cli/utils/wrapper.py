@@ -67,19 +67,19 @@ def _create_client() -> PlatformClient:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
-    from yellowdog_cli.utils.user_agent import set_user_agent
+    from yellowdog_cli.utils.user_agent import cli_product, set_default_user_agent
 
-    # Apply the CLI's User-Agent to all outgoing HTTP requests (SDK and
-    # direct) before the client is created or any request is made: every
-    # command that makes a request imports CLIENT
-    set_user_agent()
+    # The CLI's User-Agent on its direct requests, before any is made: every
+    # command that makes one uses CLIENT; the SDK's own requests name the CLI
+    # through the product the client is created with
+    set_default_user_agent()
     # A strict load, which every command using the client has, never
     # returns None for either
     assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None
     client = PlatformClient.create(
         ServicesSchema(
             defaultUrl=CONFIG_COMMON.url,
-            # None, from readTimeout = 0, is no limit, as for the SDK
+            # None, from requestTimeout = 0, is no limit, as for the SDK
             requestTimeout=(
                 None
                 if CONFIG_COMMON.read_timeout is None
@@ -87,6 +87,7 @@ def _create_client() -> PlatformClient:
             ),
         ),
         ApiKey(CONFIG_COMMON.key, CONFIG_COMMON.secret),
+        cli_product(),
     )
     return client
 

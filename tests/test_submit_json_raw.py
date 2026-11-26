@@ -22,11 +22,11 @@ from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, classify
 from yellowdog_cli.utils.limits import (
     MAX_BATCH_SUBMIT_ATTEMPTS,
-    PLATFORM_READ_TIMEOUT,
+    PLATFORM_REQUEST_TIMEOUT,
     RAW_CONNECT_TIMEOUT,
 )
 
-REQUEST_TIMEOUT = (RAW_CONNECT_TIMEOUT, PLATFORM_READ_TIMEOUT)
+REQUEST_TIMEOUT = (RAW_CONNECT_TIMEOUT, PLATFORM_REQUEST_TIMEOUT)
 
 
 def _ctx() -> RunContext:

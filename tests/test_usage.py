@@ -13,7 +13,7 @@ import time
 import zipfile
 from argparse import ArgumentTypeError
 from datetime import datetime, timedelta, timezone
-from json import loads
+from json import dumps, loads
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -37,6 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
+from yellowdog_cli.utils.usage_text import cost_text_of, duration_text
 
 URL = "https://api.example.com"
 KEY = "key-id"
@@ -212,8 +213,6 @@ def _report(ctx: RunContext, refresh: bool = False) -> usage_report.Report:
         ctx,
         from_time,
         until_time,
-        ctx.args.usage_from,
-        ctx.args.usage_until,
         ctx.args.namespace,
         refresh=refresh,
     )
@@ -271,7 +270,7 @@ class TestTheReportsWait:
             raise ReadTimeout("read timed out")
 
         monkeypatch.setattr(usage_report.requests, "put", timed_out)
-        with pytest.raises(ReadTimeout, match=r"5 minutes.*readTimeout") as raised:
+        with pytest.raises(ReadTimeout, match=r"5 minutes.*requestTimeout") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
 
@@ -299,7 +298,9 @@ class TestTheReportsWait:
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
         monkeypatch.setattr(usage_report.requests, "put", stalls)
-        with pytest.raises(ConnectionError, match=r"5 minutes.*readTimeout") as raised:
+        with pytest.raises(
+            ConnectionError, match=r"5 minutes.*requestTimeout"
+        ) as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
 
@@ -948,8 +949,6 @@ class TestWhenAKeptReportIsUsed:
                 _ctx(),
                 KEPT_FROM + elapsed,
                 KEPT_UNTIL + elapsed,
-                "7 days ago",
-                "now",
                 None,
                 refresh=False,
                 now=KEPT_UNTIL + elapsed,
@@ -961,12 +960,56 @@ class TestWhenAKeptReportIsUsed:
         assert not run(timedelta(minutes=11)).from_cache
         assert len(platform.calls) == 2
 
+    @staticmethod
+    def _run(
+        from_time: datetime,
+        until_time: datetime,
+        now: datetime,
+        refresh: bool = False,
+        namespace: str | None = None,
+    ) -> usage_report.Report:
+        return usage_report.usage_report(
+            _ctx(), from_time, until_time, namespace, refresh=refresh, now=now
+        )
+
+    def test_a_window_ending_now_is_found_again_by_the_dates_it_shows(self, platform):
+        # Fetched as '--from 7d --until now' 39 seconds past the minute, then
+        # asked for days later by the minutes its summary showed
+        fetched = KEPT_UNTIL + timedelta(seconds=39)
+        first = self._run(KEPT_FROM + timedelta(seconds=39), fetched, fetched)
+        later = self._run(KEPT_FROM, KEPT_UNTIL, fetched + timedelta(days=2))
+        assert later.from_cache and later.directory == first.directory
+        assert len(platform.calls) == 1
+
+    def test_of_several_that_match_the_last_fetched_is_used(self, platform):
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        refreshed = self._run(
+            KEPT_FROM + timedelta(minutes=1), KEPT_UNTIL, KEPT_UNTIL, refresh=True
+        )
+        assert self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).directory == (
+            refreshed.directory
+        )
+        assert len(platform.calls) == 2
+
+    def test_a_matching_window_of_another_namespace_is_not_used(self, platform):
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        assert not self._run(
+            KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-render"
+        ).from_cache
+
+    def test_a_report_kept_without_its_scope_is_not_used(self, platform):
+        report = self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        (report.directory / "fetched.json").write_text(
+            dumps({"fetched": 1795000000.0}), encoding="utf-8"
+        )
+        assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+
 
 def test_a_report_kept_without_its_size_is_shown_without_it(platform, capsys):
     report = _report(_ctx())
-    (report.directory / "fetched.json").write_text(
-        '{"fetched": 1795000000.0}', encoding="utf-8"
-    )
+    kept = report.directory / "fetched.json"
+    scope = loads(kept.read_text(encoding="utf-8"))["scope"]
+    kept.write_text(dumps({"fetched": 1795000000.0, "scope": scope}), encoding="utf-8")
     out, _ = _show(capsys)
     line = next(line for line in out.splitlines() if "Reusing report" in line)
     assert "UTC), in '" in line and "kB" not in line and "bytes" not in line
@@ -1161,6 +1204,92 @@ class TestFilters:
     def test_nothing_matching_says_so(self, platform, capsys):
         out, err = _show(capsys, usage_where=[("provider", "azure")])
         assert "No Instances in the window match the filters" in out + err
+
+
+class TestExactFilters:
+    """
+    '--where key==value': the value after '=' exactly, with its case.
+    """
+
+    @pytest.fixture
+    def rows(self, platform):
+        platform.content = _zip(
+            instances=[
+                INSTANCES_HEADER,
+                _instance(CR_RENDER, "g4dn.xlarge", 60, instance_id="i-1"),
+                _instance(CR_TRAIN, "t3a.small", 60, instance_id="i-2"),
+                _instance(CR_GONE, "t3a.small", 60, instance_id="i-3"),
+            ],
+            requirements=[
+                REQUIREMENTS[0],
+                f"team-a,Render,team[1],2026-11-01T00:00:00Z,,{APP_RENDER},{CR_RENDER}",
+                f"team-b,render,=odd,2026-11-01T00:00:00Z,,{USER_ALICE},{CR_TRAIN}",
+                f"team-c,other,,2026-11-01T00:00:00Z,,,{CR_GONE}",
+            ],
+        )
+
+    def _keys(self, by, where, creators=NAMES):
+        groups = usage_report.grouped_usage(
+            _report(_ctx()),
+            by,
+            usage_report.filter_of(where),
+            creators=creators,
+        )
+        return sorted(next(iter(g.keys.values())) for g in groups)
+
+    def test_exact_matches_with_case(self, rows):
+        assert self._keys(["cr"], [("cr", "=Render")]) == ["Render"]
+
+    def test_exact_takes_glob_characters_literally(self, rows):
+        assert self._keys(["tag"], [("tag", "=team[1]")]) == ["team[1]"]
+        assert self._keys(["tag"], [("tag", "=team?1?")]) == []
+
+    def test_exact_dash_is_the_missing_value(self, rows):
+        assert self._keys(["namespace"], [("tag", "=-")]) == ["team-c"]
+
+    def test_exact_creator_by_id_and_by_shown_name(self, rows):
+        by_id = self._keys(["namespace"], [("creator", f"={APP_RENDER}")])
+        by_shown = self._keys(
+            ["namespace"], [("creator", "=render-farm (Application)")]
+        )
+        by_name = self._keys(["namespace"], [("creator", "=render-farm")])
+        assert by_id == by_shown == by_name == ["team-a"]
+
+    def test_exact_and_glob_mix(self, rows):
+        assert self._keys(["namespace"], [("cr", "=Render"), ("provider", "aws")]) == [
+            "team-a"
+        ]
+        assert (
+            self._keys(["namespace"], [("cr", "=Render"), ("provider", "azure")]) == []
+        )
+
+    def test_glob_is_unchanged(self, rows):
+        assert self._keys(["cr"], [("cr", "render")]) == ["Render", "render"]
+
+    def test_a_leading_equals_value(self, rows):
+        assert self._keys(["tag"], [("tag", "==odd")]) == ["=odd"]
+
+    def test_the_summary_and_json_name_the_exact_filter(self, rows, capsys):
+        where = [("cr", "=Render")]
+        out, _ = _show(capsys, usage_where=where)
+        assert "where cr==Render" in out
+        document = loads(
+            _show(capsys, usage_where=where, json_output=True, json=True)[0]
+        )
+        assert document["where"] == {"cr": ["=Render"]}
+
+
+@pytest.mark.parametrize(
+    "text, parsed",
+    [("cr==Render", ("cr", "=Render")), ("tag===odd", ("tag", "==odd"))],
+)
+def test_usage_filter_keeps_the_exact_form(text, parsed):
+    assert usage_filter(text) == parsed
+
+
+def test_usage_filter_refuses_an_empty_exact_value():
+    with pytest.raises(ArgumentTypeError, match="has no value after '=='"):
+        usage_filter("cr==")
 
 
 class _ScopedPlatform(_Platform):
@@ -1407,7 +1536,15 @@ class TestANamespaceThatDoesNotExist:
     ],
 )
 def test_duration_text(seconds, text):
-    assert usage.duration_text(seconds) == text
+    assert duration_text(seconds) == text
+
+
+@pytest.mark.parametrize(
+    "cost, partial, text",
+    [(None, False, "-"), (1234.5, False, "1,234.50"), (1.0, True, "1.00+")],
+)
+def test_cost_text_of(cost, partial, text):
+    assert cost_text_of(cost, partial) == text
 
 
 def test_json_seconds_are_exact_where_hours_round(platform, capsys):
@@ -1777,6 +1914,65 @@ def _parsed_usage(*argv: str):
     from yellowdog_cli.utils.args import CLIParser
 
     return CLIParser("yd-usage", list(argv))
+
+
+class TestTheJsonTotals:
+    def test_reused_is_false_then_true(self, platform, capsys):
+        assert loads(_show(capsys, json_output=True, json=True)[0])["reused"] is False
+        assert loads(_show(capsys, json_output=True, json=True)[0])["reused"] is True
+
+    def test_total_sums_every_group(self, platform, capsys):
+        whole = loads(
+            _show(capsys, usage_by=("instance-id",), json_output=True, json=True)[0]
+        )
+        cut = loads(
+            _show(
+                capsys,
+                usage_by=("instance-id",),
+                usage_top=1,
+                json_output=True,
+                json=True,
+            )[0]
+        )
+        assert cut["total"]["groups"] == len(cut["groups"]) + cut["more"]["groups"]
+        assert cut["total"] == whole["total"]
+        assert whole["total"]["groups"] == len(whole["groups"])
+        assert whole["total"]["instances"] == sum(
+            g["instances"] for g in whole["groups"]
+        )
+        assert whole["total"]["seconds"]["total"] == sum(
+            g["seconds"]["total"] for g in whole["groups"]
+        )
+        assert "creator" not in whole["total"] and "instance-id" not in whole["total"]
+
+    def test_no_cost_keys_in_the_total_without_cost(self, platform, capsys):
+        total = loads(_show(capsys, json_output=True, json=True)[0])["total"]
+        assert "estimatedCost" not in total
+
+    def test_total_cost_matches_the_total_line(self, platform, capsys):
+        text, _, _ = _show_priced(capsys, usage_cost=True)
+        total = loads(
+            _show_priced(capsys, usage_cost=True, json_output=True, json=True)[0]
+        )["total"]
+        assert f"est. ${total['estimatedCost']:,.2f} at list prices" in text
+        assert total["unpricedRunningHours"] == 0.0
+
+    def test_partial_total_cost(self, platform, capsys):
+        rows = [_price("t2.small", "ON_DEMAND", 0.04)]
+        text, _, _ = _show_priced(capsys, rows, usage_cost=True)
+        total = loads(
+            _show_priced(capsys, rows, usage_cost=True, json_output=True, json=True)[0]
+        )["total"]
+        assert f"est. ${total['estimatedCost']:,.2f}+ at list prices" in text
+        assert total["unpricedRunningHours"] == 1.5
+
+    def test_total_cost_is_null_when_nothing_is_priced(self, platform, capsys):
+        total = loads(
+            _show_priced(
+                capsys, _refused(), usage_cost=True, json_output=True, json=True
+            )[0]
+        )["total"]
+        assert total["estimatedCost"] is None
 
 
 class TestSort:
@@ -2159,3 +2355,128 @@ class TestUnpricedWarnings:
             "No list price for 3 more instance types: 0:06 running not costed;"
             " '--json' lists them all"
         )
+
+
+def _reports(capsys, **args) -> tuple[str, str]:
+    capsys.readouterr()  # what fetching the reports printed
+    ctx = _ctx(usage_reports=True, **args)
+    with output_settings.configured(ctx.args):
+        usage.show_reports(ctx)
+    captured = capsys.readouterr()
+    return captured.out, captured.err
+
+
+def _kept_two(platform) -> None:
+    """
+    Two reports kept for the account: every namespace's, then team-a's.
+    """
+    _report(_ctx())
+    time.sleep(0.02)
+    _report(_ctx(namespace="team-a"))
+    assert len(platform.calls) == 2
+
+
+class TestTheReportsKept:
+    def test_none_kept_is_said(self, platform, capsys):
+        out, _ = _reports(capsys)
+        assert "No usage reports are kept for this account and Application" in out
+        assert loads(_reports(capsys, json_output=True, json=True)[0]) == []
+
+    def test_the_last_fetched_first_each_with_its_window_and_namespace(
+        self, platform, capsys
+    ):
+        _kept_two(platform)
+        listed = loads(_reports(capsys, json_output=True, json=True)[0])
+        assert [item["namespace"] for item in listed] == ["team-a", None]
+        first = listed[0]
+        assert (first["from"], first["until"]) == (
+            "2026-11-01T00:00:00Z",
+            "2026-11-08T00:00:00Z",
+        )
+        assert first["command"] == (
+            "yd usage --from 2026-11-01T00:00:00Z --until 2026-11-08T00:00:00Z"
+            " -n team-a"
+        )
+        assert listed[1]["command"].endswith("--until 2026-11-08T00:00:00Z")
+        assert set(first) >= {"fetched", "lastUsed", "bytes", "reportFile"}
+
+    def test_its_command_uses_it_again(self, platform, capsys):
+        _kept_two(platform)
+        listed = loads(_reports(capsys, json_output=True, json=True)[0])
+        for item in listed:
+            words = item["command"].split()
+            report = _report(
+                _ctx(
+                    usage_from=words[words.index("--from") + 1],
+                    usage_until=words[words.index("--until") + 1],
+                    namespace=item["namespace"],
+                )
+            )
+            assert report.from_cache
+        assert len(platform.calls) == 2
+
+    def test_listing_marks_none_used(self, platform, capsys):
+        _kept_two(platform)
+        directories = [p for p in platform_root(platform).iterdir() if p.is_dir()]
+        before = {p: p.stat().st_mtime for p in directories}
+        time.sleep(0.02)
+        _reports(capsys, json_output=True, json=True)
+        assert {p: p.stat().st_mtime for p in directories} == before
+
+    def test_another_accounts_reports_are_not_listed(self, platform, capsys):
+        _kept_two(platform)
+        capsys.readouterr()
+        ctx = _ctx(usage_reports=True, json_output=True, json=True)
+        ctx.config.key = "another-key"
+        with output_settings.configured(ctx.args):
+            usage.show_reports(ctx)
+        assert loads(capsys.readouterr().out) == []
+
+    def test_a_report_kept_without_its_account_is_not_listed(self, platform, capsys):
+        _report(_ctx())
+        [directory] = [p for p in platform_root(platform).iterdir() if p.is_dir()]
+        fetched = directory / usage_report.FETCHED_JSON
+        record = loads(fetched.read_text(encoding="utf-8"))
+        del record["account"]
+        fetched.write_text(dumps(record), encoding="utf-8")
+        assert loads(_reports(capsys, json_output=True, json=True)[0]) == []
+
+    def test_the_table_and_the_commands(self, platform, capsys):
+        _kept_two(platform)
+        out, _ = _reports(capsys)
+        assert "2 usage reports kept for this account and Application" in out
+        assert "Last Used" in out and "(all)" in out and "team-a" in out
+        assert "1: yd usage --from 2026-11-01T00:00:00Z" in out
+        assert "-n team-a" in out
+
+
+def platform_root(platform) -> Path:
+    """
+    The cache directory the reports are kept in, under the test's own.
+    """
+    root = completion_cache.cache_directory(usage_report.USAGE_CACHE_DIRECTORY_NAME)
+    assert root is not None
+    return root
+
+
+@pytest.mark.parametrize(
+    "extra, flag",
+    [
+        (["--cost"], "--cost"),
+        (["--from", "3 days ago"], "--from"),
+        (["--by", "region"], "--by"),
+        (["-n", "team-a"], "--namespace"),
+        (["--csv"], "--csv"),
+        (["--refresh"], "--refresh"),
+    ],
+)
+def test_reports_takes_no_report_option(extra, flag, capsys):
+    with pytest.raises(SystemExit):
+        _parsed_usage("--reports", *extra)
+    assert f"--reports lists the kept reports: it takes no {flag}" in (
+        capsys.readouterr().err
+    )
+
+
+def test_reports_takes_the_output_options():
+    assert _parsed_usage("--reports", "--json").usage_reports

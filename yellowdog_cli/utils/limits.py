@@ -38,16 +38,16 @@ MAX_BATCH_SUBMIT_ATTEMPTS = 4  # Initial attempt plus retries
 BATCH_SUBMIT_RETRY_DELAY = 2.0  # Seconds before the first retry, doubled for each
 
 # How long a Platform request waits for its response before failing, unless
-# [common] readTimeout says otherwise (ConfigCommon.read_timeout): the SDK
+# [common] requestTimeout says otherwise (ConfigCommon.read_timeout): the SDK
 # client's (ServicesSchema.requestTimeout), and the CLI's direct requests'
 # (ConfigCommon.request_timeout). A POST that times out is not resent (the
 # Platform may still be processing it), but for a Task batch whose Tasks all
 # have names (submit_with_retries())
-PLATFORM_READ_TIMEOUT = 90.0  # Seconds
+PLATFORM_REQUEST_TIMEOUT = 90.0  # Seconds
 # How long the usage report request waits for the Platform's response at the
-# least (a larger readTimeout wins; readTimeout = 0 is still no limit), since
-# a large report takes the Platform a while to build: the MCP server's own
-# limit for a command (MCP_TOOL_TIMEOUT_SECONDS), so that the two agree
+# least (a larger requestTimeout wins; requestTimeout = 0 is still no limit),
+# since a large report takes the Platform a while to build: the MCP server's
+# own limit for a command (MCP_TOOL_TIMEOUT_SECONDS), so that the two agree
 USAGE_REPORT_READ_TIMEOUT = 300.0  # Seconds
 # The size of the chunks a usage report is read in, each one shown arriving
 USAGE_REPORT_CHUNK_BYTES = 1 << 20

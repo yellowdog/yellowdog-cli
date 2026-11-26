@@ -1,6 +1,6 @@
 """
 The request timeout each Platform client is built with: the commands'
-([common] readTimeout, the SDK's own 90 seconds when unset, none for 0),
+([common] requestTimeout, the SDK's own 90 seconds when unset, none for 0),
 yd-doctor's (its --timeout) and a Tab lookup's (its two seconds); and none
 built with a field the SDK has deprecated.
 """
@@ -16,7 +16,7 @@ import yellowdog_cli.utils.completion_lookups as completion_lookups
 import yellowdog_cli.utils.doctor_checks as doctor_checks
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli.utils.lazy import value
-from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS, PLATFORM_READ_TIMEOUT
+from yellowdog_cli.utils.limits import LOOKUP_TIMEOUT_SECONDS, PLATFORM_REQUEST_TIMEOUT
 
 # A deprecated ServicesSchema field warns as the schema is built
 pytestmark = pytest.mark.filterwarnings("error::DeprecationWarning")
@@ -31,7 +31,7 @@ def schemas(monkeypatch) -> list:
     monkeypatch.setattr(
         PlatformClient,
         "create",
-        staticmethod(lambda schema, _key: seen.append(schema) or object()),
+        staticmethod(lambda schema, _key, *_products: seen.append(schema) or object()),
     )
     return seen
 
@@ -39,9 +39,9 @@ def schemas(monkeypatch) -> list:
 @pytest.mark.parametrize(
     ("configured", "expected"),
     [
-        (PLATFORM_READ_TIMEOUT, timedelta(seconds=PLATFORM_READ_TIMEOUT)),
+        (PLATFORM_REQUEST_TIMEOUT, timedelta(seconds=PLATFORM_REQUEST_TIMEOUT)),
         (30.0, timedelta(seconds=30)),
-        (None, None),  # readTimeout = 0: no limit
+        (None, None),  # requestTimeout = 0: no limit
     ],
 )
 def test_the_commands_client_waits_the_configured_read_timeout(
@@ -60,7 +60,7 @@ def test_the_platform_read_timeout_is_the_sdks_default():
     from yellowdog_client.model import ServicesSchema
 
     assert ServicesSchema.DEFAULT_REQUEST_TIMEOUT == timedelta(
-        seconds=PLATFORM_READ_TIMEOUT
+        seconds=PLATFORM_REQUEST_TIMEOUT
     )
 
 

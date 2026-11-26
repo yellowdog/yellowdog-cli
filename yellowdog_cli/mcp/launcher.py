@@ -64,7 +64,16 @@ class _Once(argparse.Action):
         setattr(namespace, self.dest, values)
 
 
-def parse_args(argv: list[str] | None = None) -> ServerSettings:
+# The arguments that name a local file, which shell completion completes as
+# files (utils/completion.py reads this parser for the launcher's options)
+FILE_ARGUMENTS: tuple[str, ...] = ("config_file", "config_option")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """
+    The launcher's options: parse_args() reads them, and shell completion
+    offers them.
+    """
     parser = argparse.ArgumentParser(
         prog=selected_prog("yd-mcp"),
         description=(
@@ -113,6 +122,11 @@ def parse_args(argv: list[str] | None = None) -> ServerSettings:
         default="stdio",
         help="the MCP transport: stdio, the only one",
     )
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> ServerSettings:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.config_file is not None and args.config_option is not None:
         parser.error(ONCE)

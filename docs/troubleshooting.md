@@ -108,7 +108,13 @@ When every row is `YES`, the pool matches. If the Task Group still starves, its 
 
 #### Details
 
-**`MAYBE`.** Task Types, RAM and vCPUs are compared with what the pool's Nodes report, so before any Node has registered they show `MAYBE (no Nodes available)`. A pool that has never had a Node scales up to one Node first, whose Task Types, RAM and vCPUs then decide whether the pool matches; if it doesn't, the Task Group stays starved. A pool that has had Nodes keeps what they reported, even after it has scaled down to none, and the Scheduler matches on that. `compare` has only the Node records the Platform lists, which are removed an hour after a Node terminates, so a pool that has scaled down to none shows `MAYBE` an hour later, whatever its earlier Nodes reported. Step 5 finds out why there are no Nodes.
+**`MAYBE`.** Task Types, RAM and vCPUs are compared with what the pool's Nodes report, so before any Node has registered they show `MAYBE (no Nodes available)`.
+
+- **A pool that has never had a Node** scales up to one Node first, whose Task Types, RAM and vCPUs then decide whether the pool matches. If it doesn't, the Task Group stays starved.
+- **A pool that has had Nodes** keeps what they reported, even after it has scaled down to none, and the Scheduler matches on that.
+- **`compare` has only the Node records the Platform lists**, which are removed an hour after a Node terminates. So a pool that has scaled down to none shows `MAYBE` an hour later, whatever its earlier Nodes reported.
+
+Step 5 finds out why there are no Nodes.
 
 **Several pools, one Task Group.** Give `yd workrequirement compare` several Worker Pools to compare each, with a summary table first. `yd taskgroup compare nightly-render/render render-pool` compares a single Task Group. The full table of what is compared is in [yd workrequirement compare](commands.md#yd-workrequirement-compare).
 

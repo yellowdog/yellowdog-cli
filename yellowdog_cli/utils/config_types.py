@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from yellowdog_cli.utils.limits import (
     CR_MAX_INSTANCES,
-    PLATFORM_READ_TIMEOUT,
+    PLATFORM_REQUEST_TIMEOUT,
     RAW_CONNECT_TIMEOUT,
     TASK_BATCH_SIZE_DEFAULT,
 )
@@ -28,7 +28,7 @@ class ConfigCommon:
     name_tag: str
     use_pac: bool
     # Seconds to wait for a Platform response; None for no limit
-    read_timeout: float | None = PLATFORM_READ_TIMEOUT
+    read_timeout: float | None = PLATFORM_REQUEST_TIMEOUT
 
     @property
     def request_timeout(self) -> tuple[float, float | None]:

@@ -41,7 +41,8 @@ The CLI is one command, `yd`. Most of what it does names the object acted on, th
 - **Allowances** — boosting them with **`yd allowance`**
 - **Remote data stores** — uploading, downloading, listing, deleting and copying files with **`yd data`**
 - **Cloud regions, instance types and prices**, as the YellowDog Platform knows them, with **`yd cloudinfo`**
-- **Inspecting** — seeing the work and compute in a namespace at a glance with **`yd status`**, the hours Instances ran over a time window with **`yd usage`**, listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**. Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
+- **Inspecting** — seeing the work and compute in a namespace at a glance with **`yd status`**, the hours Instances ran over a time window with **`yd usage`**, listing items with **`yd list`**, showing one in full with **`yd show`**, following event streams with **`yd follow`**, and waiting for Work Requirements, Worker Pools or Compute Requirements to finish with **`yd wait`**
+  - Each Platform noun has `list` and `show` verbs of its own, such as `yd task list --within my-work-requirement --status failed`.
 - **Showing** the details of the current Application with the **`yd application`** command
 - **Diagnosing** the configuration, credentials and connectivity with the **`yd doctor`** command
 - **Reporting** the processed values of variable substitutions with the **`yd variables`** command
@@ -277,7 +278,13 @@ Both commands read their settings from `config.toml`. This one runs ten Bash Tas
     workerTag = "thumbnails"
 ```
 
-`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID, with the Keyring and Compute Source Templates it uses (see [Creating, Updating and Removing YellowDog Resources](docs/resources.md#keyrings)). YellowDog provides no stock images, so each instance installs the YellowDog Agent as it boots, from [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`. With an image of your own that has the Agent installed, leave out `userDataFile`, and leave out `imagesId` too if the template names the image (see [A First Run, with No Image of Your Own](docs/worker-pools.md#a-first-run-with-no-image-of-your-own)). The matching `workerTag` values send the Tasks to this pool's Workers. The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
+`templateId` names a Compute Requirement Template you have already created, by name or YellowDog ID, with the Keyring and Compute Source Templates it uses (see [Creating, Updating and Removing YellowDog Resources](docs/resources.md#keyrings)).
+
+- **The Agent.** YellowDog provides no stock images, so each instance installs the YellowDog Agent as it boots, from [`yd-agent-installer.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/yd-agent-installer.sh) next to `config.toml`.
+- **An image of your own** that has the Agent installed needs no `userDataFile`, and no `imagesId` either if the template names the image (see [A First Run, with No Image of Your Own](docs/worker-pools.md#a-first-run-with-no-image-of-your-own)).
+- **The matching `workerTag` values** send the Tasks to this pool's Workers.
+
+The properties are described in [Work Requirements](docs/work-requirements.md) and [Worker Pools](docs/worker-pools.md).
 
 With `--quiet`, each command prints just the YellowDog ID (YDID) of what it created, so its output can be captured in a shell script:
 
@@ -304,7 +311,12 @@ yd workrequirement submit --follow
 
 When the Work Requirement is finished, the Worker Pool will scale down and shut itself down automatically based on the configured `idlePoolTimeout` (30 minutes by default).
 
-Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means a single Worker Pool can serve Task Groups from multiple Work Requirements simultaneously, and a single Work Requirement's Task Groups can be distributed across multiple Worker Pools. [How a Task Finds a Worker](docs/concepts.md) describes the matching, and if the Tasks don't start, [Why Isn't My Work Running?](docs/troubleshooting.md) finds out why.
+Note that there is no fixed 1:1 relationship between Work Requirements and Worker Pools. The YellowDog Scheduler matches Task Groups to Workers based on the Task Group's run specification (worker tags, instance types, providers, regions, etc.) — any Worker Pool whose Workers satisfy those constraints is a candidate. This means:
+
+- **A single Worker Pool** can serve Task Groups from multiple Work Requirements simultaneously.
+- **A single Work Requirement's Task Groups** can be distributed across multiple Worker Pools.
+
+[How a Task Finds a Worker](docs/concepts.md) describes the matching, and if the Tasks don't start, [Why Isn't My Work Running?](docs/troubleshooting.md) finds out why.
 
 # Documentation
 

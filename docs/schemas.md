@@ -13,7 +13,18 @@
 
 <!--te-->
 
-Every kind of specification the CLI reads has a JSON Schema describing exactly what it accepts: a Work Requirement (`work-requirement`), a Worker Pool (`worker-pool`), a Compute Requirement (`compute-requirement`), resources (`resources`), Node Actions (`node-actions`), and the TOML configuration file (`config`). Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](work-requirement-property-dictionary.md); every other property is described from the installed YellowDog SDK. A file can be checked against its schema from the command line, in a script, or in an editor as it is written, and none of these contacts the YellowDog Platform.
+Every kind of specification the CLI reads has a JSON Schema describing exactly what it accepts:
+
+- a Work Requirement (`work-requirement`)
+- a Worker Pool (`worker-pool`)
+- a Compute Requirement (`compute-requirement`)
+- resources (`resources`)
+- Node Actions (`node-actions`)
+- the TOML configuration file (`config`)
+
+Every property the CLI itself defines is described from the CLI's own reference for it, such as the [Work Requirement Property Dictionary](work-requirement-property-dictionary.md). Every other property is described from the installed YellowDog SDK.
+
+A file can be checked against its schema from the command line, in a script, or in an editor as it is written, and none of these contacts the YellowDog Platform.
 
 ## Checking a File Before Submitting It
 
@@ -43,13 +54,22 @@ With `--json`, the result is the array of violations, `[]` for a valid file:
 ]
 ```
 
-The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion. Given no specification file, `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate` build what they submit from the configuration file, so `--validate` checks the sections they build from instead (`[common]`, `[dataClient]` and `[workRequirement]`, or `[common]`, `[dataClient]`, `[workerPool]` and `[computeRequirement]`; `[dataClient]` because its values are the `{{dataClient.*}}` variables) against the configuration's schema, reporting and exiting the same way. The line saying they are valid names only the sections the file has, and its other sections as not read by the command; problems in those are warnings, from the check every command makes as it starts, and leave the exit code alone. It is refused where there is nothing to check: no specification file and no configuration file, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
+The file is checked as the command would use it: after its `{{variable}}` substitutions, after Jsonnet or TOML has been converted to JSON, and after any CSV expansion.
+
+**Given no specification file**, `yd workrequirement submit`, `yd workerpool provision` and `yd computerequirement instantiate` build what they submit from the configuration file. So `--validate` checks the sections they build from instead (`[common]`, `[dataClient]` and `[workRequirement]`, or `[common]`, `[dataClient]`, `[workerPool]` and `[computeRequirement]`) against the configuration's schema, reporting and exiting the same way. `[dataClient]` is among them because its values are the `{{dataClient.*}}` variables.
+
+- **The line saying they are valid** names only the sections the file has, and its other sections as not read by the command.
+- **Problems in those other sections** are warnings, from the check every command makes as it starts, and leave the exit code alone.
+
+**`--validate` is refused** where there is nothing to check: no specification file and no configuration file, `yd workrequirement submit --json-raw` (whose file is the Platform's own JSON) and `yd node action --status`.
 
 Since it contacts nothing, `--validate` needs no Application key or secret, so it runs on a machine with none configured, such as a CI job.
 
 ## Every Run Checks Too
 
-Every run of those five commands checks its specification the same way, and warns of each violation without stopping: the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted. Every command also checks the configuration file against the `config` schema as it starts, unless `--quiet` is given; an unknown or retired property name in the file is an error with or without it (see [Checking the Configuration File](configuration.md#checking-the-configuration-file)).
+Every run of those five commands checks its specification the same way, and warns of each violation without stopping: the Platform, or the CLI's own processing, still has the final say on whether the specification is accepted.
+
+Every command also checks the configuration file against the `config` schema as it starts, unless `--quiet` is given. An unknown or retired property name in the file is an error with or without it (see [Checking the Configuration File](configuration.md#checking-the-configuration-file)).
 
 If a schema cannot be built from the installed SDK (a newer SDK with a property the CLI cannot yet describe), the run warns once that the file went unchecked and carries on as it would without a schema; `yd schema <family>` shows why.
 
@@ -94,7 +114,10 @@ Alternatively, a file can name its own schema with a `$schema` key at the top, w
 
 The configuration file can do the same, with a top-level `"$schema" = "./schemas/config.schema.json"`, which the configuration check accepts; editors whose TOML support comes from Taplo (such as VS Code's Even Better TOML) also read a `#:schema ./schemas/config.schema.json` comment on the first line, which the CLI ignores as it does any comment.
 
-An editor checks the file as written, while the CLI checks it after substitution and conversion. A `{{variable}}` is accepted wherever a value stands, so an unresolved one is never itself a violation; but a resource's `resource` property and a Node Action's `type` choose which further properties are checked, so a `{{variable}}` there leaves the rest of that resource or action unchecked. An editor cannot check a Jsonnet file against a JSON Schema; run `yd jsonnet tojson` on it to see the JSON that is checked.
+An editor checks the file as written, while the CLI checks it after substitution and conversion.
+
+- **A `{{variable}}` is accepted wherever a value stands**, so an unresolved one is never itself a violation. But a resource's `resource` property and a Node Action's `type` choose which further properties are checked, so a `{{variable}}` there leaves the rest of that resource or action unchecked.
+- **An editor cannot check a Jsonnet file** against a JSON Schema. Run `yd jsonnet tojson` on it to see the JSON that is checked.
 
 ## Keeping the Schemas Current
 
@@ -123,4 +146,7 @@ exit $failed
 
 ## The Compiled-Schema Cache
 
-To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it. It is compiled again whenever the CLI or the SDK changes, and deleting the directory is always safe. If the directory cannot be used (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.
+To keep the check quick, each schema is compiled once and kept, a file of up to about 1MB per schema, in a directory of your own under the system's temporary directory (`yellowdog-cli-schemas-<uid>`, or `yellowdog-cli-schemas` on Windows), where the operating system's routine clean-up removes it.
+
+- **It is compiled again** whenever the CLI or the SDK changes, and deleting the directory is always safe.
+- **If the directory cannot be used** (e.g., it is open to other users), the schemas are compiled on every run instead, and `--debug` says why.

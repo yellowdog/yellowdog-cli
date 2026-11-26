@@ -311,7 +311,10 @@ When a Task Group sets `taskTypes` and its Tasks set `taskType` too, the list is
 
 **A Task with no `taskType`.** It takes its Task Group's type, if the group has only one. If the group allows several, the Task takes the `[workRequirement]` `taskType` configuration property where the group allows that type, or otherwise the type of the group's `taskTemplate`. If neither applies, the submission fails with an error naming the Task, rather than sending a Task the Platform would refuse.
 
-**Adding Tasks with `--add-to`.** When `yd workrequirement submit --add-to` adds Tasks to an **existing** Task Group, that group's `taskTypes` cannot be changed, because the Platform does not allow `taskTypes` to change after a Task Group is created. If the new Tasks bring a `taskType` the existing group does not allow, the CLI fails with an error before submitting anything. Either give the Tasks a different Task Group name, so that a new Task Group is created with the union of `taskTypes`, or change them to a `taskType` the group allows.
+**Adding Tasks with `--add-to`.** When `yd workrequirement submit --add-to` adds Tasks to an **existing** Task Group, that group's `taskTypes` cannot be changed, because the Platform does not allow `taskTypes` to change after a Task Group is created. If the new Tasks bring a `taskType` the existing group does not allow, the CLI fails with an error before submitting anything. Either:
+
+- **give the Tasks a different Task Group name**, so that a new Task Group is created with the union of `taskTypes`, or
+- **change them to a `taskType` the group allows**.
 
 ## Task Retries and Failure Policies
 
@@ -1030,7 +1033,9 @@ The Task variables work wherever a property a Task takes is set. A property such
 
 **Why the numbers are padded.** Padding makes anything named from the numbers sort in Task order: Task names in `yd task list` and the Portal, and output files such as `out-{{task_number}}.txt` in `yd data list`. Unpadded, `task-10` would sort before `task-2`.
 
-**Arithmetic on padded numbers.** A padded number is still text with leading zeros, so take care where those mean something. In bash arithmetic, for example, `$((008))` fails because a leading zero means octal; `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`. The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
+**Arithmetic on padded numbers.** A padded number is still text with leading zeros, so take care where those mean something. In bash arithmetic, for example, `$((008))` fails because a leading zero means octal. `10#` reads a padded number in base 10 instead: `n={{task_number}}; echo $((10#$n + 1))`.
+
+The `YD_TASK_NUMBER` and `YD_TASK_GROUP_NUMBER` environment variables (see [Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) hold the same numbers unpadded.
 
 ## Task Group Statuses
 
@@ -1121,7 +1126,12 @@ To add Tasks to a Work Requirement that is already running, submit a specificati
 yd workrequirement submit --add-to my-work-requirement more-frames.json
 ```
 
-Each Task Group in the specification is matched by name against the Task Groups the Work Requirement already has. Tasks for an existing Task Group are added to it, numbered on from its existing Tasks. A Task Group the Work Requirement doesn't have yet is added to it, with its Tasks. One submission can do both. For example, if `my-work-requirement` has a Task Group `render` holding 100 Tasks, this `more-frames.json` adds Tasks 101 and 102 to `render` and adds a new Task Group, `encode`, with one Task:
+Each Task Group in the specification is matched by name against the Task Groups the Work Requirement already has:
+
+- **Tasks for an existing Task Group** are added to it, numbered on from its existing Tasks.
+- **A Task Group the Work Requirement doesn't have yet** is added to it, with its Tasks.
+
+One submission can do both. For example, if `my-work-requirement` has a Task Group `render` holding 100 Tasks, this `more-frames.json` adds Tasks 101 and 102 to `render` and adds a new Task Group, `encode`, with one Task:
 
 ```json
 {
@@ -1151,13 +1161,27 @@ yd workrequirement submit --add-to "$WR_ID" my-spec.json
 
 #### Details
 
-**Choosing the Work Requirement.** A YellowDog ID is found in whatever namespace it belongs to. A name is looked up in the configured `namespace`, unless it is given as `namespace/name`. A name can be reused, so the `RUNNING` or `HELD` Work Requirement of that name is chosen; if there are two, give its YellowDog ID instead. A target that does not exist exits with code 6. A `FINISHING` Work Requirement takes no new Tasks, and the other states have finished or are being cancelled. `--add-to` cannot be combined with `--hold` or `--empty`, which apply only to a new Work Requirement.
+**Choosing the Work Requirement.** The target is found as follows:
+
+- **A YellowDog ID** is found in whatever namespace it belongs to.
+- **A name** is looked up in the configured `namespace`, unless it is given as `namespace/name`. A name can be reused, so the `RUNNING` or `HELD` Work Requirement of that name is chosen; if there are two, give its YellowDog ID instead.
+- **A target that does not exist** exits with code 6.
+- **A `FINISHING` Work Requirement** takes no new Tasks, and the other states have finished or are being cancelled.
+
+`--add-to` cannot be combined with `--hold` or `--empty`, which apply only to a new Work Requirement.
 
 **Adding to an existing Task Group.** The specification's own settings for the Task Group (`priority`, `workerTags`, `dependencies` and the rest) are not applied: the existing Task Group keeps its own. The properties its new Tasks inherit are taken from the specification, as the table below shows. `{{task_count}}` (in the Tasks' names and other properties alike, and `YD_NUM_TASKS`) is the Task Group's whole count, the existing Tasks and the new.
 
-**Waiting for the Task count.** The Platform updates a Task Group's count of Tasks a few seconds after Tasks are added to it. So `--add-to` first looks in the Task Group for the name its first new Task would be given. If that name is already there, because Tasks were added moments before, it says so and waits for the count to catch up, up to 10 seconds at a time, before numbering the new Tasks. A name still there once the count has stood still for 10 seconds is one already in use, and the submission is refused. Tasks without names (`setTaskNames = false`) have no name to look for, so the existing Tasks are counted instead, which for a large Task Group takes a moment.
+**Waiting for the Task count.** The Platform updates a Task Group's count of Tasks a few seconds after Tasks are added to it. So `--add-to` first looks in the Task Group for the name its first new Task would be given:
 
-**Adding a new Task Group.** Its Tasks are numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given, and `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'. Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
+- **If that name is already there**, because Tasks were added moments before, it says so and waits for the count to catch up, up to 10 seconds at a time, before numbering the new Tasks.
+- **A name still there once the count has stood still for 10 seconds** is one already in use, and the submission is refused.
+
+Tasks without names (`setTaskNames = false`) have no name to look for, so the existing Tasks are counted instead, which for a large Task Group takes a moment.
+
+**Adding a new Task Group.** Its Tasks are numbered from 1. Its own number continues from the Work Requirement's existing Task Groups, the new ones numbered in the order given. `{{task_group_count}}` is the Work Requirement's count once they are added, in the Task Group's own properties as in its Tasks'.
+
+Which Task Groups already exist is decided by their names, so a Task Group named by its own number (`tg_{{task_group_number}}`) that would come to name another Task Group once numbered is refused: give it a name of its own.
 
 **What is taken from each part of the specification:**
 
@@ -1179,7 +1203,11 @@ yd workrequirement submit --add-to my-work-requirement --overwrite my-spec.json
 
 **A failure part-way.** If adding Tasks fails part-way, the target Work Requirement is not cancelled, as a newly submitted one would be: any Tasks already added remain in it, and any files uploaded for them are left in place, since those Tasks may need them. A warning says so, and `yd workrequirement submit` exits with a non-zero status.
 
-**Dry runs.** Unlike a normal dry run, which does not contact the Platform, a dry run with `--add-to` reads the target Work Requirement, since the names, numbering and Task counts of its existing Task Groups determine the names and offsets of everything that would be added. Credentials and connectivity are therefore required, and the checks that depend on the target are made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist. Nothing is created, updated or uploaded. The specification printed shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them. A `DRY-RUN` line above it names the Task Groups that are already present, because the Platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
+**Dry runs.** Unlike a normal dry run, which does not contact the Platform, a dry run with `--add-to` reads the target Work Requirement, since the names, numbering and Task counts of its existing Task Groups determine the names and offsets of everything that would be added. Nothing is created, updated or uploaded.
+
+- **Credentials and connectivity are required** for that read, and the checks that depend on the target are made as well: that it exists, that it is `RUNNING` or `HELD`, and that no Task's type falls outside an existing Task Group's `taskTypes` allowlist.
+- **The specification printed** shows the Work Requirement as it would be: the existing Task Groups as well as the new ones, with the Tasks that would be added attached to whichever Task Group takes them.
+- **A `DRY-RUN` line above it** names the Task Groups that are already present. The Platform reports only a summary of their Tasks, so those Task Groups appear in the specification without any Tasks of their own.
 
 **Empty Work Requirements.** `--empty` uses the TOML configuration only: a specification or CSV file, given or configured, is refused with it. A JSON specification can also create an empty Work Requirement without `--empty`, since empty arrays are honoured as written, either with no Task Groups:
 
@@ -1266,11 +1294,29 @@ With `--dry-run` (`-D`), the new Work Requirement is printed as `--output-file` 
 
 **Only Work Requirements that still exist.** The Platform purges a finished Work Requirement 24 hours after it ends. After that, `yd workrequirement resubmit` cannot find it and exits 6.
 
-**What is selected.** The selection is by status: `FAILED` Tasks, with `--aborted` `ABORTED` ones, and with `--cancelled` `CANCELLED` ones. A Task that was `DISCARDED`, or `CANCELLED` without `--cancelled`, is not selected: a Task Group that finished before reaching its Tasks leaves them `DISCARDED`, and so does a failed dependency of a Task Group that never ran. The command warns of them, one line per Task Group and status (`Task Group 'render' has 120 DISCARDED Tasks, not resubmitted`), so that a dependent Task Group that never ran is not missed. `RESUBMITTED` Tasks, already copied by a failure policy, are not selected either; their copies are, if they failed in turn. Only Task Groups with selected Tasks are copied, and a dependency on a Task Group that is not copied is dropped, as is a failure policy destination naming one (the Platform refuses it), with a warning: `Task Group 'render': failure policy destination 'on-demand' was not resubmitted, and is dropped`.
+**What is selected.** The selection is by status: `FAILED` Tasks, with `--aborted` `ABORTED` ones, and with `--cancelled` `CANCELLED` ones.
 
-**Choosing Task Groups and Tasks.** `--task-group` and `--task` match the whole name, case-sensitively, as a name or a glob (`*`, `?`, `[...]`); several patterns of one option are alternatives, and given together a Task must satisfy both. A Task without a name never matches `--task`. The options only narrow the status selection: through them, only Tasks in the statuses chosen are copied, so a `COMPLETED` Task matching `--task` is not. A `--task-group` pattern that matches no Task Group of the Work Requirement is an error, raised before any Task is read (exit 6): `No Task Group of Work Requirement 'image-processing/thumbnails' matches 'rendr'`. A `--task` pattern that matches no selected Task is a warning, and the run continues with the Tasks the other patterns matched: `No FAILED Task matches 'frame-9*'` (with `--aborted` too, `No FAILED or ABORTED Task matches 'frame-9*'`: the selected statuses are listed, the last joined by `or`). Under `--task-group` alone, the warnings about `CANCELLED` and `DISCARDED` Tasks are made for the chosen Task Groups only; under `--task` or `--task-id`, none is printed.
+- **`DISCARDED` Tasks, and `CANCELLED` ones without `--cancelled`,** are not selected. A Task Group that finished before reaching its Tasks leaves them `DISCARDED`, and so does a failed dependency of a Task Group that never ran. The command warns of them, one line per Task Group and status (`Task Group 'render' has 120 DISCARDED Tasks, not resubmitted`), so that a dependent Task Group that never ran is not missed.
+- **`RESUBMITTED` Tasks**, already copied by a failure policy, are not selected either. Their copies are, if they failed in turn.
+- **Only Task Groups with selected Tasks are copied.** A dependency on a Task Group that is not copied is dropped, as is a failure policy destination naming one (the Platform refuses it), with a warning: `Task Group 'render': failure policy destination 'on-demand' was not resubmitted, and is dropped`.
 
-**Naming Tasks by ID.** `--task-id` takes one or more Task IDs, and may be repeated. It is refused with `--task-group`, `--task`, `--failed`, `--aborted` and `--cancelled`. The IDs must be Task IDs, all of one Work Requirement, which is checked before any request; if `<wr>` is given, an ID of another Work Requirement is refused once that Work Requirement is found, before any Task is read: `'ydid:taskgrp:...' is not a Task ID`, `Task 'ydid:task:...' is not in Work Requirement ydid:workreq:...`. Each Task is then read once, however many times its ID is given. A Task that does not exist is an error (exit 6), and a Task that has not finished is refused, `Task 'ydid:task:...' is EXECUTING and has not finished`, both before anything is created. Any finished state is copied: `COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED` and `RESUBMITTED`. The opening line says `(by ID)` in place of the statuses: `Resubmitting 3 Tasks (by ID) from 2 Task Groups of Work Requirement 'image-processing/thumbnails' (ydid:workreq:...)`. Give neither `<wr>` nor `--task-id`, and the command reports an argument error.
+**Choosing Task Groups and Tasks.** `--task-group` and `--task` match the whole name, case-sensitively, as a name or a glob (`*`, `?`, `[...]`).
+
+- **Several patterns of one option** are alternatives.
+- **Given together**, a Task must satisfy both options.
+- **A Task without a name** never matches `--task`.
+- **The options only narrow the status selection.** Through them, only Tasks in the statuses chosen are copied, so a `COMPLETED` Task matching `--task` is not.
+- **A `--task-group` pattern that matches no Task Group** of the Work Requirement is an error, raised before any Task is read (exit 6): `No Task Group of Work Requirement 'image-processing/thumbnails' matches 'rendr'`.
+- **A `--task` pattern that matches no selected Task** is a warning, and the run continues with the Tasks the other patterns matched: `No FAILED Task matches 'frame-9*'`. The selected statuses are listed, the last joined by `or`: with `--aborted` too, `No FAILED or ABORTED Task matches 'frame-9*'`.
+- **Under `--task-group` alone**, the warnings about `CANCELLED` and `DISCARDED` Tasks are made for the chosen Task Groups only. Under `--task` or `--task-id`, none is printed.
+
+**Naming Tasks by ID.** `--task-id` takes one or more Task IDs, and may be repeated. It is refused with `--task-group`, `--task`, `--failed`, `--aborted` and `--cancelled`. Give neither `<wr>` nor `--task-id`, and the command reports an argument error.
+
+- **The IDs must be Task IDs, all of one Work Requirement**, which is checked before any request. If `<wr>` is given, an ID of another Work Requirement is refused once that Work Requirement is found, before any Task is read: `'ydid:taskgrp:...' is not a Task ID`, `Task 'ydid:task:...' is not in Work Requirement ydid:workreq:...`.
+- **Each Task is then read once**, however many times its ID is given.
+- **A Task that does not exist** is an error (exit 6), and **a Task that has not finished** is refused, `Task 'ydid:task:...' is EXECUTING and has not finished`, both before anything is created.
+- **Any finished state is copied**: `COMPLETED`, `FAILED`, `ABORTED`, `CANCELLED`, `DISCARDED` and `RESUBMITTED`.
+- **The opening line** says `(by ID)` in place of the statuses: `Resubmitting 3 Tasks (by ID) from 2 Task Groups of Work Requirement 'image-processing/thumbnails' (ydid:workreq:...)`.
 
 **Nothing to resubmit.** If no Task is selected, the command says so, creates nothing and exits 0 (`--json` prints `[]`).
 
@@ -1297,7 +1343,8 @@ With tens of thousands of Tasks or more, how the Tasks are sent decides how long
 **Keeping each Task small.** Every byte on a Task is sent and stored once per Task, so:
 
 - Put what the Tasks of a Task Group share — their `taskType`, `taskData` and `environment` — in a [`taskTemplate`](#task-templates), which the Platform applies, rather than on every Task.
-- Leave `addYDEnvironment` off. Its variables ([Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) add about 250 to 300 bytes to every Task, more with long Work Requirement, Task Group or namespace names. Pass a Task what it needs in its arguments instead, with the [Task and Task Group name substitutions](#task-and-task-group-name-substitutions): `"arguments": ["--frame", "{{task_number}}"]` on the Task Group gives each Task its own number at the cost of a few bytes.
+- Leave `addYDEnvironment` off. Its variables ([Obtaining Names/Context from Environment Variables at Task Run Time](#obtaining-namescontext-from-environment-variables-at-task-run-time)) add about 250 to 300 bytes to every Task, more with long Work Requirement, Task Group or namespace names.
+  - Pass a Task what it needs in its arguments instead, with the [Task and Task Group name substitutions](#task-and-task-group-name-substitutions): `"arguments": ["--frame", "{{task_number}}"]` on the Task Group gives each Task its own number at the cost of a few bytes.
 - Consider `setTaskNames: false`, which leaves Tasks without names, saving each Task its name. See below for what is lost.
 - Keep `taskData` small: a large input is better fetched by each Task as it runs, with [`taskDataInputs`](#specifying-data-client-inputs), than carried in every Task.
 
@@ -1305,11 +1352,15 @@ With tens of thousands of Tasks or more, how the Tasks are sent decides how long
 
 ## Using the YellowDog Data Client
 
-A Task can download its input files from remote storage, such as an S3 bucket, before it runs, and upload its output files after it has run. The YellowDog Agent's Data Client does the transfers, which are given in each Task's `taskDataInputs` and `taskDataOutputs`. `yd workrequirement submit` can also upload local files to the remote storage as the Work Requirement is submitted, for the Tasks to download. [Sending Files to Tasks and Collecting Their Results](#sending-files-to-tasks-and-collecting-their-results) shows all three together.
+A Task can download its input files from remote storage, such as an S3 bucket, before it runs, and upload its output files after it has run. The YellowDog Agent's Data Client does the transfers, which are given in each Task's `taskDataInputs` and `taskDataOutputs`. `yd workrequirement submit` can also upload local files to the remote storage as the Work Requirement is submitted, for the Tasks to download.
+
+[Sending Files to Tasks and Collecting Their Results](#sending-files-to-tasks-and-collecting-their-results) shows all three together.
 
 The YellowDog Data Client is described at https://docs.yellowdog.ai/#/the-platform/the-data-client.
 
-The examples below name the bucket `my-photos` through a remote called `s3`, which the node defines: [`add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-rclone-s3.sh), run as User Data after the Agent installer, adds it to the Agent's rclone configuration, using the instance's IAM role (see [The rclone S3 Remote](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-rclone-s3-remote); set `YD_S3_REGION` to the bucket's region). The remote exists on the node only. A file uploaded from your own machine needs credentials of its own (see [Automatic Upload of Local Files](#automatic-upload-of-local-files)).
+The examples below name the bucket `my-photos` through a remote called `s3`, which the node defines. [`add-rclone-s3.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-rclone-s3.sh), run as User Data after the Agent installer, adds it to the Agent's rclone configuration, using the instance's IAM role (see [The rclone S3 Remote](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-rclone-s3-remote)). Set `YD_S3_REGION` to the bucket's region.
+
+The remote exists on the node only. A file uploaded from your own machine needs credentials of its own (see [Automatic Upload of Local Files](#automatic-upload-of-local-files)).
 
 Task data inputs and outputs are **individual files**, not directories or wildcards. If a Task needs many files, or files whose names are not known in advance, put them in a single archive, and have the Task unpack it as it starts or pack its results as it ends.
 
@@ -1431,11 +1482,18 @@ Once the steps above have been completed, the Worker is ready to process its nex
 
 A Task's `taskType` names one of the Task Types the Agent on the node defines in its `application.yaml`, each with the command that runs a Task of that type. A Task Group's Tasks go only to Workers whose Agent has every Task Type in its `taskTypes`.
 
-The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) defines one Task Type, `bash`, which runs `/bin/bash` with the Task's arguments: `"arguments": ["-c", "echo hello"]` runs a command, and `"arguments": ["process.sh", "{{task_number}}"]` runs a script the Task downloaded. Any other Task Type is one you define, by editing the installer's settings (see [YellowDog Task Types](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#yellowdog-task-types)) or with [`add-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-task-type.sh) in the instances' User Data.
+The [Agent installer](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md) defines one Task Type, `bash`, which runs `/bin/bash` with the Task's arguments:
+
+- `"arguments": ["-c", "echo hello"]` runs a command.
+- `"arguments": ["process.sh", "{{task_number}}"]` runs a script the Task downloaded.
+
+Any other Task Type is one you define, by editing the installer's settings (see [YellowDog Task Types](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#yellowdog-task-types)) or with [`add-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-task-type.sh) in the instances' User Data.
 
 ### The `docker` Task Type
 
-A node has a `docker` Task Type once [`install-docker.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/install-docker.sh) and [`add-docker-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-docker-task-type.sh) have run on it, as User Data after the Agent installer (see [The docker Task Type](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type)). A `docker` Task runs `docker run` with the Task's arguments, so they are any `docker run` options, then the image and, optionally, the command to run in the container:
+A node has a `docker` Task Type once [`install-docker.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/install-docker.sh) and [`add-docker-task-type.sh`](https://github.com/yellowdog/resources/blob/main/agent-install/linux/userdata/add-docker-task-type.sh) have run on it, as User Data after the Agent installer (see [The docker Task Type](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type)).
+
+A `docker` Task runs `docker run` with the Task's arguments, so they are any `docker run` options, then the image and, optionally, the command to run in the container:
 
 ```json
 {"taskType": "docker", "arguments": ["-e", "BATCH_SIZE", "my-org/thumbnailer:2.1", "--input", "/yd_working/originals.zip"], "environment": {"BATCH_SIZE": "50"}}
@@ -1445,7 +1503,9 @@ The Task's working directory, where its inputs are downloaded and from where its
 
 #### Details
 
-**The Task's environment.** The container does not see the Task's environment variables unless the arguments pass them in, as `-e BATCH_SIZE` does above. The variables that control the container itself (`DOCKER_USERNAME`, `DOCKER_PASSWORD`, `DOCKER_REGISTRY`, `DOCKER_IMAGE`, `YD_STOP_SIGNAL`, `YD_STOP_TIMEOUT` and `YD_WORKING`) are read from the Task's environment; the [`docker` Task Type's README](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type) describes each.
+**The Task's environment.** The container does not see the Task's environment variables unless the arguments pass them in, as `-e BATCH_SIZE` does above.
+
+**The variables that control the container itself** (`DOCKER_USERNAME`, `DOCKER_PASSWORD`, `DOCKER_REGISTRY`, `DOCKER_IMAGE`, `YD_STOP_SIGNAL`, `YD_STOP_TIMEOUT` and `YD_WORKING`) are read from the Task's environment. The [`docker` Task Type's README](https://github.com/yellowdog/resources/blob/main/agent-install/linux/README.md#the-docker-task-type) describes each.
 
 **Registry credentials.** A `DOCKER_PASSWORD` in the Task's environment is visible to anyone who can read the Task's specification. A Docker credential helper on the image, or the instance's role where the registry accepts one, keeps the password out of the specification.
 
@@ -1500,7 +1560,11 @@ On a Windows node, with the Agent installed by its MSI installer or the [YellowD
 | Task directories | `/var/opt/yellowdog/agent/data/workers` | `C:\ProgramData\YellowDog\Agent\workers` |
 | Task abort, with no `abort` clause | The Task's process is sent a `SIGTERM` | The Task's process is terminated |
 
-**The user.** Tasks run as the Agent's service account, `LocalSystem` unless the MSI was installed with its `SERVICE_ACCOUNT` property naming another, so by default they have full administrative rights on the node: nothing like the `sudo` set-up above is needed, and a Task can change anything on the node. A `LocalSystem` Task's user profile is the system profile, `C:\Windows\System32\config\systemprofile`, so `%USERPROFILE%`, `%AppData%` and `%LocalAppData%` all point inside it, and a tool that keeps its configuration or cache in the user's profile keeps it there. `YD_AGENT_HOME` and `YD_AGENT_DATA` are system environment variables, and `C:\ProgramData\YellowDog\Agent\scripts` is on the system `PATH`, so Tasks see them too.
+**The user.** Tasks run as the Agent's service account, `LocalSystem` unless the MSI was installed with its `SERVICE_ACCOUNT` property naming another.
+
+- **Administrative rights.** As `LocalSystem`, the default, Tasks have full administrative rights on the node: nothing like the `sudo` set-up above is needed, and a Task can change anything on the node.
+- **The user profile.** A `LocalSystem` Task's user profile is the system profile, `C:\Windows\System32\config\systemprofile`, so `%USERPROFILE%`, `%AppData%` and `%LocalAppData%` all point inside it. A tool that keeps its configuration or cache in the user's profile keeps it there.
+- **Environment.** `YD_AGENT_HOME` and `YD_AGENT_DATA` are system environment variables, and `C:\ProgramData\YellowDog\Agent\scripts` is on the system `PATH`, so Tasks see them too.
 
 **Task Types.** The installer script defines two general-purpose Task Types, `cmd` (running `cmd.exe`) and `powershell` (running `powershell.exe`), and a Task's `arguments` are passed to that command, so a `cmd` Task's arguments start with `/c` (e.g. `["/c", "my_script.bat"]`) and a `powershell` Task's with `-File` or `-Command`. These Task Types can run arbitrary commands on the node; for production use, Task Types running specific scripts are recommended.
 

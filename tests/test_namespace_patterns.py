@@ -108,7 +108,14 @@ def isolated_config(monkeypatch):
     )
     monkeypatch.setattr(load_config, "CONFIG_FILE", "my.toml")
     monkeypatch.setattr(load_config, "CONFIG_SOURCES", {})
-    for var in (YD_KEY, YD_SECRET, YD_NAMESPACE, "YD_TAG", "YD_URL", "YD_READ_TIMEOUT"):
+    for var in (
+        YD_KEY,
+        YD_SECRET,
+        YD_NAMESPACE,
+        "YD_TAG",
+        "YD_URL",
+        "YD_REQUEST_TIMEOUT",
+    ):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(load_config, "config_file_explicitly_selected", lambda: False)
     monkeypatch.setattr(

@@ -25,7 +25,9 @@
 <!--te-->
 
 
-Commands usually take their settings from a **TOML** configuration file, `config.toml` in the current directory. The file is optional: environment variables and command-line options can supply the same settings (see [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables)). To start a file, run `yd init`, which asks for the `[common]` properties and writes a `config.toml` (or, with `--user`, your own file; see [yd init](commands.md#yd-init)). A minimal file holds the Application's key and secret (see [Authentication](authentication.md)), and the namespace and tag to work in:
+Commands usually take their settings from a **TOML** configuration file, `config.toml` in the current directory. The file is optional: environment variables and command-line options can supply the same settings (see [Specifying Common Properties using the Command Line or Environment Variables](#specifying-common-properties-using-the-command-line-or-environment-variables)).
+
+To start a file, run `yd init`, which asks for the `[common]` properties and writes a `config.toml` (or, with `--user`, your own file; see [yd init](commands.md#yd-init)). A minimal file holds the Application's key and secret (see [Authentication](authentication.md)), and the namespace and tag to work in:
 
 ```toml
 [common]
@@ -80,7 +82,11 @@ The warnings report a value of the wrong type (e.g., `maxNodes = "ten"`), a prop
 
 ### Details
 
-**`--quiet`.** `--quiet` suppresses warnings, so the schema check, which only warns, is not made. The errors are still reported: an unknown or retired property name in the file, or a property a `[dataClient.<profile>]` section does not take, stops the command under `--quiet` too. An unknown property given with `--property` is only a warning, so under `--quiet` nothing reports it. `yd doctor` still reports the schema's warnings in its `Config schema` row, as `WARN` lines that `yd doctor --quiet` keeps.
+**`--quiet`.** `--quiet` suppresses warnings, so the schema check, which only warns, is not made.
+
+- **Errors are still reported.** An unknown or retired property name in the file, or a property a `[dataClient.<profile>]` section does not take, stops the command under `--quiet` too.
+- **An unknown property given with `--property`** is only a warning, so under `--quiet` nothing reports it.
+- **`yd doctor`** still reports the schema's warnings in its `Config schema` row, as `WARN` lines that `yd doctor --quiet` keeps.
 
 **The data client commands.** `yd data upload`, `yd data download`, `yd data delete`, `yd data list` and `yd data copy` check only the `[common]` and `[dataClient]` sections, the only ones they read.
 
@@ -110,7 +116,9 @@ So `Trailer Render v2.1` becomes `trailer_render_v2_1`, `Q3/Results (final)` bec
 
 When a Work Requirement, Worker Pool or Compute Requirement name is not supplied, one is generated automatically in the form `<tag>-YYMMDD-HHMMSSd-pp`, e.g. `render-260921-1309153-4f`, where `d` is tenths of a second and `pp` is the process ID in two base 36 digits.
 
-[Variable Substitutions](variables.md) and [Specifying Work Requirements using CSV Data](work-requirements.md#specifying-work-requirements-using-csv-data) describe variable substitutions implemented with user-defined and CSV-file-defined variables. Within these, the `format_name:` type modifier, used like `num:`, `bool:` and the others, converts the substituted string into one that satisfies YellowDog naming. For example, `{{format_name:ligand_name}}`, with the variable `ligand_name` set to `DCCCDE_00000s`, substitutes `dcccde_00000s`, which is acceptable as a component of a YellowDog name.
+[Variable Substitutions](variables.md) and [Specifying Work Requirements using CSV Data](work-requirements.md#specifying-work-requirements-using-csv-data) describe variable substitutions implemented with user-defined and CSV-file-defined variables. Within these, the `format_name:` type modifier, used like `num:`, `bool:` and the others, converts the substituted string into one that satisfies YellowDog naming.
+
+For example, `{{format_name:ligand_name}}`, with the variable `ligand_name` set to `DCCCDE_00000s`, substitutes `dcccde_00000s`, which is acceptable as a component of a YellowDog name.
 
 ### Details
 
@@ -138,7 +146,7 @@ The `[common]` section of the configuration file can contain the following prope
 | `tag`       | The **tag** to be used for tagging resources and naming objects. Defaults to `{{username}}` |
 | `url`       | The **URL** of the YellowDog Platform API endpoint, beginning `https://` (or `http://`). Defaults to `https://api.yellowdog.ai`. |
 | `usePAC`    | Use PAC (proxy autoconfiguration) if set to `true`                                          |
-| `readTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. `yd usage`'s report request waits at least 5 minutes, since the Platform builds the report before it answers. A Task batch whose response times out is resubmitted only when all its Tasks have names |
+| `requestTimeout` | How many **seconds** to wait for a response from the Platform before a request fails. Defaults to `90`; `0` waits indefinitely. `yd usage`'s report request waits at least 5 minutes, since the Platform builds the report before it answers. A Task batch whose response times out is resubmitted only when all its Tasks have names |
 | `variables` | A table containing **variable substitutions** (see [Variable Substitutions](variables.md)) |
 | `certificates` | The path of a **CA certificates bundle** to use for HTTPS requests (sets the `REQUESTS_CA_BUNDLE` environment variable); a relative path is relative to the current directory, not the configuration file's |
 
@@ -213,7 +221,7 @@ The **environment variables** are as follows:
 - `YD_URL` (or `YD_API_URL`)
 - `YD_NAMESPACE`
 - `YD_TAG`
-- `YD_READ_TIMEOUT` (`readTimeout`)
+- `YD_REQUEST_TIMEOUT` (`requestTimeout`)
 
 A property set on the command line takes precedence over one set in an environment variable, and both take precedence over the configuration file; [Which Value Wins](#which-value-wins) gives the whole order.
 
@@ -223,7 +231,7 @@ If all the required common properties are set using the command line or environm
 
 #### Details
 
-**Properties without an option or a variable.** `usePAC` has an option (`--pac`) but no environment variable. `readTimeout` has an environment variable but no option; `--property common.readTimeout=<seconds>` sets it on the command line. `certificates`, `importCommon` and `variables` have neither.
+**Properties without an option or a variable.** `usePAC` has an option (`--pac`) but no environment variable. `requestTimeout` has an environment variable but no option; `--property common.requestTimeout=<seconds>` sets it on the command line. `certificates`, `importCommon` and `variables` have neither.
 
 ### Overriding Arbitrary TOML Properties on the Command Line
 
@@ -308,7 +316,7 @@ Variable substitutions are described in detail in [Variable Substitutions](varia
 
 ## Which Value Wins
 
-A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `readTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
+A setting can come from several places at once. The table gives each source's rank, 1 winning, for the four kinds of setting: a `[common]` property (`key`, `secret`, `namespace`, `tag`, `url`, `requestTimeout`), a [variable](variables.md), a `[dataClient]` field (`remote`, `bucket`, `prefix`) as the `yd data` commands read it, and a property of the other sections (`[workRequirement]`, `[workerPool]`, `[computeRequirement]`). A dash means the source does not set that kind.
 
 | Source | `[common]` | Variables | `[dataClient]` | Other sections |
 |:---|:---:|:---:|:---:|:---:|
@@ -323,11 +331,15 @@ A setting can come from several places at once. The table gives each source's ra
 | The configuration file found without `--config` (`./config.toml`, or your own), and the file it imports | 6 | 5 | 6 | 4 |
 | The CLI's default | 7 | 6 | 7 | 5 |
 
-Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen. So with `--config`, an environment variable that sets the same thing to something else is passed over: `yd doctor` lists each one so passed over, as a `WARN`, and `--debug` says so as it happens, naming the variable and the setting, never the value.
+Within a configuration file, its own values win over those of the file it imports with `importCommon`, whether or not it was chosen with `--config`. The configuration file is read with `--config`'s rank or without it, never both: the rows for it are one file, ranked differently by how it was chosen.
+
+So with `--config`, an environment variable that sets the same thing to something else is passed over. `yd doctor` lists each one so passed over, as a `WARN`, and `--debug` says so as it happens, naming the variable and the setting, never the value.
 
 Some notes on the columns:
 
 - **`[common]`**: the reserved `{{namespace}}`, `{{tag}}`, `{{key}}`, `{{secret}}` and `{{url}}` variables always hold the values this column chooses. `--no-config` (`--nc`) leaves out every configuration file row.
 - **Variables**: the default variables (`{{username}}`, `{{date}}`, `{{random}}` and the others) are the last row. A `{{env:NAME}}` substitution reads the environment variable directly and takes no part in the order.
 - **`[dataClient]`**: the profile itself is chosen by `--data-client-profile`/`--profile`, else `YD_DATA_CLIENT`. For the commands other than `yd data`, the `{{dataClient.*}}` variables come from the configuration file alone (with any `--property` override), not from the environment or the `yd data` options.
-- **Other sections**: these have no environment variables. A `--property` override wins over a specification file's own value wherever the specification sets the property: at the Work Requirement, Task Group and Task levels alike, and in a Worker Pool or Compute Requirement specification. Where the specification does not set it, the configuration's value, the override included, fills it in, as ever. `name` and `tag`, which are each level's own, are replaced at the Work Requirement level only. Most command-line options win over the specification too, as each option's description says; `--task-type` is the exception, setting the configuration's `taskType`, which a specification's own `taskType` replaces.
+- **Other sections**: these have no environment variables. A `--property` override wins over a specification file's own value wherever the specification sets the property: at the Work Requirement, Task Group and Task levels alike, and in a Worker Pool or Compute Requirement specification.
+  - **Where the specification does not set the property**, the configuration's value, the override included, fills it in. `name` and `tag`, which are each level's own, are replaced at the Work Requirement level only.
+  - **Most command-line options** win over the specification too, as each option's description says. `--task-type` is the exception: it sets the configuration's `taskType`, which a specification's own `taskType` replaces.

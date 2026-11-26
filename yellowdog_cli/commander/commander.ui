@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1102</width>
+    <width>1206</width>
     <height>776</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>1091</width>
+    <width>1195</width>
     <height>720</height>
    </size>
   </property>
@@ -1372,6 +1372,22 @@ press Enter to run it</string>
           </property>
           <property name="text">
            <string>Dark Mode</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="show_usage_explorer">
+          <property name="toolTip">
+           <string>Explore Instance usage and estimated cost for this account</string>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>Usage Explorer...</string>
           </property>
          </widget>
         </item>

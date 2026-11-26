@@ -100,7 +100,10 @@ A type-tagged substitution that is only part of a string, such as `"render.sh --
 
 ### Details
 
-**Array and table values.** `array:` and `table:` values are JSON, with double-quoted strings and `true`/`false`/`null`. They can also be written in Python's spelling, with single-quoted strings and `True`/`False`/`None`, which can be easier to quote on a command line: `-v "tags=['a','b']"` rather than `-v 'tags=["a","b"]'`, and on Windows rather than `-v "tags=[\"a\",\"b\"]"`. Python's spelling is read only where the value is not JSON, and only for what JSON could hold: a table's keys must be strings, and a tuple, a set, bytes or a complex number is refused. In a TOML single-quoted (literal) string, which cannot contain a single quote, use JSON.
+**Array and table values.** `array:` and `table:` values are JSON, with double-quoted strings and `true`/`false`/`null`. They can also be written in Python's spelling, with single-quoted strings and `True`/`False`/`None`, which can be easier to quote on a command line: `-v "tags=['a','b']"` rather than `-v 'tags=["a","b"]'`, and on Windows rather than `-v "tags=[\"a\",\"b\"]"`.
+
+- **Python's spelling is read only where the value is not JSON**, and only for what JSON could hold: a table's keys must be strings, and a tuple, a set, bytes or a complex number is refused.
+- **In a TOML single-quoted (literal) string**, which cannot contain a single quote, use JSON.
 
 **Number and boolean values.** A `num:` value may be written in JSON's syntax or Python's, e.g. `5`, `-2.5`, `1e3`, `1E3` or `1_000`. It must be a finite number: `nan` and `inf` are refused, as they are inside an `array:` or `table:`, since JSON cannot carry them. A `bool:` value is `true` or `false` in any case, so `True` and `TRUE` are accepted too.
 
@@ -110,7 +113,12 @@ A type-tagged substitution that is only part of a string, such as `"render.sh --
 
 **Files substituted as text.** The same rules hold in User Data scripts, Task Data files and `writeFile` content files. There, `N={{num:count}}` in a shell script becomes `N=5`. A typed substitution standing alone in quotes, `"{{num:count}}"`, loses its quotes, so in a JSON file it becomes the number itself.
 
-**How values are held.** Every variable value is held internally as a string, whatever form it was defined in. A variable defined as something other than a string (an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>`) is held as its **JSON** text, so that the type tags can read it back. So `counts = [1, 2, 3]` and `counts = "[1,2,3]"` are equivalent definitions, as are `enabled = true` and `enabled = "true"`, and `enabled = true` substitutes as `true` rather than as Python's `True`. TOML's date, time and datetime values have no JSON form, and are held as the text they were written as. `yd variables` reports the stored string, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.
+**How values are held.** Every variable value is held internally as a string, whatever form it was defined in.
+
+- **A variable defined as something other than a string** (an array, table, number or boolean, in `[common.variables]` or with `--property common.variables.<name>=<value>`) is held as its **JSON** text, so that the type tags can read it back. So `enabled = true` substitutes as `true` rather than as Python's `True`.
+- **Equivalent definitions:** `counts = [1, 2, 3]` and `counts = "[1,2,3]"` are equivalent definitions, as are `enabled = true` and `enabled = "true"`.
+- **TOML's date, time and datetime values** have no JSON form, and are held as the text they were written as.
+- **`yd variables` reports the stored string**, so an array is reported as `"[1, 2, 3]"` rather than as a JSON array.
 
 ## Default Variables
 
@@ -145,7 +153,9 @@ The `namespace`, `tag`, `key`, `secret` and `url` variables always hold the valu
 
 **Random values.** The `random` and `random6` directives use base 36 digits rather than hexadecimal. Base 36 is the widest alphabet a YellowDog name may be built from, so they carry the most randomness in the fewest characters: `random` has 46,656 possible values and `random6` has 2,176,782,336.
 
-**The process discriminator.** The `pid2` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](configuration.md#naming-rules)). A hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid2}}"` is therefore disambiguated between simultaneously launched commands exactly as a generated one is. Processes alive at the same time always have distinct PIDs, so `{{pid2}}` differs between them unless 1,296 processes were spawned in between. The `pid` directive is the full PID, which is unambiguous but too long, and too variable in length, to sit comfortably in a name.
+**The process discriminator.** The `pid2` directive is the same two characters that an automatically generated name ends with (see [Naming Rules](configuration.md#naming-rules)). A hand-written name such as `name = "{{tag}}-{{datetime}}-{{pid2}}"` is therefore disambiguated between simultaneously launched commands exactly as a generated one is.
+
+Processes alive at the same time always have distinct PIDs, so `{{pid2}}` differs between them unless 1,296 processes were spawned in between. The `pid` directive is the full PID, which is unambiguous but too long, and too variable in length, to sit comfortably in a name.
 
 ## User-Defined Variables
 
@@ -155,7 +165,11 @@ You can define variables of your own on the command line, in environment variabl
 
 A variable name starts with a letter, a digit or an underscore, and contains only letters, digits, underscores (`_`), full stops (`.`) and hyphens (`-`): for example `project_code`, `run-2`, `9lives` or `dataClient.prod.bucket`. Names are case-sensitive. A name that breaks this rule is an error wherever the variable is defined, and the error names the definition.
 
-The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration. Set these values with the `[common]` properties, the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables, or the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options instead, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables).
+The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [default variables](#default-variables) that the CLI defines from its configuration. Set these values instead with any of the following, as described in [Specifying Common Properties using the Command Line or Environment Variables](configuration.md#specifying-common-properties-using-the-command-line-or-environment-variables):
+
+- the `[common]` properties
+- the `YD_NAMESPACE`, `YD_TAG`, `YD_KEY`, `YD_SECRET` and `YD_URL` environment variables
+- the `--namespace`/`-n`, `--tag`/`-t`, `--key`, `--secret` and `--url` options
 
 #### Details
 
@@ -165,7 +179,9 @@ The names `namespace`, `tag`, `key`, `secret` and `url` are reserved for the [de
 
 **Text that is not a substitution.** The same rule decides what a substitution refers to. A `{{...}}` expression whose name breaks it is not a variable substitution at all, and is left as it is. This is what lets text meant for other tools, such as Docker's `{{.ID}}` or a Go template's `{{- .Values.image }}`, pass through unchanged. It is also why a name may not start with `.` or `-`, and why there should be no spaces between a variable name and the curly brackets.
 
-**Syntax that cannot appear in a name.** The rule excludes the substitution syntax itself (`}}`, the `:=` default-value separator and the `::` unset suffix). The type-tag prefixes (`num:`, `bool:`, `array:`, `table:`, `format_name:`) and `env:` have special meaning at the start of a substitution. The exception is the name of a general environment variable in an `{{env:NAME}}` substitution, which is the operating system's to decide: it may contain anything but whitespace and the substitution syntax, e.g. `{{env:ProgramFiles(x86)}}`.
+**Syntax that cannot appear in a name.** The rule excludes the substitution syntax itself (`}}`, the `:=` default-value separator and the `::` unset suffix). The type-tag prefixes (`num:`, `bool:`, `array:`, `table:`, `format_name:`) and `env:` have special meaning at the start of a substitution.
+
+**The exception** is the name of a general environment variable in an `{{env:NAME}}` substitution, which is the operating system's to decide: it may contain anything but whitespace and the substitution syntax, e.g. `{{env:ProgramFiles(x86)}}`.
 
 **The case of `YD_VAR_` names.** A `YD_VAR_` environment variable creates a variable name with the **exact case** of the suffix: `YD_VAR_SUFFIX` creates `SUFFIX`, not `suffix`. On Windows, environment variable names are uppercased by the OS, so use uppercase names only.
 
@@ -295,7 +311,9 @@ name       = "{{name:={{default_name::}}}}"   # removed only if neither 'name' n
 
 #### Unset Properties and Property Inheritance
 
-In a Work Requirement, removing a property is not the same as clearing it. A property removed by the unset syntax is treated exactly as if it had never been written at that level, so it is still [inherited](work-requirements.md#property-inheritance) from the level above: from the Task Group, the Work Requirement or the `[workRequirement]` section of the TOML file, whichever is the nearest to set it. `{{::}}` therefore cannot be used to stop a Task Group or a Task receiving a value set higher up. To do that, set the property to `null` at that level, as described in [Stopping Inheritance with `null`](work-requirements.md#stopping-inheritance-with-null).
+In a Work Requirement, removing a property is not the same as clearing it. A property removed by the unset syntax is treated exactly as if it had never been written at that level, so it is still [inherited](work-requirements.md#property-inheritance) from the level above: from the Task Group, the Work Requirement or the `[workRequirement]` section of the TOML file, whichever is the nearest to set it.
+
+`{{::}}` therefore cannot be used to stop a Task Group or a Task receiving a value set higher up. To do that, set the property to `null` at that level, as described in [Stopping Inheritance with `null`](work-requirements.md#stopping-inheritance-with-null).
 
 For example, with `arguments = ["--verbose"]` in the `[workRequirement]` section of the TOML file:
 
@@ -323,7 +341,10 @@ The same holds when the unset is conditional: `"arguments": "{{extra_args::}}"` 
 
 **A default and the unset suffix together.** The nested form above is the only way to combine them. Written in one expression, as in `{{name:=x::}}`, they are an error, since a property with a default value is never removed.
 
-**A variable defined as unset.** A variable defined with the unset syntax, in `[common.variables]` or elsewhere, is itself removed: `region = "{{::}}"`, or `region = "{{env:RENDER_REGION::}}"` with `RENDER_REGION` not set, leaves `region` undefined. A plain reference to it, `{{region}}`, is then treated like a reference to any undefined variable: it is left unsubstituted, with a [warning](#undefined-variables), and the property or variable containing it is kept. To make a property or variable conditional on it too, use the suffix there as well: `zone = "{{region::}}a"` is removed along with `region`.
+**A variable defined as unset.** A variable defined with the unset syntax, in `[common.variables]` or elsewhere, is itself removed: `region = "{{::}}"`, or `region = "{{env:RENDER_REGION::}}"` with `RENDER_REGION` not set, leaves `region` undefined.
+
+- **A plain reference to it**, `{{region}}`, is then treated like a reference to any undefined variable: it is left unsubstituted, with a [warning](#undefined-variables), and the property or variable containing it is kept.
+- **To make a property or variable conditional on it too**, use the suffix there as well: `zone = "{{region::}}a"` is removed along with `region`.
 
 ### Undefined Variables
 
@@ -357,7 +378,11 @@ The warnings are suppressed by `--quiet`.
 
 **How often.** Each undefined variable is reported once, however many properties or Tasks it appears in. The exception is the files substituted as text (User Data files, `writeFile` content files and Task Data files), where it is reported once for each file it appears in, so that every file in a `userDataFiles`, `contentFiles` or `taskDataFiles` list that needs correcting is named.
 
-**What is never reported.** The Task and Task Group variables that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)). Text that only resembles a variable substitution because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all. And in Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so Mustache directives for the platform are not reported either.
+**What is never reported.**
+
+- **The Task and Task Group variables** that `yd workrequirement submit` defines as it generates each Task (`{{task_name}}`, `{{task_number}}` and the others described under [Task and Task Group Name Substitutions](work-requirements.md#task-and-task-group-name-substitutions)).
+- **Text that only resembles a variable substitution** because its name breaks the [naming rule](#variable-naming), such as `docker ps --format '{{.ID}}'`, which is not a substitution at all.
+- **Mustache directives for the platform.** In Worker Pool and Compute Requirement specifications and User Data only the `__{{variable}}__` form is checked, so these are not reported either.
 
 **A space inside the braces** is warned of only where the name is one that would be substituted without the space: a variable that is defined, an environment variable that is set, or one of the Task variables.
 
@@ -417,7 +442,10 @@ Everything else about a substitution — [type tags](#substituting-numbers-boole
 
 **Order.** Wherever both forms are taken, `__{{variable}}__` is substituted first, as a whole, underscores and all, then the plain one: `a__{{site}}__b` is `alondonb`. For a value between double underscores, put them in a variable: with `dunder = "__"`, `{{dunder}}{{site}}{{dunder}}` gives `__london__`.
 
-**Jsonnet files.** A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. The first is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name. It is made in the file's own form, since the text says nothing of which property it is in: `__{{variable}}__` alone in a Worker Pool or Compute Requirement specification, and both forms in any other file, `__{{variable}}__` first. The second makes the rest, as the table says. See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files).
+**Jsonnet files.** A Jsonnet file is substituted twice: once before it is evaluated, as text, and once after, property by property. See also [Variable Substitutions in Jsonnet Files](jsonnet.md#variable-substitutions-in-jsonnet-files).
+
+- **The first** is what the Jsonnet code itself works with — `std.parseInt("{{count}}")`, a comparison, a computed field name. It is made in the file's own form, since the text says nothing of which property it is in: `__{{variable}}__` alone in a Worker Pool or Compute Requirement specification, and both forms in any other file, `__{{variable}}__` first.
+- **The second** makes the rest, as the table says.
 
 **Plain substitutions in a Worker Pool or Compute Requirement Jsonnet file** come out substituted in a string, but the code cannot compute with them.
 

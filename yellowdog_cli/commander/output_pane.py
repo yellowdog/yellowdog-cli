@@ -119,6 +119,27 @@ def arrow_font(base: QFont) -> QFont:
 JUMP_TO_END_TOOLTIP = "Jump to the end of the output, and follow it again"
 JUMP_TO_TOP_TOOLTIP = "Jump to the top of the output"
 JUMP_BUTTON_MARGIN = 8  # from the output window's right-hand corners
+# The output window's text size in points, as it opens and as Cmd/Ctrl+0
+# resets it (displayed sizes differ, so it is smaller off macOS), and the
+# range Cmd/Ctrl+= and Cmd/Ctrl+- zoom it within; the Usage Explorer's table
+# has a size of its own, with the same default and range
+OUTPUT_FONT_SIZE = 12 if MACOS else 8
+MIN_OUTPUT_FONT_SIZE = 6
+MAX_OUTPUT_FONT_SIZE = 32
+
+
+def default_output_font() -> QFont:
+    """
+    The output window's text, unzoomed: Courier New at OUTPUT_FONT_SIZE, a
+    little heavier than regular. The Usage Explorer's table starts from it.
+    """
+    font = QFont()
+    font.setPointSize(OUTPUT_FONT_SIZE)
+    font.setFamily("Courier New")
+    font.setWeight(QFont.Weight(500))
+    return font
+
+
 # The colours of the CLI's error and warning lines, one per appearance: the
 # light one too dark to read on a dark background, the dark one too pale on a
 # light one. The error red is the destructive buttons' label colour too.

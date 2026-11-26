@@ -3802,7 +3802,8 @@ def usage_group_keys(value: str) -> tuple[str, ...]:
 def usage_filter(value: str) -> tuple[str, str]:
     """
     A '--where' value: 'key=pattern', the key one of USAGE_GROUP_KEYS and
-    the pattern a glob, which may not be empty.
+    the pattern a glob, which may not be empty; or 'key==value', kept as the
+    pattern '=value', which matches that value exactly.
     """
     key, equals, pattern = value.partition("=")
     key = key.strip().lower()
@@ -3819,6 +3820,8 @@ def usage_filter(value: str) -> tuple[str, str]:
         )
     if not pattern:
         raise ArgumentTypeError(f"'{value}' has no pattern after '='")
+    if pattern == "=":
+        raise ArgumentTypeError(f"'{value}' has no value after '=='")
     return key, pattern
 
 
@@ -3855,6 +3858,38 @@ def check_usage_sort(args: Namespace, parser: ArgumentParser) -> None:
             )
         if key == "cost" and not getattr(args, "usage_cost", False):
             parser.error("--sort cost needs --cost")
+
+
+# yd-usage's options that shape a report, each with its default: none of
+# them applies to '--reports', which lists the kept reports instead
+_USAGE_REPORT_OPTIONS: tuple[tuple[str, str, object], ...] = (
+    ("usage_from", "--from", "7 days ago"),
+    ("usage_until", "--until", "now"),
+    ("usage_by", "--by", "namespace"),
+    ("usage_where", "--where", None),
+    ("namespace", "--namespace", None),
+    ("usage_refresh", "--refresh", False),
+    ("usage_cost", "--cost", False),
+    ("usage_sort", "--sort", "total"),
+    ("reverse", "--reverse", False),
+    ("usage_top", "--top", None),
+    ("csv_output", "--csv", False),
+)
+
+
+def check_usage_reports_alone(args: Namespace, parser: ArgumentParser) -> None:
+    """
+    On yd-usage, refuse '--reports' with an option that shapes a report: it
+    lists the reports kept, and shows none of them.
+    """
+    if not getattr(args, "usage_reports", False):
+        return
+    for dest, flag, default in _USAGE_REPORT_OPTIONS:
+        given = getattr(args, dest, default)
+        if dest in ("usage_by", "usage_sort") and isinstance(given, tuple):
+            given = ",".join(given)
+        if given not in (default, None, False):
+            parser.error(f"--reports lists the kept reports: it takes no {flag}")
 
 
 COMMANDS["yd-usage"] = Command(
@@ -3909,7 +3944,8 @@ COMMANDS["yd-usage"] = Command(
             required=False,
             help=(
                 "count only the Instances whose key matches the pattern, a glob"
-                " in any case ('provider=aws', 'instance-type=g4dn.*'), the key"
+                " in any case ('provider=aws', 'instance-type=g4dn.*'), or the"
+                " value exactly, with its case ('cr==Render'), the key"
                 " any '--by' takes; repeatable: different keys must all match,"
                 " the same key given again matches either"
             ),
@@ -3926,6 +3962,17 @@ COMMANDS["yd-usage"] = Command(
             help=(
                 "fetch the report again, rather than use the one kept from an"
                 " earlier run with the same window and namespace"
+            ),
+        ),
+        option(
+            "--reports",
+            dest="usage_reports",
+            action="store_true",
+            required=False,
+            help=(
+                "list the reports kept from earlier runs for this account and"
+                " Application, each with the window and namespace that use it"
+                " again, rather than show one"
             ),
         ),
         option(
@@ -3976,7 +4023,7 @@ COMMANDS["yd-usage"] = Command(
         ),
         JSON.variant(help="print one JSON document holding the window and the totals"),
     ),
-    validators=(check_csv_excludes_json, check_usage_sort),
+    validators=(check_csv_excludes_json, check_usage_sort, check_usage_reports_alone),
     tool=ToolKind.READ_ONLY,
     tool_description=(
         "Show the hours Instances spent in each status (pending, running,"
@@ -3984,8 +4031,9 @@ COMMANDS["yd-usage"] = Command(
         " window, totalled by namespace or by the keys 'usage_by' lists, from"
         " the Platform's compute usage report, which counts only the time"
         " inside the window. 'usage_where' narrows the Instances counted, each"
-        " entry 'key=pattern' (a glob in any case, over the keys 'usage_by'"
-        " takes): different keys must all match, the same key again matches"
+        " entry 'key=pattern' (a glob in any case) or 'key==value' (exactly,"
+        " with its case), over the keys 'usage_by'"
+        " takes: different keys must all match, the same key again matches"
         " either. 'usage_from' and 'usage_until' take any date and time the"
         " dateparser"
         " library reads ('2026-11-01', '3 days ago'; '7 days ago' and 'now'"

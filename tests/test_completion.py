@@ -12,11 +12,12 @@ import shutil
 import subprocess
 import sys
 import time
+from importlib import import_module
 
 import pytest
 
 from yellowdog_cli import completion as yd_completion
-from yellowdog_cli.utils import completion_lookups
+from yellowdog_cli.utils import completion, completion_lookups
 from yellowdog_cli.utils.command_registry import (
     COMMANDS,
     ENTITY_TYPES,
@@ -73,11 +74,37 @@ class TestNounsAndVerbs:
         assert _values([], "") == []
 
     @pytest.mark.parametrize("word", ["commander", "mcp"])
-    def test_a_command_the_registry_does_not_describe_completes_files(self, word):
-        # Before the stubs claimed its name, the shell completed files for it
+    def test_a_launchers_configuration_file_completes_as_files(self, word):
+        # As the shell completed files for it before the stubs claimed its name
         assert complete(["yd", word], "").mode is Mode.FILES
-        assert complete(["yd", word, "config.toml", "-r"], "w").mode is Mode.FILES
-        assert _values(["yd", word], "-") == ["--help"]
+        assert complete(["yd", word, "-c"], "c").mode is Mode.FILES
+        assert complete(["yd", word], "--config=").mode is Mode.FILES
+
+    def test_commanders_options_complete_from_its_own_parser(self):
+        assert _values(["yd", "commander"], "--u") == ["--usage-explorer"]
+        assert _values(["yd", "commander"], "--res") == ["--reset-appearance"]
+        offered = _values(["yd", "commander"], "-")
+        assert {"--namespace", "--property", "--worker-pool", "--help"} <= set(offered)
+        assert complete(["yd", "commander", "-r"], "w").mode is Mode.FILES
+        # A value it knows nothing of offers nothing; a repeatable one repeats
+        assert _values(["yd", "commander", "--namespace"], "") == []
+        assert _values(["yd", "commander", "--property", "a=1"], "--pro") == [
+            "--property"
+        ]
+        assert _values(["yd", "commander", "--usage-explorer"], "--usa") == []
+
+    def test_mcps_options_complete_from_its_own_parser(self):
+        assert _values(["yd", "mcp"], "--tr") == ["--transport"]
+        assert _values(["yd", "mcp", "--transport"], "") == ["stdio"]
+        assert _values(["yd", "mcp"], "--transport=") == ["--transport=stdio"]
+
+    @pytest.mark.parametrize("name", ["yd-commander", "yd-mcp"])
+    def test_a_launchers_file_arguments_are_its_own(self, name):
+        module = import_module(completion._LAUNCHER_MODULES[name])
+        dests = {action.dest for action in module.build_parser()._actions}
+        assert set(module.FILE_ARGUMENTS) <= dests
+        # Every launcher OTHER_COMMANDS names is described
+        assert completion.launcher_command(name) is not None
 
     def test_a_described_standalone_command_is_not_left_to_the_shell(self):
         assert _values(["yd", "completion"], "z") == ["zsh"]

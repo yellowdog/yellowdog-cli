@@ -15,10 +15,10 @@ the Platform, but not here: complete() returns a LookupRequest naming the
 lookup and the configuration options typed on the line, and the
 yd completion command makes it (utils/completion_lookups.py), so this
 module stays local and SDK-free.
-A command whose arguments the registry does not describe (yd commander and
-yd mcp, the launchers) is left to the shell's own completion of files, which
-is what it had before the stubs claimed its name, with '--help' for a word
-starting with '-'.
+The launchers (yd commander and yd mcp), which no registry describes, are
+completed from their own argparse parsers (launcher_command()), each read
+into a Command as the registry would write it, its file arguments marked by
+the launcher's FILE_ARGUMENTS.
 
 The stubs register 'yd' alone: a deprecated 'yd-*' script is not
 completed.
@@ -26,10 +26,12 @@ completed.
 
 from __future__ import annotations
 
-from argparse import SUPPRESS, ArgumentTypeError
+from argparse import SUPPRESS, ArgumentTypeError, _AppendAction, _HelpAction
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import cache
+from importlib import import_module
 from typing import cast
 
 from yellowdog_cli.utils.command_registry import (
@@ -41,6 +43,7 @@ from yellowdog_cli.utils.command_registry import (
     KEY,
     NAMESPACE,
     NO_CONFIG,
+    OTHER_COMMANDS,
     PAC,
     PROPERTY,
     SECRET,
@@ -49,9 +52,11 @@ from yellowdog_cli.utils.command_registry import (
     URL,
     VARIABLE,
     Command,
+    CommandKind,
     Completes,
     Exclusive,
     Option,
+    ToolKind,
     resolve_cloud_info_type,
     resolve_entity_type,
     resolve_resource_type,
@@ -185,16 +190,68 @@ def complete(words: list[str], current: str) -> Completions:
         command = NOUN_COMMANDS.get(f"yd {noun.name} {rest[0]}")
         rest = rest[1:]
     elif entry.kind is Kind.OTHER:
-        command = None
+        command = launcher_command(entry.target)
     else:
         command = COMMANDS[entry.target]
-    if entry.kind is Kind.OTHER or (command is not None and not command.all_options()):
+    if command is not None and not command.all_options():
         if current.startswith("-"):
             return _matching(_HELP_FLAGS, current)
         return Completions(Mode.FILES)
     if command is None:
         return _NOTHING
     return _arguments(command, rest, current)
+
+
+# The launchers' modules, by command, each with build_parser() and
+# FILE_ARGUMENTS; imported only on a Tab after their word
+_LAUNCHER_MODULES = {
+    "yd-commander": "yellowdog_cli.commander.launcher",
+    "yd-mcp": "yellowdog_cli.mcp.launcher",
+}
+
+
+@cache
+def launcher_command(name: str) -> Command | None:
+    """
+    A launcher's options as a Command, read from its own parser: flags,
+    help, choices and whether each takes a value or repeats, as argparse
+    has them; its file arguments completing as files. None for a command
+    with no launcher module.
+    """
+    module_name = _LAUNCHER_MODULES.get(name)
+    if module_name is None:
+        return None
+    module = import_module(module_name)
+    files: tuple[str, ...] = module.FILE_ARGUMENTS
+    options: list[Option] = []
+    for action in module.build_parser()._actions:
+        if isinstance(action, _HelpAction):
+            continue  # offered as every command's '--help'
+        kwargs: dict[str, object] = {"help": action.help, "dest": action.dest}
+        if action.option_strings and action.nargs == 0:
+            kwargs["action"] = "store_true"
+        else:
+            kwargs["nargs"] = action.nargs
+            if action.choices is not None:
+                kwargs["choices"] = tuple(action.choices)
+            if isinstance(action, _AppendAction):
+                kwargs["action"] = "append"
+        options.append(
+            Option(
+                tuple(action.option_strings) or (action.dest,),
+                kwargs,
+                completes=Completes.FILE if action.dest in files else Completes.NONE,
+            )
+        )
+    return Command(
+        name,
+        "",
+        OTHER_COMMANDS[name],
+        CommandKind.STANDALONE,
+        tuple(options),
+        tool=ToolKind.NONE,
+        script=False,
+    )
 
 
 def join_bash_words(words: list[str], current: str) -> tuple[list[str], str, str]:
