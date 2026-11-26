@@ -949,11 +949,14 @@ def _build_client(cfg: Any, read_timeout: float) -> Any:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
+    from yellowdog_cli.utils.user_agent import cli_product
+
     return PlatformClient.create(
         ServicesSchema(
             defaultUrl=cfg.url, requestTimeout=timedelta(seconds=read_timeout)
         ),
         ApiKey(cfg.key, cfg.secret),
+        cli_product(),
     )
 
 

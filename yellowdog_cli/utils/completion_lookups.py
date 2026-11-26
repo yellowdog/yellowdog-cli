@@ -151,9 +151,8 @@ def _client(common: ConfigCommon) -> PlatformClient:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
-    from yellowdog_cli.utils.user_agent import set_user_agent
+    from yellowdog_cli.utils.user_agent import cli_product
 
-    set_user_agent()
     assert common.key is not None and common.secret is not None
     return PlatformClient.create(
         ServicesSchema(
@@ -161,6 +160,7 @@ def _client(common: ConfigCommon) -> PlatformClient:
             requestTimeout=timedelta(seconds=LOOKUP_TIMEOUT_SECONDS),
         ),
         ApiKey(common.key, common.secret),
+        cli_product(),
     )
 
 

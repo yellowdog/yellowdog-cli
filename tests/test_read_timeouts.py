@@ -31,7 +31,7 @@ def schemas(monkeypatch) -> list:
     monkeypatch.setattr(
         PlatformClient,
         "create",
-        staticmethod(lambda schema, _key: seen.append(schema) or object()),
+        staticmethod(lambda schema, _key, *_products: seen.append(schema) or object()),
     )
     return seen
 

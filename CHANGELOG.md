@@ -10,6 +10,11 @@ These changes alter what an existing script or configuration will see:
 
 - **`[common] readTimeout` is renamed `requestTimeout`**, matching the YellowDog SDK's own name for it, and its environment variable `YD_READ_TIMEOUT` is renamed `YD_REQUEST_TIMEOUT` (`--property common.requestTimeout=<seconds>` on the command line). The old names are not read: a configuration file still setting `readTimeout` is refused as holding an invalid property (exit code 3) until it is renamed, and `YD_READ_TIMEOUT` is ignored, leaving the default of 90 seconds.
 
+### Commands
+
+- The CLI requires `yellowdog-sdk` 16.4.0 or later.
+- **Requests made through the YellowDog SDK identify the CLI with the SDK's own User-Agent**, `yd/1.1.0 yellowdog-sdk-python/<version> python/<version> yellowdog-cli/<version>`, in place of the CLI's own form; `yd doctor`'s requests now identify the CLI too. The CLI's direct requests keep `yellowdog-cli/<version> python-requests/<version>`.
+
 ### yd usage
 
 - **`--json` adds `reused` and `total`.** `reused` is `true` when the kept report of an earlier run was used and `false` when it was fetched, and `total` sums every group (those `--top` cuts too), with `--cost` its `estimatedCost` and `unpricedRunningHours`: the figures of the total line.

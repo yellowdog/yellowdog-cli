@@ -1,117 +1,62 @@
 """
-Tests for the User-Agent patches (hybrid of options B and C).
-
-Direct CLI calls must carry a CLI-only User-Agent (no SDK token), while calls
-made through the SDK must additionally advertise the SDK version. These guard
-against a future requests/SDK upgrade silently dropping a header or erasing the
-distinction (e.g. the SDK auth callable being renamed).
+The User-Agent of the CLI's requests: its direct calls carry a CLI-only one
+(the requests default replaced), and every Platform client it builds names
+the CLI through the SDK's own mechanism (a Product given to
+PlatformClient.create()), which the SDK sends on each request over the
+session's default.
 """
 
+import subprocess
+import sys
+from types import SimpleNamespace
+
+import pytest
 import requests
 import requests.utils
+from yellowdog_client import PlatformClient
 from yellowdog_client._version import __version__ as _sdk_version
-from yellowdog_client.common.credentials import ApiKeyAuthenticationHeadersProvider
-from yellowdog_client.model import ApiKey
+from yellowdog_client.common import Product
+from yellowdog_client.model import ApiKey, ServicesSchema
 
+import yellowdog_cli.utils.completion_lookups as completion_lookups
+import yellowdog_cli.utils.doctor_checks as doctor_checks
+import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli._version import __version__
 from yellowdog_cli.utils.user_agent import (
     CLI_USER_AGENT,
-    SDK_USER_AGENT,
-    set_user_agent,
+    cli_product,
+    set_default_user_agent,
 )
 
 _CLI_TOKEN = f"yellowdog-cli/{__version__}"
-_SDK_TOKEN = f"yellowdog-sdk/{_sdk_version}"
 
 
-def _sdk_prepared_ua() -> str:
-    """
-    User-Agent on a request prepared exactly as the SDK's Proxy does.
-    """
-    provider = ApiKeyAuthenticationHeadersProvider(ApiKey("id", "secret"))
-    session = requests.Session()
-    prepared = session.prepare_request(
-        requests.Request("GET", "https://example.invalid", auth=provider)
-    )
-    return prepared.headers["User-Agent"]
+# --- direct (non-SDK) calls: the requests default ---------------------------
 
 
-# --- constants -------------------------------------------------------------
+def test_the_direct_calls_user_agent_names_the_cli_and_requests():
+    assert CLI_USER_AGENT.startswith(f"{_CLI_TOKEN} python-requests/")
+    assert "sdk" not in CLI_USER_AGENT
 
 
-def test_cli_ua_has_cli_token_and_no_sdk_token():
-    assert CLI_USER_AGENT.startswith(_CLI_TOKEN)
-    assert _SDK_TOKEN not in CLI_USER_AGENT
-    assert "python-requests/" in CLI_USER_AGENT
-
-
-def test_sdk_ua_has_cli_then_sdk_token():
-    assert SDK_USER_AGENT.startswith(f"{_CLI_TOKEN} {_SDK_TOKEN}")
-    assert "python-requests/" in SDK_USER_AGENT
-
-
-# --- direct (non-SDK) calls: baseline default ------------------------------
-
-
-def test_default_user_agent_patched_to_cli_ua():
-    set_user_agent()
+def test_a_direct_calls_session_carries_it():
+    # requests.get()/post() (the CLI's direct calls) build a Session that
+    # seeds its headers from the replaced default
+    set_default_user_agent()
+    set_default_user_agent()  # idempotent
     assert requests.utils.default_user_agent() == CLI_USER_AGENT
-
-
-def test_direct_call_session_carries_cli_ua():
-    # requests.post()/get() (the CLI's direct calls) build a Session that seeds
-    # its headers from the patched default.
-    set_user_agent()
     assert requests.Session().headers["User-Agent"] == CLI_USER_AGENT
 
 
-# --- SDK calls: auth-callable override -------------------------------------
-
-
-def test_sdk_request_carries_sdk_ua():
-    set_user_agent()
-    assert _sdk_prepared_ua() == SDK_USER_AGENT
-
-
-def test_sdk_auth_header_still_applied():
-    # The override must not displace the Authorization header the provider sets.
-    set_user_agent()
-    provider = ApiKeyAuthenticationHeadersProvider(ApiKey("id", "secret"))
-    session = requests.Session()
-    prepared = session.prepare_request(
-        requests.Request("GET", "https://example.invalid", auth=provider)
-    )
-    assert prepared.headers["Authorization"].startswith("yd-key ")
-    assert prepared.headers["User-Agent"] == SDK_USER_AGENT
-
-
-def test_set_user_agent_idempotent():
-    set_user_agent()
-    set_user_agent()
-    ua = _sdk_prepared_ua()
-    assert ua == SDK_USER_AGENT
-    # The SDK token must appear exactly once despite repeated patching.
-    assert ua.count(_SDK_TOKEN) == 1
-
-
-# --- the baseline alone, and an SDK without the callable --------------------
-
-
-def test_the_baseline_alone_imports_no_sdk():
+def test_the_direct_calls_user_agent_imports_no_sdk():
     """
-    set_proxy() sets the baseline for the PAC file's fetch, in yd-variables
-    too, which uses no client: it must not import the SDK, as the full
-    set_user_agent() does to wrap the SDK's auth callable.
+    set_proxy() sets it for the PAC file's fetch, in yd-variables too, which
+    builds no client: it must not import the SDK.
     """
-    import subprocess
-    import sys
-
     script = (
         "import sys\n"
-        "from yellowdog_cli.utils.user_agent import set_default_user_agent, CLI_USER_AGENT\n"
-        "import requests.utils\n"
+        "from yellowdog_cli.utils.user_agent import set_default_user_agent\n"
         "set_default_user_agent()\n"
-        "assert requests.utils.default_user_agent() == CLI_USER_AGENT\n"
         "print('yellowdog_client' in sys.modules)\n"
     )
     result = subprocess.run(
@@ -120,18 +65,82 @@ def test_the_baseline_alone_imports_no_sdk():
     assert result.stdout.strip() == "False"
 
 
-def test_set_proxy_sets_only_the_baseline(monkeypatch):
-    from types import SimpleNamespace
+# --- SDK calls: the CLI as a product ----------------------------------------
 
-    from yellowdog_cli.utils import user_agent, wrapper
+
+def test_the_cli_product_is_its_name_and_version():
+    assert cli_product() == Product("yellowdog-cli", __version__)
+
+
+class _Sent(Exception):
+    pass
+
+
+def test_an_sdk_request_names_the_sdk_then_the_cli(monkeypatch):
+    """
+    What the SDK sends, captured as the request leaves: its own header, the
+    CLI last, and the direct calls' default not reaching it.
+    """
+    seen: list[str] = []
+
+    def send(_session, request, **_kwargs):
+        seen.append(request.headers["User-Agent"])
+        raise _Sent()
+
+    monkeypatch.setattr(requests.Session, "send", send)
+    set_default_user_agent()
+    client = PlatformClient.create(
+        ServicesSchema(defaultUrl="https://example.invalid/api"),
+        ApiKey("id", "secret"),
+        cli_product(),
+    )
+    with pytest.raises(_Sent):
+        client.keyring_client.find_all_keyrings()
+    [agent] = seen
+    assert f"yellowdog-sdk-python/{_sdk_version}" in agent
+    assert agent.endswith(f" {_CLI_TOKEN}")
+    assert "python-requests" not in agent
+
+
+@pytest.fixture
+def products(monkeypatch) -> list:
+    """
+    The products each PlatformClient.create() is given; no client is built.
+    """
+    seen: list = []
+    monkeypatch.setattr(
+        PlatformClient,
+        "create",
+        staticmethod(lambda _schema, _key, *given: seen.append(given) or object()),
+    )
+    return seen
+
+
+def test_every_client_the_cli_builds_names_it(products):
+    common = SimpleNamespace(url="https://x", key="k", secret="s")
+    wrapper_module._create_client()
+    doctor_checks._build_client(common, 7)
+    completion_lookups._client(common)  # type: ignore[arg-type]
+    assert products == [(cli_product(),)] * 3
+
+
+def test_the_commands_client_sets_the_direct_calls_user_agent(products, monkeypatch):
+    monkeypatch.setattr(
+        requests.utils, "default_user_agent", lambda *_a, **_k: "untouched"
+    )
+    wrapper_module._create_client()
+    assert requests.utils.default_user_agent() == CLI_USER_AGENT
+
+
+def test_set_proxy_sets_the_direct_calls_user_agent(monkeypatch):
+    from yellowdog_cli.utils import user_agent
 
     calls: list[str] = []
     monkeypatch.setattr(
-        user_agent, "set_default_user_agent", lambda: calls.append("baseline")
+        user_agent, "set_default_user_agent", lambda: calls.append("default")
     )
-    monkeypatch.setattr(user_agent, "set_user_agent", lambda: calls.append("full"))
     monkeypatch.setattr(
-        wrapper, "CONFIG_COMMON", SimpleNamespace(use_pac=True, url="https://x")
+        wrapper_module, "CONFIG_COMMON", SimpleNamespace(use_pac=True, url="https://x")
     )
 
     class _NoProxy:
@@ -145,20 +154,5 @@ def test_set_proxy_sets_only_the_baseline(monkeypatch):
 
     monkeypatch.setattr(pypac, "pac_context_for_url", lambda url: _NoProxy())
     monkeypatch.delenv("HTTPS_PROXY", raising=False)
-    wrapper.set_proxy()
-    assert calls == ["baseline"]
-
-
-def test_an_sdk_without_the_auth_callable_keeps_the_baseline(monkeypatch):
-    import yellowdog_client.common.credentials as credentials
-
-    from yellowdog_cli.utils import user_agent
-
-    monkeypatch.delattr(credentials, "ApiKeyAuthenticationHeadersProvider")
-    debug: list[str] = []
-    import yellowdog_cli.utils.printing as printing
-
-    monkeypatch.setattr(printing, "print_debug", debug.append)
-    user_agent.set_user_agent()  # No exception: the header is cosmetic
-    assert requests.utils.default_user_agent() == CLI_USER_AGENT
-    assert debug and "keep the CLI's User-Agent" in debug[0]
+    wrapper_module.set_proxy()
+    assert calls == ["default"]

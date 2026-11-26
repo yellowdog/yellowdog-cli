@@ -88,7 +88,7 @@ utils/paths.py                      # relative_if_possible(); default_config_fil
 utils/load_resources.py             # Resource spec loading, substitution, dependency ordering (RESOURCE_CREATION_ORDER, test-held to sdk_models); '-' read from standard input, and the resource '--type' and '--set' give (each value as load_config.parse_property_value() reads a '--property' one), through the same checks as a file's
 utils/version_info.py               # sdk_version() from metadata (no SDK import), docs_url()
 utils/atomic_write.py               # write_text_atomically(); stdlib only
-utils/user_agent.py                 # set_user_agent() for the client; set_default_user_agent() with no SDK, for the PAC fetch
+utils/user_agent.py                 # cli_product(), the CLI as the SDK's Product, given to every PlatformClient.create() (the SDK's own User-Agent, the CLI last); set_default_user_agent(), with no SDK, for the CLI's direct requests (the PAC fetch among them)
 utils/dataclient/                   # yd-upload/download/delete/ls/copy; imports no SDK
 utils/dataclient/rclone_version.py  # find_rclone(), rclone_version(); stdlib only
 ```
@@ -154,7 +154,7 @@ The nouns and verbs over the registry (`utils/noun_registry.py`, `utils/noun_dis
 ### Global State (wrapper.py)
 
 `wrapper.py` holds two module-level globals used everywhere:
-- `CLIENT` — `PlatformClient` instance (YellowDog SDK), built the first time the command uses it (`_create_client()`, which also applies `set_user_agent()`)
+- `CLIENT` — `PlatformClient` instance (YellowDog SDK), built the first time the command uses it (`_create_client()`, which gives it `user_agent.cli_product()` and sets the direct requests' User-Agent)
 - `CONFIG_COMMON` — loaded from `config.toml` (or `--config` arg / env vars), built by `prepare_run()` before the command runs
 
 `ARGS_PARSER` is a `CLIParser` instance from `args.py`, also module-level. No command module imports these three: each is given them as its context (below), bar `yd-doctor` and `yd-schema`, which import `ARGS_PARSER`, and `tests/test_command_runner.py` holds that. A command's lazy configuration section that depends on its own options reads them in `load_config.py` from the command line it holds (`load_config_data_client_destination()`, `yd-copy`'s `--dst-profile` and `--dst-prefix`).
