@@ -21,8 +21,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-import requests.utils
-
 from yellowdog_cli._version import __version__
 
 if TYPE_CHECKING:
@@ -36,13 +34,6 @@ CLI_USER_AGENT = (
     f"yd/1.1.0 {CLI_PRODUCT_NAME}/{__version__}"
     f" python/{sys.version_info.major}.{sys.version_info.minor}"
 )
-
-
-def set_default_user_agent() -> None:
-    """
-    The User-Agent of every requests Session. Idempotent.
-    """
-    requests.utils.default_user_agent = lambda *_args, **_kwargs: CLI_USER_AGENT
 
 
 def cli_product() -> Product:

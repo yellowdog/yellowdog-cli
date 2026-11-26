@@ -66,9 +66,8 @@ def _create_client() -> PlatformClient:
     from yellowdog_client import PlatformClient
     from yellowdog_client.model import ApiKey, ServicesSchema
 
-    from yellowdog_cli.utils.user_agent import cli_product, set_default_user_agent
+    from yellowdog_cli.utils.user_agent import cli_product
 
-    set_default_user_agent()
     # A strict load, which every command using the client has, never
     # returns None for either
     assert CONFIG_COMMON.key is not None and CONFIG_COMMON.secret is not None

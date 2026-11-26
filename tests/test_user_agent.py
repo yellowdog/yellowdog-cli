@@ -19,11 +19,7 @@ import yellowdog_cli.utils.completion_lookups as completion_lookups
 import yellowdog_cli.utils.doctor_checks as doctor_checks
 import yellowdog_cli.utils.wrapper as wrapper_module
 from yellowdog_cli._version import __version__
-from yellowdog_cli.utils.user_agent import (
-    CLI_USER_AGENT,
-    cli_product,
-    set_default_user_agent,
-)
+from yellowdog_cli.utils.user_agent import CLI_USER_AGENT, cli_product
 
 _CLI_TOKEN = f"yellowdog-cli/{__version__}"
 
@@ -92,14 +88,3 @@ def test_every_client_the_cli_builds_names_it(products):
     doctor_checks._build_client(common, 7)
     completion_lookups._client(common)  # type: ignore[arg-type]
     assert products == [(cli_product(),)] * 3
-
-
-def test_the_commands_client_sets_the_requests_default(products, monkeypatch):
-    import requests.utils
-
-    monkeypatch.setattr(
-        requests.utils, "default_user_agent", lambda *_a, **_k: "untouched"
-    )
-    wrapper_module._create_client()
-    set_default_user_agent()  # idempotent
-    assert requests.utils.default_user_agent() == CLI_USER_AGENT
