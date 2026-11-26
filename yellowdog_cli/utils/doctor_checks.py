@@ -33,7 +33,7 @@ from typing import Any, TypeVar, cast
 import requests
 
 from yellowdog_cli._version import __version__ as CLI_VERSION
-from yellowdog_cli.utils import http
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.check_imports import (
     EXTRA_PROBES,
     check_cloudwizard_imports,
@@ -322,7 +322,7 @@ def check_sdk_imports(ctx: Context) -> Result:
 
 
 def _pypi_latest_version(timeout: float) -> str:
-    response = http.get(PYPI_PROJECT_URL, timeout=timeout)
+    response = direct_http.get(PYPI_PROJECT_URL, timeout=timeout)
     response.raise_for_status()
     return response.json()["info"]["version"]
 
@@ -513,7 +513,7 @@ def _resolve_pac_proxy(url: str, timeout: float) -> str | Result | None:
     """
 
     def resolve() -> str | None:
-        with http.pac_context(url):
+        with direct_http.pac_context(url):
             return os.getenv("HTTPS_PROXY")
 
     try:
@@ -914,7 +914,9 @@ def _platform_reachable(ctx: Context) -> Result:
     """
     url = ctx.config_common.url
     try:
-        outcome = with_timeout(lambda: http.get(url, timeout=ctx.timeout), ctx.timeout)
+        outcome = with_timeout(
+            lambda: direct_http.get(url, timeout=ctx.timeout), ctx.timeout
+        )
     except requests.RequestException as e:
         return Result(
             Status.FAIL,

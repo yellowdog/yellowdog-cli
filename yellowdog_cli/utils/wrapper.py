@@ -108,7 +108,7 @@ def set_proxy():
     """
     proxy_var = "HTTPS_PROXY"
     if CONFIG_COMMON.use_pac:
-        from yellowdog_cli.utils.http import pac_context
+        from yellowdog_cli.utils.direct_http import pac_context
 
         print_debug("Using Proxy Auto-Configuration (PAC)")
         with pac_context(CONFIG_COMMON.url):

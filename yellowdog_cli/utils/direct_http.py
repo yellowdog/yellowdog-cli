@@ -5,7 +5,7 @@ streams, the usage report, the calls the SDK has no method for, yd-doctor's
 checks and the PAC file's fetch). Each carries user_agent.CLI_USER_AGENT,
 which names the CLI as the client, so the Platform never adapts the raw JSON
 the CLI reads itself as it would an older SDK's. Every direct request is
-made here: tests/test_http.py fails on one made with 'requests' itself.
+made here: tests/test_direct_http.py fails on one made with 'requests' itself.
 
 It imports no SDK, so a command using none (yd-variables, under PAC) can
 use it.
@@ -71,9 +71,9 @@ def pac_context(url: str) -> Iterator[None]:
     """
     from pypac import get_pac, pac_context_for_url
 
-    session = requests.Session()
-    session.headers["User-Agent"] = CLI_USER_AGENT
-    pac = get_pac(session=session)
+    with requests.Session() as session:
+        session.headers["User-Agent"] = CLI_USER_AGENT
+        pac = get_pac(session=session)
     # Given no PAC, pac_context_for_url() would look for one again, with its
     # own session
     if pac is None:

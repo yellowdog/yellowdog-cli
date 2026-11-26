@@ -101,7 +101,7 @@ def _submit(responses: list[MagicMock], **flag_overrides) -> dict:
     }
     with ExitStack() as stack:
         for patcher in (
-            patch.object(json_raw_module.http, "post", post),
+            patch.object(json_raw_module.direct_http, "post", post),
             patch.object(wrapper_module, "CLIENT", client),
             patch.object(
                 wrapper_module,
@@ -272,7 +272,7 @@ class TestSubmitPlatformDocument:
         post = MagicMock(side_effect=posts)
         follow = MagicMock()
         with (
-            patch.object(json_raw_module.http, "post", post),
+            patch.object(json_raw_module.direct_http, "post", post),
             patch.object(
                 wrapper_module,
                 "CONFIG_COMMON",
@@ -339,7 +339,7 @@ class TestAddPlatformTasks:
     def test_each_task_group_is_posted_to_and_the_total_returned(self):
         post = MagicMock(return_value=_response(200))
         with (
-            patch.object(json_raw_module.http, "post", post),
+            patch.object(json_raw_module.direct_http, "post", post),
             patch.object(
                 wrapper_module,
                 "CONFIG_COMMON",

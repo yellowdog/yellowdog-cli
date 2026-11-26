@@ -59,6 +59,7 @@ from yellowdog_cli.utils.active_entities import (
     INACTIVE_WORKER_POOL_STATUSES,
 )
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_APPLICATIONS,
@@ -131,7 +132,6 @@ from yellowdog_cli.utils.glob_utils import (
     glob_literal_hint,
     glob_search_prefix,
 )
-from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.named_targets import resolved_each

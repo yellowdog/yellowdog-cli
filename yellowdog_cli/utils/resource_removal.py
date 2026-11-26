@@ -17,6 +17,7 @@ from requests.exceptions import HTTPError
 from yellowdog_client.model import MachineImageFamily
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import delete
 from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -59,7 +60,6 @@ from yellowdog_cli.utils.exit_codes import (
     ReportedFailure,
     classify,
 )
-from yellowdog_cli.utils.http import delete
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_CREATION_ORDER,

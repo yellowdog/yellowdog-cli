@@ -13,6 +13,7 @@ from requests.exceptions import HTTPError
 from yellowdog_client.model import InternalUser, NamespaceSearch
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,
@@ -44,7 +45,6 @@ from yellowdog_cli.utils.entity_utils import (
     keyring_credential_names,
 )
 from yellowdog_cli.utils.exit_codes import NotFoundError
-from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.misc_utils import is_http_not_found
 from yellowdog_cli.utils.property_names import (
     PROP_AUTOSCALING_MAX_NODES,

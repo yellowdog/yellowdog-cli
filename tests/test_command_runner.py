@@ -128,7 +128,7 @@ class TestPacUnderDryRun:
                 "CONFIG_COMMON",
                 SimpleNamespace(use_pac=True, url="https://api.yellowdog.ai"),
             ),
-            patch("yellowdog_cli.utils.http.pac_context", pac),
+            patch("yellowdog_cli.utils.direct_http.pac_context", pac),
             patch.dict(os.environ, {}, clear=True),
         ):
             wrapper_module.set_proxy()

@@ -31,7 +31,7 @@ from yellowdog_client.model import (
     WorkRequirement,
 )
 
-from yellowdog_cli.utils import http
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.event_printing import (
     event_count,
@@ -721,7 +721,7 @@ def follow_events(
     concluded = False
     while not _STOP_FOLLOWING.is_set():
         try:
-            response = http.get(
+            response = direct_http.get(
                 headers={
                     "Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"
                 },

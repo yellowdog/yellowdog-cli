@@ -13,7 +13,7 @@ from json import dumps as json_dumps
 from json import loads as json_loads
 from typing import cast
 
-from yellowdog_cli.utils import http
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.entity_names import ET_WORK_REQUIREMENTS
 from yellowdog_cli.utils.misc_utils import format_yd_name
@@ -140,7 +140,7 @@ def submit_platform_document(
     wr_body = {**wr_data, TASK_GROUPS: groups_without_tasks}
 
     # Submit the Work Requirement and its Task Groups
-    response = http.post(
+    response = direct_http.post(
         url=f"{ctx.config.url}/work/requirements",
         headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
         json=wr_body,
@@ -242,7 +242,7 @@ def submit_json_task_batch(
     batch_number_str = formatted_number_str(batch_number, num_batches)
 
     def attempt() -> None:
-        response = http.post(
+        response = direct_http.post(
             url=(
                 f"{ctx.config.url}/work/namespaces/{namespace}"
                 f"/requirements/{wr_name}/taskGroups/{task_group_name}/tasks"

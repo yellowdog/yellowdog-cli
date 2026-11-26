@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from yellowdog_cli.utils import http
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.completion_cache import cache_directory, cache_key
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import (
@@ -771,7 +771,7 @@ def _request(
     progress.waiting()
     try:
         # Streamed, so that the report's body can be read in chunks
-        return http.put(
+        return direct_http.put(
             url=f"{ctx.config.url}/{REPORT_PATH}",
             headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
             json=body,

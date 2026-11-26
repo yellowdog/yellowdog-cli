@@ -68,6 +68,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import PLATFORM_MODEL_PACKAGE
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,
@@ -81,7 +82,6 @@ from yellowdog_cli.utils.glob_utils import (
     glob_literal_hint,
     glob_search_prefix,
 )
-from yellowdog_cli.utils.http import get
 from yellowdog_cli.utils.interactive import confirmed, select
 from yellowdog_cli.utils.limits import (
     KEYRING_FETCH_WORKERS,

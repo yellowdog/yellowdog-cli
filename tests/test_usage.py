@@ -166,7 +166,7 @@ def platform(monkeypatch, tmp_path) -> _Platform:
     """
     monkeypatch.setattr(completion_cache, "_temp_root", lambda: tmp_path)
     fake = _Platform()
-    monkeypatch.setattr(usage_report.http, "put", fake)
+    monkeypatch.setattr(usage_report.direct_http, "put", fake)
     return fake
 
 
@@ -269,7 +269,7 @@ class TestTheReportsWait:
         def timed_out(**kwargs):
             raise ReadTimeout("read timed out")
 
-        monkeypatch.setattr(usage_report.http, "put", timed_out)
+        monkeypatch.setattr(usage_report.direct_http, "put", timed_out)
         with pytest.raises(ReadTimeout, match=r"5 minutes.*requestTimeout") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
@@ -280,7 +280,7 @@ class TestTheReportsWait:
         def unreachable(**kwargs):
             raise ConnectTimeout("connect timed out")
 
-        monkeypatch.setattr(usage_report.http, "put", unreachable)
+        monkeypatch.setattr(usage_report.direct_http, "put", unreachable)
         with pytest.raises(ConnectTimeout, match=r"^connect timed out$") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
@@ -297,7 +297,7 @@ class TestTheReportsWait:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.http, "put", stalls)
+        monkeypatch.setattr(usage_report.direct_http, "put", stalls)
         with pytest.raises(
             ConnectionError, match=r"5 minutes.*requestTimeout"
         ) as raised:
@@ -314,7 +314,7 @@ class TestTheReportsWait:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.http, "put", lost)
+        monkeypatch.setattr(usage_report.direct_http, "put", lost)
         with pytest.raises(ConnectionError, match=r"^connection reset$"):
             _report(_ctx())
 
@@ -382,7 +382,7 @@ class TestFetchProgress:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.http, "put", broken)
+        monkeypatch.setattr(usage_report.direct_http, "put", broken)
         with pytest.raises(ConnectionError, match="connection lost"):
             _fetch_shown()
         assert not list(
@@ -1338,7 +1338,7 @@ class TestANamespaceScopedApplication:
 
         def install(readable, usable, every=("team-render", "team-train")):
             fake = _ScopedPlatform(set(usable))
-            monkeypatch.setattr(usage_report.http, "put", fake)
+            monkeypatch.setattr(usage_report.direct_http, "put", fake)
             monkeypatch.setattr(
                 entity_utils, "search_namespaces", lambda client, namespace: readable
             )

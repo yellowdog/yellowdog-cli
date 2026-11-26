@@ -10,10 +10,11 @@ with (PlatformClient.create()'s Product arguments), so every client the CLI
 builds is given cli_product(). The Platform then knows SDK calls for the
 SDK's, and adapts its responses to the SDK's version.
 
-The direct calls are made through http.py, which sends CLI_USER_AGENT. It
-has the SDKs' form, so the Platform reads it, but names the CLI as the
-client, which the Platform does not know and so never adapts for: the CLI
-reads those responses' JSON itself, not through the SDK's models.
+The direct calls are made through direct_http.py, which sends
+CLI_USER_AGENT. It has the SDKs' form, so the Platform reads it, but names
+the CLI as the client, which the Platform does not know and so never
+adapts for: the CLI reads those responses' JSON itself, not through the
+SDK's models.
 """
 
 from __future__ import annotations

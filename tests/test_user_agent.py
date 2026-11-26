@@ -1,7 +1,7 @@
 """
-The User-Agent of the CLI's requests: its direct calls (utils/http.py) name
-the CLI as the client, in the SDKs' form, and every Platform client it
-builds names the CLI through the SDK's own mechanism (a Product given to
+The User-Agent of the CLI's requests: its direct calls
+(utils/direct_http.py) name the CLI as the client, in the SDKs' form, and
+every Platform client it builds names the CLI through the SDK's own mechanism (a Product given to
 PlatformClient.create()), which the SDK sends on each request.
 """
 

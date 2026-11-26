@@ -1,7 +1,7 @@
 """
-utils/http.py, through which the CLI makes its direct requests: each carries
-the CLI's User-Agent, the PAC file's fetch included, and no direct request
-is made with 'requests' itself anywhere else in the package.
+utils/direct_http.py, through which the CLI makes its direct requests: each
+carries the CLI's User-Agent, the PAC file's fetch included, and no direct
+request is made with 'requests' itself anywhere else in the package.
 """
 
 import ast
@@ -13,7 +13,7 @@ import pypac
 import pytest
 import requests
 
-from yellowdog_cli.utils import http
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.user_agent import CLI_USER_AGENT
 
 _PACKAGE = Path(__file__).resolve().parent.parent / "yellowdog_cli"
@@ -41,10 +41,10 @@ def sent(monkeypatch) -> list[requests.PreparedRequest]:
 @pytest.mark.parametrize(
     "call, method",
     [
-        (http.get, "GET"),
-        (http.post, "POST"),
-        (http.put, "PUT"),
-        (http.delete, "DELETE"),
+        (direct_http.get, "GET"),
+        (direct_http.post, "POST"),
+        (direct_http.put, "PUT"),
+        (direct_http.delete, "DELETE"),
     ],
 )
 def test_a_direct_request_carries_the_cli_user_agent(sent, call, method):
@@ -74,7 +74,7 @@ def test_the_pac_file_is_fetched_with_the_cli_user_agent(monkeypatch):
             return False
 
     monkeypatch.setattr(pypac, "pac_context_for_url", _Context)
-    with http.pac_context("https://api.example.invalid"):
+    with direct_http.pac_context("https://api.example.invalid"):
         pass
     [session] = sessions
     assert session.headers["User-Agent"] == CLI_USER_AGENT
@@ -91,7 +91,7 @@ def test_no_pac_found_is_not_looked_for_again(monkeypatch):
         raise AssertionError("pac_context_for_url() called with no PAC")
 
     monkeypatch.setattr(pypac, "pac_context_for_url", refuse)
-    with http.pac_context("https://api.example.invalid"):
+    with direct_http.pac_context("https://api.example.invalid"):
         pass
 
 
@@ -102,7 +102,7 @@ def test_it_imports_no_sdk():
     """
     script = (
         "import sys\n"
-        "import yellowdog_cli.utils.http\n"
+        "import yellowdog_cli.utils.direct_http\n"
         "print('yellowdog_client' in sys.modules)\n"
     )
     result = subprocess.run(
@@ -168,7 +168,7 @@ def test_every_direct_request_is_made_through_http():
     """
     offenders = {}
     for path in sorted(_PACKAGE.rglob("*.py")):
-        if path == _PACKAGE / "utils" / "http.py":
+        if path == _PACKAGE / "utils" / "direct_http.py":
             continue
         found = _direct_requests(ast.parse(path.read_text(encoding="utf-8")))
         if found:

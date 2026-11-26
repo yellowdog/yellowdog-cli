@@ -184,7 +184,7 @@ def _no_real_proxy_auto_configuration(monkeypatch):
     consults the system's proxy settings and the network (WPAD) and on a CI
     runner can wait minutes on each call: it means the test's fake
     configuration left 'use_pac' unset, which a MagicMock reads as true. A
-    test about PAC patches http.pac_context itself, inside the test, so
+    test about PAC patches direct_http.pac_context itself, inside the test, so
     after this.
     """
     import pypac
@@ -193,10 +193,12 @@ def _no_real_proxy_auto_configuration(monkeypatch):
         raise AssertionError(
             "proxy auto-configuration was attempted: give the test's"
             " configuration use_pac=False, or patch"
-            " yellowdog_cli.utils.http.pac_context in a test about PAC"
+            " yellowdog_cli.utils.direct_http.pac_context in a test about PAC"
         )
 
+    # pac_context_for_url() looks get_pac up in pypac.api, not the package
     monkeypatch.setattr(pypac, "get_pac", refuse)
+    monkeypatch.setattr(pypac.api, "get_pac", refuse)
 
 
 @pytest.fixture(autouse=True)

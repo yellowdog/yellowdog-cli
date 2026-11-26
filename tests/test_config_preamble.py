@@ -258,7 +258,7 @@ class TestProxyMessages:
                 SimpleNamespace(use_pac=use_pac, url="https://api.yellowdog.ai"),
             ),
             # set_proxy() imports it where it uses it
-            patch("yellowdog_cli.utils.http.pac_context", nullcontext),
+            patch("yellowdog_cli.utils.direct_http.pac_context", nullcontext),
             patch.dict(os.environ, environment, clear=True),
         ):
             wrapper.set_proxy()

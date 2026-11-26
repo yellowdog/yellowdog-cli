@@ -47,6 +47,7 @@ from yellowdog_client.model import (
 from yellowdog_client.model.exceptions import InvalidRequestException
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import post, put
 from yellowdog_cli.utils.entity_names import (
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,
@@ -96,7 +97,6 @@ from yellowdog_cli.utils.exit_codes import (
     NotFoundError,
     classify,
 )
-from yellowdog_cli.utils.http import post, put
 from yellowdog_cli.utils.interactive import confirmed
 from yellowdog_cli.utils.load_resources import (
     RESOURCE_SOURCE_DIR,
