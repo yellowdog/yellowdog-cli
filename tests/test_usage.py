@@ -37,6 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
 from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, report_time
 
 URL = "https://api.example.com"
@@ -362,6 +363,29 @@ class TestFetchProgress:
             _report(ctx, refresh=True)
         assert "Waiting for the Platform" not in terminal.getvalue()
 
+    def test_progress_lines_for_a_program_reading_them(
+        self, platform, monkeypatch, capsys
+    ):
+        # As the Usage Explorer asks: under --json, off a terminal
+        monkeypatch.setenv(USAGE_PROGRESS_LINES, "1")
+        ctx = _ctx(json_output=True, json=True)
+        with output_settings.configured(ctx.args):
+            _report(ctx, refresh=True)
+        lines = [
+            line
+            for line in capsys.readouterr().err.splitlines()
+            if line.startswith(USAGE_PROGRESS_PREFIX)
+        ]
+        assert lines[0] == f"{USAGE_PROGRESS_PREFIX} waiting"
+        assert lines[-1] == f"{USAGE_PROGRESS_PREFIX} received {len(platform.content)}"
+
+    def test_no_progress_lines_unasked(self, platform, monkeypatch, capsys):
+        monkeypatch.delenv(USAGE_PROGRESS_LINES, raising=False)
+        ctx = _ctx(json_output=True, json=True)
+        with output_settings.configured(ctx.args):
+            _report(ctx, refresh=True)
+        assert USAGE_PROGRESS_PREFIX not in capsys.readouterr().err
+
     def test_no_progress_off_a_terminal(self, platform, monkeypatch):
         from rich.console import Console
 
@@ -547,6 +571,184 @@ class TestGrouping:
             APP_RENDER: 1,
             USER_ALICE: 3,
         }
+
+
+# Two Instances alike in everything but their IDs and times, and two others
+ALIKE = [
+    INSTANCES_HEADER,
+    _instance(CR_TRAIN, "t3a.small", running=3600, pending=360, instance_id="i-1"),
+    _instance(CR_TRAIN, "t3a.small", running=1800, stopped=60, instance_id="i-2"),
+    _instance(CR_TRAIN, "t3a.small", running=900, spot=True, instance_id="i-3"),
+    _instance(CR_RENDER, "g4dn.xlarge", running=0, stopped=7200, instance_id="i-4"),
+]
+
+
+def _without_instances(report: usage_report.Report) -> None:
+    """
+    The kept zip rewritten with its instances file empty, so that only a
+    summed copy kept beside it can still give the report's figures.
+    """
+    report.path.write_bytes(_zip(instances=[INSTANCES_HEADER]))
+
+
+def _figures(groups: list[usage_report.UsageGroup]) -> dict:
+    return {
+        tuple(g.keys.values()): (g.instances, dict(g.seconds), g.cost) for g in groups
+    }
+
+
+class TestTheSummedCopy:
+    """
+    Instances alike in every column but their ID are summed into one row the
+    first time a report is read, and kept beside its zip, so that a report
+    of a million Instances is read again in a moment: every grouping and
+    filter but by Instance ID is answered from it.
+    """
+
+    def test_alike_instances_are_one_row_with_their_count_and_seconds(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        groups = {
+            tuple(g.keys.values()): g
+            for g in usage_report.grouped_usage(
+                report, ["cr", "pricing", "instance-type"]
+            )
+        }
+        alike = groups[("train-1", "on-demand", "t3a.small")]
+        assert alike.instances == 2
+        assert alike.seconds["running"] == 5400
+        assert alike.seconds["pending"] == 360
+        assert alike.seconds["stopped"] == 60
+        assert groups[("train-1", "spot", "t3a.small")].instances == 1
+        assert groups[("render-1", "on-demand", "g4dn.xlarge")].instances == 1
+        assert (report.directory / usage_report.SUMMED_CSV).is_file()
+
+    def test_a_later_run_reads_the_summed_copy(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        first = usage_report.grouped_usage(_report(_ctx()), ["namespace", "region"])
+        again = _report(_ctx())
+        _without_instances(again)
+        assert _figures(usage_report.grouped_usage(again, ["namespace", "region"])) == (
+            _figures(first)
+        )
+
+    @pytest.mark.parametrize(
+        "by, where",
+        [(["instance-id"], None), (["namespace"], [("instance-id", "i-1")])],
+    )
+    def test_by_or_where_instance_id_reads_every_instance(self, platform, by, where):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        usage_report.grouped_usage(report, ["namespace"])
+        groups = usage_report.grouped_usage(
+            _report(_ctx()), by, usage_report.filter_of(where)
+        )
+        if where is None:
+            assert sorted(g.keys["instance-id"] for g in groups) == [
+                "i-1",
+                "i-2",
+                "i-3",
+                "i-4",
+            ]
+        else:
+            (group,) = groups
+            assert group.instances == 1 and group.seconds["running"] == 3600
+
+    def test_the_figures_are_those_of_every_instance(self, platform):
+        # Each key and a filter, from the summed copy, against the same
+        # report read Instance by Instance (by instance-id, then re-totalled)
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        keys = ["namespace", "cr", "region", "instance-type", "pricing", "source"]
+        summed = usage_report.grouped_usage(report, keys)
+        each = usage_report.grouped_usage(report, [*keys, "instance-id"])
+        totals: dict[tuple, list] = {}
+        for g in each:
+            key = tuple(v for k, v in g.keys.items() if k != "instance-id")
+            entry = totals.setdefault(key, [0, 0.0])
+            entry[0] += g.instances
+            entry[1] += g.total_seconds
+        assert {
+            tuple(g.keys.values()): [g.instances, g.total_seconds] for g in summed
+        } == totals
+
+    def test_one_run_reads_the_zip_once(self, platform, monkeypatch):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        opened: list[str] = []
+        real = zipfile.ZipFile
+
+        def counted(path, *args, **kwargs):
+            opened.append(str(path))
+            return real(path, *args, **kwargs)
+
+        monkeypatch.setattr(usage_report.zipfile, "ZipFile", counted)
+        # As yd usage -n ... --cost reads it: the namespace's check, the
+        # places to price and the grouping
+        usage_report.grouped_usage(report, [])
+        usage_report.counted_places(report)
+        usage_report.grouped_usage(report, ["namespace"])
+        assert opened == [str(report.path)]
+
+    def test_a_summed_copy_that_cannot_be_read_is_made_again(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        expected = _figures(
+            usage_report.grouped_usage(_report(_ctx()), ["instance-type"])
+        )
+        report = _report(_ctx())
+        summed = report.directory / usage_report.SUMMED_CSV
+        summed.write_text("Not,the,heading\n1,2,3\n", encoding="utf-8")
+        assert _figures(usage_report.grouped_usage(report, ["instance-type"])) == (
+            expected
+        )
+        assert summed.read_text(encoding="utf-8").startswith("Compute Requirement ID,")
+
+    def test_a_summed_copy_that_cannot_be_written_is_no_failure(
+        self, platform, monkeypatch
+    ):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+
+        def refused(*_args, **_kwargs):
+            raise PermissionError("read-only")
+
+        monkeypatch.setattr(usage_report, "write_text_atomically", refused)
+        (group,) = usage_report.grouped_usage(report, [])
+        assert group.instances == 4
+        assert not (report.directory / usage_report.SUMMED_CSV).exists()
+
+    def test_a_refetched_report_is_summed_afresh(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        usage_report.grouped_usage(_report(_ctx()), [])
+        platform.content = _zip(instances=ALIKE[:2])
+        (group,) = usage_report.grouped_usage(_report(_ctx(), refresh=True), [])
+        assert group.instances == 1
+
+    @pytest.mark.parametrize("by", [["source", "pricing"], ["instance-id", "source"]])
+    def test_a_column_or_cell_missing_reads_as_empty(self, platform, by):
+        # No 'Spot' column, and a row cut short before its 'Source Name'
+        header = INSTANCES_HEADER.removesuffix(",Spot")
+        rows = [row.rsplit(",", 1)[0] for row in ALIKE[1:3]]
+        platform.content = _zip(
+            instances=[header, rows[0], "host,AWS,eu-west-2,t3a.small"]
+        )
+        groups = usage_report.grouped_usage(_report(_ctx()), by)
+        assert sorted(g.keys["source"] for g in groups) == ["-", "source-a"]
+        assert all(g.keys.get("pricing", "on-demand") == "on-demand" for g in groups)
+
+    def test_the_cost_is_that_of_every_instance(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        prices = {
+            ("AWS", "eu-west-2", "t3a.small", "on-demand"): 0.02,
+            ("AWS", "eu-west-2", "t3a.small", "spot"): 0.01,
+        }
+        summed = usage_cost.Costing(prices)
+        (group,) = usage_report.grouped_usage(report, [], costing=summed)
+        assert group.cost == pytest.approx(1.5 * 0.02 + 0.25 * 0.01)
+        assert group.priced_seconds == 5400 + 900
+        # g4dn.xlarge never ran: nothing unpriced
+        assert group.unpriced_seconds == 0 and not summed.unpriced
 
 
 NAMES = usage_report.CreatorNames(
@@ -820,7 +1022,7 @@ class TestTheCommand:
         row = next(line for line in out.splitlines() if "team-render" in line)
         assert "2:00" in row  # the stopped hours
         # 6,300 seconds running; 13,860 in all
-        assert "Total: 4 Instances, 1:45 running of 3:51 in all statuses" in out
+        assert "Total: 2 rows, 4 Instances, 1:45 running of 3:51 in all statuses" in out
 
     def test_a_kept_report_says_so_and_how_to_refresh(self, platform, capsys):
         _show(capsys)
@@ -858,6 +1060,8 @@ class TestTheCommand:
                 "unknown": 0,
                 "total": 7200,
             },
+            # 7,200 of the 13,860 seconds the two namespaces spent
+            "share": {"hours": 0.5195},
         }
 
     def test_no_instances_is_a_warning(self, platform, capsys):
@@ -1292,7 +1496,7 @@ class TestFilters:
         where = [("provider", "aws"), ("instance-type", "t3a.*"), ("provider", "oci")]
         out, _ = _show(capsys, usage_where=where)
         assert ", by namespace, where provider=aws or oci, instance-type=t3a.*" in out
-        assert "Total: 2 Instances" in out
+        assert "Total: 1 row, 2 Instances" in out
         document = loads(
             _show(capsys, usage_where=where, json_output=True, json=True)[0]
         )
@@ -1864,6 +2068,49 @@ def _show_priced(capsys, rows=PRICES, **args) -> tuple[str, str, MagicMock]:
     return captured.out, captured.err, search
 
 
+class TestShare:
+    """
+    Each group's share of the total, in the JSON: of the time, and with
+    --cost of the estimated cost, as fractions to four places.
+    """
+
+    def test_each_group_holds_its_share_of_the_time(self, platform, capsys):
+        document = loads(_show(capsys, json_output=True, json=True)[0])
+        shares = {g["namespace"]: g["share"] for g in document["groups"]}
+        assert shares == {
+            "team-render": {"hours": 0.5195},
+            "team-train": {"hours": 0.4805},
+        }
+        assert document["total"]["share"] == {"hours": 1.0}
+
+    def test_with_cost_the_share_of_the_cost_too(self, platform, capsys):
+        out, _, _ = _show_priced(capsys, usage_cost=True, json_output=True, json=True)
+        document = loads(out)
+        shares = {g["namespace"]: g["share"] for g in document["groups"]}
+        # team-render's Instance never ran, so cost nothing
+        assert shares == {
+            "team-render": {"hours": 0.5195, "cost": 0.0},
+            "team-train": {"hours": 0.4805, "cost": 1.0},
+        }
+        assert document["total"]["share"] == {"hours": 1.0, "cost": 1.0}
+
+    def test_nothing_priced_is_no_share_of_the_cost(self, platform, capsys):
+        out, _, _ = _show_priced(
+            capsys, _refused(), usage_cost=True, json_output=True, json=True
+        )
+        document = loads(out)
+        assert all(g["share"]["cost"] is None for g in document["groups"])
+        assert document["total"]["share"]["cost"] is None
+
+    def test_the_rest_top_cut_holds_its_share(self, platform, capsys):
+        document = loads(_show(capsys, usage_top=1, json_output=True, json=True)[0])
+        assert document["more"]["share"] == {"hours": 0.4805}
+
+    def test_a_share_of_nothing_is_none(self):
+        assert usage.share_of(0.0, 0.0) is None
+        assert usage.share_of(1.0, 3.0) == 0.3333
+
+
 class TestTheCommandWithCost:
     def test_cost_adds_a_column_and_the_total(self, platform, capsys):
         out, _, _ = _show_priced(capsys, usage_cost=True)
@@ -1976,6 +2223,10 @@ class TestTop:
         capsys.readouterr()  # the fetch's own lines
         out, _ = _show(capsys, usage_top=5, json_output=True, json=True)
         assert loads(out)["more"] is None
+
+    def test_the_total_counts_every_row_those_cut_included(self, platform, capsys):
+        out, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
+        assert "Total: 4 rows, 4 Instances" in out
 
     def test_no_more_key_without_top(self, platform, capsys):
         out, _ = _show(capsys, json_output=True, json=True)
@@ -2627,3 +2878,63 @@ def test_report_time_reads_any_fraction(text, instant):
 def test_report_time_refuses_what_is_not_a_time():
     with pytest.raises(ValueError):
         report_time("not a time")
+
+
+class TestTheAccount:
+    """
+    The document names the account the report is of, and the Platform's
+    URL: the account name looked up as the report is fetched and kept with
+    it, so a reused report names it without asking again.
+    """
+
+    def _ctx(self, details=None, fails=None, **args) -> RunContext:
+        ctx = _ctx(json_output=True, json=True, **args)
+        lookup = ctx.client.application_client.get_application_details
+        if fails is not None:
+            lookup.side_effect = fails
+        else:
+            lookup.return_value = details or SimpleNamespace(
+                accountName="YellowDog Production",
+                allNamespacesReadable=True,
+                readableNamespaces=None,
+            )
+        return ctx
+
+    def _document(self, capsys, ctx) -> dict:
+        with output_settings.configured(ctx.args):
+            usage.show_usage(ctx)
+        return loads(capsys.readouterr().out)
+
+    def test_the_document_names_the_account_and_the_url(self, platform, capsys):
+        document = self._document(capsys, self._ctx())
+        assert document["accountName"] == "YellowDog Production"
+        assert document["url"] == URL
+
+    def test_a_reused_report_keeps_the_name(self, platform, capsys):
+        self._document(capsys, self._ctx())
+        ctx = self._ctx(fails=AssertionError("not asked again"))
+        document = self._document(capsys, ctx)
+        assert document["reused"] is True
+        assert document["accountName"] == "YellowDog Production"
+
+    def test_a_failed_lookup_leaves_the_name_out(self, platform, capsys):
+        ctx = self._ctx(namespace="team-render", fails=RuntimeError("no"))
+        document = self._document(capsys, ctx)
+        assert document["accountName"] is None
+        assert document["groups"]
+
+    def test_a_lost_session_still_fails(self, platform, capsys):
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+
+        ctx = self._ctx(namespace="team-render", fails=RequestsConnectionError("down"))
+        with pytest.raises(RequestsConnectionError):
+            self._document(capsys, ctx)
+
+    def test_a_report_kept_without_the_name_has_none(self, platform, capsys):
+        report = _report(self._ctx())
+        kept = report.directory / "fetched.json"
+        data = loads(kept.read_text(encoding="utf-8"))
+        del data["accountName"]
+        kept.write_text(dumps(data), encoding="utf-8")
+        capsys.readouterr()
+        assert self._document(capsys, self._ctx())["accountName"] is None

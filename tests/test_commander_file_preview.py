@@ -885,6 +885,61 @@ def test_the_save_dialog_has_no_preview_and_still_suggests_its_name(
     assert normpath(chosen) == normpath(suggested)
 
 
+def _save(window, monkeypatch, suggested: Path, chosen: Path | None) -> dict:
+    """
+    Run the save dialog suggesting 'suggested', recording the directory and
+    file name it opened with, and save as 'chosen' (None: cancel).
+    """
+    seen: dict = {}
+
+    def interact(dialog):
+        edit = dialog.findChild(QLineEdit, "fileNameEdit")
+        seen["directory"] = dialog.directory().absolutePath()
+        seen["name"] = edit.text()
+        if chosen is None:
+            press(dialog, "Cancel")
+            return
+        dialog.selectFile(str(chosen))
+        press(dialog, "Save")
+
+    drive_file_dialog(window, monkeypatch, interact)
+    seen["path"] = window._file_dialogs.save_file(
+        caption="Save", directory=str(suggested), file_pattern="All files (*)"
+    )
+    return seen
+
+
+def test_a_save_offers_the_directory_last_saved_to(window, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "exports"
+    elsewhere.mkdir()
+    first = _save(window, monkeypatch, tmp_path / "a.csv", elsewhere / "kept.csv")
+    assert realpath(first["directory"]) == realpath(tmp_path)
+    second = _save(window, monkeypatch, tmp_path / "b.pdf", None)
+    # Its own suggested name, in the directory the last save went to
+    assert realpath(second["directory"]) == realpath(elsewhere)
+    assert second["name"] == "b.pdf"
+
+
+def test_a_cancelled_save_remembers_nothing(window, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "exports"
+    elsewhere.mkdir()
+    _save(window, monkeypatch, tmp_path / "a.csv", None)
+    second = _save(window, monkeypatch, tmp_path / "b.csv", None)
+    assert realpath(second["directory"]) == realpath(tmp_path)
+
+
+def test_a_directory_saved_to_and_since_removed_is_not_offered(
+    window, tmp_path, monkeypatch
+):
+    elsewhere = tmp_path / "exports"
+    elsewhere.mkdir()
+    _save(window, monkeypatch, tmp_path / "a.csv", elsewhere / "kept.csv")
+    (elsewhere / "kept.csv").unlink(missing_ok=True)
+    elsewhere.rmdir()
+    second = _save(window, monkeypatch, tmp_path / "b.csv", None)
+    assert realpath(second["directory"]) == realpath(tmp_path)
+
+
 def test_the_pane_opens_at_its_default_width_and_cannot_be_dragged_shut(
     window, tmp_path, monkeypatch
 ):

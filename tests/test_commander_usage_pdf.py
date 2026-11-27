@@ -39,6 +39,7 @@ def report(rows: int = 4, cost: bool = True) -> ReportContent:
     ]
     return ReportContent(
         title="Compute Usage and Cost",
+        account_line="YellowDog Production · https://api.yellowdog.ai",
         subtitle="October 2026 · team-render",
         scope_lines=[
             "Window: 2026-10-01 00:00 → 2026-11-01 00:00 UTC · Namespace: team-render",

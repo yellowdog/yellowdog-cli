@@ -20,10 +20,16 @@ import qt_guard
 qt_guard.require_qt()
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QPoint, QProcess, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtCore import QDate, QObject, QPoint, QProcess, QRect, QSize, Qt
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QStyle
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QStyle,
+    QStyleFactory,
+    QStyleOptionHeader,
+)
 
 import yellowdog_cli.commander.usage_explorer as usage_explorer
 from yellowdog_cli.commander import commander, usage_explorer
@@ -92,6 +98,19 @@ def children(monkeypatch):
 
     monkeypatch.setattr(usage_explorer, "cli_program", program)
     return holder
+
+
+PROGRESS_SCRIPT = """
+import json, os, sys, time
+def say(line):
+    sys.stderr.write(line + "\\n")
+    sys.stderr.flush()
+    time.sleep(0.3)
+say("yd-usage-progress: waiting")
+say("yd-usage-progress: received 23400000")
+sys.stderr.write("WARNING: kept\\n")
+print(json.dumps({"asked": os.environ.get("YD_USAGE_PROGRESS_LINES")}))
+"""
 
 
 @pytest.fixture
@@ -352,6 +371,19 @@ def document(
     total["estimatedCost"] = round(sum(costs), 2) if costs else None
     total["unpricedRunningHours"] = sum(g["unpricedRunningHours"] for g in groups)
     total["groups"] = len(groups)
+    # Each group's share of the total, as yd usage writes it
+    for each in (*groups, total):
+        each.setdefault(
+            "share",
+            {
+                "hours": round(each["seconds"]["total"] / total["seconds"]["total"], 4)
+                if total["seconds"]["total"]
+                else None,
+                "cost": round(each["estimatedCost"] / total["estimatedCost"], 4)
+                if each["estimatedCost"] is not None and total["estimatedCost"]
+                else None,
+            },
+        )
     return {
         "from": FROM_ISO,
         "until": UNTIL_ISO,
@@ -513,10 +545,7 @@ def column_of(explorer, name: str) -> int:
     'Running (h:mm)').
     """
     model = explorer._model
-    headings = [
-        model.headerData(c, Qt.Orientation.Horizontal)
-        for c in range(model.columnCount())
-    ]
+    headings = [model.heading(c) for c in range(model.columnCount())]
     return next(
         c
         for c, h in enumerate(headings)
@@ -524,14 +553,15 @@ def column_of(explorer, name: str) -> int:
     )
 
 
-def click_heading(explorer, name: str) -> None:
+def click_heading(explorer, name: str, shift: bool = False) -> None:
     header = explorer._table.horizontalHeader()
     column = column_of(explorer, name)
     x = header.sectionViewportPosition(column) + header.sectionSize(column) // 2
     QTest.mouseClick(
         header.viewport(),
         Qt.MouseButton.LeftButton,
-        pos=QPoint(x, header.height() // 2),
+        Qt.KeyboardModifier.ShiftModifier if shift else Qt.KeyboardModifier.NoModifier,
+        QPoint(x, header.height() // 2),
     )
 
 
@@ -576,6 +606,8 @@ def test_the_top_level_shows_namespaces_and_the_total(explorer, children):
         "now",
         "--by",
         "namespace",
+        "--top",
+        "500",
         "--cost",
     ]
     assert explorer._model.rowCount() == 3
@@ -965,6 +997,373 @@ def test_instance_id_combines_with_the_keys_ticked(explorer, children):
     args = usage_args(children)
     assert value_of(args, "--sort") == "region"
     assert value_of(args, "--by") == "cr,instance-id,region,tag"
+
+
+def shown_heading(explorer, name: str, role=Qt.ItemDataRole.DisplayRole):
+    return explorer._model.headerData(
+        column_of(explorer, name), Qt.Orientation.Horizontal, role
+    )
+
+
+def test_shift_click_adds_a_column_as_the_next_sort_key(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    click_heading(explorer, heading("cr"))
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "cr,running" and "--reverse" not in args
+    # The first key has the arrow, the next its number and a tooltip
+    header = explorer._table.horizontalHeader()
+    assert header.sortIndicatorSection() == column_of(explorer, heading("cr"))
+    assert shown_heading(explorer, "Running").endswith(" ²")
+    assert shown_heading(explorer, "Running", Qt.ItemDataRole.ToolTipRole) == (
+        "Sorted second, most first"
+    )
+    assert shown_heading(explorer, heading("cr")) == heading("cr")
+    # The command line shows the sort; an export's headings carry no number
+    assert "--sort cr,running" in explorer._command_line.text()
+    assert (
+        "Running (h:mm)"
+        in explorer._model.text_rows(list(range(explorer._model.columnCount())))[0]
+    )
+
+
+def test_shift_click_on_a_sort_key_drops_it(explorer, children):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "namespace"
+    assert not shown_heading(explorer, "Running").endswith(" ²")
+
+
+def test_shift_click_with_the_default_sort_adds_after_total(explorer, children):
+    click_heading(explorer, "Namespace", shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "total,namespace"
+
+
+def test_clicking_the_first_key_reverses_every_key(explorer, children):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "namespace,running" and "--reverse" in args
+    assert shown_heading(explorer, "Running", Qt.ItemDataRole.ToolTipRole) == (
+        "Sorted second, least first"
+    )
+    # Any other column, clicked alone, is the one sort
+    click_heading(explorer, "Running")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "running" and "--reverse" not in args
+
+
+def test_a_key_no_longer_totalled_by_leaves_the_sort(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    tick(explorer, "region")
+    settle(explorer)
+    click_heading(explorer, "Region")
+    settle(explorer)
+    click_heading(explorer, heading("cr"), shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "region,cr"
+    tick(explorer, "region")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "cr"
+
+
+def test_the_pdf_states_several_sort_keys(explorer, children, tmp_path, monkeypatch):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    monkeypatch.setattr(usage_explorer, "write_pdf", lambda *args, **kwargs: 1)
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert (
+        made[-1]
+        .scope_lines[1]
+        .endswith("sorted by Namespace, A to Z, then Running (h:mm), most first")
+    )
+
+
+def cut_document(top: bool) -> dict:
+    """
+    Three namespaces: with '--top', two of them and the third summed in
+    'more', as yd usage --top 2 writes it.
+    """
+    groups = [
+        group({"namespace": f"team-{n}"}, 3 - n, 3.0 - n, 0.0, 10.0 - n)
+        for n in range(3)
+    ]
+    body = document(["namespace"], groups)
+    if top:
+        body["groups"] = groups[:2]
+        more = group({}, 1, 1.0, 0.0, 8.0)
+        body["more"] = {"groups": 1, **more}
+    return body
+
+
+def test_rows_past_the_first_are_summed_and_can_all_be_shown(explorer, children):
+    children.answer = lambda c, a: (
+        (json.dumps(NAMESPACES), "", 0, 0)
+        if c == "yd list"
+        else (json.dumps(KEPT), "", 0, 0)
+        if "--reports" in a
+        else (json.dumps(cut_document("--top" in a)), "", 0, 0)
+    )
+    explorer._refresh.click()
+    settle(explorer)
+    model = explorer._model
+    # Two rows, the rest summed, then the Total
+    assert model.rowCount() == 4
+    assert cells(explorer, 2)[:2] == ["(1 more)", "1"]
+    assert model.data(model.index(2, 0), Qt.ItemDataRole.FontRole).italic()
+    assert cells(explorer, 3)[0] == "Total"
+    assert explorer._row_count.text() == "2 of 3 rows"
+    assert "rows" not in explorer._notes.text()
+    # The CSV of raw numbers labels the summed row as the table does
+    assert model.raw_rows([0, 1])[3] == ["(1 more)", "1"]
+    # The summed row is no group to drill into
+    started = len(children.started)
+    double_click_row(explorer, 2)
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert explorer._show_all.isVisible()
+    explorer._show_all.click()
+    settle(explorer)
+    assert "--top" not in usage_args(children)
+    assert model.rowCount() == 4
+    assert cells(explorer, 2)[0] == "team-2"
+    assert not explorer._show_all.isVisible()
+    assert explorer._row_count.text() == "3 rows"
+
+
+def row_menu(explorer, row: int, column: int = 0) -> dict:
+    """
+    The right-click menu of a cell, by its actions' texts.
+    """
+    menu = explorer._row_menu(explorer._model.index(row, column))
+    return {a.text(): a for a in menu.actions() if not a.isSeparator()}
+
+
+def test_a_rows_menu_drills_into_it(explorer, children):
+    menu = row_menu(explorer, 0)
+    assert list(menu)[:3] == [
+        "Drill Into 'team-render'",
+        "Copy 'team-render'",
+        "Copy Selected Cells",
+    ]
+    menu["Drill Into 'team-render'"].trigger()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+
+
+def test_a_right_click_on_a_row_opens_its_menu(explorer):
+    rect = explorer._table.visualRect(explorer._model.index(0, 0))
+    explorer._table.customContextMenuRequested.emit(rect.center())
+    menu = QApplication.activePopupWidget()
+    try:
+        assert isinstance(menu, QMenu)
+        assert menu.actions()[0].text() == "Drill Into 'team-render'"
+    finally:
+        if menu is not None:
+            menu.close()
+
+
+def test_the_total_and_summed_rows_offer_no_drill(explorer):
+    total = explorer._model.rowCount() - 1
+    menu = row_menu(explorer, total)
+    assert not any(text.startswith("Drill Into") for text in menu)
+    assert "Copy 'Total'" in menu
+
+
+def test_a_rows_menu_copies_the_cell_and_the_selection(explorer, qapp):
+    row_menu(explorer, 0, 1)["Copy '17'"].trigger()
+    assert qapp.clipboard().text() == "17"
+    explorer._table.selectAll()
+    row_menu(explorer, 0)["Copy Selected Cells"].trigger()
+    assert qapp.clipboard().text().startswith("Namespace\tInstances\t")
+
+
+def test_copied_headings_carry_no_sort_mark(explorer, children, qapp):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    explorer._table.selectAll()
+    explorer._copy_cells()
+    assert "\tRunning (h:mm)\t" in qapp.clipboard().text().splitlines()[0]
+
+
+def test_a_key_of_several_filters_to_its_value(explorer, children):
+    tick(explorer, "region")
+    settle(explorer)
+    menu = row_menu(explorer, 0, 1)
+    menu["Filter to 'x'"].trigger()
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--by") == "namespace" and wheres(args) == ["region==x"]
+    assert explorer.breadcrumb_text().endswith("x")
+    # A key alone is drilled into instead
+    assert not any(t.startswith("Filter to") for t in row_menu(explorer, 0, 0))
+
+
+def test_rows_say_they_can_be_drilled_into(explorer):
+    model = explorer._model
+    tooltip = model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+    assert tooltip == (
+        f"Double-click to show it by {heading('cr')}; right-click for more"
+    )
+    total = model.rowCount() - 1
+    assert model.data(model.index(total, 0), Qt.ItemDataRole.ToolTipRole) is None
+
+
+def test_a_yellowdog_id_can_be_shown_in_commander(qapp, children, tmp_path):
+    ydid = "ydid:compreq:000000:AAAAAA:00000000-0000-0000-0000-000000000001"
+    children.answer = lambda c, a: (
+        (json.dumps(NAMESPACES), "", 0, 0)
+        if c == "yd list"
+        else (json.dumps(KEPT), "", 0, 0)
+        if "--reports" in a
+        else (
+            json.dumps(document(["cr-id"], [group({"cr-id": ydid}, 1, 1.0)])),
+            "",
+            0,
+            0,
+        )
+    )
+    shown: list[str] = []
+    window = UsageExplorer(
+        "Usage Explorer",
+        lambda: str(tmp_path),
+        lambda: list(BASE_ARGS),
+        QFont(),
+        False,
+        show_ydid=shown.append,
+    )
+    try:
+        window.show()
+        settle(window)
+        fetch(window)
+        menu = row_menu(window, 0)
+        [text] = [t for t in menu if t.endswith("in Commander")]
+        menu[text].trigger()
+        assert shown == [ydid]
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
+
+
+def test_without_commander_no_show_is_offered(explorer):
+    assert not any(t.endswith("in Commander") for t in row_menu(explorer, 0))
+
+
+def find(explorer, text: str) -> None:
+    explorer._find.clear()
+    QTest.keyClicks(explorer._find, text)
+    QTest.keyClick(explorer._find, Qt.Key.Key_Return)
+    settle(explorer)
+
+
+def test_find_filters_the_first_key_column(explorer, children):
+    assert explorer._find.placeholderText() == "Find in Namespace…"
+    find(explorer, "rend")
+    assert wheres(usage_args(children)) == ["namespace=*rend*"]
+    assert explorer._find.text() == "rend"
+
+
+def test_find_runs_once_typing_stops(explorer, children):
+    QTest.keyClicks(explorer._find, "sim")
+    wait_for(lambda: "namespace=*sim*" in wheres(usage_args(children)))
+    settle(explorer)
+
+
+def test_escape_in_find_empties_it(explorer, children):
+    find(explorer, "rend")
+    QTest.keyClick(explorer._find, Qt.Key.Key_Escape)
+    settle(explorer)
+    assert explorer._find.text() == ""
+    assert wheres(usage_args(children)) == []
+
+
+def test_find_belongs_to_its_level(explorer, children):
+    find(explorer, "team")
+    # Another key after the first keeps it
+    tick(explorer, "region")
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace=*team*"]
+    tick(explorer, "region")
+    settle(explorer)
+    # Drilling starts the next level unfound, and Back finds it again
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert explorer._find.text() == ""
+    assert explorer._find.placeholderText() == f"Find in {heading('cr')}…"
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    explorer._back.click()
+    settle(explorer)
+    assert explorer._find.text() == "team"
+
+
+def test_another_configuration_empties_find(explorer, children):
+    find(explorer, "rend")
+    explorer.reset("Usage Explorer — other.toml")
+    assert explorer._find.text() == ""
+    assert explorer._find.placeholderText() == "Find in Namespace…"
+
+
+def test_find_is_focused_by_its_shortcut(explorer):
+    explorer._find_shortcut.activated.emit()
+    assert explorer.focusWidget() is explorer._find
+
+
+def test_the_share_column_follows_the_cost(explorer, children):
+    model = explorer._model
+    column = column_of(explorer, "Share of cost")
+    # team-render's 248.10 of 279.80
+    assert cells(explorer, 0)[column] == "88.7%"
+    assert cells(explorer, model.rowCount() - 1)[column] == "100.0%"
+    # Sorting by it is sorting by the cost
+    click_heading(explorer, "Share of cost")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "cost"
+    # The raw export gives the fraction
+    raw = model.raw_rows([0, column])
+    assert raw[0] == ["Namespace", "Share of cost (fraction)"]
+    assert raw[1][1] == "0.8867"
+    # Without the cost, the share of the time
+    explorer._cost.click()
+    settle(explorer)
+    assert "Share of time" in shown_headings(explorer)
+    assert "Share of cost" not in shown_headings(explorer)
+
+
+def test_each_figure_sorts_by_itself_with_no_instances_column(explorer, children):
+    tick(explorer, "instance-id")
+    settle(explorer)
+    tick(explorer, "namespace")
+    settle(explorer)
+    assert "Instances" not in shown_headings(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "running"
 
 
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
@@ -1400,28 +1799,30 @@ def read_csv(path) -> list[list[str]]:
         return list(csv.reader(file))
 
 
-def test_export_offers_raw_numbers_first(explorer):
+def test_export_offers_raw_numbers_first_each_format_with_its_tick(explorer):
     assert explorer._export.text() == "Export"
     menu = explorer._export.menu()
     assert [action.text() for action in menu.actions()] == [
-        "Raw Numbers (CSV)…",
-        "As Shown (CSV)…",
-        "PDF Report…",
+        "Save CSV (Raw Numbers)…",
+        "Save CSV (As Shown)…",
+        "Include Total Row",
         "",
-        "Include Total Row (CSV)",
-        "Landscape PDF",
+        "Save PDF Report…",
+        "Portrait",
+        "Landscape",
     ]
     # The Total row included unless unticked; portrait unless ticked
     assert explorer._export_total.isCheckable()
     assert explorer._export_total.isChecked()
-    assert explorer._pdf_landscape.isCheckable()
+    # The orientation a choice, one always marked: portrait at first
+    assert explorer._pdf_portrait.isChecked()
     assert not explorer._pdf_landscape.isChecked()
     assert all(action.toolTip() for action in menu.actions() if action.text())
 
 
 def export_pdf_to(explorer, path, monkeypatch) -> list[dict]:
     """
-    Choose PDF Report… with the save dialog answering 'path' (None:
+    Choose Save PDF Report… with the save dialog answering 'path' (None:
     dismissed), returning what the dialog was asked.
     """
     asked: list[dict] = []
@@ -1467,6 +1868,37 @@ def test_the_pdf_is_of_the_view_shown_not_the_controls(
     assert made[0]["namespace"] is None
 
 
+def test_the_pdf_states_the_sort_shown(explorer, children, tmp_path, monkeypatch):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    monkeypatch.setattr(usage_explorer, "write_pdf", lambda *args, **kwargs: 1)
+
+    def sorted_by() -> str:
+        export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+        return made[-1].scope_lines[1]
+
+    assert sorted_by() == (
+        f"Totalled by Namespace · sorted by {DURATION_HEADING.format(heading='Total')},"
+        " most first"
+    )
+    click_heading(explorer, "Running")
+    settle(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert sorted_by().endswith(
+        f"sorted by {DURATION_HEADING.format(heading='Running')}, least first"
+    )
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    assert sorted_by().endswith("sorted by Namespace, A to Z")
+
+
 def test_landscape_pdf_is_remembered(
     explorer, tmp_path, monkeypatch, commander_dialog_settings
 ):
@@ -1485,6 +1917,14 @@ def test_landscape_pdf_is_remembered(
     )
     try:
         assert window._pdf_landscape.isChecked()
+        assert not window._pdf_portrait.isChecked()
+        # Portrait chosen again is remembered too
+        window._pdf_portrait.trigger()
+        assert window._pdf_portrait.isChecked()
+        assert not window._pdf_landscape.isChecked()
+        assert not commander_dialog_settings.value(
+            SETTING_EXPLORER_PDF_LANDSCAPE, type=bool
+        )
     finally:
         window.shut_down()
         QApplication.processEvents()
@@ -1574,6 +2014,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
         "Total (hours)",
         "Est. cost (USD)",
         "Unpriced running (hours)",
+        "Share of cost (fraction)",
     ]
     body = json.loads(usage_answer("yd usage", ["--by", "namespace"])[0])
     expected = [
@@ -1585,6 +2026,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
             str(source["hours"]["total"]),
             str(source["estimatedCost"]),
             str(source["unpricedRunningHours"]),
+            str(source["share"]["cost"]),
         ]
         for name, source in (
             *((g["namespace"], g) for g in body["groups"]),
@@ -1593,7 +2035,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
     ]
     assert rows[1:] == expected
     assert rows[1][1:3] == ["17", "47.2"]
-    assert rows[1][5:] == ["248.1", "0.7"]
+    assert rows[1][5:] == ["248.1", "0.7", "0.8867"]
 
 
 def test_a_raw_status_column_is_in_hours(explorer, tmp_path, monkeypatch):
@@ -1610,7 +2052,7 @@ def test_a_raw_export_without_cost_has_no_cost_columns(explorer, tmp_path, monke
     settle(explorer)
     target = tmp_path / "raw.csv"
     export_to(explorer, target, monkeypatch, raw=True)
-    assert read_csv(target)[0][-1] == "Total (hours)"
+    assert read_csv(target)[0][-2:] == ["Total (hours)", "Share of time (fraction)"]
 
 
 def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
@@ -1630,13 +2072,14 @@ def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
         "Stopped (h:mm)",
         "Total (h:mm)",
         "Est. cost (USD)",
+        "Share of cost",
     ]
     assert rows[1:] == [
         cells(explorer, row)[: len(rows[0])]
         for row in range(explorer._model.rowCount())
     ]
     assert rows[-1][0] == "Total"
-    assert rows[1][-1] == "248.10+"
+    assert rows[1][-2:] == ["248.10+", "88.7%"]
     assert explorer.log_lines[-1] == f"Saved the Usage Explorer's table to '{target}'"
 
 
@@ -1687,6 +2130,7 @@ def test_the_column_menu_offers_every_figure_but_the_cost(explorer):
         "Running",
         "Stopped",
         "Total",
+        "Share",
         "",
         "Pending",
         "Stopping",
@@ -1698,11 +2142,36 @@ def test_the_column_menu_offers_every_figure_but_the_cost(explorer):
         True,
         True,
         True,
+        True,
         False,
         False,
         False,
         False,
     ]
+
+
+def test_the_columns_button_offers_the_same_ticks(explorer):
+    assert explorer._columns.text() == "Columns"
+    menu = explorer._columns.menu()
+    assert isinstance(menu, usage_explorer._TickMenu)
+    menu.aboutToShow.emit()
+    heading_menu = explorer._column_menu()
+    assert [a.text() for a in menu.actions()] == [
+        a.text() for a in heading_menu.actions()
+    ]
+    [running] = [a for a in menu.actions() if a.text() == "Running"]
+    running.trigger()
+    assert "Running (h:mm)" not in shown_headings(explorer)
+    # Shown again, its ticks are the columns' as they are now
+    menu.aboutToShow.emit()
+    [running] = [a for a in menu.actions() if a.text() == "Running"]
+    assert not running.isChecked()
+    running.trigger()
+    assert "Running (h:mm)" in shown_headings(explorer)
+
+
+def test_the_headings_menu_stays_open_while_ticking(explorer):
+    assert isinstance(explorer._column_menu(), usage_explorer._TickMenu)
 
 
 def test_a_figure_column_can_be_hidden_and_stays_so(
@@ -1716,6 +2185,7 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
         "Running (h:mm)",
         "Total (h:mm)",
         "Est. cost (USD)",
+        "Share of cost",
     ]
     assert commander_dialog_settings.value(SETTING_EXPLORER_HIDDEN_COLUMNS) == (
         "stopped,pending,stopping,terminating,unknown"
@@ -1726,7 +2196,7 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     assert "Stopped (h:mm)" not in shown_headings(explorer)
     explorer._cost.click()
     settle(explorer)
-    assert shown_headings(explorer)[-1] == "Total (h:mm)"
+    assert shown_headings(explorer)[-2:] == ["Total (h:mm)", "Share of time"]
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch, raw=True)
     assert "Stopped (hours)" not in read_csv(target)[0]
@@ -2161,3 +2631,261 @@ def test_an_older_runs_result_does_not_replace_the_unusable_failure(
     assert explorer._error_showing
     assert [cells(explorer, row) for row in range(explorer._model.rowCount())] == rows
     assert explorer.breadcrumb_text() == crumbs
+
+
+def heading_option() -> QStyleOptionHeader:
+    option = QStyleOptionHeader()
+    option.rect = QRect(0, 0, 120, 30)
+    option.text = "Total (h:mm)"
+    option.fontMetrics = QFontMetrics(QFont())
+    return option
+
+
+def test_on_windows_a_heading_has_room_above_for_the_sort_chevron(qapp, monkeypatch):
+    # The Windows styles ('windowsvista', 'windows11') draw it at the top,
+    # centred; neither exists off Windows, so the plain one stands in
+    base = QStyleFactory.create("Windows")
+    monkeypatch.setattr(
+        usage_explorer, "SORT_CHEVRON_ABOVE_STYLES", frozenset({"windows"})
+    )
+    style = usage_explorer._GridStyle(False, base_name="Windows")
+    option = heading_option()
+    content = QSize(80, 20)
+    kind = QStyle.ContentsType.CT_HeaderSection
+    room = usage_explorer.SORT_CHEVRON_ROOM
+    assert (
+        style.sizeFromContents(kind, option, content, None).height()
+        == base.sizeFromContents(kind, option, content, None).height() + room
+    )
+    label = QStyle.SubElement.SE_HeaderLabel
+    assert (
+        style.subElementRect(label, option, None).top()
+        == base.subElementRect(label, option, None).top() + room
+    )
+
+
+def test_other_styles_keep_their_headings(qapp, monkeypatch):
+    base = QStyleFactory.create("Windows")
+    monkeypatch.setattr(usage_explorer, "SORT_CHEVRON_ABOVE_STYLES", frozenset())
+    style = usage_explorer._GridStyle(False, base_name="Windows")
+    option = heading_option()
+    kind = QStyle.ContentsType.CT_HeaderSection
+    assert style.sizeFromContents(kind, option, QSize(80, 20), None) == (
+        base.sizeFromContents(kind, option, QSize(80, 20), None)
+    )
+
+
+def test_the_heading_has_the_tables_style(explorer):
+    header = explorer._table.horizontalHeader()
+    assert header.style() is explorer._grid_style
+    explorer.set_dark(True)
+    assert header.style() is explorer._grid_style
+
+
+def test_the_runner_reads_the_progress_as_it_arrives(runner, children):
+    children.scripts = [PROGRESS_SCRIPT]
+    progress: list = []
+    results: list = []
+    runner.progress.connect(progress.append)
+    runner.finished.connect(results.append)
+    runner.run([])
+    wait_for(lambda: results)
+    # The progress asked for, read line by line, and kept out of the warnings
+    assert progress == [None, 23_400_000]
+    [result] = results
+    assert result.document == {"asked": "1"}
+    assert result.warnings == ["WARNING: kept"]
+
+
+def test_the_wait_says_how_far_the_fetch_has_got(explorer):
+    explorer._runner.progress.emit(None)
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith(
+        "Waiting for the Platform to build the report…"
+    )
+    explorer._runner.progress.emit(23_400_000)
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith("Downloading the report… 23.4 MB")
+    # A new request starts again from yd usage running
+    explorer._refresh.click()
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith("Running yd usage…")
+    settle(explorer)
+
+
+def test_the_calendars_weekends_are_plain(explorer):
+    explorer._from_pick.menu().aboutToShow.emit()
+    calendar = explorer._from_calendar
+    weekday = calendar.weekdayTextFormat(Qt.DayOfWeek.Monday)
+    for day in (Qt.DayOfWeek.Saturday, Qt.DayOfWeek.Sunday):
+        assert calendar.weekdayTextFormat(day) == weekday
+
+
+def test_a_day_chosen_from_the_calendar_starts_the_window(explorer):
+    explorer._from_calendar.clicked.emit(QDate(2026, 10, 1))
+    assert explorer._from.text() == "2026-10-01 00:00 UTC"
+    assert explorer._preset.currentText() == "Custom"
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_a_day_chosen_for_until_ends_the_window_at_its_end(explorer):
+    explorer._until_calendar.clicked.emit(QDate(2026, 10, 31))
+    assert explorer._until.text() == "2026-11-01 00:00 UTC"
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_the_calendar_opens_at_the_fields_day(explorer):
+    explorer._from.setText("2026-10-05 00:00 UTC")
+    explorer._from_pick.menu().aboutToShow.emit()
+    assert explorer._from_calendar.selectedDate() == QDate(2026, 10, 5)
+    explorer._until.setText("2026-11-01 00:00 UTC")
+    explorer._until_pick.menu().aboutToShow.emit()
+    assert explorer._until_calendar.selectedDate() == QDate(2026, 10, 31)
+    # A field no day can be read from opens at today
+    explorer._from.setText("7 days ago")
+    explorer._from_pick.menu().aboutToShow.emit()
+    assert explorer._from_calendar.selectedDate() == QDate.currentDate()
+
+
+def test_forward_reenters_the_level_back_left(explorer, children):
+    assert not explorer._forward.isEnabled()
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    assert explorer._forward.isEnabled()
+    explorer._forward.click()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    assert not explorer._forward.isEnabled()
+
+
+def test_forward_reenters_the_levels_a_crumb_left_one_at_a_time(explorer, children):
+    for _ in range(2):
+        double_click_row(explorer, 0)
+        settle(explorer)
+    deepest = explorer.breadcrumb_text()
+    explorer._crumb_buttons[0].click()
+    settle(explorer)
+    explorer._forward.click()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    assert explorer._forward.isEnabled()
+    explorer._forward.click()
+    settle(explorer)
+    assert explorer.breadcrumb_text() == deepest
+    assert not explorer._forward.isEnabled()
+
+
+def test_another_step_clears_forward(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert not explorer._forward.isEnabled()
+
+
+def test_forward_has_its_keys(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    explorer._forward_shortcut.activated.emit()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    keys = {k.toString() for k in explorer._forward_shortcut.keys()}
+    assert "Alt+Right" in keys
+
+
+def test_another_configuration_clears_forward(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    explorer.reset("Usage Explorer — other.toml")
+    assert not explorer._forward.isEnabled()
+
+
+def test_the_table_reads_in_the_windows_font_with_its_figures_aligned(explorer):
+    def check(font: QFont) -> None:
+        assert font.family() == QApplication.font().family()
+        if hasattr(QFont, "setFeature"):
+            assert font.isFeatureSet(QFont.Tag("tnum"))
+            assert font.featureValue(QFont.Tag("tnum")) == 1
+
+    check(explorer._table.font())
+    # Zoomed, the same font larger
+    size = explorer._table.font().pointSize()
+    explorer._zoom(1)
+    check(explorer._table.font())
+    assert explorer._table.font().pointSize() == size + 1
+
+
+def filled(explorer) -> bool:
+    """
+    Whether the visible columns are exactly as wide as the table's viewport,
+    or, where their contents need more (wider fonts, more columns), each as
+    wide as its contents: never squeezed.
+    """
+    table = explorer._table
+    header = table.horizontalHeader()
+    visible = [
+        c for c in range(explorer._model.columnCount()) if not table.isColumnHidden(c)
+    ]
+    widths = sum(header.sectionSize(c) for c in visible)
+    natural = sum(explorer._natural_widths[c] for c in visible)
+    return widths == max(natural, table.viewport().width())
+
+
+def test_the_columns_fill_the_tables_width(explorer, children):
+    assert filled(explorer)
+    # Narrow, every column keeps its contents' width
+    explorer.resize(400, 640)
+    QApplication.processEvents()
+    assert filled(explorer)
+    explorer.resize(1400, 640)
+    QApplication.processEvents()
+    assert filled(explorer)
+    explorer._show_column("pending", True)
+    QApplication.processEvents()
+    assert filled(explorer)
+    explorer._zoom(1)
+    QApplication.processEvents()
+    assert filled(explorer)
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert filled(explorer)
+
+
+def test_the_fields_calendar_icon_opens_its_calendar(explorer):
+    assert explorer._from_pick in explorer._from.actions()
+    explorer._from_pick.trigger()
+    menu = QApplication.activePopupWidget()
+    try:
+        assert menu is explorer._from_pick.menu()
+    finally:
+        if menu is not None:
+            menu.close()
+
+
+def test_the_row_count_is_beneath_the_table(explorer):
+    count = explorer._row_count
+    assert count.isVisible() and count.text() == "2 rows"
+    frame = explorer._table.parentWidget()
+    below_table = frame.mapTo(explorer, frame.rect().bottomLeft()).y()
+    above_notes = explorer._notes.mapTo(explorer, explorer._notes.rect().topLeft()).y()
+    top = count.mapTo(explorer, count.rect().topLeft()).y()
+    assert below_table <= top < above_notes
+    # It follows the view: a level drilled into counts its own rows
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert count.text() == "2 rows"
+
+
+def test_an_empty_view_counts_no_rows(explorer, children):
+    children.answer = lambda c, a: (json.dumps(document(["namespace"], [])), "", 0, 0)
+    explorer._refresh.click()
+    settle(explorer)
+    assert not explorer._row_count.isVisible()

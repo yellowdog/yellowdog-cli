@@ -7,45 +7,57 @@ loop and drops stderr: the explorer is modeless and shows the CLI's error.
 Commander groups, sorts and adds up nothing: every figure shown is the CLI's.
 """
 
+import codecs
 import csv
 import json
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import partial
 from math import ceil
 from typing import Any, cast
 
 from PyQt6.QtCore import (
     QByteArray,
+    QDate,
     QEvent,
+    QModelIndex,
     QObject,
     QPoint,
+    QPointF,
     QProcess,
+    QRect,
+    QRectF,
+    QSize,
     Qt,
     QTimer,
     pyqtSignal,
 )
 from PyQt6.QtGui import (
     QAction,
+    QActionGroup,
     QCloseEvent,
     QColor,
     QFont,
     QFontMetrics,
+    QIcon,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
+    QPen,
+    QPixmap,
     QShortcut,
     QTextOption,
 )
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCalendarWidget,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -65,10 +77,12 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.branding import BRANDING_IMAGE_SIZE, branding_pixmap
+from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.host import MACOS, cli_program
 from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
@@ -85,6 +99,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     NO_INSTANCES,
     NO_MATCHING_INSTANCES,
     report_content,
+    sort_text,
 )
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
@@ -97,19 +112,42 @@ from yellowdog_cli.commander.usage_views import (
     DRILL_PATH,
     PRESETS,
     USAGE_SORT_VALUE_KEYS,
+    VIEW_TOP_ROWS,
     Level,
     Scope,
     command_line,
+    day_end_text,
+    day_of,
+    day_start_text,
     drill,
     eligible_keys,
     heading,
+    narrowed,
     preset_window,
+    row_count_text,
+    sort_order,
     toggled_by,
     view_args,
     window_time,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
-from yellowdog_cli.utils.usage_text import duration_text, report_time
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
+from yellowdog_cli.utils.usage_text import duration_text, report_time, size_text
+from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
+
+# How long Find waits after a key before running the view
+FIND_DELAY_MS = 400
+# Find's width beyond its placeholder's: its margins and the clear button
+FIND_FIELD_ROOM = 40
+# The calendar icon at the end of From and Until, in points (drawn at twice
+# that for high-resolution screens), and its strokes' colour in each mode
+CALENDAR_ICON_SIZE = 16
+CALENDAR_ICON_LIGHT = "#5a5a5a"
+CALENDAR_ICON_DARK = "#c8c8c8"
+
+# The longest a value is named in a row's right-click menu, longer ones
+# shortened in the middle
+MENU_VALUE_CHARS = 40
 
 # The exit code and message of a run the user stopped
 STOPPED_EXIT_CODE = -1
@@ -141,6 +179,13 @@ class _Run:
     started: float
     timer: QTimer
     stopped: bool = False
+    # Standard error read as it arrives: its lines but the progress, and
+    # the text after the last line break, decoded across reads
+    errors: list[str] = field(default_factory=list)
+    unfinished: str = ""
+    decoder: codecs.IncrementalDecoder = field(
+        default_factory=lambda: codecs.getincrementaldecoder("utf-8")("replace")
+    )
 
 
 def _disconnect(process: QProcess) -> None:
@@ -168,6 +213,9 @@ class UsageRunner(QObject):
     finished = pyqtSignal(object)
     # The latest run has taken longer than WAIT_DELAY_MS
     started_waiting = pyqtSignal()
+    # The latest run's fetch: None while the Platform builds the report,
+    # then the bytes received (USAGE_PROGRESS_LINES)
+    progress = pyqtSignal(object)
 
     WAIT_DELAY_MS = 300
 
@@ -209,6 +257,11 @@ class UsageRunner(QObject):
             return request
         program, args = cli_program(self._command, [*base, *arguments])
         process = child_process(self._working_dir(), self)
+        # The fetch's progress as plain lines on standard error, read as they
+        # come (_on_errors())
+        environment = process.processEnvironment()
+        environment.insert(USAGE_PROGRESS_LINES, "1")
+        process.setProcessEnvironment(environment)
         # Parented to the process, so it dies with it and never fires into
         # a destroyed runner (a bare QTimer.singleShot would)
         timer = QTimer(process)
@@ -218,6 +271,7 @@ class UsageRunner(QObject):
         self._runs[request] = run
         process.finished.connect(partial(self._on_finished, request))
         process.errorOccurred.connect(partial(self._on_error, request))
+        process.readyReadStandardError.connect(partial(self._on_errors, request))
         process.start(program, args)
         timer.start(self.WAIT_DELAY_MS)
         return request
@@ -280,10 +334,36 @@ class UsageRunner(QObject):
         out = bytes(run.process.readAllStandardOutput().data()).decode(
             "utf-8", errors="replace"
         )
-        err = bytes(run.process.readAllStandardError().data()).decode(
-            "utf-8", errors="replace"
-        )
-        self._complete(request, exit_code, out, err.strip())
+        self._on_errors(request, final=True)
+        self._complete(request, exit_code, out, "\n".join(run.errors).strip())
+
+    def _on_errors(self, request: int, final: bool = False) -> None:
+        """
+        A run's standard error as it arrives: each progress line emitted
+        (for the latest request), every other line kept for its result;
+        with 'final', the text after the last line break too.
+        """
+        run = self._runs.get(request)
+        if run is None:
+            return
+        data = bytes(run.process.readAllStandardError().data())
+        text = run.unfinished + run.decoder.decode(data, final=final)
+        *lines, run.unfinished = text.split("\n")
+        if final and run.unfinished:
+            lines.append(run.unfinished)
+            run.unfinished = ""
+        for line in lines:
+            line = line.rstrip("\r")
+            if not line.startswith(USAGE_PROGRESS_PREFIX):
+                run.errors.append(line)
+                continue
+            if request != self._latest:
+                continue
+            state = line[len(USAGE_PROGRESS_PREFIX) :].split()
+            if state[:1] == ["waiting"]:
+                self.progress.emit(None)
+            elif state[:1] == ["received"] and len(state) > 1 and state[1].isdigit():
+                self.progress.emit(int(state[1]))
 
     def _complete(
         self,
@@ -332,6 +412,10 @@ class UsageRunner(QObject):
 
 
 # Commander's own settings (file_dialogs.dialog_settings()) for the explorer
+# The Qt styles drawing a heading's sort indicator as a chevron at its top,
+# over the text unless the heading has room for it (lower case), and the room
+SORT_CHEVRON_ABOVE_STYLES = frozenset({"windowsvista", "windows11"})
+SORT_CHEVRON_ROOM = 6
 SETTING_EXPLORER_GEOMETRY = "usageExplorer/geometry"
 SETTING_EXPLORER_PRESET = "usageExplorer/preset"
 SETTING_EXPLORER_COST = "usageExplorer/cost"
@@ -356,6 +440,7 @@ TOP_LEVEL = Level((DRILL_PATH[0],))
 CUSTOM_PRESET = "Custom"
 # A single left-pointing angle quotation mark, then Back
 BACK_TEXT = "\u2039 Back"
+FORWARD_TEXT = "Forward \u203a"
 ALL_NAMESPACES = "All namespaces"
 # A single right-pointing angle quotation mark, spaced
 CRUMB_SEPARATOR = " \u203a "
@@ -373,6 +458,9 @@ DARK_SEPARATOR_STYLE = "background-color: #555555; border: none; max-height: 2px
 # How much of the text colour tints the headings
 HEADING_TINT = 0.15
 RUNNING_TEXT = "Running yd usage… {elapsed}"
+# A fetch's progress, as yd usage reports it (USAGE_PROGRESS_LINES)
+WAITING_TEXT = "Waiting for the Platform to build the report… {elapsed}"
+DOWNLOADING_TEXT = "Downloading the report… {size} · {elapsed}"
 FETCH_BUTTON = "Fetch Report"
 KEPT_SEPARATOR = " \u00b7 "
 KEPT_TOOLTIP = (
@@ -453,6 +541,73 @@ def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
     widget.setLayout(row)
     row.setContentsMargins(0, 0, 0, 0)
     return widget
+
+
+def _with_aligned_figures(font: QFont) -> QFont:
+    """
+    The font with its figures each one width (OpenType 'tnum'), so that a
+    column of numbers lines up, where this Qt can ask for it (6.7 on).
+    """
+    if hasattr(QFont, "setFeature"):
+        font.setFeature(QFont.Tag("tnum"), 1)
+    return font
+
+
+def _calendar_icon(dark: bool) -> QIcon:
+    """
+    A small calendar, drawn: a page with its binding rings, a header band
+    and three rows of days, in the text's grey for the mode.
+    """
+    scale = 2
+    size = CALENDAR_ICON_SIZE * scale
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    colour = QColor(CALENDAR_ICON_DARK if dark else CALENDAR_ICON_LIGHT)
+    pen = QPen(colour)
+    pen.setWidthF(1.2 * scale)
+    painter.setPen(pen)
+    page = QRectF(2.5 * scale, 3.5 * scale, 11 * scale, 10 * scale)
+    painter.drawRoundedRect(page, 1.5 * scale, 1.5 * scale)
+    painter.fillRect(QRectF(page.left(), page.top(), page.width(), 2.5 * scale), colour)
+    for x in (5.5, 10.5):
+        painter.drawLine(QPointF(x * scale, 2 * scale), QPointF(x * scale, 4.5 * scale))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(colour)
+    for row in range(3):
+        for column in range(4):
+            painter.drawRect(
+                QRectF(
+                    (4.4 + column * 2.2) * scale,
+                    (7.4 + row * 1.9) * scale,
+                    1.2 * scale,
+                    1.1 * scale,
+                )
+            )
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
+
+
+def _menu_value(text: str) -> str:
+    """
+    A value as a menu names it, shortened in the middle past MENU_VALUE_CHARS.
+    """
+    return elide_middle(text, MENU_VALUE_CHARS)
+
+
+def _menu_action(
+    menu: QMenu, text: str, slot: Callable[[], object], enabled: bool = True
+) -> QAction:
+    """
+    An action added to a menu, running 'slot' when chosen.
+    """
+    action = QAction(text, menu)
+    action.setEnabled(enabled)
+    action.triggered.connect(lambda _checked=False: slot())
+    menu.addAction(action)
+    return action
 
 
 class _TickMenu(QMenu):
@@ -566,25 +721,45 @@ class _TableOverlay(QWidget):
 class _GridStyle(QProxyStyle):
     """
     The application's style with the table's grid in the command output's
-    table-outline blue (TABLE_OUTLINE_RGB_*), one per appearance. Built over
-    a fresh copy of the application's style, since the proxy owns its base
+    table-outline blue (TABLE_OUTLINE_RGB_*), one per appearance, for the
+    table and its heading. Built over a fresh copy of the application's
+    style ('base_name' another, for a test), since the proxy owns its base
     and the application's own must not be handed over; rebuilt as the
     appearance changes, which on Linux changes the application's style too.
+
+    Under the Windows styles (SORT_CHEVRON_ABOVE_STYLES), which draw the
+    sort indicator as a chevron at the top of the heading, the heading is
+    SORT_CHEVRON_ROOM taller and its text that much lower, so that the
+    chevron, drawn as Windows draws it, sits above the text, not over it.
     """
 
-    def __init__(self, dark: bool) -> None:
-        application = cast(QApplication, QApplication.instance())
-        base = QStyleFactory.create(cast(QStyle, application.style()).name())
-        super().__init__(base)
+    def __init__(self, dark: bool, base_name: str | None = None) -> None:
+        if base_name is None:
+            application = cast(QApplication, QApplication.instance())
+            base_name = cast(QStyle, application.style()).name()
+        super().__init__(QStyleFactory.create(base_name))
         rgb = TABLE_OUTLINE_RGB_DARK if dark else TABLE_OUTLINE_RGB_LIGHT
         # styleHint() returns a signed int, so the colour's ARGB as one
         argb = QColor(*rgb).rgba()
         self._grid = argb - (1 << 32) if argb >= 1 << 31 else argb
+        self._chevron_above = base_name.lower() in SORT_CHEVRON_ABOVE_STYLES
 
     def styleHint(self, hint, option=None, widget=None, returnData=None) -> int:
         if hint == QStyle.StyleHint.SH_Table_GridLineColor:
             return self._grid
         return super().styleHint(hint, option, widget, returnData)
+
+    def sizeFromContents(self, type, option, size, widget=None) -> QSize:
+        needed = super().sizeFromContents(type, option, size, widget)
+        if self._chevron_above and type == QStyle.ContentsType.CT_HeaderSection:
+            return QSize(needed.width(), needed.height() + SORT_CHEVRON_ROOM)
+        return needed
+
+    def subElementRect(self, element, option, widget=None) -> QRect:
+        rect = super().subElementRect(element, option, widget)
+        if self._chevron_above and element == QStyle.SubElement.SE_HeaderLabel:
+            rect.setTop(rect.top() + SORT_CHEVRON_ROOM)
+        return rect
 
 
 def grid_colour(table: QTableView) -> QColor:
@@ -723,6 +898,7 @@ class UsageExplorer(QDialog):
         base_args: Callable[[], list[str]],
         font: QFont,
         dark: bool,
+        show_ydid: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.setWindowTitle(title)
@@ -733,6 +909,8 @@ class UsageExplorer(QDialog):
         self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
         self._base_args = base_args
         self._working_dir = working_dir
+        # Commander's 'yd show' of a YellowDog ID; None run on its own
+        self._show_ydid = show_ydid
         # The export's save dialog, Commander's own
         self._file_dialogs = file_dialogs.FileDialogs(self, font)
         self._dark = dark
@@ -778,9 +956,11 @@ class UsageExplorer(QDialog):
         self._build_controls(
             preset, bool(settings.value(SETTING_EXPLORER_COST, True, type=bool))
         )
-        # Commander's text at its default size, at the size last left here
+        # The window's own font, its figures of one width so that a column of
+        # them lines up, at Commander's text size by default, at the size
+        # last left here
         self._default_font_size = font.pointSize()
-        table_font = QFont(font)
+        table_font = _with_aligned_figures(QFont(QApplication.font()))
         size = settings.value(SETTING_EXPLORER_FONT_SIZE, font.pointSize(), type=int)
         table_font.setPointSize(
             max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, int(size)))
@@ -798,6 +978,10 @@ class UsageExplorer(QDialog):
         self._runner = UsageRunner(self, working_dir, base_args)
         self._runner.finished.connect(self._on_result)
         self._runner.started_waiting.connect(self._on_waiting)
+        self._runner.progress.connect(self._on_progress)
+        # The latest run's fetch (_on_progress()): None while nothing is
+        # heard, -1 while the Platform builds the report, then the bytes
+        self._fetch_progress: int | None = None
         self._namespace_runner = UsageRunner(
             self, working_dir, base_args, command="yd list"
         )
@@ -835,6 +1019,11 @@ class UsageExplorer(QDialog):
         for field in (self._from, self._until):
             field.textEdited.connect(self._typed_window)
             field.editingFinished.connect(self._await_fetch)
+        # A calendar beside each, for a day rather than a time typed
+        self._from_pick, self._from_calendar = self._day_picker(self._from, until=False)
+        self._until_pick, self._until_calendar = self._day_picker(
+            self._until, until=True
+        )
 
         self._namespace = QComboBox(self)
         self._namespace.setEditable(True)
@@ -862,10 +1051,45 @@ class UsageExplorer(QDialog):
         self._back.setToolTip("Back to the level above")
         self._back.clicked.connect(self._step_back)
         self._back.setEnabled(False)
+        # The levels Back and the crumbs left, the next to re-enter first,
+        # as the view shown has them; any other step clears them
+        self._forward_levels: list[Level] = []
+        self._requested_forward: list[Level] = []
+        self._forward = QToolButton(self)
+        self._forward.setText(FORWARD_TEXT)
+        self._forward.setAutoRaise(True)
+        self._forward.setToolTip("Forward to the level Back left")
+        self._forward.clicked.connect(self._step_forward)
+        self._forward.setEnabled(False)
         self._crumbs = QHBoxLayout()
         self._crumbs.setSpacing(6)
         self._crumb_buttons: list[QToolButton] = []
         # A menu of the keys this level may total by, each ticked or not;
+        # Find: the level's rows whose first key holds the text (--where)
+        self._find = QLineEdit(self)
+        self._find.setClearButtonEnabled(True)
+        self._find.setToolTip(
+            "Show the rows whose first column holds this text, in any case"
+            " (* and ? are wildcards); Esc empties it"
+        )
+        self._find_timer = QTimer(self)
+        self._find_timer.setSingleShot(True)
+        self._find_timer.setInterval(FIND_DELAY_MS)
+        self._find_timer.timeout.connect(self._apply_find)
+        self._find.textEdited.connect(lambda _text: self._find_timer.start())
+        self._find.returnPressed.connect(self._apply_find)
+        self._find.installEventFilter(self)
+        self._show_find(TOP_LEVEL)
+        # Columns: the figure columns to show, as the heading's right-click
+        # menu offers them, filled as it opens
+        self._columns = QPushButton("Columns", self)
+        self._columns.setAutoDefault(False)
+        self._columns.setToolTip(
+            "Show or hide figure columns (also by right-clicking a heading)"
+        )
+        columns_menu = _TickMenu(self._columns)
+        columns_menu.aboutToShow.connect(lambda: self._fill_column_menu(columns_menu))
+        self._columns.setMenu(columns_menu)
         # _show_total_by() fills it for the view shown
         self._total_by = QPushButton(self)
         self._total_by.setAutoDefault(False)
@@ -882,9 +1106,12 @@ class UsageExplorer(QDialog):
     def _build_table(self, font: QFont) -> None:
         self._model = UsageTableModel(self)
         self._table = QTableView(self)
+        # Each column's width for its contents (_fit_columns())
+        self._natural_widths: dict[int, int] = {}
         self._table.setHorizontalHeader(_UsageHeader(self._table))
         self._grid_style = _GridStyle(self._dark)
         self._table.setStyle(self._grid_style)
+        cast(QHeaderView, self._table.horizontalHeader()).setStyle(self._grid_style)
         self._table.setModel(self._model)
         self._table.setFont(font)
         vertical = self._table.verticalHeader()
@@ -913,6 +1140,8 @@ class UsageExplorer(QDialog):
         header.sectionClicked.connect(self._heading_clicked)
         header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         header.customContextMenuRequested.connect(self._show_column_menu)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_row_menu)
         header.setToolTip(
             "Click a heading to sort by it; right-click to show or hide columns"
         )
@@ -920,6 +1149,10 @@ class UsageExplorer(QDialog):
         # Return drills and Cmd/Ctrl+C copies: taken here, before the view's
         # own handling (which copies one cell) or the dialog's
         self._table.installEventFilter(self)
+        viewport = self._table.viewport()
+        if viewport is not None:
+            # Its resizes refit the columns to its width (_fill_width())
+            viewport.installEventFilter(self)
         self._overlay = _TableOverlay(
             self._table, "Stop", "Stop this yd usage run; the previous view stays"
         )
@@ -944,6 +1177,21 @@ class UsageExplorer(QDialog):
         self._details_button.setToolTip("List the instance types with no list price")
         self._details_button.clicked.connect(self._toggle_details)
         self._details_button.hide()
+        # The view's rows, beneath the table: '4 rows', or '500 of 1,234 rows'
+        # where the rest are summed, with Show All beside it
+        self._row_count = QLabel(self)
+        self._row_count.setTextFormat(Qt.TextFormat.PlainText)
+        self._row_count.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        self._row_count.hide()
+        # Shown while the level's rows past the first VIEW_TOP_ROWS are summed
+        self._show_all = QPushButton("Show All", self)
+        self._show_all.setAutoDefault(False)
+        self._show_all.setToolTip(
+            "Show every row of this level, not the first"
+            f" {VIEW_TOP_ROWS:,} and the rest summed"
+        )
+        self._show_all.clicked.connect(self._show_all_rows)
+        self._show_all.hide()
         self._details = QLabel(self)
         self._details.setTextFormat(Qt.TextFormat.PlainText)
         self._details.setTextInteractionFlags(
@@ -970,26 +1218,24 @@ class UsageExplorer(QDialog):
         )
         self._export.setEnabled(False)
         export_menu = QMenu(self._export)
-        self._export_raw = QAction("Raw Numbers (CSV)…", export_menu)
+        self._export_raw = QAction("Save CSV (Raw Numbers)…", export_menu)
         export_menu.addAction(self._export_raw)
         self._export_raw.setToolTip(
             "Instances, hours as decimals and the cost as a number,"
             " with the running hours no price covered"
         )
         self._export_raw.triggered.connect(partial(self._export_csv, True))
-        self._export_shown = QAction("As Shown (CSV)…", export_menu)
+        self._export_shown = QAction("Save CSV (As Shown)…", export_menu)
         export_menu.addAction(self._export_shown)
         self._export_shown.setToolTip("Every cell as the table shows it")
         self._export_shown.triggered.connect(partial(self._export_csv, False))
-        self._export_pdf_action = QAction("PDF Report…", export_menu)
-        export_menu.addAction(self._export_pdf_action)
+        self._export_pdf_action = QAction("Save PDF Report…", export_menu)
         self._export_pdf_action.setToolTip(
             "The view as a report for printing: the period, headline figures"
             " and the table, on as many pages as it needs"
         )
         self._export_pdf_action.triggered.connect(self._export_pdf)
-        export_menu.addSeparator()
-        self._export_total = QAction("Include Total Row (CSV)", export_menu)
+        self._export_total = QAction("Include Total Row", export_menu)
         self._export_total.setCheckable(True)
         self._export_total.setChecked(
             bool(
@@ -1006,25 +1252,34 @@ class UsageExplorer(QDialog):
                 SETTING_EXPLORER_EXPORT_TOTAL, checked
             )
         )
+        # Each format's exports, then the tick that changes them
         export_menu.addAction(self._export_total)
-        self._pdf_landscape = QAction("Landscape PDF", export_menu)
-        self._pdf_landscape.setCheckable(True)
-        self._pdf_landscape.setChecked(
-            bool(
-                file_dialogs.dialog_settings().value(
-                    SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
-                )
-            )
-        )
+        export_menu.addSeparator()
+        export_menu.addAction(self._export_pdf_action)
+        # The orientation a choice of two, one always marked, so that it
+        # reads as a setting rather than as something the menu would do
+        orientation = QActionGroup(export_menu)
+        orientation.setExclusive(True)
+        self._pdf_portrait = QAction("Portrait", orientation)
+        self._pdf_portrait.setToolTip("Lay the PDF report's pages out portrait")
+        self._pdf_landscape = QAction("Landscape", orientation)
         self._pdf_landscape.setToolTip(
             "Lay the PDF report's pages out landscape, for a wide table"
         )
+        for action in (self._pdf_portrait, self._pdf_landscape):
+            action.setCheckable(True)
+            export_menu.addAction(action)
+        landscape = bool(
+            file_dialogs.dialog_settings().value(
+                SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
+            )
+        )
+        (self._pdf_landscape if landscape else self._pdf_portrait).setChecked(True)
         self._pdf_landscape.toggled.connect(
             lambda checked: file_dialogs.dialog_settings().setValue(
                 SETTING_EXPLORER_PDF_LANDSCAPE, checked
             )
         )
-        export_menu.addAction(self._pdf_landscape)
         export_menu.setToolTipsVisible(True)
         self._export.setMenu(export_menu)
 
@@ -1069,14 +1324,21 @@ class UsageExplorer(QDialog):
         scope_row.addWidget(self._refresh)
         crumb_row = QHBoxLayout()
         crumb_row.addWidget(self._back)
+        crumb_row.addWidget(self._forward)
         crumb_row.addLayout(self._crumbs)
         crumb_row.addStretch(1)
+        crumb_row.addWidget(self._find, 1)
         crumb_row.addWidget(QLabel("Total by:", self))
         crumb_row.addWidget(self._total_by)
+        crumb_row.addWidget(self._columns)
         crumb_row.addWidget(self._export)
         notes_row = QHBoxLayout()
         notes_row.addWidget(self._notes, 1)
         notes_row.addWidget(self._details_button, 0, Qt.AlignmentFlag.AlignTop)
+        count_row = QHBoxLayout()
+        count_row.addWidget(self._row_count)
+        count_row.addWidget(self._show_all)
+        count_row.addStretch(1)
         command_row = QHBoxLayout()
         command_row.addWidget(self._command_line, 1)
         command_row.addWidget(self._copy_command)
@@ -1115,6 +1377,7 @@ class UsageExplorer(QDialog):
         layout.addWidget(self._separator)
         layout.addLayout(crumb_row)
         layout.addWidget(_TableFrame(self._table, self), 1)
+        layout.addLayout(count_row)
         layout.addLayout(notes_row)
         layout.addWidget(self._details)
         layout.addWidget(self._report)
@@ -1134,7 +1397,19 @@ class UsageExplorer(QDialog):
         # ambiguous to Qt, and neither would fire
         back.setKeys(list(unique.values()))
         back.activated.connect(self._step_back)
+        forward_keys: list[QKeySequence] = [
+            *QKeySequence.keyBindings(QKeySequence.StandardKey.Forward),
+            QKeySequence("Alt+Right"),
+        ]
+        if MACOS:
+            forward_keys.append(QKeySequence("Ctrl+]"))
+        unique = {key.toString(): key for key in forward_keys if not key.isEmpty()}
+        self._forward_shortcut = QShortcut(self)
+        self._forward_shortcut.setKeys(list(unique.values()))
+        self._forward_shortcut.activated.connect(self._step_forward)
         QShortcut(QKeySequence("Ctrl+R"), self, self._rerun)
+        self._find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        self._find_shortcut.activated.connect(self._focus_find)
         for keys, step in (
             (QKeySequence(QKeySequence.StandardKey.ZoomIn), 1),
             # Cmd/Ctrl+=, the unshifted key, which ZoomIn does not include
@@ -1162,7 +1437,12 @@ class UsageExplorer(QDialog):
         self._kept_items = []
         self._model.clear()
         self._export.setEnabled(False)
+        self._forward_levels = []
+        self._requested_forward = []
         self._show_breadcrumb((TOP_LEVEL,))
+        self._show_find(TOP_LEVEL)
+        self._show_all.hide()
+        self._row_count.hide()
         self._say([])
         self._report.clear()
         self._command_line.clear()
@@ -1211,7 +1491,7 @@ class UsageExplorer(QDialog):
         font.setPointSize(size)
         self._table.setFont(font)
         self._fit_rows()
-        self._table.resizeColumnsToContents()
+        self._fit_columns()
         file_dialogs.dialog_settings().setValue(SETTING_EXPLORER_FONT_SIZE, size)
 
     def _fit_rows(self) -> None:
@@ -1225,12 +1505,15 @@ class UsageExplorer(QDialog):
 
     def set_dark(self, dark: bool) -> None:
         self._dark = dark
+        for pick in (self._from_pick, self._until_pick):
+            pick.setIcon(_calendar_icon(dark))
         self._colour_notes()
         self._style_separator()
         self._grid_style = _GridStyle(dark)
         self._table.setStyle(self._grid_style)
         header = self._table.horizontalHeader()
         if header is not None:
+            header.setStyle(self._grid_style)
             header.update()
         frame = self._table.parentWidget()
         if frame is not None:
@@ -1272,6 +1555,21 @@ class UsageExplorer(QDialog):
         super().keyPressEvent(a0)
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        # Find's filter is installed before the table is built
+        table = getattr(self, "_table", None)
+        if a0 is not None and table is not None and a0 is table.viewport():
+            if a1 is not None and a1.type() == QEvent.Type.Resize:
+                self._fill_width()
+            return super().eventFilter(a0, a1)
+        if (
+            a0 is self._find
+            and isinstance(a1, QKeyEvent)
+            and a1.type() == QEvent.Type.KeyPress
+            and a1.key() == Qt.Key.Key_Escape
+        ):
+            self._find.clear()
+            self._apply_find()
+            return True
         if (
             a0 is self._table
             and isinstance(a1, QKeyEvent)
@@ -1361,8 +1659,20 @@ class UsageExplorer(QDialog):
             return
         self._namespace_runner.run(["namespaces"])
 
-    def _request(self, view: _View, refresh: bool = False) -> None:
+    def _request(
+        self,
+        view: _View,
+        refresh: bool = False,
+        forward: list[Level] | None = None,
+    ) -> None:
+        """
+        Run a view; 'forward' the levels Forward re-enters once it is shown
+        (none: any step but Back, a crumb or Forward clears them).
+        """
         arguments = view_args(view.scope, list(view.levels), refresh)
+        self._requested_forward = list(forward or [])
+        # Nothing heard of this run's fetch yet
+        self._fetch_progress = None
         self._requested = view
         self._resolving = not view.scope.pinned
         self._resolving_refresh = refresh
@@ -1376,9 +1686,13 @@ class UsageExplorer(QDialog):
         if viewport is not None:
             viewport.setCursor(Qt.CursorShape.BusyCursor)
 
-    def _request_levels(self, levels: list[Level] | tuple[Level, ...]) -> None:
+    def _request_levels(
+        self,
+        levels: list[Level] | tuple[Level, ...],
+        forward: list[Level] | None = None,
+    ) -> None:
         if self._shown is not None:
-            self._request(_View(self._shown.scope, tuple(levels)))
+            self._request(_View(self._shown.scope, tuple(levels)), forward=forward)
 
     def _control_inputs(self) -> tuple[str, str, str, str]:
         return (
@@ -1526,6 +1840,66 @@ class UsageExplorer(QDialog):
         file_dialogs.dialog_settings().setValue(SETTING_EXPLORER_PRESET, preset)
         self._await_fetch()
 
+    def _day_picker(
+        self, field: QLineEdit, until: bool
+    ) -> tuple[QAction, QCalendarWidget]:
+        """
+        A calendar icon at the end of From or Until, opening a calendar: a
+        day chosen is its start (From) or its end (Until), in UTC, as if
+        typed.
+        """
+        action = field.addAction(
+            _calendar_icon(self._dark), QLineEdit.ActionPosition.TrailingPosition
+        )
+        assert action is not None
+        action.setToolTip(
+            "Choose the last day of the window: it ends at the day's end (UTC)"
+            if until
+            else "Choose the first day of the window: it starts at midnight (UTC)"
+        )
+        menu = QMenu(field)
+        calendar = QCalendarWidget(menu)
+        widget = QWidgetAction(menu)
+        widget.setDefaultWidget(calendar)
+        menu.addAction(widget)
+        menu.aboutToShow.connect(partial(self._open_calendar, field, calendar, until))
+        calendar.clicked.connect(partial(self._day_chosen, field, menu, until))
+        calendar.activated.connect(partial(self._day_chosen, field, menu, until))
+        action.setMenu(menu)
+        # Opened beneath the field, its right edge at the field's
+        action.triggered.connect(
+            lambda _checked=False: menu.popup(
+                field.mapToGlobal(
+                    QPoint(field.width() - menu.sizeHint().width(), field.height())
+                )
+            )
+        )
+        return action, calendar
+
+    @staticmethod
+    def _open_calendar(
+        field: QLineEdit, calendar: QCalendarWidget, until: bool
+    ) -> None:
+        """
+        A calendar opened at the day its field names, else at today, its
+        weekends shown as every other day is (Qt makes them red): Monday's
+        format, which sets no colour, so they follow the mode's palette.
+        """
+        day = day_of(field.text(), until) or date.today()
+        calendar.setSelectedDate(QDate(day.year, day.month, day.day))
+        weekday = calendar.weekdayTextFormat(Qt.DayOfWeek.Monday)
+        for weekend in (Qt.DayOfWeek.Saturday, Qt.DayOfWeek.Sunday):
+            calendar.setWeekdayTextFormat(weekend, weekday)
+
+    def _day_chosen(
+        self, field: QLineEdit, menu: QMenu, until: bool, chosen: QDate
+    ) -> None:
+        day = date(chosen.year(), chosen.month(), chosen.day())
+        field.setText(day_end_text(day) if until else day_start_text(day))
+        menu.close()
+        self._typed_window()
+        self._await_fetch()
+
     def _typed_window(self, *_args) -> None:
         self._preset.blockSignals(True)
         self._preset.setCurrentText(CUSTOM_PRESET)
@@ -1565,27 +1939,150 @@ class UsageExplorer(QDialog):
         if current is None or level is None or by == level.by or self._busy:
             self._show_total_by()
             return
-        # A sort by a key this level no longer shows is dropped
-        sort = (
-            level.sort
-            if level.sort in USAGE_SORT_VALUE_KEYS or level.sort in by
-            else None
+        # A sort key this level no longer shows is dropped
+        sort = tuple(
+            key for key in level.sort if key in USAGE_SORT_VALUE_KEYS or key in by
         )
         changed = replace(
-            level, by=by, sort=sort, reverse=level.reverse if sort else False
+            level,
+            by=by,
+            sort=sort,
+            reverse=level.reverse if sort else False,
+            # Find looks in the first key's column: another first key, another
+            # column, so it is emptied
+            match=level.match if by[0] == level.by[0] else "",
         )
         self._request_levels((*current.levels[:-1], changed))
 
     def _heading_clicked(self, column: int) -> None:
+        """
+        A heading clicked: the view sorted by its column alone, or by the
+        same keys reversed where it is the first of them; with Shift, its
+        column added as the next sort key, or dropped where it is one (the
+        last key left reversed instead). One '--reverse' turns every key.
+        """
         key = self._model.sort_key(column)
         current = self._shown
         if key is None or current is None or self._busy:
             self._show_sort_indicator()
             return
         level = current.levels[-1]
-        reverse = not level.reverse if (level.sort or "total") == key else False
+        keys: tuple[str, ...] = level.sort or ("total",)
+        first = keys[0]
+        reverse = level.reverse
+        shift = bool(
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier
+        )
+        if shift and key not in keys:
+            keys = (*keys, key)
+        elif shift and len(keys) > 1:
+            keys = tuple(k for k in keys if k != key)
+        elif first == key:
+            reverse = not reverse
+        else:
+            keys, reverse = (key,), False
         self._request_levels(
-            (*current.levels[:-1], replace(level, sort=key, reverse=reverse))
+            (*current.levels[:-1], replace(level, sort=keys, reverse=reverse))
+        )
+
+    def _focus_find(self) -> None:
+        self._find.setFocus()
+        self._find.selectAll()
+
+    def _apply_find(self) -> None:
+        """
+        Find's text applied to the level shown, unless it holds it already.
+        """
+        self._find_timer.stop()
+        current = self._shown
+        text = self._find.text()
+        if current is None or self._busy or current.levels[-1].match == text:
+            return
+        level = current.levels[-1]
+        self._request_levels((*current.levels[:-1], replace(level, match=text)))
+
+    def _show_find(self, level: Level) -> None:
+        """
+        Find as a level has it: its text, and the column it looks in.
+        """
+        self._find_timer.stop()
+        if self._find.text() != level.match:
+            self._find.setText(level.match)
+        placeholder = f"Find in {heading(level.by[0])}…"
+        self._find.setPlaceholderText(placeholder)
+        # Wide enough to read its placeholder, the clear button beside it
+        self._find.setMinimumWidth(
+            self._find.fontMetrics().horizontalAdvance(placeholder) + FIND_FIELD_ROOM
+        )
+
+    def _show_row_menu(self, position: QPoint) -> None:
+        index = self._table.indexAt(position)
+        viewport = self._table.viewport()
+        if index.isValid() and viewport is not None:
+            self._row_menu(index).popup(viewport.mapToGlobal(position))
+
+    def _row_menu(self, index: QModelIndex) -> QMenu:
+        """
+        A cell's right-click menu: drill into its row, filter to its value
+        (a key of several), copy it or the selection, and, inside Commander,
+        show a YellowDog ID it holds.
+        """
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        row, column = index.row(), index.column()
+        model = self._model
+        group = model.group(row)
+        current = self._shown
+        idle = current is not None and not self._busy
+        if group is not None and current is not None:
+            levels = drill(list(current.levels), group)
+            if levels is not None:
+                _menu_action(
+                    menu,
+                    f"Drill Into '{_menu_value(levels[-1].label)}'",
+                    partial(self._drill, row),
+                    idle,
+                )
+            by = model.by
+            if column < len(by) and len(by) > 1:
+                narrower = narrowed(list(current.levels), by[column], group)
+                _menu_action(
+                    menu,
+                    f"Filter to '{_menu_value(narrower[-1].label)}'",
+                    partial(self._request_levels, narrower),
+                    idle,
+                )
+        if not menu.isEmpty():
+            menu.addSeparator()
+        text = str(model.data(index) or "")
+        _menu_action(
+            menu,
+            f"Copy '{_menu_value(text)}'",
+            partial(copy_to_clipboard, text),
+            bool(text),
+        )
+        _menu_action(menu, "Copy Selected Cells", self._copy_cells)
+        if self._show_ydid is not None and YDID_HIGHLIGHT_RE.fullmatch(text):
+            menu.addSeparator()
+            _menu_action(
+                menu,
+                f"Show '{_menu_value(text)}' in Commander",
+                partial(self._show_ydid, text),
+            )
+        return menu
+
+    def _row_tooltip(self, levels: tuple[Level, ...]) -> str | None:
+        """
+        What a row of this level leads to, said on it: the key the next
+        level totals by (the same for every row), nothing at the last.
+        """
+        group = self._model.group(0)
+        deeper = drill(list(levels), group) if group is not None else None
+        if deeper is None:
+            return None
+        return (
+            f"Double-click to show it by {heading(deeper[-1].by[0])};"
+            " right-click for more"
         )
 
     def _drill(self, row: int) -> None:
@@ -1599,12 +2096,27 @@ class UsageExplorer(QDialog):
     def _step_back(self) -> None:
         shown = self._shown
         if shown is not None and not self._busy and len(shown.levels) > 1:
-            self._request_levels(shown.levels[:-1])
+            self._request_levels(
+                shown.levels[:-1],
+                forward=[shown.levels[-1], *self._forward_levels],
+            )
 
     def _crumb_clicked(self, depth: int) -> None:
         shown = self._shown
         if shown is not None and not self._busy:
-            self._request_levels(shown.levels[: depth + 1])
+            self._request_levels(
+                shown.levels[: depth + 1],
+                forward=[*shown.levels[depth + 1 :], *self._forward_levels],
+            )
+
+    def _step_forward(self) -> None:
+        """
+        Forward: the next level Back or a crumb left, entered again.
+        """
+        shown = self._shown
+        if shown is not None and not self._busy and self._forward_levels:
+            following, *rest = self._forward_levels
+            self._request_levels((*shown.levels, following), forward=rest)
 
     def _show_column_menu(self, position: QPoint) -> None:
         header = self._table.horizontalHeader()
@@ -1613,11 +2125,19 @@ class UsageExplorer(QDialog):
 
     def _column_menu(self) -> QMenu:
         """
-        The heading's right-click menu: a tick for each figure column but
-        the cost (which Estimated cost adds), the status columns after a
-        separator.
+        The heading's right-click menu: Columns' ticks (_fill_column_menu()).
         """
-        menu = QMenu(self)
+        menu = _TickMenu(self)
+        self._fill_column_menu(menu)
+        return menu
+
+    def _fill_column_menu(self, menu: QMenu) -> None:
+        """
+        A tick for each figure column but the cost (which Estimated cost
+        adds), the status columns after a separator, ticked as shown now:
+        the heading's right-click menu and Columns' alike.
+        """
+        menu.clear()
         for key in HIDEABLE_COLUMNS:
             if key == STATUS_COLUMNS[0]:
                 menu.addSeparator()
@@ -1625,7 +2145,6 @@ class UsageExplorer(QDialog):
             action.setCheckable(True)
             action.setChecked(key not in self._hidden)
             action.toggled.connect(partial(self._show_column, key))
-        return menu
 
     def _show_column(self, key: str, shown: bool) -> None:
         if shown:
@@ -1637,6 +2156,7 @@ class UsageExplorer(QDialog):
             ",".join(k for k in HIDEABLE_COLUMNS if k in self._hidden),
         )
         self._apply_hidden_columns()
+        self._fit_columns()
 
     def _apply_hidden_columns(self) -> None:
         """
@@ -1647,8 +2167,73 @@ class UsageExplorer(QDialog):
         for column in range(self._model.columnCount()):
             self._table.setColumnHidden(column, column in hidden)
 
+    def _fit_columns(self) -> None:
+        """
+        The columns as wide as their contents, the spare width the table's
+        given to its last key column (_fill_width()).
+        """
+        self._table.resizeColumnsToContents()
+        header = self._table.horizontalHeader()
+        if header is not None:
+            self._natural_widths = {
+                column: header.sectionSize(column)
+                for column in range(self._model.columnCount())
+            }
+        self._fill_width()
+
+    def _fill_width(self) -> None:
+        """
+        The last key column widened by the width the visible columns leave
+        of the table's, so that they fill it; as wide as its contents where
+        they leave none. Run again as the table changes width.
+        """
+        header = self._table.horizontalHeader()
+        viewport = self._table.viewport()
+        if header is None or viewport is None:
+            return
+        visible = [
+            column
+            for column in range(self._model.columnCount())
+            if not self._table.isColumnHidden(column)
+        ]
+        keys = [column for column in visible if column < len(self._model.by)]
+        if not keys:
+            return
+        natural = self._natural_widths
+        spare = viewport.width() - sum(
+            natural.get(column, header.sectionSize(column)) for column in visible
+        )
+        stretched = keys[-1]
+        header.resizeSection(
+            stretched,
+            natural.get(stretched, header.sectionSize(stretched)) + max(0, spare),
+        )
+
     def _toggle_details(self) -> None:
         self._details.setVisible(not self._details.isVisible())
+
+    def _show_row_count(self, document: dict) -> None:
+        """
+        The view's row count beneath the table, every row counted, those
+        '--top' summed included (the document's total says); none for a view
+        with no rows, which its note says.
+        """
+        shown = len(document["groups"])
+        total = document.get("total")
+        every = total.get("groups") if isinstance(total, dict) else None
+        every = every if isinstance(every, int) else shown
+        self._row_count.setText(row_count_text(shown, every))
+        self._row_count.setVisible(shown > 0)
+
+    def _show_all_rows(self) -> None:
+        """
+        Show All: the level shown again with every row.
+        """
+        current = self._shown
+        if current is None or self._busy:
+            return
+        level = current.levels[-1]
+        self._request_levels((*current.levels[:-1], replace(level, all_rows=True)))
 
     def _export_csv(self, raw: bool) -> None:
         """
@@ -1690,7 +2275,7 @@ class UsageExplorer(QDialog):
         The view shown, saved as a PDF report to a file the user names: its
         visible columns and rows with the Total row, the tiles from the Total
         row of every column, the scope and notes of the view shown (never of
-        controls changed since), portrait unless Landscape PDF is ticked; the
+        controls changed since), portrait unless Landscape is chosen; the
         outcome logged, and a failure shown too.
         """
         shown, document = self._shown, self._shown_document
@@ -1713,6 +2298,12 @@ class UsageExplorer(QDialog):
             all_rows = model.text_rows(every)
             total_by_heading = dict(zip(all_rows[0], all_rows[-1], strict=True))
         key_columns = len([column for column in visible if column < len(model.by)])
+        sort_keys = [
+            (model.heading(column), key in USAGE_SORT_VALUE_KEYS, most_first)
+            for key, most_first in sort_order(shown.levels[-1])
+            if (column := model.column_of_sort_key(key)) is not None
+        ]
+        sort = sort_text(sort_keys) if sort_keys else None
         content = report_content(
             document,
             shown.levels,
@@ -1723,6 +2314,7 @@ class UsageExplorer(QDialog):
             total_by_heading,
             bool(shown.scope.cost),
             list(self._shown_notes),
+            sort,
         )
         name = datetime.now().strftime(EXPORT_PDF_NAME_FORMAT)
         path = self._file_dialogs.save_file(
@@ -1754,12 +2346,8 @@ class UsageExplorer(QDialog):
             {i.column() for i in indexes if not self._table.isColumnHidden(i.column())}
         )
         chosen = {(index.row(), index.column()) for index in indexes}
-        lines = [
-            "\t".join(
-                str(self._model.headerData(c, Qt.Orientation.Horizontal))
-                for c in columns
-            )
-        ]
+        # The headings as written, without the sort marks the header shows
+        lines = ["\t".join(self._model.heading(c) for c in columns)]
         for row in rows:
             lines.append(
                 "\t".join(
@@ -1778,12 +2366,25 @@ class UsageExplorer(QDialog):
         self._overlay.show_over_table()
         self._tick.start()
 
+    def _on_progress(self, received: int | None) -> None:
+        """
+        The latest run's fetch: None while the Platform builds the report,
+        then the bytes received.
+        """
+        self._fetch_progress = received if received is not None else -1
+        if self._overlay.isVisible():
+            self._show_elapsed()
+
     def _show_elapsed(self) -> None:
-        self._overlay_text.setText(
-            RUNNING_TEXT.format(
-                elapsed=_minutes_and_seconds(self._runner.elapsed_seconds())
-            )
-        )
+        elapsed = _minutes_and_seconds(self._runner.elapsed_seconds())
+        progress = self._fetch_progress
+        if progress is None:
+            text = RUNNING_TEXT.format(elapsed=elapsed)
+        elif progress < 0:
+            text = WAITING_TEXT.format(elapsed=elapsed)
+        else:
+            text = DOWNLOADING_TEXT.format(size=size_text(progress), elapsed=elapsed)
+        self._overlay_text.setText(text)
 
     def _idle(self) -> None:
         self._tick.stop()
@@ -1825,6 +2426,7 @@ class UsageExplorer(QDialog):
         """
         notes, details = self._notes_of(document)
         notes.extend(warnings or [])
+        more = document.get("more")
         # What the PDF report prints: the document and the notes of the view
         # shown, never of the controls; an empty view's line is the report's
         # in the table's place, so not a note too
@@ -1853,8 +2455,10 @@ class UsageExplorer(QDialog):
         )
         self._shown_document = document
         self._shown_notes = shown_notes
+        self._forward_levels = self._requested_forward
         self._apply_hidden_columns()
-        self._table.resizeColumnsToContents()
+        self._model.set_row_tooltip(self._row_tooltip(view.levels))
+        self._fit_columns()
         self._show_breadcrumb(view.levels)
         self._sync_controls_to_shown()
         self._command_line.setText(self._requested_line)
@@ -1864,6 +2468,8 @@ class UsageExplorer(QDialog):
         self._details_button.setVisible(bool(details))
         if not details:
             self._details.hide()
+        self._show_all.setVisible(isinstance(more, dict))
+        self._show_row_count(document)
         reused = bool(document.get("reused", True))
         self._report.setText(
             f"Report: {_shown_time(document.get('from', ''))} →"
@@ -1956,6 +2562,7 @@ class UsageExplorer(QDialog):
         self._show_total_by()
         shown = self._shown
         if shown is not None:
+            self._show_find(shown.levels[-1])
             cost = bool(shown.scope.cost)
             self._cost.blockSignals(True)
             self._cost.setChecked(cost)
@@ -2049,19 +2656,17 @@ class UsageExplorer(QDialog):
             self._crumbs.addWidget(button)
             self._crumb_buttons.append(button)
         self._back.setEnabled(len(levels) > 1)
+        self._forward.setEnabled(bool(self._forward_levels))
         self._show_total_by(levels)
 
     def _show_sort_indicator(self) -> None:
         header = self._table.horizontalHeader()
         if header is None:
             return
-        level = self._shown.levels[-1] if self._shown else None
-        key = (level.sort if level else None) or "total"
+        order = sort_order(self._shown.levels[-1] if self._shown else None)
+        self._model.set_sort_order(order)
+        key, most_first = order[0]
         column = self._model.column_of_sort_key(key)
-        # The CLI's order: a key's value A to Z, a figure the most first
-        most_first = key in USAGE_SORT_VALUE_KEYS
-        if level is not None and level.reverse:
-            most_first = not most_first
         header.setSortIndicator(
             -1 if column is None else column,
             Qt.SortOrder.DescendingOrder if most_first else Qt.SortOrder.AscendingOrder,

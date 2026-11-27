@@ -64,7 +64,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 27 10:23:00 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 27 14:44:09 GMT 2026 -->
 
 <!--te-->
 
@@ -286,6 +286,8 @@ Directories expand in place, as in the Finder's list view: click the triangle be
 **Remembered preferences.** Whichever view you leave a dialog in, and whatever width you drag the sidebar to, is how the next dialog opens, whichever button opened it and after a restart.
 
 **Saving output.** The **Save Command Output** dialog carries no preview pane: it names a file that does not exist yet, so there is nothing worth previewing. It lists files the same way as the others, and shares the same sidebar width.
+
+**Where a save is suggested.** A save dialog first suggests the configuration file's directory. Once you have saved something, every save dialog (Save Command Output and the Usage Explorer's exports alike) opens in the directory that save went to, with its own suggested name, until Commander is closed.
 
 ## Selecting a Configuration (Panel 1)
 
@@ -559,12 +561,12 @@ The **←** and **→** buttons step back and forth through your command history
 ![The Usage Explorer on macOS, drilled into the team-render namespace and totalled by Compute Requirement, with estimated costs](screenshots/screenshot_usage_explorer_macos.png)
 
 1. Select a configuration file and click **Usage Explorer...**. The window opens on the last seven days for all namespaces on first use (it then opens on the window preset last chosen), and fetches nothing until you click **Fetch Report** at the centre of the table, so you can choose the window and namespace first. The table then has one row per namespace and a **Total** row beneath.
-2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
+2. Double-click a namespace (or select it and press Return, or right-click it and choose **Drill Into**). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
 3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
-4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
-5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
+4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, and **Forward** (Alt+Right; Cmd+] on macOS) to go down again to a level you left, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Type in **Find**, beside **Total by**, to show only the rows whose first column holds that text. Click a heading to sort by it, and again to reverse. Shift-click another heading to sort by it next, within the first.
+5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them, or choose a day from the calendar in each) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
 
-Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown, or the view as a PDF report for printing.
+Beneath the table, a count says how many rows it has (`4 rows`). The notes beneath that say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown, or the view as a PDF report for printing.
 
 ### Running the Explorer on Its Own
 
@@ -590,11 +592,17 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 **Totalling by several keys.** **Total by** lists the keys the breadcrumb leaves open (once you have drilled into a namespace, Namespace is no longer offered). The menu stays open while you tick and untick, so several keys can be changed at once, and the table is regrouped in one run when it closes. Each key ticked adds a column after those already there, and each row is one combination of their values; unticking a key removes its column, though the last one stays. **Instance ID** gives one row per Instance, combined with any other keys ticked (by creator, then Instance ID, says whose each Instance was). It is the last level, so its rows are not drilled into, and they have no Instances column, each being one Instance. Drilling down to it ticks the keys that describe an Instance with it (instance type, provider, region, pricing and Compute Requirement, bar any already drilled into), which you can untick. Double-clicking a row of several keys filters on all of them, and its crumb names each value (`team-render · eu-west-2`).
 
+**Large levels.** A view shows its first 500 rows in the order sorted (`--top 500`), with the rest summed in one `(n more)` row above **Total**, so a level of many thousands of Instances opens quickly. The command line beneath leaves the limit out, since in a terminal you would want every row. The count beneath the table then reads `500 of 1,234 rows`, and **Show All**, beside it, shows every row of that level. The summed row cannot be drilled into; sort by another column to bring its rows into the first 500. A level drilled into starts at 500 again.
+
+**Find.** **Find** shows the rows whose first column (named in the field) holds its text, in any case, through `--where <key>=*text*`, so the **Total** row is that of the rows found. A `*` or `?` typed is a wildcard. It runs a moment after you stop typing, or at once on Return; Esc empties it, and Cmd/Ctrl+F goes to it. A Find belongs to its level: drilling down starts the next level with none, and **Back** returns to it. **Total by** keeps it while the first key stays the same, and a PDF report says what was found.
+
 **Drill-downs match exactly.** Drilling into a row filters by its value with `--where key==value`, so the match is case-sensitive (`Render` does not match `render`) and a `*` or `?` in the value matches itself, not any characters. A creator row is filtered by the creator's ID.
+
+**Choosing days.** The calendar icon in **From** opens a calendar: the day chosen starts the window at midnight UTC. The one in **Until** ends the window at the end of the day chosen, so the next day's midnight, UTC: choosing 31 October gives `2026-11-01 00:00 UTC`. Each opens at the day its field names, or at today.
 
 **Fetch Report.** Changing **Window**, **From**, **Until** or **Namespace** dims the table under **Fetch Report** rather than fetching at once, so several can be changed and fetched together; putting them back to the report shown clears it. **A namespace chosen with the window unchanged loads at once** when a report kept with exactly the shown report's window holds it: the namespace's own, or every namespace's that covered it. It is shown in that window, so the report is used again, not fetched. Drilling, sorting, **Total by**, **Estimated cost** and **Back** regroup the report already fetched and run straight away. A new configuration also waits for **Fetch Report**.
 
-**Waiting for a new window.** While a new window or namespace awaits **Fetch Report** or is loading, double-clicking, sorting, **Back**, the crumbs and **Total by** wait, since there is no report to regroup yet. After a short delay the table dims, saying how long the run has taken, with **Stop**.
+**Waiting for a new window.** While a new window or namespace awaits **Fetch Report** or is loading, double-clicking, sorting, **Back**, the crumbs and **Total by** wait, since there is no report to regroup yet. After a short delay the table dims, saying how long the run has taken, with **Stop**. While a report is fetched it says how far the fetch has got: waiting for the Platform to build the report, then how much has been downloaded.
 
 **A failed or stopped first run.** A failure shows the CLI's message beneath the table in red, with what its exit code means where that helps; **Stop** shows `Stopped` there, plainly. Either way the Window, From, Until and Namespace controls go back to the window shown before. If nothing was shown yet they keep what you typed, with **Fetch Report** back, so you can correct it and fetch again.
 
@@ -602,13 +610,19 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 **Estimated cost.** The **Estimated cost** checkbox, ticked when the window first opens and remembered after that, adds the cost column (`--cost`). Instance types with no list price are not costed: a line says how many, and **Details** lists them. An Application that may not read cloud prices gets no estimate, and says so.
 
-**Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
+**Sorting by several columns.** Each column Shift-clicked is the next sort key, and Shift-clicking a sort key drops it. The first key's heading carries the sort arrow, and each later one its place as a small number (`Running (h:mm) ²`), with a tooltip giving its order. Names sort A to Z and figures the most first, as `yd usage --sort` sorts. Clicking the first key's heading again reverses every key together, since `--reverse` turns them all round. Clicking any other heading sorts by it alone. A key no longer totalled by leaves the sort.
 
-**Exporting.** **Export**'s menu saves the view in three forms. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row (CSV)**, ticked at first, is unticked in the menu. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory.
+**Share.** The **Share** column gives each row's share of the **Total**: of the estimated cost while **Estimated cost** is ticked (`Share of cost`), else of the total time (`Share of time`), as `yd usage --json` gives it. Sorting by it sorts by the cost or the total time, and the raw CSV export gives it as a fraction.
 
-- **Raw Numbers (CSV)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
-- **As Shown (CSV)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
-- **PDF Report…**: the view as a report to print or share, suggested as `usage-<date>-<time>.pdf`. See [The PDF Report](#the-pdf-report).
+**Choosing columns.** **Columns**, beside **Total by**, shows or hides any figure column, as right-clicking a heading does; the menu stays open while you tick and untick: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
+
+**Exporting.** **Export**'s menu saves the view in three forms, grouped by format, each format's settings beneath its exports. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row**, under the CSV saves and ticked at first, is unticked. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory, or the directory you last saved to this session.
+
+- **Save CSV (Raw Numbers)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
+- **Save CSV (As Shown)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
+- **Save PDF Report…**: the view as a report to print or share, suggested as `usage-<date>-<time>.pdf`. See [The PDF Report](#the-pdf-report).
+
+**A row's menu.** Right-click a cell for **Drill Into** its row, **Filter to** its value (a key column, where the level is totalled by several keys: the level is totalled by the others, for that value alone, as a crumb of its own), **Copy** the cell or the selected cells, and, inside Commander, **Show** a YellowDog ID it holds, which runs `yd show` in the output window. A row's tooltip says what double-clicking it shows.
 
 **Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
 
@@ -624,15 +638,15 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 #### The PDF Report
 
-**PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by and drilled into, and when the report was fetched. Three headline figures follow: the estimated cost, the running time and the Instances. Then comes the table, with its visible columns and every row, ending with the **Total** row.
+**Save PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the account and the Platform's URL beneath the title, then the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by, sorted by and drilled into, and when the report was fetched. Three headline figures follow: the estimated cost, the running time and the Instances. Then comes the table, with its visible columns and every row, ending with the **Total** row.
 
-![The top of a PDF report's first page: the title, the period and namespace, the scope, the estimated cost, running time and Instances, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
+![The top of a PDF report's first page: the title, the account and Platform URL, the period and namespace, the scope, the estimated cost, running time and Instances, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
 
 - **The table always fits the page's width.** Its type is reduced as far as 6pt for a wide view. Beyond that, long names are shortened in the middle with `…`. Nothing is cut off at the side.
 - **Rows continue on as many pages as they need.** Each later page repeats the column headings, and every page is numbered.
 - **Notes follow the table**: which namespaces are covered, any warning, and the instance types with no list price.
 - **Without Estimated cost**, nothing about cost appears: its figure, its column and the footer's note on list prices are left out, and the title is "Compute Usage".
-- **Pages are A4**, or US Letter where your system measures in US units. Tick **Landscape PDF** in the menu for landscape pages, which fit a wide view at a larger size; it is remembered.
+- **Pages are A4**, or US Letter where your system measures in US units. Choose **Landscape**, under **Save PDF Report…** in the menu, for landscape pages, which fit a wide view at a larger size, or **Portrait** to go back; the choice is remembered.
 - **The report is of the view shown.** Controls changed since, awaiting **Fetch Report**, do not change it.
 
 

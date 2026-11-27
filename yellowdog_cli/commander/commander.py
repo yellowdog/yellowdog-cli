@@ -1152,6 +1152,8 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
                 self._usage_base_args,
                 self._font,
                 self.dark_mode.isChecked(),
+                # Late-bound, so that a test's patch of the window reaches it
+                show_ydid=lambda ydid: self._show_ydid(ydid),
             )
             explorer.logged.connect(self._output.log)
             explorer.finished.connect(lambda *_: self._forget_usage_explorer())

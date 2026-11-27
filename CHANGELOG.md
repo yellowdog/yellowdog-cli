@@ -2,6 +2,44 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.23.0 — 2026-11-27
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **`yd usage`'s total line starts with the table's row count**: `Total: 4 rows, 43 Instances, …` in place of `Total: 43 Instances, …`, counting every row, those `--top` summed included. A script reading the terminal table rather than `--json` or `--csv` needs updating.
+
+### Configuration
+
+- **A trailing `/` on the API URL is dropped** (`url`, `YD_URL`, `--url`), so `https://api.yellowdog.ai/` is the same Platform as `https://api.yellowdog.ai`: `yd usage` reuses its kept reports and prices, and the CLI's own requests no longer carry a `//`.
+
+### yd usage
+
+- **`yd usage --json` gives each group's `share` of the total**: of the time (`hours`), and with `--cost` of the estimated cost (`cost`), as fractions to four places, in `groups`, `more` and `total`.
+- **A large usage report is read again in a moment.** The first read sums its Instances into one row per Compute Requirement, provider, region, instance type, source and pricing, kept beside the report, which later runs and every Usage Explorer view read instead: a report of 1.5 million Instances takes 0.2 seconds rather than 5 to 15, and much less memory. `--by instance-id` and `--where instance-id=` still read every Instance.
+- **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
+
+### Commander
+
+- **The Usage Explorer counts a view's rows** beneath the table (`4 rows`, or `500 of 1,234 rows` with **Show All** beside it), and the PDF report's Instances tile says `in 4 rows`.
+- **The Usage Explorer's table reads in the window's own font**, its figures lined up, and its columns fill the table's width.
+- **Forward in the Usage Explorer** (Alt+Right; Cmd+] on macOS) goes down again to the levels Back or a crumb left.
+- **A calendar beside the Usage Explorer's From and Until**: the day chosen starts the window, or for Until ends it at the day's end (UTC); typing still works as before.
+- **The Usage Explorer says how far a report's fetch has got**: waiting for the Platform to build it, then how much has been downloaded.
+- **A Share column in the Usage Explorer** gives each row's share of the total cost (or, without the cost, of the time), and the PDF report and exports carry it.
+- **Fixed: at a Usage Explorer level grouped by Instance ID, clicking a figure's heading sorted by the column beside it.**
+- **A Columns button in the Usage Explorer** shows or hides figure columns, as right-clicking a heading does; both menus stay open while you tick.
+- **Find in the Usage Explorer**: type in **Find** to show only the rows whose first column holds the text (`--where <key>=*text*`), the Total row being theirs; Cmd/Ctrl+F goes to it.
+- **Right-click a row in the Usage Explorer** to drill into it, filter to a value of one of several keys, copy the cell or the selection, or (inside Commander) show a YellowDog ID with `yd show`. Each row's tooltip says what double-clicking it shows.
+- **The Usage Explorer shows a level's first 500 rows**, the rest summed in one `(n more)` row, so a level of many thousands of Instances opens quickly; **Show All** shows every row.
+- **A save dialog opens where the last save went**, for the rest of the session: Save Command Output and the Usage Explorer's CSV and PDF exports, each with its own suggested name. A new session starts in the configuration file's directory again.
+- **The Usage Explorer's Export menu is grouped by format**: **Save CSV (Raw Numbers)…**, **Save CSV (As Shown)…** and **Include Total Row**, then **Save PDF Report…** and the page orientation, a choice of **Portrait** or **Landscape** with one always marked.
+- **The Usage Explorer sorts by several columns**: Shift-click a heading to sort by it next, or to drop it from the sort. Later keys are numbered in their headings, and the command line and PDF report name every key.
+- **The Usage Explorer's PDF report says how its rows are sorted**, beside what it is totalled by: `sorted by Total (h:mm), most first`.
+- **The Usage Explorer's PDF report names the account and the Platform's URL** beneath its title.
+- **On Windows, the Usage Explorer's column headings leave room for the sort chevron** above their text, where Windows draws it, rather than over it.
+
 ## 15.22.0 — 2026-11-27
 
 ### Upgrading

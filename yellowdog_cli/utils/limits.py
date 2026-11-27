@@ -51,6 +51,9 @@ PLATFORM_REQUEST_TIMEOUT = 90.0  # Seconds
 USAGE_REPORT_READ_TIMEOUT = 300.0  # Seconds
 # The size of the chunks a usage report is read in, each one shown arriving
 USAGE_REPORT_CHUNK_BYTES = 1 << 20
+# The least time between the fetch's progress lines a program asked for
+# (USAGE_PROGRESS_LINES): four a second, enough for a display to move
+USAGE_PROGRESS_LINE_SECONDS = 0.25
 # How long the CLI's direct Platform requests wait to connect
 RAW_CONNECT_TIMEOUT = 10.0  # Seconds
 

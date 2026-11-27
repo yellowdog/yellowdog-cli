@@ -2339,7 +2339,7 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
     │ team-render  │ g4dn.xlarge     │ 1           │ 0:00             │ 168:00           │ 168:00         │
     │ team-train   │ t3a.2xlarge     │ 121         │ 11:12            │ 0:00             │ 12:00          │
     └──────────────┴─────────────────┴─────────────┴──────────────────┴──────────────────┴────────────────┘
-2026-11-19 07:48:26 : Total: 122 Instances, 11:12 running of 180:00 in all statuses
+2026-11-19 07:48:26 : Total: 2 rows, 122 Instances, 11:12 running of 180:00 in all statuses
 ```
 
 Key options:
@@ -2354,10 +2354,10 @@ Key options:
 - `--reverse` — invert the whole order `--sort` gives
 - `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
-- `--json`/`-J` — print one JSON document holding the window, when the report was fetched, whether it was reused from an earlier run (`reused`) and where it is kept, each group's Instance count and its time in every status, in hours and in exact seconds, and `total`, every group summed:
+- `--json`/`-J` — print one JSON document holding the window, the account's name and the Platform's URL, when the report was fetched, whether it was reused from an earlier run (`reused`) and where it is kept, each group's Instance count, its time in every status, in hours and in exact seconds, and its `share` of the total, and `total`, every group summed:
 
 ```json
-{"from": "...", "until": "...", "namespace": null, "namespaces": null, "by": ["namespace"], "where": {}, "fetched": "...", "reused": false, "reportFile": "...", "groups": [{"namespace": "team-render", "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}], "total": {"groups": 1, "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}}}
+{"from": "...", "until": "...", "accountName": "...", "url": "...", "namespace": null, "namespaces": null, "by": ["namespace"], "where": {}, "fetched": "...", "reused": false, "reportFile": "...", "groups": [{"namespace": "team-render", "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}, "share": {"hours": 1.0}}], "total": {"groups": 1, "instances": 1, "hours": {"pending": 0.0, "running": 0.0, "stopping": 0.0, "stopped": 168.0, "terminating": 0.0, "unknown": 0.0, "total": 168.0}, "seconds": {"pending": 0, "running": 0, "stopping": 0, "stopped": 604800, "terminating": 0, "unknown": 0, "total": 604800}, "share": {"hours": 1.0}}}
 ```
 
 Some uses:
@@ -2452,6 +2452,8 @@ What else to expect:
 **Sources.** The report names an Instance's Compute Source by its name alone, without its template or the template's namespace, which need not be the Compute Requirement's. Sources of the same name in different templates are therefore one row under `--by source` and are matched together by `--where source=`; add `namespace` or `requirement` to `--by` to tell them apart by where they were used.
 
 The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path.
+
+The first time a report is read, its Instances alike in everything but their IDs are summed into one row each, kept beside the zip (`summed-v1.csv`), so a report of a million Instances is read again in under a second. Only `--by instance-id`, or `--where instance-id=`, reads every Instance from the zip.
 
 A later run for the same `--namespace` uses a report kept rather than fetching the report again while its `--from` and `--until` cover that report's window to within ten minutes at each end, however they are written. A report fetched with `--from 24h --until now` is used again by `--from '2026-11-24 10:52 UTC' --until '2026-11-25 10:52 UTC'`, the window its summary showed.
 

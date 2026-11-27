@@ -4,7 +4,9 @@ preset, the arguments of a view, drilling and a row's cells. Needs no Qt.
 """
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
 
 from yellowdog_cli.commander.usage_views import (
     DRILL_PATH,
@@ -12,14 +14,21 @@ from yellowdog_cli.commander.usage_views import (
     INSTANCE_LEVEL,
     KEY_VALUE_SEPARATOR,
     PRESETS,
+    VIEW_TOP_ROWS,
     Level,
     Scope,
     command_line,
+    day_end_text,
+    day_of,
+    day_start_text,
     drill,
     eligible_keys,
     heading,
+    narrowed,
     preset_window,
     row_cells,
+    row_count_text,
+    sort_order,
     toggled_by,
     view_args,
     window_time,
@@ -39,6 +48,8 @@ def test_first_view_passes_the_window_as_typed():
         "now",
         "--by",
         "namespace",
+        "--top",
+        "500",
         "--cost",
     ]
 
@@ -82,19 +93,48 @@ def test_namespace_filters_sort_and_refresh():
     levels = [
         Level(("namespace",)),
         Level(
-            ("cr",), (("namespace", "team-a"),), "team-a", sort="total", reverse=True
+            ("cr",), (("namespace", "team-a"),), "team-a", sort=("total",), reverse=True
         ),
     ]
     assert view_args(Scope("a", "b", "team-*", True), levels, refresh=True) == [
         "--from", "a", "--until", "b", "-n", "team-*", "--by", "cr",
         "--where", "namespace==team-a", "--sort", "total", "--reverse",
-        "--cost", "--refresh",
+        "--top", "500", "--cost", "--refresh",
     ]  # fmt: skip
 
 
 def test_sort_without_reverse():
-    args = view_args(Scope("a", "b", None, False), [Level(("cr",), sort="cost")])
-    assert args[-2:] == ["--sort", "cost"]
+    args = view_args(Scope("a", "b", None, False), [Level(("cr",), sort=("cost",))])
+    assert args[-4:-2] == ["--sort", "cost"]
+
+
+def test_a_view_shows_the_first_rows_unless_all_are_asked_for():
+    scope = Scope("a", "b", None, False)
+    assert view_args(scope, [Level(("cr",))])[-2:] == ["--top", str(VIEW_TOP_ROWS)]
+    assert "--top" not in view_args(scope, [Level(("cr",), all_rows=True)])
+
+
+def test_several_sort_keys_are_one_sort():
+    level = Level(("cr", "region"), sort=("region", "total"), reverse=True)
+    args = view_args(Scope("a", "b", None, False), [level])
+    assert args[-5:-2] == ["--sort", "region,total", "--reverse"]
+
+
+@pytest.mark.parametrize(
+    "level, expected",
+    [
+        (None, [("total", True)]),
+        (Level(("cr",)), [("total", True)]),
+        (Level(("cr",), sort=("cr", "running")), [("cr", False), ("running", True)]),
+        # --reverse turns every key round
+        (
+            Level(("cr",), sort=("cr", "running"), reverse=True),
+            [("cr", True), ("running", False)],
+        ),
+    ],
+)
+def test_sort_order_is_each_key_and_whether_the_most_or_z_is_first(level, expected):
+    assert sort_order(level) == expected
 
 
 def test_drill_filters_exactly_and_moves_down_the_path():
@@ -170,7 +210,7 @@ def test_several_keys_group_and_drill_on_all_of_them():
         (("namespace", "team-render"), ("region", "eu-west-2")),
         f"team-render{KEY_VALUE_SEPARATOR}eu-west-2",
     )
-    assert view_args(Scope("a", "b", None, False), levels)[-4:] == [
+    assert view_args(Scope("a", "b", None, False), levels)[-6:-2] == [
         "--where",
         "namespace==team-render",
         "--where",
@@ -256,6 +296,13 @@ def test_command_line_leaves_out_the_explorers_output_options():
     )
 
 
+def test_command_line_leaves_out_the_views_row_limit():
+    # Typed in a terminal, the command shows every row
+    assert command_line(["--by", "cr", "--top", "500", "--cost"]) == (
+        "yd usage --by cr --cost"
+    )
+
+
 def test_row_cells_format_as_the_cli():
     row = {
         "namespace": "team-a",
@@ -271,17 +318,103 @@ def test_row_cells_format_as_the_cli():
         },
         "estimatedCost": 216.4,
         "unpricedRunningHours": 0.5,
+        "share": {"hours": 0.4123, "cost": 0.25},
     }
     assert row_cells(row, ["namespace"], True) == [
-        "team-a", "1,234", "41:10", "<0:01", "1,500:00", "216.40+",
+        "team-a", "1,234", "41:10", "<0:01", "1,500:00", "216.40+", "25.0%",
         "0:00", "<0:01", "0:00", "0:01",
     ]  # fmt: skip
     row["unpricedRunningHours"] = 0
     row["estimatedCost"] = None
     assert row_cells(row, ["namespace"], True)[5] == "-"
-    assert len(row_cells(row, ["namespace"], False)) == 9
+    # Without the cost, the share of the time
+    assert len(row_cells(row, ["namespace"], False)) == 10
+    assert row_cells(row, ["namespace"], False)[5] == "41.2%"
+    # No share to give: none of anything
+    row["share"] = {"hours": None, "cost": None}
+    assert row_cells(row, ["namespace"], True)[6] == "-"
+    del row["share"]
+    assert row_cells(row, ["namespace"], False)[5] == "-"
 
 
 def test_heading_reads_as_the_command():
     assert heading("cr") == "Compute Requirement"
     assert heading("instance-type") == "Instance type"
+
+
+def test_narrowing_to_a_value_drops_its_key_and_filters_by_it():
+    level = Level(("namespace", "region"), sort=("region", "total"), reverse=True)
+    row = {"namespace": "team-a", "region": "eu-west-2"}
+    levels = narrowed([level], "region", row)
+    assert levels == [
+        level,
+        Level(
+            ("namespace",),
+            (("region", "eu-west-2"),),
+            "eu-west-2",
+            sort=("total",),
+            reverse=True,
+        ),
+    ]
+
+
+def test_narrowing_to_a_creator_filters_by_its_id():
+    level = Level(("creator", "region"))
+    row = {"creator": "alice (User)", "creatorId": "ydid:user:1", "region": "r"}
+    [_, narrow] = narrowed([level], "creator", row)
+    assert narrow.filters == (("creator-id", "ydid:user:1"),)
+    assert narrow.label == "alice (User)"
+
+
+def test_find_matches_the_first_key_anywhere_in_its_value():
+    args = view_args(
+        Scope("a", "b", None, False), [Level(("cr", "region"), match="rend")]
+    )
+    where = [args[i + 1] for i, arg in enumerate(args) if arg == "--where"]
+    assert where == ["cr=*rend*"]
+
+
+def test_a_bracket_found_matches_itself():
+    args = view_args(Scope("a", "b", None, False), [Level(("cr",), match="a[1]")])
+    assert args[args.index("--where") + 1] == "cr=*a[[]1]*"
+
+
+def test_a_day_starts_and_ends_at_midnight_utc():
+    assert day_start_text(date(2026, 10, 1)) == "2026-10-01 00:00 UTC"
+    # The end of a day is the next one's start; of a year's last, the next year
+    assert day_end_text(date(2026, 10, 31)) == "2026-11-01 00:00 UTC"
+    assert day_end_text(date(2026, 12, 31)) == "2027-01-01 00:00 UTC"
+
+
+@pytest.mark.parametrize(
+    "text, until, day",
+    [
+        ("2026-10-05 00:00 UTC", False, date(2026, 10, 5)),
+        ("2026-10-05 13:30 UTC", False, date(2026, 10, 5)),
+        # Until a midnight is until the end of the day before
+        ("2026-11-01 00:00 UTC", True, date(2026, 10, 31)),
+        ("2026-11-01 09:30 UTC", True, date(2026, 11, 1)),
+        ("2026-10-05", False, date(2026, 10, 5)),
+        ("7 days ago", False, None),
+        ("now", True, None),
+        # Not a day or a time there is
+        ("2026-02-30", False, None),
+        ("2026-11-01 25:00 UTC", False, None),
+    ],
+)
+def test_the_day_a_field_names(text, until, day):
+    assert day_of(text, until) == day
+
+
+@pytest.mark.parametrize(
+    "shown, total, text",
+    [
+        (1, 1, "1 row"),
+        (4, 4, "4 rows"),
+        (1234, 1234, "1,234 rows"),
+        # Rows left out by --top, summed in the '(n more)' row
+        (500, 1234, "500 of 1,234 rows"),
+    ],
+)
+def test_row_count_text(shown, total, text):
+    assert row_count_text(shown, total) == text

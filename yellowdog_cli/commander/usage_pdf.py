@@ -24,6 +24,7 @@ from PyQt6.QtSvg import QSvgRenderer
 
 from yellowdog_cli.commander.branding import BRANDING_IMAGE
 from yellowdog_cli.commander.usage_report_layout import (
+    ACCOUNT_SIZE,
     CELL_PADDING,
     FOOTER_HEIGHT,
     FOOTER_SIZE,
@@ -263,8 +264,20 @@ class _Drawing:
             TITLE_SIZE,
             bold=True,
         )
+        account_height = ACCOUNT_SIZE * 1.6
         self._text(
-            QRectF(self.left, top + title_height, width, SUBTITLE_SIZE * 1.6),
+            QRectF(self.left, top + title_height, width, account_height),
+            self.content.account_line,
+            ACCOUNT_SIZE,
+            FAINT,
+        )
+        self._text(
+            QRectF(
+                self.left,
+                top + title_height + account_height,
+                width,
+                SUBTITLE_SIZE * 1.6,
+            ),
             self.content.subtitle,
             SUBTITLE_SIZE,
             MUTED,

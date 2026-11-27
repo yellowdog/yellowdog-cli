@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import timezone
 
 from yellowdog_cli.commander.elision import elide_middle
-from yellowdog_cli.commander.usage_views import Level, window_time
+from yellowdog_cli.commander.usage_views import Level, heading, window_time
 from yellowdog_cli.utils.usage_text import report_time
 
 # Width in points of a text at a point size, bold or not
@@ -67,7 +67,8 @@ HEADING_LEADING = 1.25
 # The page's parts, top to bottom
 TITLE_SIZE = 16.0
 SUBTITLE_SIZE = 9.5
-HEADER_HEIGHT = 46.0
+ACCOUNT_SIZE = 8.5
+HEADER_HEIGHT = 60.0
 SLIM_HEADER_HEIGHT = 30.0
 SCOPE_SIZE = 7.5
 SCOPE_LINE_HEIGHT = 11.0
@@ -93,7 +94,8 @@ class Tile:
 @dataclass(frozen=True)
 class ReportContent:
     """
-    Everything a report shows, as text: the header, the scope lines, the
+    Everything a report shows, as text: the header (the title, the account
+    line naming the account and the Platform, the subtitle), the scope lines, the
     tiles, the table (the first key_columns columns keys, the rest figures;
     the Total row apart from the rows, None with no groups), the line shown
     in the table's place when it is empty, the notes after it and the
@@ -101,6 +103,7 @@ class ReportContent:
     """
 
     title: str
+    account_line: str
     subtitle: str
     scope_lines: list[str]
     tiles: list[Tile]
@@ -494,6 +497,28 @@ def period_text(from_iso: str, until_iso: str) -> str:
     return f"{shown_from} → {window_time(until_iso)}"
 
 
+def sort_text(keys: list[tuple[str, bool, bool]]) -> str:
+    """
+    How a report's rows are sorted, from each sort key's (heading, whether a
+    figure, whether the most or Z first), the most significant first: a
+    figure the most or the least first, a key's value A to Z or Z to A.
+    """
+    return ", then ".join(
+        f"{heading}, {direction_text(figure, most_first)}"
+        for heading, figure, most_first in keys
+    )
+
+
+def direction_text(figure: bool, most_first: bool) -> str:
+    """
+    A sort key's direction: a figure's 'most first' or 'least first', a
+    key's value 'A to Z' or 'Z to A'.
+    """
+    if figure:
+        return "most first" if most_first else "least first"
+    return "Z to A" if most_first else "A to Z"
+
+
 def report_content(
     document: dict,
     levels: tuple[Level, ...],
@@ -504,6 +529,7 @@ def report_content(
     total_by_heading: dict[str, str] | None,
     cost: bool,
     notes: list[str],
+    sort: str | None = None,
 ) -> ReportContent:
     """
     The report of a view: 'document' its `yd usage --json` document,
@@ -511,8 +537,9 @@ def report_content(
     columns as displayed (the first key_columns keys), 'total_by_heading'
     the Total row of every column (None with no groups), which the tiles
     read whether or not their columns are visible, 'cost' whether the view
-    has cost, and 'notes' the lines printed after the table. Every figure is
-    the table's own text; nothing about cost when 'cost' is false.
+    has cost, 'notes' the lines printed after the table, and 'sort' how the
+    rows are sorted (sort_text()). Every figure is the table's own text;
+    nothing about cost when 'cost' is false.
     """
     namespace = document.get("namespace")
     period = period_text(str(document.get("from", "")), str(document.get("until", "")))
@@ -523,20 +550,36 @@ def report_content(
     scope_lines = [
         f"Window: {window} · "
         + (f"Namespace: {namespace}" if namespace else "All namespaces"),
-        "Totalled by " + ", ".join(headings[:key_columns]),
+        "Totalled by "
+        + ", ".join(headings[:key_columns])
+        + (f" · sorted by {sort}" if sort else ""),
     ]
     if len(levels) > 1:
         scope_lines.append(
             "Within: " + DRILL_SEPARATOR.join(level.label for level in levels[1:])
+        )
+    if levels and levels[-1].match:
+        scope_lines.append(
+            f"Where: {heading(levels[-1].by[0])} contains '{levels[-1].match}'"
         )
     scope_lines.append(
         f"Report fetched {window_time(str(document.get('fetched', '')))}"
     )
     return ReportContent(
         title=REPORT_TITLE if cost else REPORT_TITLE_WITHOUT_COST,
+        account_line=" · ".join(
+            part
+            for part in (
+                f"Account: {document['accountName']}"
+                if document.get("accountName")
+                else "",
+                str(document.get("url") or ""),
+            )
+            if part
+        ),
         subtitle=f"{period} · {namespace or 'all namespaces'}",
         scope_lines=scope_lines,
-        tiles=_tiles(document, total_by_heading, len(rows), cost),
+        tiles=_tiles(document, total_by_heading, _group_count(document, rows), cost),
         headings=headings,
         key_columns=key_columns,
         rows=rows,
@@ -547,6 +590,16 @@ def report_content(
         notes=notes,
         caveat=COST_CAVEAT if cost else None,
     )
+
+
+def _group_count(document: dict, rows: list[list[str]]) -> int:
+    """
+    The groups of the view: the document's total says, those '--top' summed
+    in its '(n more)' row included; the rows shown where it does not.
+    """
+    total = document.get("total")
+    groups = total.get("groups") if isinstance(total, dict) else None
+    return groups if isinstance(groups, int) else len(rows)
 
 
 def _tiles(
@@ -564,7 +617,7 @@ def _tiles(
     instances = Tile(
         "Instances",
         by_name.get("Instances", f"{groups:,}"),
-        f"in {groups:,} group{'' if groups == 1 else 's'}",
+        f"in {groups:,} row{'' if groups == 1 else 's'}",
     )
     running = Tile("Running", by_name.get("Running", "0:00"), "hours:minutes")
     if not cost:

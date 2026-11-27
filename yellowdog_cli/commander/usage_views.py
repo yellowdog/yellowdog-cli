@@ -5,9 +5,10 @@ text. Commander groups and adds up nothing itself: every figure shown is the
 CLI's, read from its `--json` document.
 """
 
+import re
 import shlex
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from yellowdog_cli.utils.command_registry import (
     USAGE_GROUP_KEYS,
@@ -29,14 +30,23 @@ __all__ = [
     "PRESETS",
     "USAGE_GROUP_KEYS",
     "USAGE_SORT_VALUE_KEYS",
+    "VIEW_TOP_ROWS",
     "Level",
     "Scope",
     "command_line",
+    "day_end_text",
+    "day_of",
+    "day_start_text",
     "drill",
     "eligible_keys",
     "heading",
+    "narrowed",
     "preset_window",
     "row_cells",
+    "row_count_text",
+    "share_basis",
+    "share_text",
+    "sort_order",
     "toggled_by",
     "view_args",
 ]
@@ -90,6 +100,52 @@ def _month_start(year: int, month: int) -> str:
     The first instant of a calendar month, as a window time.
     """
     return datetime(year, month, 1, tzinfo=timezone.utc).strftime(WINDOW_TIME_FORMAT)
+
+
+# A day as From and Until are written: '2026-10-05', or with its time as
+# WINDOW_TIME_FORMAT writes it, '2026-10-05 13:30 UTC'
+_FIELD_DAY = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}) UTC)?")
+
+
+def day_start_text(day: date) -> str:
+    """
+    The start of a day, in UTC, as From takes it: '2026-10-01 00:00 UTC'.
+    """
+    return f"{day:%Y-%m-%d} 00:00 UTC"
+
+
+def day_end_text(day: date) -> str:
+    """
+    The end of a day, in UTC, as Until takes it: the next day's start, so
+    that the day chosen is in the window whole.
+    """
+    return day_start_text(day + timedelta(days=1))
+
+
+def day_of(text: str, until: bool) -> date | None:
+    """
+    The day a From or Until field names, for its calendar to open at: its
+    date, or for an Until at midnight the day before, whose end it is;
+    None for a field naming no date ('7 days ago', 'now').
+    """
+    # Matched, not strptime()'d: strptime() reads the locale as it first
+    # runs, and inside the application's event loop that raised, which a
+    # slot turns into an abort
+    match = _FIELD_DAY.fullmatch(text.strip())
+    if match is None:
+        return None
+    year, month, day_of_month, hour, minute = match.groups()
+    try:
+        day = date(int(year), int(month), int(day_of_month))
+    except ValueError:
+        return None
+    if hour is None:
+        return day
+    if int(hour) > 23 or int(minute) > 59:
+        return None
+    if until and (int(hour), int(minute)) == (0, 0):
+        day -= timedelta(days=1)
+    return day
 
 
 def window_time(iso: str) -> str:
@@ -154,18 +210,30 @@ class Scope:
         )
 
 
+# The rows a view asks for (--top), the rest summed in one row, so that a
+# level of a great many groups (an account's every Instance) arrives as a
+# table that can be shown; Show All asks for every row
+VIEW_TOP_ROWS = 500
+
+
 @dataclass(frozen=True)
 class Level:
     """
     One breadcrumb level: the keys it totals by (columns, in this order), the
-    exact filters the row drilled into gave it, how it sorts.
+    exact filters the row drilled into gave it, how it sorts: the '--sort'
+    keys, the first the most significant ('total' when none), and whether
+    '--reverse' turns them all round; whether every row is shown, or the
+    first VIEW_TOP_ROWS with the rest summed; and the text Find looks for
+    in its first key's values ('' for none).
     """
 
     by: tuple[str, ...]
     filters: tuple[tuple[str, str], ...] = ()
     label: str = "All"
-    sort: str | None = None
+    sort: tuple[str, ...] = ()
     reverse: bool = False
+    all_rows: bool = False
+    match: str = ""
 
     @property
     def leaf(self) -> bool:
@@ -173,6 +241,26 @@ class Level:
         Whether this is the Instance level, the last.
         """
         return INSTANCE_LEVEL in self.by
+
+
+def glob_literal(text: str) -> str:
+    """
+    Text in a '--where' pattern, a '[' matching itself rather than opening a
+    class; a '*' or '?' typed is a wildcard still.
+    """
+    return text.replace("[", "[[]")
+
+
+def sort_order(level: Level | None) -> list[tuple[str, bool]]:
+    """
+    Each key a level sorts by ('total' unless set), the most significant
+    first, with whether the most, or for a key's value Z, comes first: the
+    CLI's order is a figure the most first and a value A to Z, '--reverse'
+    turning every key the other way.
+    """
+    keys = (level.sort if level else ()) or ("total",)
+    reverse = bool(level and level.reverse)
+    return [(key, (key in USAGE_SORT_VALUE_KEYS) != reverse) for key in keys]
 
 
 def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[str]:
@@ -188,10 +276,14 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
     for level in levels:
         for key, value in level.filters:
             args += ["--where", f"{key}=={value}"]
+    if current.match:
+        args += ["--where", f"{current.by[0]}=*{glob_literal(current.match)}*"]
     if current.sort:
-        args += ["--sort", current.sort]
+        args += ["--sort", ",".join(current.sort)]
         if current.reverse:
             args.append("--reverse")
+    if not current.all_rows:
+        args += ["--top", str(VIEW_TOP_ROWS)]
     if scope.cost:
         args.append("--cost")
     if refresh:
@@ -229,6 +321,38 @@ def toggled_by(by: tuple[str, ...], key: str) -> tuple[str, ...] | None:
     return (*by, key)
 
 
+def _exact_filter(key: str, row: dict) -> tuple[str, str]:
+    """
+    The '--where key==value' filter matching a row's value of a key: a
+    creator by its ID, no creator (null) as '-', as the CLI shows and
+    matches it.
+    """
+    if key == "creator":
+        return "creator-id", str(row.get("creatorId") or "-")
+    return key, str(row.get(key, ""))
+
+
+def narrowed(levels: list[Level], key: str, row: dict) -> list[Level]:
+    """
+    The levels after filtering to a row's value of one key of several: a
+    level totalled by the others, filtered to that value, sorted as before
+    less that key.
+    """
+    current = levels[-1]
+    filter_ = _exact_filter(key, row)
+    sort = tuple(k for k in current.sort if k != key)
+    return [
+        *levels,
+        Level(
+            tuple(k for k in current.by if k != key),
+            (filter_,),
+            str(row.get(key, filter_[1])),
+            sort=sort,
+            reverse=current.reverse if sort else False,
+        ),
+    ]
+
+
 def drill(levels: list[Level], row: dict) -> list[Level] | None:
     """
     The levels after drilling into a row: each of the row's keys as an
@@ -242,11 +366,7 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
     filters: list[tuple[str, str]] = []
     shown: list[str] = []
     for key in current.by:
-        if key == "creator":
-            # No creator (null) is '-', as the CLI shows and matches it
-            filter_ = ("creator-id", str(row.get("creatorId") or "-"))
-        else:
-            filter_ = (key, str(row.get(key, "")))
+        filter_ = _exact_filter(key, row)
         filters.append(filter_)
         shown.append(str(row.get(key, filter_[1])))
     fixed = _fixed_keys([*levels, Level(current.by, tuple(filters))])
@@ -273,12 +393,26 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
 EXPLORER_OUTPUT_OPTIONS = frozenset({"--nf", "-q", "--json"})
 
 
+# The options every view is given with a value, which the command line shown
+# leaves out with it: the row limit (VIEW_TOP_ROWS), since typed in a
+# terminal the command shows every row
+EXPLORER_VALUE_OPTIONS = frozenset({"--top"})
+
+
 def command_line(arguments: list[str]) -> str:
     """
     The command as typed in a shell, for display and copying, less
-    EXPLORER_OUTPUT_OPTIONS.
+    EXPLORER_OUTPUT_OPTIONS and EXPLORER_VALUE_OPTIONS with their values.
     """
-    shown = [a for a in arguments if a not in EXPLORER_OUTPUT_OPTIONS]
+    shown: list[str] = []
+    skip = False
+    for argument in arguments:
+        if skip:
+            skip = False
+        elif argument in EXPLORER_VALUE_OPTIONS:
+            skip = True
+        elif argument not in EXPLORER_OUTPUT_OPTIONS:
+            shown.append(argument)
     return " ".join(["yd usage", *(shlex.quote(a) for a in shown)])
 
 
@@ -286,7 +420,8 @@ def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
     """
     A row's cell texts, as `yd usage` writes them: the `--by` keys' values,
     Instances, the running, stopped and total times, the cost when asked for,
-    then the pending, stopping, terminating and unknown times.
+    its share of the total (share_text()), then the pending, stopping,
+    terminating and unknown times.
     """
     seconds = row.get("seconds", {})
     cells = [str(row.get(key, "-")) for key in by]
@@ -300,5 +435,34 @@ def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
                 row.get("estimatedCost"), row.get("unpricedRunningHours", 0) > 0
             )
         )
+    cells.append(share_text(row, cost))
     cells += [duration_text(seconds.get(key, 0)) for key in _OTHER_STATE_KEYS]
     return cells
+
+
+def row_count_text(shown: int, total: int) -> str:
+    """
+    How many rows a view has: '4 rows', or with rows '--top' summed in the
+    '(n more)' row, '500 of 1,234 rows'.
+    """
+    noun = "row" if total == 1 else "rows"
+    if shown < total:
+        return f"{shown:,} of {total:,} {noun}"
+    return f"{total:,} {noun}"
+
+
+def share_basis(cost: bool) -> str:
+    """
+    What a share is of: the estimated cost where the view has it, else the
+    time (the key under a group's 'share').
+    """
+    return "cost" if cost else "hours"
+
+
+def share_text(row: dict, cost: bool) -> str:
+    """
+    A row's share of the total as a percentage to one place, '-' where it
+    has none (nothing to share, or nothing priced).
+    """
+    share = (row.get("share") or {}).get(share_basis(cost))
+    return f"{share * 100:.1f}%" if isinstance(share, int | float) else "-"

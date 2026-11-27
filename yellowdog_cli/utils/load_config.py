@@ -846,9 +846,10 @@ def _apply_common_defaults(common_section: dict) -> None:
 
 def _resolved_url(common_section: dict, strict: bool = True) -> str:
     """
-    The API URL, its variables substituted. With 'strict', one not beginning
-    'http(s)://' exits as a configuration error; without (yd-doctor), it is
-    returned, for the check that reaches it to report.
+    The API URL, its variables substituted and any trailing '/' dropped. With
+    'strict', one not beginning 'http(s)://' exits as a configuration error;
+    without (yd-doctor), it is returned, for the check that reaches it to
+    report.
     """
     url = cast(
         str,
@@ -862,6 +863,9 @@ def _resolved_url(common_section: dict, strict: bool = True) -> str:
             f" 'http://'), e.g. '{DEFAULT_URL}'"
         )
         exit(ExitCode.CONFIGURATION)
+    # Without its trailing '/': requests are built as f"{url}/path", and kept
+    # reports and prices are keyed on the URL as written
+    url = url.rstrip("/")
     if url != DEFAULT_URL:
         print_debug(f"Using the YellowDog API at: {url}")
     return url

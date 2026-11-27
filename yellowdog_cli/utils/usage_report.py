@@ -35,6 +35,15 @@ per user and mode 0700 on POSIX (completion_cache.cache_directory()).
 
 An Instance's namespace, tag and Compute Requirement name come from its
 Compute Requirement's row.
+
+The first read of a report sums its Instances alike in every column a
+grouping, a filter or a price reads (SUMMED_COLUMNS: every one but the
+Instance's ID) into one row each, with their count and seconds, and keeps
+them beside the zip (SUMMED_CSV), so that a report of a million Instances,
+a few tens of thousands of such rows, is read again in a moment: only a
+grouping or filter by Instance ID reads the Instances one by one, streamed
+from the zip, never held. A run reads the zip once (Report's contents,
+kept on it), however many passes it makes over the rows.
 """
 
 from __future__ import annotations
@@ -47,21 +56,25 @@ import logging
 import os
 import re
 import shutil
+import sys
 import time
 import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from operator import itemgetter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests
 
 from yellowdog_cli.utils import direct_http
+from yellowdog_cli.utils.atomic_write import write_text_atomically
 from yellowdog_cli.utils.completion_cache import cache_directory, cache_key
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import (
     RAW_CONNECT_TIMEOUT,
+    USAGE_PROGRESS_LINE_SECONDS,
     USAGE_REPORT_CHUNK_BYTES,
     USAGE_REPORT_READ_TIMEOUT,
     USAGE_REPORT_REUSE_SECONDS,
@@ -69,7 +82,8 @@ from yellowdog_cli.utils.limits import (
     USAGE_REPORTS_UNUSED_SECONDS,
 )
 from yellowdog_cli.utils.printing import print_info
-from yellowdog_cli.utils.usage_text import report_time
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
+from yellowdog_cli.utils.usage_text import report_time, size_text
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_cost import Costing
@@ -87,6 +101,18 @@ SUMMARY = "summary"
 REQUIREMENTS = "compute-requirements"
 INSTANCES = "instances"
 _REPORT_FILES = (SUMMARY, REQUIREMENTS, INSTANCES)
+
+# Instances alike in these columns, every one a grouping, a filter or a
+# price reads but the Instance's ID, are summed into one row of SUMMED_CSV,
+# kept beside the zip; its name changes with its form, so that a copy of
+# another form is never read
+SUMMED_CSV = "summed-v1.csv"
+CR_ID = "Compute Requirement ID"
+INSTANCE_ID = "Instance ID"
+SUMMED_COLUMNS = (CR_ID, "Provider", "Region", "Instance Type", "Source Name", "Spot")
+SUMMED_COUNT = "Instances"
+# The keys whose values are the Instance's own, read from the zip one by one
+INSTANCE_LEVEL_KEYS = frozenset({"instance-id"})
 
 # The Instance CSV's status columns, as the summary names them
 STATUS_COLUMNS = {
@@ -209,6 +235,12 @@ class Report:
     # A kept report of every namespace read for this one namespace alone
     # (None: the report as the Platform sent it, for its own scope)
     only_namespace: str | None = None
+    # The account's name, looked up as it was fetched (None if it could not
+    # be, or for a report kept without it)
+    account_name: str | None = None
+    # What the run has read of it (_contents()), kept so that it is read
+    # once; never copied by dataclasses.replace()
+    _read: _Contents | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def path(self) -> Path:
@@ -311,6 +343,7 @@ def usage_report(
     fetched.scope = scope
     fetched.account = report_account(ctx)
     fetched.namespace = namespace
+    fetched.account_name = account_name(ctx)
     _keep(root, directory, fetched)
     prune(root, keep=directory)
     report = _read_kept(directory)
@@ -575,6 +608,8 @@ class Fetched:
     # kept readable for yd usage --reports
     account: str = ""
     namespace: str | None = None
+    # The account's name (account_name())
+    account_name: str | None = None
 
 
 def _fetch(
@@ -691,7 +726,9 @@ class _FetchProgress:
     fetched: how long the Platform has taken to answer, then how much of
     the report has arrived and how fast; removed when the fetch ends, done
     or failed. Nothing at all where it is not shown (_progress_shown()).
-    The wait and the size are logged under --debug either way.
+    The wait and the size are logged under --debug either way. With
+    USAGE_PROGRESS_LINES set to 1, plain lines for a program to read
+    instead (_line()), whatever else is shown.
     """
 
     def __init__(self) -> None:
@@ -699,6 +736,8 @@ class _FetchProgress:
         self._task = None
         self._since = time.monotonic()
         self._received = 0
+        self._lines = os.environ.get(USAGE_PROGRESS_LINES) == "1"
+        self._last_line = 0.0
 
     def __enter__(self) -> _FetchProgress:
         if _progress_shown():
@@ -746,6 +785,7 @@ class _FetchProgress:
         self._since = time.monotonic()
         self._received = 0
         self._show(downloading=False, completed=0, since=self._since)
+        self._line("waiting")
 
     def answered(self) -> None:
         _LOG.debug("The Platform answered after %.1fs", time.monotonic() - self._since)
@@ -756,9 +796,24 @@ class _FetchProgress:
         """
         self._received += count
         self._show(downloading=True, completed=self._received)
+        if time.monotonic() - self._last_line >= USAGE_PROGRESS_LINE_SECONDS:
+            self._line(f"received {self._received}")
 
     def done(self) -> None:
         _LOG.debug("Received %s", size_text(self._received))
+        self._line(f"received {self._received}")
+
+    def _line(self, text: str) -> None:
+        """
+        A progress line for the program that asked for them, written to
+        standard error as it is, flushed: a protocol, never a message for
+        a reader, so not through printing.py, whose settings would change it.
+        """
+        if not self._lines:
+            return
+        self._last_line = time.monotonic()
+        sys.stderr.write(f"{USAGE_PROGRESS_PREFIX} {text}\n")
+        sys.stderr.flush()
 
     def _show(self, **fields) -> None:
         if self._progress is None or self._task is None:
@@ -916,6 +971,7 @@ def _keep(root: Path, directory: Path, fetched: Fetched) -> None:
                     "bytes": len(fetched.content),
                     "namespaces": fetched.namespaces,
                     "refused": fetched.refused,
+                    "accountName": fetched.account_name,
                     "scope": fetched.scope,
                     "account": fetched.account,
                     "namespace": fetched.namespace,
@@ -950,7 +1006,32 @@ def _read_kept(directory: Path) -> Report | None:
         fetched_bytes=_bytes(fetched.get("bytes")),
         namespaces=_names(fetched.get("namespaces")),
         refused=_names(fetched.get("refused")) or [],
+        account_name=_non_empty_text(fetched.get("accountName")),
     )
+
+
+def _non_empty_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def account_name(ctx: RunContext) -> str | None:
+    """
+    The name of the account the Application is in, for the report to say
+    whose it is: None if it cannot be read, which leaves the report as it
+    is. An authentication or connection failure is raised, as any other
+    request's would be.
+    """
+    from yellowdog_cli.utils import entity_utils
+    from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+
+    try:
+        name = entity_utils.get_application_details(ctx.client).accountName
+    except Exception as error:
+        if classify(error) in SESSION_FAILURES:
+            raise
+        _LOG.debug("Cannot read the account's name", exc_info=True)
+        return None
+    return _non_empty_text(name)
 
 
 def _names(value: object) -> list[str] | None:
@@ -1006,9 +1087,10 @@ def grouped_usage(
     """
     creators = creators or CreatorNames()
     groups: dict[tuple[str, ...], UsageGroup] = {}
-    for instance, requirement in _counted(report, where, creators):
+    instance_level = bool(INSTANCE_LEVEL_KEYS & {*by, *(where or ())})
+    for row, requirement in _counted(report, where, creators, instance_level):
         creator_id = requirement.get(CREATED_BY) or None
-        values = {key: _value(key, instance, requirement, creators) for key in by}
+        values = {key: _value(key, row.values, requirement, creators) for key in by}
         identity = tuple(
             (creator_id or "") if key == "creator" else value
             for key, value in values.items()
@@ -1018,11 +1100,11 @@ def grouped_usage(
             group = groups[identity] = UsageGroup(
                 keys=values, creator_id=creator_id if "creator" in by else None
             )
-        group.instances += 1
-        for status, column in STATUS_COLUMNS.items():
-            group.seconds[status] += _seconds(instance.get(column))
+        group.instances += row.count
+        for status, seconds in row.seconds.items():
+            group.seconds[status] += seconds
         if costing is not None:
-            costing.add(group, instance)
+            costing.add(group, row.values, row.seconds["running"])
     return sorted(
         groups.values(),
         key=lambda group: (-group.total_seconds, tuple(group.keys.values())),
@@ -1039,36 +1121,197 @@ def counted_places(
     names its region: the places whose prices '--cost' needs, since one with
     no running time costs nothing and one with no region cannot be priced.
     """
+    instance_level = bool(INSTANCE_LEVEL_KEYS & set(where or ()))
     return {
-        (instance.get("Provider") or "", instance["Region"])
-        for instance, _ in _counted(report, where, creators or CreatorNames())
-        if instance.get("Region") and _seconds(instance.get("Running (s)")) > 0
+        (row.values.get("Provider") or "", row.values["Region"])
+        for row, _ in _counted(
+            report, where, creators or CreatorNames(), instance_level
+        )
+        if row.values.get("Region") and row.seconds["running"] > 0
     }
 
 
+@dataclass
+class _Instances:
+    """
+    Instances alike in SUMMED_COLUMNS (one Instance, its ID among its
+    values, where read one by one): their values, how many, and their
+    seconds in each status, summed.
+    """
+
+    values: dict[str, str]
+    count: int
+    seconds: dict[str, float]
+
+
+@dataclass
+class _Contents:
+    """
+    What a run reads of a report, once: each Compute Requirement's row by
+    its ID, and the Instances summed.
+    """
+
+    requirements: dict[str, dict[str, str]]
+    summed: list[_Instances]
+
+
 def _counted(
-    report: Report, where: dict[str, list[str]] | None, creators: CreatorNames
-) -> Iterator[tuple[dict[str, str], dict]]:
+    report: Report,
+    where: dict[str, list[str]] | None,
+    creators: CreatorNames,
+    instance_level: bool = False,
+) -> Iterator[tuple[_Instances, dict]]:
     """
-    Each Instance the report holds that 'where' matches, with its Compute
-    Requirement's row ({} where the report does not list it).
+    Each row of Instances the report holds that 'where' matches, with its
+    Compute Requirement's row ({} where the report does not list it): the
+    summed rows, or with 'instance_level' each Instance, read from the zip.
     """
-    with zipfile.ZipFile(report.path) as archive:
-        requirements = {
-            row["Compute Requirement ID"]: row
-            for row in _records(archive, REQUIREMENTS)
-        }
-        instances = _records(archive, INSTANCES)
-    for instance in instances:
-        requirement = requirements.get(instance["Compute Requirement ID"], {})
+    contents = _contents(report)
+    rows = _each_instance(report) if instance_level else contents.summed
+    for row in rows:
+        requirement = contents.requirements.get(row.values[CR_ID], {})
         if (
             report.only_namespace is not None
             and requirement.get("Namespace") != report.only_namespace
         ):
             continue
-        if where and not _matches(where, instance, requirement, creators):
+        if where and not _matches(where, row.values, requirement, creators):
             continue
-        yield instance, requirement
+        yield row, requirement
+
+
+def _contents(report: Report) -> _Contents:
+    """
+    The report's contents, read on first use and kept on it: one opening of
+    the zip for its Compute Requirements, and for its Instances where no
+    summed copy is kept beside it, which this keeps.
+    """
+    if report._read is not None:
+        return report._read
+    summed_path = report.directory / SUMMED_CSV
+    summed = _read_summed(summed_path)
+    with zipfile.ZipFile(report.path) as archive:
+        requirements = {row[CR_ID]: row for row in _records(archive, REQUIREMENTS)}
+        if summed is None:
+            summed = _summed(_instances(archive))
+            _keep_summed(summed_path, summed)
+    report._read = _Contents(requirements, summed)
+    return report._read
+
+
+def _each_instance(report: Report) -> Iterator[_Instances]:
+    """
+    Each Instance in the report, one at a time.
+    """
+    with zipfile.ZipFile(report.path) as archive:
+        yield from _instances(archive, (*SUMMED_COLUMNS, INSTANCE_ID))
+
+
+def _instances(
+    archive: zipfile.ZipFile, columns: tuple[str, ...] = SUMMED_COLUMNS
+) -> Iterator[_Instances]:
+    """
+    Each Instance row of the zip, streamed: its values in 'columns' ('' for
+    a column or a cell missing) and its seconds. Read by position rather
+    than as a dict per row, the cost of reading a million rows.
+    """
+    with _text(archive, INSTANCES) as file:
+        reader = csv.reader(file)
+        heading = next(reader, [])
+        place = {name: index for index, name in enumerate(heading)}
+        # A column the file lacks is read from past the heading's end, where
+        # every row is padded with ''
+        absent = len(heading)
+        value_places = [place.get(name, absent) for name in columns]
+        status_places = [
+            place.get(column, absent) for column in STATUS_COLUMNS.values()
+        ]
+        width = max(value_places + status_places) + 1
+        values_of = itemgetter(*value_places)
+        seconds_of = itemgetter(*status_places)
+        statuses = list(STATUS_COLUMNS)
+        for row in reader:
+            if len(row) < width:
+                row += [""] * (width - len(row))
+            yield _Instances(
+                dict(zip(columns, values_of(row))),
+                1,
+                dict(zip(statuses, map(_seconds, seconds_of(row)))),
+            )
+
+
+def _summed(instances: Iterator[_Instances]) -> list[_Instances]:
+    """
+    The Instances summed by their values.
+    """
+    rows: dict[tuple[str, ...], _Instances] = {}
+    for instance in instances:
+        identity = tuple(instance.values.values())
+        row = rows.get(identity)
+        if row is None:
+            rows[identity] = instance
+            continue
+        row.count += instance.count
+        for status, seconds in instance.seconds.items():
+            row.seconds[status] += seconds
+    return list(rows.values())
+
+
+def _summed_heading() -> list[str]:
+    return [*SUMMED_COLUMNS, SUMMED_COUNT, *STATUS_COLUMNS.values()]
+
+
+def _keep_summed(path: Path, summed: list[_Instances]) -> None:
+    """
+    The summed rows kept beside the zip; one that cannot be written is
+    summed again by the next run, so is no failure.
+    """
+    text = io.StringIO()
+    writer = csv.writer(text, lineterminator="\n")
+    writer.writerow(_summed_heading())
+    for row in summed:
+        writer.writerow(
+            [
+                *row.values.values(),
+                row.count,
+                *(repr(row.seconds[status]) for status in STATUS_COLUMNS),
+            ]
+        )
+    try:
+        write_text_atomically(str(path), text.getvalue())
+    except OSError:
+        _LOG.debug("could not keep the summed Instances at %s", path, exc_info=True)
+        return
+    _LOG.debug("kept %d summed rows at %s", len(summed), path)
+
+
+def _read_summed(path: Path) -> list[_Instances] | None:
+    """
+    The summed rows kept at 'path', or None where there are none whole, to
+    be summed again from the zip.
+    """
+    try:
+        with open(path, encoding="utf-8", newline="") as file:
+            reader = csv.reader(file)
+            if next(reader, None) != _summed_heading():
+                return None
+            values = len(SUMMED_COLUMNS)
+            return [
+                _Instances(
+                    dict(zip(SUMMED_COLUMNS, row[:values])),
+                    int(row[values]),
+                    {
+                        status: float(row[values + 1 + index])
+                        for index, status in enumerate(STATUS_COLUMNS)
+                    },
+                )
+                for row in reader
+            ]
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, IndexError):
+        _LOG.debug("summing again: could not read %s", path, exc_info=True)
+        return None
 
 
 def filter_of(where: list[tuple[str, str]] | None) -> dict[str, list[str]]:
@@ -1160,21 +1403,6 @@ def _seconds(text: str | None) -> float:
         return float(text) if text else 0.0
     except ValueError:
         return 0.0
-
-
-def size_text(size: int) -> str:
-    """
-    A size in bytes in powers of 1000, as Finder and Windows Explorer give
-    it (and Commander's file previews), one decimal place above a kilobyte.
-    """
-    if size < 1000:
-        return f"{size} byte{'' if size == 1 else 's'}"
-    scaled = float(size)
-    for unit in ("kB", "MB"):
-        scaled /= 1000
-        if scaled < 1000:
-            return f"{scaled:,.1f} {unit}"
-    return f"{scaled / 1000:,.1f} GB"
 
 
 # The environment variables naming the temporary directory, as a shell
