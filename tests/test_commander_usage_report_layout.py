@@ -435,3 +435,11 @@ def test_a_word_wider_than_the_page_is_broken():
     lines = wrap_text(f"See {url} for more", measure, 7.5, 200.0)
     assert all(measure(line, 7.5, False) <= 200.0 for line in lines)
     assert "".join(lines).replace(" ", "") == f"See{url}formore"
+
+
+def test_at_the_instance_level_the_instances_tile_counts_the_rows():
+    headings = ["Instance ID", *CR_HEADINGS[2:]]
+    rows = [[f"i-{n}", *row[2:]] for n, row in enumerate(CR_ROWS * 300)]
+    total = ["Total", *CR_TOTAL[2:]]
+    report = made(headings=headings, rows=rows, total=total)
+    assert report.tiles[2] == Tile("Instances", "1,200", "in 1,200 groups")

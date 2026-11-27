@@ -946,6 +946,38 @@ def test_total_by_adds_and_removes_keys_and_keeps_the_filter(explorer, children)
     assert ticked(explorer) == ["Region"]
 
 
+def test_instance_id_combines_with_the_keys_ticked(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    tick(explorer, "instance-id")
+    settle(explorer)
+    # Exactly the keys ticked: nothing added unseen
+    assert value_of(usage_args(children), "--by") == "cr,instance-id"
+    assert sorted(ticked(explorer)) == sorted([heading("cr"), heading("instance-id")])
+    # A sort by a key still ticked survives another key ticked
+    tick(explorer, "region")
+    settle(explorer)
+    click_heading(explorer, "Region")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "region"
+    tick(explorer, "tag")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "region"
+    assert value_of(args, "--by") == "cr,instance-id,region,tag"
+
+
+def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
+    for _ in range(3):
+        double_click_row(explorer, 0)
+        settle(explorer)
+    by = value_of(usage_args(children), "--by").split(",")
+    assert by[0] == "instance-id" and "provider" in by
+    assert len(ticked(explorer)) == len(by)
+    # Each row is one Instance: no Instances column
+    assert "Instances" not in shown_headings(explorer)
+
+
 def test_total_by_changes_several_keys_in_one_run(explorer, children):
     double_click_row(explorer, 0)
     settle(explorer)

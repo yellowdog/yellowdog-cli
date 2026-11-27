@@ -133,7 +133,10 @@ def test_drill_skips_a_key_already_filtered_on():
     levels = [Level(("namespace",)), Level(("cr",), (("instance-type", "t"),), "t")]
     skipped = drill(levels, {"cr": "x"})
     assert skipped is not None
-    assert skipped[-1].by == ("instance-id",)
+    # The Instance level, ticked with its describing keys less those fixed
+    assert skipped[-1].by == tuple(
+        key for key in INSTANCE_KEYS if key not in ("instance-type", "cr")
+    )
 
 
 def test_a_key_off_the_path_starts_from_its_beginning():
@@ -143,11 +146,17 @@ def test_a_key_off_the_path_starts_from_its_beginning():
     assert off[-1].by == ("cr",)
 
 
-def test_the_instance_level_is_a_leaf_and_shows_its_details():
+def test_the_instance_level_is_a_leaf_asking_for_its_ticks_alone():
     assert drill([Level(("instance-id",))], {"instance-id": "i-1"}) is None
     args = view_args(Scope("a", "b", None, False), [Level(("instance-id",))])
-    assert args[args.index("--by") + 1] == ",".join(INSTANCE_KEYS)
+    assert args[args.index("--by") + 1] == "instance-id"
     assert INSTANCE_KEYS[0] == "instance-id"
+
+
+def test_a_level_holding_instance_id_is_a_leaf():
+    assert drill([Level(("namespace", "instance-id"))], {"namespace": "a"}) is None
+    args = view_args(Scope("a", "b", None, False), [Level(("tag", "instance-id"))])
+    assert args[args.index("--by") + 1] == "tag,instance-id"
 
 
 def test_several_keys_group_and_drill_on_all_of_them():
@@ -175,7 +184,7 @@ def test_drilling_several_keys_moves_on_after_the_furthest_down_the_path():
         {"instance-type": "t3.large", "namespace": "n"},
     )
     assert levels is not None
-    assert levels[-1].by == ("instance-id",)
+    assert levels[-1].by == tuple(k for k in INSTANCE_KEYS if k != "instance-type")
 
 
 def test_the_eligible_keys_are_those_no_filter_fixes():
@@ -197,9 +206,14 @@ def test_toggling_keys():
     assert toggled_by(("namespace", "region"), "namespace") == ("region",)
     # The last key stays
     assert toggled_by(("namespace",), "namespace") is None
-    # The Instance level replaces the others, and any other replaces it
-    assert toggled_by(("namespace", "region"), INSTANCE_LEVEL) == (INSTANCE_LEVEL,)
-    assert toggled_by((INSTANCE_LEVEL,), "region") == ("region",)
+    # Instance ID combines with the others, as any key does
+    assert toggled_by(("namespace", "region"), INSTANCE_LEVEL) == (
+        "namespace",
+        "region",
+        INSTANCE_LEVEL,
+    )
+    assert toggled_by((INSTANCE_LEVEL,), "tag") == (INSTANCE_LEVEL, "tag")
+    assert toggled_by(("namespace", INSTANCE_LEVEL), INSTANCE_LEVEL) == ("namespace",)
 
 
 def test_the_path_and_keys_are_valid():

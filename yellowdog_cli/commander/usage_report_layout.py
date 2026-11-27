@@ -560,10 +560,11 @@ def _tiles(
     by_name = {
         heading_lines(heading)[0]: cell for heading, cell in (total or {}).items()
     }
+    # Grouped by Instance ID there is no Instances column: each row is one
     instances = Tile(
         "Instances",
-        by_name.get("Instances", "0"),
-        f"in {groups} group{'' if groups == 1 else 's'}",
+        by_name.get("Instances", f"{groups:,}"),
+        f"in {groups:,} group{'' if groups == 1 else 's'}",
     )
     running = Tile("Running", by_name.get("Running", "0:00"), "hours:minutes")
     if not cost:

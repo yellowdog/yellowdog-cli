@@ -50,7 +50,8 @@ KEY_VALUE_SEPARATOR = " \u00b7 "
 # The key that makes a level the Instance level, the last
 INSTANCE_LEVEL = "instance-id"
 
-# What the Instance level totals by, so that each row says what the Instance was
+# The Instance level's keys when drilled into, so that each row says what the
+# Instance was; ticks like any others, which Total by may take away
 INSTANCE_KEYS: tuple[str, ...] = (
     "instance-id",
     "instance-type",
@@ -183,7 +184,7 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
     args = ["--from", scope.from_text, "--until", scope.until_text]
     if scope.namespace:
         args += ["-n", scope.namespace]
-    args += ["--by", ",".join(INSTANCE_KEYS if current.leaf else current.by)]
+    args += ["--by", ",".join(current.by)]
     for level in levels:
         for key, value in level.filters:
             args += ["--where", f"{key}=={value}"]
@@ -220,14 +221,12 @@ def eligible_keys(levels: list[Level] | tuple[Level, ...]) -> tuple[str, ...]:
 def toggled_by(by: tuple[str, ...], key: str) -> tuple[str, ...] | None:
     """
     The keys to total by after ticking or unticking one: a key ticked is
-    added after the others, the Instance level's replacing them (and any
-    other replacing it); None for the last key unticked, which stays.
+    added after the others, Instance ID too; None for the last key
+    unticked, which stays.
     """
     if key in by:
         return None if len(by) == 1 else tuple(k for k in by if k != key)
-    if key == INSTANCE_LEVEL:
-        return (INSTANCE_LEVEL,)
-    return (*(k for k in by if k != INSTANCE_LEVEL), key)
+    return (*by, key)
 
 
 def drill(levels: list[Level], row: dict) -> list[Level] | None:
@@ -254,11 +253,18 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
     fixed.update(current.by)
     places = [DRILL_PATH.index(key) for key in current.by if key in DRILL_PATH]
     after = max(places) + 1 if places else 0
-    next_by = next(
-        (key for key in DRILL_PATH[after:] if key not in fixed), INSTANCE_LEVEL
+    next_by = next((key for key in DRILL_PATH[after:] if key not in fixed), None)
+    # The path's end, the Instance level: ticked with the keys that say what
+    # each Instance was, less those the filters fix
+    by = (
+        (next_by,)
+        if next_by not in (None, INSTANCE_LEVEL)
+        else tuple(
+            key for key in INSTANCE_KEYS if key == INSTANCE_LEVEL or key not in fixed
+        )
     )
     label = KEY_VALUE_SEPARATOR.join(shown)
-    return [*levels, Level((next_by,), tuple(filters), label)]
+    return [*levels, Level(by, tuple(filters), label)]
 
 
 # The options every run is given for the explorer to read its output, which
