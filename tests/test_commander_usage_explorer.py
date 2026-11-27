@@ -20,7 +20,7 @@ import qt_guard
 qt_guard.require_qt()
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QPoint, QProcess, QRect, QSize, Qt
+from PyQt6.QtCore import QDate, QObject, QPoint, QProcess, QRect, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import (
@@ -2710,3 +2710,37 @@ def test_the_wait_says_how_far_the_fetch_has_got(explorer):
     explorer._show_elapsed()
     assert explorer._overlay_text.text().startswith("Running yd usage…")
     settle(explorer)
+
+
+def test_the_calendars_weekends_are_plain(explorer):
+    explorer._from_pick.menu().aboutToShow.emit()
+    calendar = explorer._from_calendar
+    weekday = calendar.weekdayTextFormat(Qt.DayOfWeek.Monday)
+    for day in (Qt.DayOfWeek.Saturday, Qt.DayOfWeek.Sunday):
+        assert calendar.weekdayTextFormat(day) == weekday
+
+
+def test_a_day_chosen_from_the_calendar_starts_the_window(explorer):
+    explorer._from_calendar.clicked.emit(QDate(2026, 10, 1))
+    assert explorer._from.text() == "2026-10-01 00:00 UTC"
+    assert explorer._preset.currentText() == "Custom"
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_a_day_chosen_for_until_ends_the_window_at_its_end(explorer):
+    explorer._until_calendar.clicked.emit(QDate(2026, 10, 31))
+    assert explorer._until.text() == "2026-11-01 00:00 UTC"
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_the_calendar_opens_at_the_fields_day(explorer):
+    explorer._from.setText("2026-10-05 00:00 UTC")
+    explorer._from_pick.menu().aboutToShow.emit()
+    assert explorer._from_calendar.selectedDate() == QDate(2026, 10, 5)
+    explorer._until.setText("2026-11-01 00:00 UTC")
+    explorer._until_pick.menu().aboutToShow.emit()
+    assert explorer._until_calendar.selectedDate() == QDate(2026, 10, 31)
+    # A field no day can be read from opens at today
+    explorer._from.setText("7 days ago")
+    explorer._from_pick.menu().aboutToShow.emit()
+    assert explorer._from_calendar.selectedDate() == QDate.currentDate()

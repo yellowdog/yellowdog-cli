@@ -16,6 +16,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **A calendar beside the Usage Explorer's From and Until**: the day chosen starts the window, or for Until ends it at the day's end (UTC); typing still works as before.
 - **The Usage Explorer says how far a report's fetch has got**: waiting for the Platform to build it, then how much has been downloaded.
 - **A Share column in the Usage Explorer** gives each row's share of the total cost (or, without the cost, of the time), and the PDF report and exports carry it.
 - **Fixed: at a Usage Explorer level grouped by Instance ID, clicking a figure's heading sorted by the column beside it.**

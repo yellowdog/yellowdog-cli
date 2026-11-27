@@ -14,13 +14,14 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import partial
 from math import ceil
 from typing import Any, cast
 
 from PyQt6.QtCore import (
     QByteArray,
+    QDate,
     QEvent,
     QModelIndex,
     QObject,
@@ -51,6 +52,7 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCalendarWidget,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -70,6 +72,7 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from yellowdog_cli.commander import file_dialogs
@@ -109,6 +112,9 @@ from yellowdog_cli.commander.usage_views import (
     Level,
     Scope,
     command_line,
+    day_end_text,
+    day_of,
+    day_start_text,
     drill,
     eligible_keys,
     heading,
@@ -951,6 +957,11 @@ class UsageExplorer(QDialog):
         for field in (self._from, self._until):
             field.textEdited.connect(self._typed_window)
             field.editingFinished.connect(self._await_fetch)
+        # A calendar beside each, for a day rather than a time typed
+        self._from_pick, self._from_calendar = self._day_picker(self._from, until=False)
+        self._until_pick, self._until_calendar = self._day_picker(
+            self._until, until=True
+        )
 
         self._namespace = QComboBox(self)
         self._namespace.setEditable(True)
@@ -1219,8 +1230,10 @@ class UsageExplorer(QDialog):
         window_row.addWidget(self._preset)
         window_row.addWidget(QLabel("From", self))
         window_row.addWidget(self._from, 1)
+        window_row.addWidget(self._from_pick)
         window_row.addWidget(QLabel("Until", self))
         window_row.addWidget(self._until, 1)
+        window_row.addWidget(self._until_pick)
         window_row.addWidget(self._kept)
         scope_row = QHBoxLayout()
         scope_row.addWidget(QLabel("Namespace:", self))
@@ -1703,6 +1716,59 @@ class UsageExplorer(QDialog):
             return
         self._fill_window(preset)
         file_dialogs.dialog_settings().setValue(SETTING_EXPLORER_PRESET, preset)
+        self._await_fetch()
+
+    def _day_picker(
+        self, field: QLineEdit, until: bool
+    ) -> tuple[QToolButton, QCalendarWidget]:
+        """
+        The arrow beside From or Until, opening a calendar: a day chosen is
+        its start (From) or its end (Until), in UTC, as if typed.
+        """
+        button = QToolButton(self)
+        button.setArrowType(Qt.ArrowType.DownArrow)
+        button.setAutoRaise(True)
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        # The arrow says it opens: no second indicator beside it
+        button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        button.setToolTip(
+            "Choose the last day of the window: it ends at the day's end (UTC)"
+            if until
+            else "Choose the first day of the window: it starts at midnight (UTC)"
+        )
+        menu = QMenu(button)
+        calendar = QCalendarWidget(menu)
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(calendar)
+        menu.addAction(action)
+        menu.aboutToShow.connect(partial(self._open_calendar, field, calendar, until))
+        calendar.clicked.connect(partial(self._day_chosen, field, menu, until))
+        calendar.activated.connect(partial(self._day_chosen, field, menu, until))
+        button.setMenu(menu)
+        return button, calendar
+
+    @staticmethod
+    def _open_calendar(
+        field: QLineEdit, calendar: QCalendarWidget, until: bool
+    ) -> None:
+        """
+        A calendar opened at the day its field names, else at today, its
+        weekends shown as every other day is (Qt makes them red): Monday's
+        format, which sets no colour, so they follow the mode's palette.
+        """
+        day = day_of(field.text(), until) or date.today()
+        calendar.setSelectedDate(QDate(day.year, day.month, day.day))
+        weekday = calendar.weekdayTextFormat(Qt.DayOfWeek.Monday)
+        for weekend in (Qt.DayOfWeek.Saturday, Qt.DayOfWeek.Sunday):
+            calendar.setWeekdayTextFormat(weekend, weekday)
+
+    def _day_chosen(
+        self, field: QLineEdit, menu: QMenu, until: bool, chosen: QDate
+    ) -> None:
+        day = date(chosen.year(), chosen.month(), chosen.day())
+        field.setText(day_end_text(day) if until else day_start_text(day))
+        menu.close()
+        self._typed_window()
         self._await_fetch()
 
     def _typed_window(self, *_args) -> None:

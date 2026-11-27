@@ -4,7 +4,7 @@ preset, the arguments of a view, drilling and a row's cells. Needs no Qt.
 """
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -18,6 +18,9 @@ from yellowdog_cli.commander.usage_views import (
     Level,
     Scope,
     command_line,
+    day_end_text,
+    day_of,
+    day_start_text,
     drill,
     eligible_keys,
     heading,
@@ -366,3 +369,30 @@ def test_find_matches_the_first_key_anywhere_in_its_value():
 def test_a_bracket_found_matches_itself():
     args = view_args(Scope("a", "b", None, False), [Level(("cr",), match="a[1]")])
     assert args[args.index("--where") + 1] == "cr=*a[[]1]*"
+
+
+def test_a_day_starts_and_ends_at_midnight_utc():
+    assert day_start_text(date(2026, 10, 1)) == "2026-10-01 00:00 UTC"
+    # The end of a day is the next one's start; of a year's last, the next year
+    assert day_end_text(date(2026, 10, 31)) == "2026-11-01 00:00 UTC"
+    assert day_end_text(date(2026, 12, 31)) == "2027-01-01 00:00 UTC"
+
+
+@pytest.mark.parametrize(
+    "text, until, day",
+    [
+        ("2026-10-05 00:00 UTC", False, date(2026, 10, 5)),
+        ("2026-10-05 13:30 UTC", False, date(2026, 10, 5)),
+        # Until a midnight is until the end of the day before
+        ("2026-11-01 00:00 UTC", True, date(2026, 10, 31)),
+        ("2026-11-01 09:30 UTC", True, date(2026, 11, 1)),
+        ("2026-10-05", False, date(2026, 10, 5)),
+        ("7 days ago", False, None),
+        ("now", True, None),
+        # Not a day or a time there is
+        ("2026-02-30", False, None),
+        ("2026-11-01 25:00 UTC", False, None),
+    ],
+)
+def test_the_day_a_field_names(text, until, day):
+    assert day_of(text, until) == day

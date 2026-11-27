@@ -5,9 +5,10 @@ text. Commander groups and adds up nothing itself: every figure shown is the
 CLI's, read from its `--json` document.
 """
 
+import re
 import shlex
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from yellowdog_cli.utils.command_registry import (
     USAGE_GROUP_KEYS,
@@ -33,6 +34,9 @@ __all__ = [
     "Level",
     "Scope",
     "command_line",
+    "day_end_text",
+    "day_of",
+    "day_start_text",
     "drill",
     "eligible_keys",
     "heading",
@@ -95,6 +99,52 @@ def _month_start(year: int, month: int) -> str:
     The first instant of a calendar month, as a window time.
     """
     return datetime(year, month, 1, tzinfo=timezone.utc).strftime(WINDOW_TIME_FORMAT)
+
+
+# A day as From and Until are written: '2026-10-05', or with its time as
+# WINDOW_TIME_FORMAT writes it, '2026-10-05 13:30 UTC'
+_FIELD_DAY = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}) UTC)?")
+
+
+def day_start_text(day: date) -> str:
+    """
+    The start of a day, in UTC, as From takes it: '2026-10-01 00:00 UTC'.
+    """
+    return f"{day:%Y-%m-%d} 00:00 UTC"
+
+
+def day_end_text(day: date) -> str:
+    """
+    The end of a day, in UTC, as Until takes it: the next day's start, so
+    that the day chosen is in the window whole.
+    """
+    return day_start_text(day + timedelta(days=1))
+
+
+def day_of(text: str, until: bool) -> date | None:
+    """
+    The day a From or Until field names, for its calendar to open at: its
+    date, or for an Until at midnight the day before, whose end it is;
+    None for a field naming no date ('7 days ago', 'now').
+    """
+    # Matched, not strptime()'d: strptime() reads the locale as it first
+    # runs, and inside the application's event loop that raised, which a
+    # slot turns into an abort
+    match = _FIELD_DAY.fullmatch(text.strip())
+    if match is None:
+        return None
+    year, month, day_of_month, hour, minute = match.groups()
+    try:
+        day = date(int(year), int(month), int(day_of_month))
+    except ValueError:
+        return None
+    if hour is None:
+        return day
+    if int(hour) > 23 or int(minute) > 59:
+        return None
+    if until and (int(hour), int(minute)) == (0, 0):
+        day -= timedelta(days=1)
+    return day
 
 
 def window_time(iso: str) -> str:
