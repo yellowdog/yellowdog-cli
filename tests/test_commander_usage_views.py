@@ -22,6 +22,7 @@ from yellowdog_cli.commander.usage_views import (
     row_cells,
     toggled_by,
     view_args,
+    window_time,
 )
 from yellowdog_cli.utils.command_registry import USAGE_GROUP_KEYS
 
@@ -49,10 +50,27 @@ def test_a_pinned_view_passes_the_reports_window():
     assert scope.pinned
     assert view_args(scope, [Level(("namespace",))])[:4] == [
         "--from",
-        "2026-11-18T15:02:30Z",
+        "2026-11-18 15:02 UTC",
         "--until",
-        "2026-11-25T15:02:30Z",
+        "2026-11-25 15:02 UTC",
     ]
+
+
+def test_a_pinned_window_is_written_to_the_minute():
+    scope = Scope("24 hours ago", "now", None, False).pinned_to(
+        "2026-11-18T10:57:30.559218Z", "2026-11-19T10:57:30.601337+00:00"
+    )
+    assert (scope.from_text, scope.until_text) == (
+        "2026-11-18 10:57 UTC",
+        "2026-11-19 10:57 UTC",
+    )
+
+
+def test_window_time_converts_to_utc_and_keeps_what_it_cannot_read():
+    assert window_time("2026-11-19T11:57:30.5+01:00") == "2026-11-19 10:57 UTC"
+    assert window_time("2026-11-19T10:57:30") == "2026-11-19T10:57:30"
+    assert window_time("7 days ago") == "7 days ago"
+    assert window_time("") == ""
 
 
 def test_a_cost_change_keeps_the_pin():
@@ -194,23 +212,23 @@ def test_presets():
         ("24 hours ago", "now"),
         ("7 days ago", "now"),
         ("30 days ago", "now"),
-        ("2026-11-01T00:00:00Z", "now"),
-        ("2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"),
+        ("2026-11-01 00:00 UTC", "now"),
+        ("2026-10-01 00:00 UTC", "2026-11-01 00:00 UTC"),
     ]
 
 
 def test_last_month_in_january_is_december():
     january = datetime(2027, 1, 5, tzinfo=timezone.utc)
     assert preset_window("Last month", january) == (
-        "2026-12-01T00:00:00Z",
-        "2027-01-01T00:00:00Z",
+        "2026-12-01 00:00 UTC",
+        "2027-01-01 00:00 UTC",
     )
 
 
 def test_months_are_utc_whatever_the_clock():
     # 23:30 on 30 November in UTC-5 is already 1 December in UTC
     late = datetime(2026, 11, 30, 23, 30, tzinfo=timezone(timedelta(hours=-5)))
-    assert preset_window("This month", late)[0] == "2026-12-01T00:00:00Z"
+    assert preset_window("This month", late)[0] == "2026-12-01 00:00 UTC"
 
 
 def test_command_line_quotes():

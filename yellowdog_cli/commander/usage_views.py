@@ -74,11 +74,32 @@ _RELATIVE_PRESETS = {
 _OTHER_STATE_KEYS = ("pending", "stopping", "terminating", "unknown")
 
 
+# How a fixed time is written in --from and --until: UTC, to the minute, as
+# the report line and Kept Reports show it, which yd usage reads back
+WINDOW_TIME_FORMAT = "%Y-%m-%d %H:%M UTC"
+
+
 def _month_start(year: int, month: int) -> str:
     """
-    The first instant of a calendar month, as a UTC ISO 8601 text.
+    The first instant of a calendar month, as a window time.
     """
-    return datetime(year, month, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime(year, month, 1, tzinfo=timezone.utc).strftime(WINDOW_TIME_FORMAT)
+
+
+def window_time(iso: str) -> str:
+    """
+    A report's time ('2026-11-19T10:57:30.559218Z') as --from and --until
+    are written ('2026-11-19 10:57 UTC'), or as it is if it cannot be read.
+    The seconds dropped are well within the window a kept report is reused
+    for.
+    """
+    try:
+        moment = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except ValueError:
+        return str(iso)
+    if moment.tzinfo is None:
+        return str(iso)
+    return moment.astimezone(timezone.utc).strftime(WINDOW_TIME_FORMAT)
 
 
 def preset_window(preset: str, now: datetime) -> tuple[str, str]:
@@ -103,8 +124,9 @@ def preset_window(preset: str, now: datetime) -> tuple[str, str]:
 class Scope:
     """
     What one fetched report covers. The window is as typed until a report has
-    been fetched, then pinned to the report's own ISO 'from' and 'until', so
-    that every later view regroups that same report.
+    been fetched, then pinned to the report's own 'from' and 'until' (to the
+    minute, window_time()), so that every later view regroups that same
+    report.
     """
 
     from_text: str
@@ -117,7 +139,13 @@ class Scope:
         """
         A copy pinned to the report's window.
         """
-        return Scope(from_iso, until_iso, self.namespace, self.cost, pinned=True)
+        return Scope(
+            window_time(from_iso),
+            window_time(until_iso),
+            self.namespace,
+            self.cost,
+            pinned=True,
+        )
 
 
 @dataclass(frozen=True)

@@ -302,6 +302,9 @@ def test_destroying_the_parent_mid_run_is_safe(qapp, tmp_path, children):
 
 FROM_ISO = "2026-11-18T15:02:00Z"
 UNTIL_ISO = "2026-11-25T15:02:00Z"
+# The same window as a pinned view passes it (window_time())
+FROM_TEXT = "2026-11-18 15:02 UTC"
+UNTIL_TEXT = "2026-11-25 15:02 UTC"
 BASE_ARGS = ["-c", "config.toml", "--nf", "-q", "--json"]
 STATES = ("pending", "running", "stopping", "stopped", "terminating", "unknown")
 
@@ -387,11 +390,12 @@ def wheres(args: list[str]) -> list[str]:
     return [args[i + 1] for i, arg in enumerate(args) if arg == "--where"]
 
 
-# Two reports kept, as yd usage --reports --json lists them
+# Two reports kept, as yd usage --reports --json lists them (the first with
+# the fractions of a second a window resolved at fetch time has)
 KEPT = [
     {
-        "from": "2026-10-01T00:00:00Z",
-        "until": "2026-11-01T00:00:00Z",
+        "from": "2026-10-01T00:00:00.559218Z",
+        "until": "2026-11-01T00:00:00.601337Z",
         "namespace": "team-render",
         "namespaces": ["team-render"],
         "fetched": "2026-11-20T09:00:00Z",
@@ -433,7 +437,7 @@ def usage_answer(command: str, args: list[str]):
     if "--reports" in args:
         return json.dumps(KEPT), "", 0, 0
     by = value_of(args, "--by") or "namespace"
-    reused = value_of(args, "--from") == FROM_ISO and "--refresh" not in args
+    reused = value_of(args, "--from") == FROM_TEXT and "--refresh" not in args
     if by == "namespace":
         groups = [
             group({"namespace": "team-render"}, 17, 47.2, 12.0, 248.10, 0.7),
@@ -605,8 +609,8 @@ def test_double_clicking_a_row_drills_and_pins_the_window(explorer, children):
     double_click_row(explorer, 0)
     settle(explorer)
     args = usage_args(children)
-    assert value_of(args, "--from") == FROM_ISO
-    assert value_of(args, "--until") == UNTIL_ISO
+    assert value_of(args, "--from") == FROM_TEXT
+    assert value_of(args, "--until") == UNTIL_TEXT
     assert wheres(args) == ["namespace==team-render"]
     assert value_of(args, "--by") == "cr"
     assert explorer.breadcrumb_text() == f"All{CRUMB_SEPARATOR}team-render"
@@ -816,7 +820,7 @@ def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qap
     double_click_row(explorer, 0)
     settle(explorer)
     assert "--where namespace==team-render" in explorer._command_line.text()
-    assert FROM_ISO in explorer._command_line.text()
+    assert FROM_TEXT in explorer._command_line.text()
 
 
 def test_a_fetch_is_logged_and_a_regroup_is_not(explorer, children):
@@ -1009,8 +1013,8 @@ def test_the_cost_checkbox_keeps_the_pin(explorer, children):
     args = usage_args(children)
     assert "--cost" not in args
     assert (value_of(args, "--from"), value_of(args, "--until")) == (
-        FROM_ISO,
-        UNTIL_ISO,
+        FROM_TEXT,
+        UNTIL_TEXT,
     )
     assert "Est. cost (USD)" not in [
         explorer._model.headerData(c, Qt.Orientation.Horizontal)
@@ -1175,7 +1179,7 @@ def test_a_new_scopes_failed_first_run_puts_the_controls_back(explorer, children
     settle(explorer)
     args = usage_args(children)
     assert "-n" not in args
-    assert value_of(args, "--from") == FROM_ISO
+    assert value_of(args, "--from") == FROM_TEXT
     assert wheres(args) == ["namespace==team-render"]
     # The failure was not rerun on leaving the field
     started = len(children.started)
@@ -1592,9 +1596,10 @@ def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
     explorer._kept.menu().actions()[0].trigger()
     QApplication.processEvents()
     assert explorer._preset.currentText() == "Custom"
+    # Written to the minute, as the report line shows times
     assert (explorer._from.text(), explorer._until.text()) == (
-        "2026-10-01T00:00:00Z",
-        "2026-11-01T00:00:00Z",
+        "2026-10-01 00:00 UTC",
+        "2026-11-01 00:00 UTC",
     )
     assert explorer._namespace.currentText() == "team-render"
     # No Fetch Report: it is used again, at the top level
@@ -1604,9 +1609,9 @@ def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
     args = usage_args(children)
     assert args[:4] == [
         "--from",
-        "2026-10-01T00:00:00Z",
+        "2026-10-01 00:00 UTC",
         "--until",
-        "2026-11-01T00:00:00Z",
+        "2026-11-01 00:00 UTC",
     ]
     assert value_of(args, "-n") == "team-render"
 

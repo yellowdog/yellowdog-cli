@@ -100,6 +100,7 @@ from yellowdog_cli.commander.usage_views import (
     preset_window,
     toggled_by,
     view_args,
+    window_time,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
 from yellowdog_cli.utils.usage_text import duration_text
@@ -1293,8 +1294,8 @@ class UsageExplorer(QDialog):
         self._preset.blockSignals(True)
         self._preset.setCurrentText(CUSTOM_PRESET)
         self._preset.blockSignals(False)
-        self._from.setText(str(item.get("from", "")))
-        self._until.setText(str(item.get("until", "")))
+        self._from.setText(window_time(str(item.get("from", ""))))
+        self._until.setText(window_time(str(item.get("until", ""))))
         self._namespace.setCurrentText(str(item.get("namespace") or ALL_NAMESPACES))
         self._resolve(refresh=False)
 

@@ -9,6 +9,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
 - **The Usage Explorer's Total by menu stays open while keys are ticked and unticked**, and regroups the table once, when it closes.
 - **`yd commander --usage-explorer` has a Dark Mode checkbox**, at the end of the Configuration row, sharing Commander's Dark Mode setting.
+- **The Usage Explorer writes fixed times as `2026-11-19 10:57 UTC`**, as its report line shows them: in From and Until for a kept report or a month window, and in the generated command line, in place of full ISO timestamps.
 
 ## 15.21.0 — 2026-11-26
 
