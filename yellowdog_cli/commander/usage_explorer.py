@@ -87,6 +87,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     NO_INSTANCES,
     NO_MATCHING_INSTANCES,
     report_content,
+    sort_text,
 )
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
@@ -106,6 +107,7 @@ from yellowdog_cli.commander.usage_views import (
     eligible_keys,
     heading,
     preset_window,
+    sort_order,
     toggled_by,
     view_args,
     window_time,
@@ -1741,6 +1743,17 @@ class UsageExplorer(QDialog):
             all_rows = model.text_rows(every)
             total_by_heading = dict(zip(all_rows[0], all_rows[-1], strict=True))
         key_columns = len([column for column in visible if column < len(model.by)])
+        key, most_first = sort_order(shown.levels[-1])
+        sort_column = model.column_of_sort_key(key)
+        sort = (
+            None
+            if sort_column is None
+            else sort_text(
+                str(model.headerData(sort_column, Qt.Orientation.Horizontal)),
+                key in USAGE_SORT_VALUE_KEYS,
+                most_first,
+            )
+        )
         content = report_content(
             document,
             shown.levels,
@@ -1751,6 +1764,7 @@ class UsageExplorer(QDialog):
             total_by_heading,
             bool(shown.scope.cost),
             list(self._shown_notes),
+            sort,
         )
         name = datetime.now().strftime(EXPORT_PDF_NAME_FORMAT)
         path = self._file_dialogs.save_file(
@@ -2083,13 +2097,8 @@ class UsageExplorer(QDialog):
         header = self._table.horizontalHeader()
         if header is None:
             return
-        level = self._shown.levels[-1] if self._shown else None
-        key = (level.sort if level else None) or "total"
+        key, most_first = sort_order(self._shown.levels[-1] if self._shown else None)
         column = self._model.column_of_sort_key(key)
-        # The CLI's order: a key's value A to Z, a figure the most first
-        most_first = key in USAGE_SORT_VALUE_KEYS
-        if level is not None and level.reverse:
-            most_first = not most_first
         header.setSortIndicator(
             -1 if column is None else column,
             Qt.SortOrder.DescendingOrder if most_first else Qt.SortOrder.AscendingOrder,

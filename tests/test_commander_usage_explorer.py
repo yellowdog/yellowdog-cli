@@ -1467,6 +1467,37 @@ def test_the_pdf_is_of_the_view_shown_not_the_controls(
     assert made[0]["namespace"] is None
 
 
+def test_the_pdf_states_the_sort_shown(explorer, children, tmp_path, monkeypatch):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    monkeypatch.setattr(usage_explorer, "write_pdf", lambda *args, **kwargs: 1)
+
+    def sorted_by() -> str:
+        export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+        return made[-1].scope_lines[1]
+
+    assert sorted_by() == (
+        f"Totalled by Namespace · sorted by {DURATION_HEADING.format(heading='Total')},"
+        " most first"
+    )
+    click_heading(explorer, "Running")
+    settle(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert sorted_by().endswith(
+        f"sorted by {DURATION_HEADING.format(heading='Running')}, least first"
+    )
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    assert sorted_by().endswith("sorted by Namespace, A to Z")
+
+
 def test_landscape_pdf_is_remembered(
     explorer, tmp_path, monkeypatch, commander_dialog_settings
 ):

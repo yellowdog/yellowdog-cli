@@ -497,6 +497,16 @@ def period_text(from_iso: str, until_iso: str) -> str:
     return f"{shown_from} → {window_time(until_iso)}"
 
 
+def sort_text(heading: str, figure: bool, most_first: bool) -> str:
+    """
+    How a report's rows are sorted: by the column headed 'heading', a figure
+    the most or the least first, a key's value A to Z or Z to A.
+    """
+    if figure:
+        return f"{heading}, {'most' if most_first else 'least'} first"
+    return f"{heading}, {'Z to A' if most_first else 'A to Z'}"
+
+
 def report_content(
     document: dict,
     levels: tuple[Level, ...],
@@ -507,6 +517,7 @@ def report_content(
     total_by_heading: dict[str, str] | None,
     cost: bool,
     notes: list[str],
+    sort: str | None = None,
 ) -> ReportContent:
     """
     The report of a view: 'document' its `yd usage --json` document,
@@ -514,8 +525,9 @@ def report_content(
     columns as displayed (the first key_columns keys), 'total_by_heading'
     the Total row of every column (None with no groups), which the tiles
     read whether or not their columns are visible, 'cost' whether the view
-    has cost, and 'notes' the lines printed after the table. Every figure is
-    the table's own text; nothing about cost when 'cost' is false.
+    has cost, 'notes' the lines printed after the table, and 'sort' how the
+    rows are sorted (sort_text()). Every figure is the table's own text;
+    nothing about cost when 'cost' is false.
     """
     namespace = document.get("namespace")
     period = period_text(str(document.get("from", "")), str(document.get("until", "")))
@@ -526,7 +538,9 @@ def report_content(
     scope_lines = [
         f"Window: {window} · "
         + (f"Namespace: {namespace}" if namespace else "All namespaces"),
-        "Totalled by " + ", ".join(headings[:key_columns]),
+        "Totalled by "
+        + ", ".join(headings[:key_columns])
+        + (f" · sorted by {sort}" if sort else ""),
     ]
     if len(levels) > 1:
         scope_lines.append(

@@ -24,6 +24,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     period_text,
     plan_pages,
     report_content,
+    sort_text,
     wrap_text,
 )
 from yellowdog_cli.commander.usage_views import Level
@@ -270,6 +271,7 @@ def made(
     total=CR_TOTAL,
     cost=True,
     notes=(),
+    sort=None,
 ) -> ReportContent:
     document = dict(OCTOBER, namespace="team-render") if document is None else document
     by_heading = dict(zip(headings, total)) if total is not None else None
@@ -283,6 +285,7 @@ def made(
         by_heading,
         cost,
         list(notes),
+        sort,
     )
 
 
@@ -338,6 +341,26 @@ def test_scope_lines():
     top = made(document=OCTOBER, levels=(TOP,))
     assert top.scope_lines[0].endswith("· All namespaces")
     assert not any(line.startswith("Within") for line in top.scope_lines)
+
+
+def test_the_sort_is_stated_with_what_it_totals_by():
+    content = made(sort="Total (h:mm), most first")
+    assert content.scope_lines[1] == (
+        "Totalled by Compute Requirement · sorted by Total (h:mm), most first"
+    )
+
+
+@pytest.mark.parametrize(
+    "figure, most_first, expected",
+    [
+        (True, True, "Total (h:mm), most first"),
+        (True, False, "Total (h:mm), least first"),
+        (False, False, "Total (h:mm), A to Z"),
+        (False, True, "Total (h:mm), Z to A"),
+    ],
+)
+def test_sort_text(figure, most_first, expected):
+    assert sort_text("Total (h:mm)", figure, most_first) == expected
 
 
 def test_tiles_with_cost_copy_the_total_row():

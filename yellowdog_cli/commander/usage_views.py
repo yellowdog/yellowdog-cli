@@ -37,6 +37,7 @@ __all__ = [
     "heading",
     "preset_window",
     "row_cells",
+    "sort_order",
     "toggled_by",
     "view_args",
 ]
@@ -173,6 +174,17 @@ class Level:
         Whether this is the Instance level, the last.
         """
         return INSTANCE_LEVEL in self.by
+
+
+def sort_order(level: Level | None) -> tuple[str, bool]:
+    """
+    The key a level sorts by ('total' unless set) and whether the most, or
+    for a key's value Z, comes first: the CLI's order is a figure the most
+    first and a value A to Z, '--reverse' the other way.
+    """
+    key = (level.sort if level else None) or "total"
+    most_first = key in USAGE_SORT_VALUE_KEYS
+    return key, most_first != bool(level and level.reverse)
 
 
 def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[str]:
