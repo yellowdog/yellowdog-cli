@@ -12,7 +12,7 @@ from itertools import chain, islice
 from os.path import exists
 from typing import Any, TypeVar, cast
 
-from requests import HTTPError, get
+from requests import HTTPError
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
     Allowance,
@@ -59,6 +59,7 @@ from yellowdog_cli.utils.active_entities import (
     INACTIVE_WORKER_POOL_STATUSES,
 )
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import (
     ET_ALLOWANCES,
     ET_APPLICATIONS,

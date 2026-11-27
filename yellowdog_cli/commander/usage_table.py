@@ -11,7 +11,8 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget
 
-from yellowdog_cli.commander.usage_views import heading, row_cells
+from yellowdog_cli.commander.usage_report_layout import COST_NOTE
+from yellowdog_cli.commander.usage_views import INSTANCE_LEVEL, heading, row_cells
 
 # The value columns after the key columns, and the '--sort' key of each
 VALUE_COLUMNS: tuple[tuple[str, str], ...] = (
@@ -24,10 +25,7 @@ VALUE_COLUMNS: tuple[tuple[str, str], ...] = (
 COST_HEADING = "Est. cost ({currency})"
 COST_SORT_KEY = "cost"
 # What the estimate leaves out, said on its heading
-COST_TOOLTIP = (
-    "Linux list prices today; spot Instances at the region's mean spot price;"
-    " no discounts, savings plans, licences or disks; running time only"
-)
+COST_TOOLTIP = COST_NOTE
 # The status columns after the cost, in row_cells()'s order, hidden at first
 STATUS_COLUMNS: tuple[str, ...] = ("pending", "stopping", "terminating", "unknown")
 # The figure columns a right-click may hide, in the order shown: all but the
@@ -37,6 +35,9 @@ HIDEABLE_COLUMNS: tuple[str, ...] = (
     *STATUS_COLUMNS,
 )
 TOTAL_LABEL = "Total"
+# A time column's heading in the table and the shown export, saying how its
+# cells read, as yd usage's own table heads them
+DURATION_HEADING = "{heading} (h:mm)"
 # The raw export's headings beyond the key columns: the figures as yd usage
 # --json gives them, hours as decimals and the cost as a number, and the
 # running time no price covered, which the shown cost's '+' marks
@@ -65,6 +66,9 @@ class UsageTableModel(QAbstractTableModel):
         self._cost = False
         self._groups: list[dict] = []
         self._rows: list[list[str]] = []
+        # The figure columns shown, in order (no 'instances' at the Instance
+        # level, where every row is one Instance)
+        self._figures: list[str] = []
         # The document's dict behind each row, the total's last
         self._sources: list[dict] = []
         self._headings: list[str] = []
@@ -79,25 +83,47 @@ class UsageTableModel(QAbstractTableModel):
         """
         by = [str(key) for key in document["by"]]
         groups = [dict(group) for group in document["groups"]]
-        rows = [row_cells(group, by, cost) for group in groups]
+        # Grouped by Instance ID, each row is one Instance: no Instances column
+        counts = INSTANCE_LEVEL not in by
+        rows = [self._cells(group, by, cost, counts) for group in groups]
         sources = list(groups)
         total = document.get("total")
         if groups and isinstance(total, dict):
-            cells = row_cells(total, by, cost)
+            cells = self._cells(total, by, cost, counts)
             cells[: len(by)] = [TOTAL_LABEL] + [""] * (len(by) - 1)
             rows.append(cells)
             sources.append(dict(total))
+        figures = [key for _, key in VALUE_COLUMNS if counts or key != "instances"]
+        figures += [COST_SORT_KEY] if cost else []
+        figures += list(STATUS_COLUMNS)
         self.beginResetModel()
         self._by, self._cost, self._groups, self._rows = by, cost, groups, rows
+        self._figures = figures
         self._sources = sources
         self._has_total = len(rows) > len(groups)
-        self._headings = (
-            [heading(key) for key in by]
-            + [name for name, _ in VALUE_COLUMNS]
-            + ([COST_HEADING.format(currency=document["currency"])] if cost else [])
-            + [heading(key) for key in STATUS_COLUMNS]
-        )
+        self._headings = [heading(key) for key in by] + [
+            self._figure_heading(key, document) for key in figures
+        ]
         self.endResetModel()
+
+    @staticmethod
+    def _cells(row: dict, by: list[str], cost: bool, counts: bool) -> list[str]:
+        """
+        A row's cells, as row_cells() gives them, less the Instances cell
+        where there is no Instances column.
+        """
+        cells = row_cells(row, by, cost)
+        if not counts:
+            del cells[len(by)]
+        return cells
+
+    @staticmethod
+    def _figure_heading(key: str, document: dict) -> str:
+        if key == "instances":
+            return figure_heading(key)
+        if key == COST_SORT_KEY:
+            return COST_HEADING.format(currency=document["currency"])
+        return DURATION_HEADING.format(heading=figure_heading(key))
 
     def text_rows(self, columns: list[int]) -> list[list[str]]:
         """
@@ -118,11 +144,12 @@ class UsageTableModel(QAbstractTableModel):
         headings: list[str] = []
         for column in columns:
             figure = self._figure(column)
-            name = self._headings[column]
             if figure in (None, "instances", COST_SORT_KEY):
-                headings.append(name)
+                headings.append(self._headings[column])
             else:
-                headings.append(RAW_HOURS_HEADING.format(heading=name))
+                headings.append(
+                    RAW_HOURS_HEADING.format(heading=figure_heading(figure))
+                )
             if figure == COST_SORT_KEY:
                 headings.append(UNPRICED_HEADING)
         rows = [headings]
@@ -156,14 +183,12 @@ class UsageTableModel(QAbstractTableModel):
         """
         if column < len(self._by):
             return None
-        figures = [key for _, key in VALUE_COLUMNS]
-        figures += [COST_SORT_KEY] if self._cost else []
-        figures += list(STATUS_COLUMNS)
-        return figures[column - len(self._by)]
+        return self._figures[column - len(self._by)]
 
     def clear(self) -> None:
         self.beginResetModel()
         self._by, self._groups, self._rows, self._headings = [], [], [], []
+        self._figures = []
         self._sources = []
         self._has_total = False
         self.endResetModel()

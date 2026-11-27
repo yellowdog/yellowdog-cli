@@ -37,7 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
-from yellowdog_cli.utils.usage_text import cost_text_of, duration_text
+from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, report_time
 
 URL = "https://api.example.com"
 KEY = "key-id"
@@ -166,7 +166,7 @@ def platform(monkeypatch, tmp_path) -> _Platform:
     """
     monkeypatch.setattr(completion_cache, "_temp_root", lambda: tmp_path)
     fake = _Platform()
-    monkeypatch.setattr(usage_report.requests, "put", fake)
+    monkeypatch.setattr(usage_report.direct_http, "put", fake)
     return fake
 
 
@@ -269,7 +269,7 @@ class TestTheReportsWait:
         def timed_out(**kwargs):
             raise ReadTimeout("read timed out")
 
-        monkeypatch.setattr(usage_report.requests, "put", timed_out)
+        monkeypatch.setattr(usage_report.direct_http, "put", timed_out)
         with pytest.raises(ReadTimeout, match=r"5 minutes.*requestTimeout") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
@@ -280,7 +280,7 @@ class TestTheReportsWait:
         def unreachable(**kwargs):
             raise ConnectTimeout("connect timed out")
 
-        monkeypatch.setattr(usage_report.requests, "put", unreachable)
+        monkeypatch.setattr(usage_report.direct_http, "put", unreachable)
         with pytest.raises(ConnectTimeout, match=r"^connect timed out$") as raised:
             _report(_ctx())
         assert classify(raised.value) == ExitCode.CONNECTION
@@ -297,7 +297,7 @@ class TestTheReportsWait:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.requests, "put", stalls)
+        monkeypatch.setattr(usage_report.direct_http, "put", stalls)
         with pytest.raises(
             ConnectionError, match=r"5 minutes.*requestTimeout"
         ) as raised:
@@ -314,7 +314,7 @@ class TestTheReportsWait:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.requests, "put", lost)
+        monkeypatch.setattr(usage_report.direct_http, "put", lost)
         with pytest.raises(ConnectionError, match=r"^connection reset$"):
             _report(_ctx())
 
@@ -382,7 +382,7 @@ class TestFetchProgress:
 
             return SimpleNamespace(status_code=200, text="", iter_content=iter_content)
 
-        monkeypatch.setattr(usage_report.requests, "put", broken)
+        monkeypatch.setattr(usage_report.direct_http, "put", broken)
         with pytest.raises(ConnectionError, match="connection lost"):
             _fetch_shown()
         assert not list(
@@ -438,9 +438,10 @@ class TestTheReportIsFetchedAndKept:
         assert not report.from_cache
 
     def test_another_window_or_namespace_is_another_report(self, platform):
+        # A namespace's report first: one of every namespace would serve it
+        _report(_ctx(namespace="team-render"))
         _report(_ctx())
         _report(_ctx(usage_from="2026-10-01"))
-        _report(_ctx(namespace="team-render"))
         assert len(platform.calls) == 3
 
     def test_the_directory_name_holds_no_credential(self, platform):
@@ -992,10 +993,13 @@ class TestWhenAKeptReportIsUsed:
         assert len(platform.calls) == 2
 
     def test_a_matching_window_of_another_namespace_is_not_used(self, platform):
-        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-train")
         assert not self._run(
             KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-render"
         ).from_cache
+        # Nor is one namespace's report used for every namespace
+        assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+        assert len(platform.calls) == 3
 
     def test_a_report_kept_without_its_scope_is_not_used(self, platform):
         report = self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
@@ -1003,6 +1007,107 @@ class TestWhenAKeptReportIsUsed:
             dumps({"fetched": 1795000000.0}), encoding="utf-8"
         )
         assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+
+
+class TestANamespaceFromTheReportOfEvery:
+    """
+    A namespace with no report of its own read from a kept report of every
+    namespace for the window, which holds the same rows (checked live).
+    """
+
+    def test_it_is_read_for_that_namespace_alone(self, platform):
+        every = _report(_ctx())
+        report = _report(_ctx(namespace="team-render"))
+        assert len(platform.calls) == 1
+        assert report.from_cache and report.directory == every.directory
+        assert (report.only_namespace, report.namespaces) == (
+            "team-render",
+            ["team-render"],
+        )
+        groups = usage_report.grouped_usage(report, ["namespace"])
+        assert [group.keys for group in groups] == [{"namespace": "team-render"}]
+        assert groups[0].instances == 1
+
+    def test_its_own_report_comes_first(self, platform):
+        _report(_ctx())
+        own = _report(_ctx(namespace="team-render"), refresh=True)
+        again = _report(_ctx(namespace="team-render"))
+        assert again.directory == own.directory and again.only_namespace is None
+        assert len(platform.calls) == 2
+
+    def test_refresh_fetches_the_namespace(self, platform):
+        _report(_ctx())
+        report = _report(_ctx(namespace="team-render"), refresh=True)
+        assert not report.from_cache
+        assert platform.calls[-1]["json"]["namespaces"] == ["team-render"]
+
+    def test_another_window_is_fetched(self, platform):
+        _report(_ctx())
+        assert not _report(
+            _ctx(namespace="team-render", usage_from="2026-10-01")
+        ).from_cache
+
+    def test_the_command_says_so(self, platform, capsys):
+        _show(capsys)
+        out, _ = _show(capsys, namespace="team-render")
+        assert "Reusing the report of every namespace from an earlier run" in out
+        assert "team-train" not in out
+        document = loads(
+            _show(capsys, namespace="team-render", json_output=True, json=True)[0]
+        )
+        assert document["reused"] is True
+        assert (document["namespace"], document["namespaces"]) == (
+            "team-render",
+            ["team-render"],
+        )
+        assert [group["namespace"] for group in document["groups"]] == ["team-render"]
+
+    def test_a_namespace_that_does_not_exist_is_still_not_found(self, platform, capsys):
+        _report(_ctx())
+        ctx = _ctx(namespace="team-x")
+        search = ctx.client.namespaces_client.get_namespaces.return_value
+        search.list_all.return_value = []
+        with output_settings.configured(ctx.args):
+            with pytest.raises(NotFoundError, match="No namespace 'team-x' exists"):
+                usage.show_usage(ctx)
+        assert len(platform.calls) == 1
+
+
+class TestANamespaceAScopedReportDidNotCover:
+    @pytest.fixture
+    def scoped(self, monkeypatch, tmp_path):
+        from yellowdog_cli.utils import entity_utils
+
+        monkeypatch.setattr(completion_cache, "_temp_root", lambda: tmp_path)
+        fake = _ScopedPlatform({"team-render", "team-train"})
+        monkeypatch.setattr(usage_report.direct_http, "put", fake)
+        monkeypatch.setattr(
+            entity_utils,
+            "search_namespaces",
+            lambda client, namespace: ["team-render", "team-x"],
+        )
+        return fake
+
+    def test_a_refused_namespace_is_asked_for_and_refused(self, scoped):
+        # Every namespace's report asked for team-x and was refused it
+        assert _report(_ctx()).refused == ["team-x"]
+        with pytest.raises(HTTPError) as raised:
+            _report(_ctx(namespace="team-x"))
+        assert classify(raised.value) == ExitCode.PERMISSION
+        assert scoped.calls[-1]["json"]["namespaces"] == ["team-x"]
+
+    def test_a_namespace_not_asked_for_is_fetched(self, scoped):
+        _report(_ctx())
+        report = _report(_ctx(namespace="team-train"))
+        assert not report.from_cache
+        assert scoped.calls[-1]["json"]["namespaces"] == ["team-train"]
+
+    def test_a_namespace_asked_for_is_read_from_it(self, scoped):
+        _report(_ctx())
+        calls = len(scoped.calls)
+        report = _report(_ctx(namespace="team-render"))
+        assert report.from_cache and report.only_namespace == "team-render"
+        assert len(scoped.calls) == calls
 
 
 def test_a_report_kept_without_its_size_is_shown_without_it(platform, capsys):
@@ -1078,7 +1183,7 @@ class TestPruning:
         first = _report(_ctx())
         week_ago = time.time() - 8 * self.DAY
         os.utime(first.directory, (week_ago, week_ago))
-        _report(_ctx(namespace="team-render"))
+        _report(_ctx(namespace="team-render"), refresh=True)
         assert not first.directory.exists()
 
 
@@ -1338,7 +1443,7 @@ class TestANamespaceScopedApplication:
 
         def install(readable, usable, every=("team-render", "team-train")):
             fake = _ScopedPlatform(set(usable))
-            monkeypatch.setattr(usage_report.requests, "put", fake)
+            monkeypatch.setattr(usage_report.direct_http, "put", fake)
             monkeypatch.setattr(
                 entity_utils, "search_namespaces", lambda client, namespace: readable
             )
@@ -2372,7 +2477,8 @@ def _kept_two(platform) -> None:
     """
     _report(_ctx())
     time.sleep(0.02)
-    _report(_ctx(namespace="team-a"))
+    # Refreshed, or the report of every namespace would serve it
+    _report(_ctx(namespace="team-a"), refresh=True)
     assert len(platform.calls) == 2
 
 
@@ -2480,3 +2586,44 @@ def test_reports_takes_no_report_option(extra, flag, capsys):
 
 def test_reports_takes_the_output_options():
     assert _parsed_usage("--reports", "--json").usage_reports
+
+
+@pytest.mark.parametrize(
+    "text, instant",
+    [
+        # The Platform's forms, any length of fraction, on every Python
+        (
+            "2026-11-12T07:46:44Z",
+            datetime(2026, 11, 12, 7, 46, 44, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.4Z",
+            datetime(2026, 11, 12, 7, 46, 44, 400000, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428000, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428279Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428279, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428279123Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428279, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T08:46:44.5+01:00",
+            datetime(2026, 11, 12, 7, 46, 44, 500000, tzinfo=timezone.utc),
+        ),
+        ("2026-11-12T07:46:44", datetime(2026, 11, 12, 7, 46, 44)),
+    ],
+)
+def test_report_time_reads_any_fraction(text, instant):
+    assert report_time(text) == instant
+    assert (report_time(text).tzinfo is None) is (instant.tzinfo is None)
+
+
+def test_report_time_refuses_what_is_not_a_time():
+    with pytest.raises(ValueError):
+        report_time("not a time")

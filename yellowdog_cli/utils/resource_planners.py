@@ -9,11 +9,11 @@ fetches it, and compares the two, changing nothing.
 
 from typing import Any, cast
 
-from requests import get
 from requests.exceptions import HTTPError
 from yellowdog_client.model import InternalUser, NamespaceSearch
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,

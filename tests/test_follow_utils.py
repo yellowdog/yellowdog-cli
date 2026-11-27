@@ -392,7 +392,7 @@ class TestSessionFailuresAfterTheStream:
         response.__enter__.return_value = response
         response.iter_lines.return_value = iter([])  # Closed cleanly
         with (
-            patch.object(fu.requests, "get", return_value=response),
+            patch.object(fu.direct_http, "get", return_value=response),
             # Finished on a second check, so that a loop which carried on
             # past the None would end, as a failure, rather than hang
             patch.object(fu, "_entity_finished", side_effect=[None, True]) as finished,
@@ -434,7 +434,7 @@ class TestFollowErrorFlag:
         response.__enter__ = MagicMock(return_value=response)
         response.__exit__ = MagicMock(return_value=False)
         with (
-            patch.object(fu.requests, "get", return_value=response),
+            patch.object(fu.direct_http, "get", return_value=response),
             patch.object(fu, "print_error") as mock_error,
             patch.object(fu, "print_info"),
         ):
@@ -447,7 +447,7 @@ class TestFollowErrorFlag:
     def test_stream_connection_failure_sets_flag(self):
         with (
             patch.object(
-                fu.requests,
+                fu.direct_http,
                 "get",
                 side_effect=requests.exceptions.ConnectionError("boom"),
             ),
@@ -534,7 +534,7 @@ class TestReconnection:
             dropped,
             _stream(["data: 2"]),
         ]
-        monkeypatch.setattr(fu.requests, "get", MagicMock(side_effect=responses))
+        monkeypatch.setattr(fu.direct_http, "get", MagicMock(side_effect=responses))
         _finished(monkeypatch, True)
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
         assert clock.sleeps == [5.0, 10.0, 20.0, 30.0]
@@ -547,7 +547,7 @@ class TestReconnection:
             dropped,
             _stream(["data: 2"]),
         ]
-        monkeypatch.setattr(fu.requests, "get", MagicMock(side_effect=responses))
+        monkeypatch.setattr(fu.direct_http, "get", MagicMock(side_effect=responses))
         _finished(monkeypatch, True)
         with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
             fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -562,7 +562,7 @@ class TestReconnection:
     def test_an_outage_over_five_minutes_gives_up_with_exit_8(self, clock, monkeypatch):
         dropped = requests.exceptions.ConnectionError("dropped")
         monkeypatch.setattr(
-            fu.requests,
+            fu.direct_http,
             "get",
             MagicMock(side_effect=[_stream(raises=dropped)] + [dropped] * 100),
         )
@@ -583,7 +583,7 @@ class TestReconnection:
             _stream(raises=dropped) for _ in range(100)
         ]
         get = MagicMock(side_effect=responses)
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         errors: list[str] = []
         monkeypatch.setattr(fu, "print_error", lambda m, **k: errors.append(m))
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -598,7 +598,7 @@ class TestReconnection:
         dropped = requests.exceptions.ConnectionError("dropped")
         responses = [_stream([f"data: {n}"], raises=dropped) for n in range(5)]
         monkeypatch.setattr(
-            fu.requests,
+            fu.direct_http,
             "get",
             MagicMock(side_effect=[*responses, _stream(["data: 5"])]),
         )
@@ -609,7 +609,7 @@ class TestReconnection:
 
     def test_a_first_connection_that_fails_is_not_retried(self, clock, monkeypatch):
         get = MagicMock(side_effect=requests.exceptions.ConnectionError("no"))
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
         assert get.call_count == 1
         assert clock.sleeps == []
@@ -619,7 +619,7 @@ class TestReconnection:
 class TestCleanClose:
     def test_a_close_while_the_entity_is_live_reconnects(self, clock, monkeypatch):
         get = MagicMock(side_effect=[_stream(["data: 1"]), _stream(["data: 2"])])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         finished = _finished(monkeypatch, False, True)
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
         assert get.call_count == 2
@@ -627,7 +627,7 @@ class TestCleanClose:
 
     def test_a_close_while_live_is_traced(self, clock, monkeypatch, caplog):
         get = MagicMock(side_effect=[_stream(["data: 1"]), _stream(["data: 2"])])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         _finished(monkeypatch, False, True)
         with caplog.at_level(logging.DEBUG, logger="yellowdog_cli"):
             fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -716,14 +716,14 @@ class TestExitCode:
     )
     def test_a_refused_stream_has_its_own_code(self, clock, monkeypatch, status, code):
         monkeypatch.setattr(
-            fu.requests, "get", MagicMock(return_value=_stream(status=status))
+            fu.direct_http, "get", MagicMock(return_value=_stream(status=status))
         )
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
         assert fu.follow_exit_code() == code
 
     def test_failures_with_different_causes_exit_1(self, clock, monkeypatch):
         monkeypatch.setattr(
-            fu.requests,
+            fu.direct_http,
             "get",
             MagicMock(side_effect=[_stream(status=404), _stream(status=401)]),
         )
@@ -856,7 +856,7 @@ class TestStreamFailures:
         quiet = _stream(["data: 1"], raises=timeout)
         quiet.encoding = None  # Set to UTF-8 when a stream names none
         get = MagicMock(side_effect=[quiet, _stream(["data: 2"])])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         warnings: list[str] = []
         monkeypatch.setattr(fu, "print_warning", lambda m, **k: warnings.append(m))
         _finished(monkeypatch, True)
@@ -890,7 +890,7 @@ class TestStreamFailures:
         get = MagicMock(
             side_effect=[quiet() for _ in range(10)] + [_stream(["data: 1"])]
         )
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         monkeypatch.setattr(fu, "print_warning", lambda m, **k: warnings.append(m))
         _finished(monkeypatch, True)
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -902,7 +902,7 @@ class TestStreamFailures:
         self, clock, monkeypatch
     ):
         get = MagicMock(side_effect=[_stream(["data: 1"], raises=ValueError("odd"))])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         errors: list[str] = []
         monkeypatch.setattr(fu, "print_error", lambda m, **k: errors.append(m))
         finished = _finished(monkeypatch)
@@ -917,7 +917,7 @@ class TestStreamFailures:
     ):
         refused = _stream(status=404)
         refused.json.side_effect = ValueError("not JSON")
-        monkeypatch.setattr(fu.requests, "get", MagicMock(return_value=refused))
+        monkeypatch.setattr(fu.direct_http, "get", MagicMock(return_value=refused))
         errors: list[str] = []
         monkeypatch.setattr(fu, "print_error", lambda m, **k: errors.append(m))
         fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -932,7 +932,7 @@ class TestStreamFailures:
             fu._STOP_FOLLOWING.set()  # As --timeout does, from the main thread
 
         get = MagicMock(side_effect=[_stream(["data: 1", "data: 2"])])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         infos: list[str] = []
         monkeypatch.setattr(fu, "print_info", lambda m, **k: infos.append(m))
         finished = _finished(monkeypatch)
@@ -952,7 +952,7 @@ class TestStreamFailures:
             fu._STOP_FOLLOWING.set() or iter([])
         )
         get = MagicMock(side_effect=[closed])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         finished = _finished(monkeypatch)
         try:
             fu.follow_events(_ctx(), WR, fu.YDIDType.WORK_REQUIREMENT)
@@ -1122,7 +1122,7 @@ class TestFollowingEndsOnceSettled:
     def test_it_ends_at_the_event_that_settles_it(self, clock, monkeypatch):
         stream = _stream(['data: {"status": "RUNNING"}', 'data: {"status": "HELD"}'])
         get = MagicMock(side_effect=[stream])
-        monkeypatch.setattr(fu.requests, "get", get)
+        monkeypatch.setattr(fu.direct_http, "get", get)
         finished = _finished(monkeypatch)  # Never asked: the stream never closed
         seen: list[dict] = []
 

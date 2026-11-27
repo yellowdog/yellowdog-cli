@@ -14,6 +14,7 @@ command box, quitting, and run_app().
 """
 
 import os
+import signal
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -96,6 +97,7 @@ from yellowdog_cli.commander.window_base import (
     WINDOW_TITLE,
 )
 from yellowdog_cli.commander.work_panel import WorkPanel
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.noun_registry import typed_command
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.paths import default_config_file, relative_if_possible
@@ -366,7 +368,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd variables runs
-        config_file = settings.config_file or self._remembered_config_file()
+        config_file = settings.config_file or self._startup_config_file()
         QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
@@ -422,16 +424,16 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._set_cursor_to_end(self.properties)
 
     @staticmethod
-    def _remembered_config_file() -> str | None:
+    def _startup_config_file() -> str | None:
         """
-        The configuration file selected last time, to select again when none
-        is named at launch: unless the CLI would find one of its own there
-        (config.toml in the launch directory, else the user's own), which
-        Commander's commands use when none is selected and which a
-        remembered file would silently replace; and only while it exists.
+        The configuration file to select when none is named at launch, as the
+        Usage Explorer run on its own chooses: the one the CLI reads by
+        default (config.toml in the launch directory, else the user's own),
+        else the one selected last time, while it exists; else none.
         """
-        if isfile(default_config_file()):
-            return None
+        default = default_config_file()
+        if isfile(default):
+            return abspath(default)
         remembered = file_dialogs.dialog_settings().value(SETTING_CONFIG_FILE)
         if isinstance(remembered, str) and isfile(remembered):
             return remembered
@@ -1337,7 +1339,28 @@ def make_application() -> QApplication:
         install_stderr_filter()
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(ICON_IMAGE))
+    quit_on_interrupt(app)
     return app
+
+
+# How often Python is given the chance to see Ctrl+C while Qt is idle
+INTERRUPT_POLL_MS = 250
+
+
+def quit_on_interrupt(app: QApplication) -> None:
+    """
+    Ctrl+C in the terminal quits as Quit does (aboutToQuit, so every run is
+    stopped and the window's state kept), exiting 130 as the CLI does.
+    Python runs a signal handler only between Python calls, which Qt's loop
+    makes none of while idle, so a timer that does nothing gives it the
+    chance; left to Python's own handler, the KeyboardInterrupt is raised
+    inside the next Qt callback (closing the window, say), which PyQt6
+    turns into an abort.
+    """
+    signal.signal(signal.SIGINT, lambda *_: app.exit(ExitCode.INTERRUPTED))
+    poll = QTimer(app)
+    poll.timeout.connect(lambda: None)
+    poll.start(INTERRUPT_POLL_MS)
 
 
 def run_app(settings: StartupSettings | None = None):

@@ -184,19 +184,21 @@ def _no_real_proxy_auto_configuration(monkeypatch):
     consults the system's proxy settings and the network (WPAD) and on a CI
     runner can wait minutes on each call: it means the test's fake
     configuration left 'use_pac' unset, which a MagicMock reads as true. A
-    test about PAC patches pac_context_for_url itself, inside the test, so
+    test about PAC patches direct_http.pac_context itself, inside the test, so
     after this.
     """
     import pypac
 
-    def refuse(url, *args, **kwargs):
+    def refuse(*args, **kwargs):
         raise AssertionError(
-            f"proxy auto-configuration was attempted for {url!r}: give the"
-            " test's configuration use_pac=False, or patch"
-            " pypac.pac_context_for_url in a test about PAC"
+            "proxy auto-configuration was attempted: give the test's"
+            " configuration use_pac=False, or patch"
+            " yellowdog_cli.utils.direct_http.pac_context in a test about PAC"
         )
 
-    monkeypatch.setattr(pypac, "pac_context_for_url", refuse)
+    # pac_context_for_url() looks get_pac up in pypac.api, not the package
+    monkeypatch.setattr(pypac, "get_pac", refuse)
+    monkeypatch.setattr(pypac.api, "get_pac", refuse)
 
 
 @pytest.fixture(autouse=True)
@@ -281,6 +283,29 @@ def _no_config_discovery(request, monkeypatch):
         ConfigDiscovery,
         "_parse_yd_config",
         lambda self, quiet=False, timeout_ms=None: False,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_launch_directory_config(request, monkeypatch, tmp_path):
+    """
+    Keep the CLI's default configuration file out of the GUI unit tests.
+
+    Launched with no configuration named, Commander selects the one the CLI
+    reads by default (_startup_config_file(): ./config.toml, else the user's
+    own), so a window built in a test run from a directory holding a
+    config.toml (a developer's checkout) would select it, and pass or fail
+    by where the suite was run. Commander's 'default_config_file' names a
+    file that does not exist instead; a test about the default itself puts
+    the real one back (test_commander_session.py's no_config_of_its_own).
+    """
+    if "qapp" not in request.fixturenames:
+        return
+
+    from yellowdog_cli.commander import commander
+
+    monkeypatch.setattr(
+        commander, "default_config_file", lambda: str(tmp_path / "no-config.toml")
     )
 
 

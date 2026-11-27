@@ -22,6 +22,7 @@ from yellowdog_cli.commander.usage_views import (
     row_cells,
     toggled_by,
     view_args,
+    window_time,
 )
 from yellowdog_cli.utils.command_registry import USAGE_GROUP_KEYS
 
@@ -49,10 +50,27 @@ def test_a_pinned_view_passes_the_reports_window():
     assert scope.pinned
     assert view_args(scope, [Level(("namespace",))])[:4] == [
         "--from",
-        "2026-11-18T15:02:30Z",
+        "2026-11-18 15:02 UTC",
         "--until",
-        "2026-11-25T15:02:30Z",
+        "2026-11-25 15:02 UTC",
     ]
+
+
+def test_a_pinned_window_is_written_to_the_minute():
+    scope = Scope("24 hours ago", "now", None, False).pinned_to(
+        "2026-11-18T10:57:30.559218Z", "2026-11-19T10:57:30.601337+00:00"
+    )
+    assert (scope.from_text, scope.until_text) == (
+        "2026-11-18 10:57 UTC",
+        "2026-11-19 10:57 UTC",
+    )
+
+
+def test_window_time_converts_to_utc_and_keeps_what_it_cannot_read():
+    assert window_time("2026-11-19T11:57:30.5+01:00") == "2026-11-19 10:57 UTC"
+    assert window_time("2026-11-19T10:57:30") == "2026-11-19T10:57:30"
+    assert window_time("7 days ago") == "7 days ago"
+    assert window_time("") == ""
 
 
 def test_a_cost_change_keeps_the_pin():
@@ -115,7 +133,10 @@ def test_drill_skips_a_key_already_filtered_on():
     levels = [Level(("namespace",)), Level(("cr",), (("instance-type", "t"),), "t")]
     skipped = drill(levels, {"cr": "x"})
     assert skipped is not None
-    assert skipped[-1].by == ("instance-id",)
+    # The Instance level, ticked with its describing keys less those fixed
+    assert skipped[-1].by == tuple(
+        key for key in INSTANCE_KEYS if key not in ("instance-type", "cr")
+    )
 
 
 def test_a_key_off_the_path_starts_from_its_beginning():
@@ -125,11 +146,17 @@ def test_a_key_off_the_path_starts_from_its_beginning():
     assert off[-1].by == ("cr",)
 
 
-def test_the_instance_level_is_a_leaf_and_shows_its_details():
+def test_the_instance_level_is_a_leaf_asking_for_its_ticks_alone():
     assert drill([Level(("instance-id",))], {"instance-id": "i-1"}) is None
     args = view_args(Scope("a", "b", None, False), [Level(("instance-id",))])
-    assert args[args.index("--by") + 1] == ",".join(INSTANCE_KEYS)
+    assert args[args.index("--by") + 1] == "instance-id"
     assert INSTANCE_KEYS[0] == "instance-id"
+
+
+def test_a_level_holding_instance_id_is_a_leaf():
+    assert drill([Level(("namespace", "instance-id"))], {"namespace": "a"}) is None
+    args = view_args(Scope("a", "b", None, False), [Level(("tag", "instance-id"))])
+    assert args[args.index("--by") + 1] == "tag,instance-id"
 
 
 def test_several_keys_group_and_drill_on_all_of_them():
@@ -157,7 +184,7 @@ def test_drilling_several_keys_moves_on_after_the_furthest_down_the_path():
         {"instance-type": "t3.large", "namespace": "n"},
     )
     assert levels is not None
-    assert levels[-1].by == ("instance-id",)
+    assert levels[-1].by == tuple(k for k in INSTANCE_KEYS if k != "instance-type")
 
 
 def test_the_eligible_keys_are_those_no_filter_fixes():
@@ -179,9 +206,14 @@ def test_toggling_keys():
     assert toggled_by(("namespace", "region"), "namespace") == ("region",)
     # The last key stays
     assert toggled_by(("namespace",), "namespace") is None
-    # The Instance level replaces the others, and any other replaces it
-    assert toggled_by(("namespace", "region"), INSTANCE_LEVEL) == (INSTANCE_LEVEL,)
-    assert toggled_by((INSTANCE_LEVEL,), "region") == ("region",)
+    # Instance ID combines with the others, as any key does
+    assert toggled_by(("namespace", "region"), INSTANCE_LEVEL) == (
+        "namespace",
+        "region",
+        INSTANCE_LEVEL,
+    )
+    assert toggled_by((INSTANCE_LEVEL,), "tag") == (INSTANCE_LEVEL, "tag")
+    assert toggled_by(("namespace", INSTANCE_LEVEL), INSTANCE_LEVEL) == ("namespace",)
 
 
 def test_the_path_and_keys_are_valid():
@@ -194,27 +226,34 @@ def test_presets():
         ("24 hours ago", "now"),
         ("7 days ago", "now"),
         ("30 days ago", "now"),
-        ("2026-11-01T00:00:00Z", "now"),
-        ("2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z"),
+        ("2026-11-01 00:00 UTC", "now"),
+        ("2026-10-01 00:00 UTC", "2026-11-01 00:00 UTC"),
     ]
 
 
 def test_last_month_in_january_is_december():
     january = datetime(2027, 1, 5, tzinfo=timezone.utc)
     assert preset_window("Last month", january) == (
-        "2026-12-01T00:00:00Z",
-        "2027-01-01T00:00:00Z",
+        "2026-12-01 00:00 UTC",
+        "2027-01-01 00:00 UTC",
     )
 
 
 def test_months_are_utc_whatever_the_clock():
     # 23:30 on 30 November in UTC-5 is already 1 December in UTC
     late = datetime(2026, 11, 30, 23, 30, tzinfo=timezone(timedelta(hours=-5)))
-    assert preset_window("This month", late)[0] == "2026-12-01T00:00:00Z"
+    assert preset_window("This month", late)[0] == "2026-12-01 00:00 UTC"
 
 
 def test_command_line_quotes():
     assert command_line(["--where", "cr==a b"]) == "yd usage --where 'cr==a b'"
+
+
+def test_command_line_leaves_out_the_explorers_output_options():
+    assert (
+        command_line(["-c", "config.toml", "--nf", "-q", "--json", "--by", "cr"])
+        == "yd usage -c config.toml --by cr"
+    )
 
 
 def test_row_cells_format_as_the_cli():

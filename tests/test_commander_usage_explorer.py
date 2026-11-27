@@ -26,7 +26,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QStyle
 
 import yellowdog_cli.commander.usage_explorer as usage_explorer
-from yellowdog_cli.commander import commander
+from yellowdog_cli.commander import commander, usage_explorer
 from yellowdog_cli.commander.branding import BRANDING_IMAGE_SIZE
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.output_pane import (
@@ -36,12 +36,14 @@ from yellowdog_cli.commander.output_pane import (
 from yellowdog_cli.commander.usage_explorer import (
     CRUMB_SEPARATOR,
     DARK_SEPARATOR_STYLE,
+    EXPORTED_PDF_LOG,
     KEPT_SEPARATOR,
     SETTING_EXPLORER_COST,
     SETTING_EXPLORER_EXPORT_TOTAL,
     SETTING_EXPLORER_FONT_SIZE,
     SETTING_EXPLORER_GEOMETRY,
     SETTING_EXPLORER_HIDDEN_COLUMNS,
+    SETTING_EXPLORER_PDF_LANDSCAPE,
     SETTING_EXPLORER_PRESET,
     TABLE_INDENT,
     RunResult,
@@ -49,7 +51,7 @@ from yellowdog_cli.commander.usage_explorer import (
     UsageRunner,
     grid_colour,
 )
-from yellowdog_cli.commander.usage_table import STATUS_COLUMNS
+from yellowdog_cli.commander.usage_table import DURATION_HEADING, STATUS_COLUMNS
 from yellowdog_cli.commander.usage_views import (
     KEY_VALUE_SEPARATOR,
     USAGE_GROUP_KEYS,
@@ -302,6 +304,9 @@ def test_destroying_the_parent_mid_run_is_safe(qapp, tmp_path, children):
 
 FROM_ISO = "2026-11-18T15:02:00Z"
 UNTIL_ISO = "2026-11-25T15:02:00Z"
+# The same window as a pinned view passes it (window_time())
+FROM_TEXT = "2026-11-18 15:02 UTC"
+UNTIL_TEXT = "2026-11-25 15:02 UTC"
 BASE_ARGS = ["-c", "config.toml", "--nf", "-q", "--json"]
 STATES = ("pending", "running", "stopping", "stopped", "terminating", "unknown")
 
@@ -387,11 +392,12 @@ def wheres(args: list[str]) -> list[str]:
     return [args[i + 1] for i, arg in enumerate(args) if arg == "--where"]
 
 
-# Two reports kept, as yd usage --reports --json lists them
+# Two reports kept, as yd usage --reports --json lists them (the first with
+# the fractions of a second a window resolved at fetch time has)
 KEPT = [
     {
-        "from": "2026-10-01T00:00:00Z",
-        "until": "2026-11-01T00:00:00Z",
+        "from": "2026-10-01T00:00:00.559218Z",
+        "until": "2026-11-01T00:00:00.601337Z",
         "namespace": "team-render",
         "namespaces": ["team-render"],
         "fetched": "2026-11-20T09:00:00Z",
@@ -433,7 +439,7 @@ def usage_answer(command: str, args: list[str]):
     if "--reports" in args:
         return json.dumps(KEPT), "", 0, 0
     by = value_of(args, "--by") or "namespace"
-    reused = value_of(args, "--from") == FROM_ISO and "--refresh" not in args
+    reused = value_of(args, "--from") == FROM_TEXT and "--refresh" not in args
     if by == "namespace":
         groups = [
             group({"namespace": "team-render"}, 17, 47.2, 12.0, 248.10, 0.7),
@@ -502,11 +508,20 @@ def cells(explorer, row: int) -> list[str]:
 
 
 def column_of(explorer, name: str) -> int:
+    """
+    The column headed name, a time column's by its name alone ('Running' for
+    'Running (h:mm)').
+    """
     model = explorer._model
-    return [
+    headings = [
         model.headerData(c, Qt.Orientation.Horizontal)
         for c in range(model.columnCount())
-    ].index(name)
+    ]
+    return next(
+        c
+        for c, h in enumerate(headings)
+        if h in (name, DURATION_HEADING.format(heading=name))
+    )
 
 
 def click_heading(explorer, name: str) -> None:
@@ -605,8 +620,8 @@ def test_double_clicking_a_row_drills_and_pins_the_window(explorer, children):
     double_click_row(explorer, 0)
     settle(explorer)
     args = usage_args(children)
-    assert value_of(args, "--from") == FROM_ISO
-    assert value_of(args, "--until") == UNTIL_ISO
+    assert value_of(args, "--from") == FROM_TEXT
+    assert value_of(args, "--until") == UNTIL_TEXT
     assert wheres(args) == ["namespace==team-render"]
     assert value_of(args, "--by") == "cr"
     assert explorer.breadcrumb_text() == f"All{CRUMB_SEPARATOR}team-render"
@@ -679,7 +694,8 @@ def test_changing_the_window_resets_the_breadcrumb(explorer, children):
     explorer._from.editingFinished.emit()
     fetch(explorer)
     assert usage_args(children)[:2] == ["--from", "2 days ago"]
-    # Choosing a namespace awaits it too
+    # Choosing a namespace awaits it too, with no report kept covering it
+    explorer._kept_items = []
     explorer._namespace.setCurrentText("team-sim")
     explorer._namespace.activated.emit(2)
     fetch(explorer)
@@ -806,8 +822,7 @@ def test_cost_notes_and_partial_costs(explorer, children):
 def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qapp):
     started = [a for c, a in children.started if is_view(c, a)][-1]
     assert explorer._command_line.text() == (
-        "yd usage -c config.toml --nf -q --json --from '7 days ago' --until now"
-        " --by namespace --cost"
+        "yd usage -c config.toml --from '7 days ago' --until now --by namespace --cost"
     )
     assert explorer._command_line.isReadOnly()
     assert started == BASE_ARGS + usage_args(children)
@@ -816,12 +831,12 @@ def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qap
     double_click_row(explorer, 0)
     settle(explorer)
     assert "--where namespace==team-render" in explorer._command_line.text()
-    assert FROM_ISO in explorer._command_line.text()
+    assert FROM_TEXT in explorer._command_line.text()
 
 
 def test_a_fetch_is_logged_and_a_regroup_is_not(explorer, children):
     assert explorer.log_lines == [
-        "Fetched the usage report: yd usage -c config.toml --nf -q --json"
+        "Fetched the usage report: yd usage -c config.toml"
         " --from '7 days ago' --until now --by namespace --cost"
     ]
     assert "fetched" in explorer._report.text()
@@ -890,14 +905,15 @@ def test_custom_dates_are_not_remembered(explorer, commander_dialog_settings):
     )
 
 
-def tick(explorer, key: str) -> None:
+def tick(explorer, *keys: str) -> None:
     """
-    Tick or untick a key in Total by's menu.
+    Tick or untick keys in Total by's menu, then close it, which applies them.
     """
-    [action] = [
-        a for a in explorer._total_by.menu().actions() if a.text() == heading(key)
-    ]
-    action.trigger()
+    menu = explorer._total_by.menu()
+    for key in keys:
+        [action] = [a for a in menu.actions() if a.text() == heading(key)]
+        action.trigger()
+    menu.aboutToHide.emit()
 
 
 def ticked(explorer) -> list[str]:
@@ -930,6 +946,90 @@ def test_total_by_adds_and_removes_keys_and_keeps_the_filter(explorer, children)
     assert ticked(explorer) == ["Region"]
 
 
+def test_instance_id_combines_with_the_keys_ticked(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    tick(explorer, "instance-id")
+    settle(explorer)
+    # Exactly the keys ticked: nothing added unseen
+    assert value_of(usage_args(children), "--by") == "cr,instance-id"
+    assert sorted(ticked(explorer)) == sorted([heading("cr"), heading("instance-id")])
+    # A sort by a key still ticked survives another key ticked
+    tick(explorer, "region")
+    settle(explorer)
+    click_heading(explorer, "Region")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "region"
+    tick(explorer, "tag")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "region"
+    assert value_of(args, "--by") == "cr,instance-id,region,tag"
+
+
+def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
+    for _ in range(3):
+        double_click_row(explorer, 0)
+        settle(explorer)
+    by = value_of(usage_args(children), "--by").split(",")
+    assert by[0] == "instance-id" and "provider" in by
+    assert len(ticked(explorer)) == len(by)
+    # Each row is one Instance: no Instances column
+    assert "Instances" not in shown_headings(explorer)
+
+
+def test_total_by_changes_several_keys_in_one_run(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    started = len(children.started)
+    menu = explorer._total_by.menu()
+    for key in ("region", "tag", "cr"):
+        [action] = [a for a in menu.actions() if a.text() == heading(key)]
+        action.trigger()
+    # Staged while the menu is open: nothing runs yet
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert sorted(ticked(explorer)) == sorted(["Region", heading("tag")])
+    menu.aboutToHide.emit()
+    settle(explorer)
+    views = [a for c, a in children.started[started:] if is_view(c, a)]
+    assert len(views) == 1
+    assert value_of(usage_args(children), "--by") == "region,tag"
+
+
+def test_total_by_closed_unchanged_runs_nothing(explorer, children):
+    started = len(children.started)
+    tick(explorer, "region", "region")
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert ticked(explorer) == ["Namespace"]
+
+
+def test_the_total_by_menu_stays_open_while_ticking(explorer, children):
+    menu = explorer._total_by.menu()
+    menu.popup(explorer.mapToGlobal(explorer._total_by.geometry().bottomLeft()))
+    QApplication.processEvents()
+    assert menu.isVisible()
+    started = len(children.started)
+    [region] = [a for a in menu.actions() if a.text() == "Region"]
+    QTest.mouseClick(
+        menu, Qt.MouseButton.LeftButton, pos=menu.actionGeometry(region).center()
+    )
+    assert menu.isVisible()
+    assert region.isChecked()
+    menu.setActiveAction(region)
+    QTest.keyClick(menu, Qt.Key.Key_Space)
+    assert menu.isVisible()
+    assert not region.isChecked()
+    QTest.keyClick(menu, Qt.Key.Key_Return)
+    assert menu.isVisible() and region.isChecked()
+    QApplication.processEvents()
+    assert len(children.started) == started
+    menu.hide()
+    settle(explorer)
+    assert value_of(usage_args(children), "--by") == "namespace,region"
+
+
 def test_total_by_offers_only_the_keys_left_open(explorer, children):
     offered = [a.text() for a in explorer._total_by.menu().actions()]
     assert offered == [heading(key) for key in USAGE_GROUP_KEYS]
@@ -956,8 +1056,8 @@ def test_the_cost_checkbox_keeps_the_pin(explorer, children):
     args = usage_args(children)
     assert "--cost" not in args
     assert (value_of(args, "--from"), value_of(args, "--until")) == (
-        FROM_ISO,
-        UNTIL_ISO,
+        FROM_TEXT,
+        UNTIL_TEXT,
     )
     assert "Est. cost (USD)" not in [
         explorer._model.headerData(c, Qt.Orientation.Horizontal)
@@ -1111,9 +1211,10 @@ def test_a_new_scopes_failed_first_run_puts_the_controls_back(explorer, children
         return usage_answer(command, args)
 
     children.answer = missing_namespace
+    # Covered by the report of every namespace kept, so run at once
     explorer._namespace.setCurrentText("team-gone")
     explorer._namespace.activated.emit(0)
-    fetch(explorer)
+    settle(explorer)
     assert "The namespace does not exist" in explorer._notes.text()
     assert explorer._namespace.currentText() == "All namespaces"
     assert explorer._preset.currentText() == "Last 7 days"
@@ -1122,7 +1223,7 @@ def test_a_new_scopes_failed_first_run_puts_the_controls_back(explorer, children
     settle(explorer)
     args = usage_args(children)
     assert "-n" not in args
-    assert value_of(args, "--from") == FROM_ISO
+    assert value_of(args, "--from") == FROM_TEXT
     assert wheres(args) == ["namespace==team-render"]
     # The failure was not rerun on leaving the field
     started = len(children.started)
@@ -1262,6 +1363,13 @@ def test_a_rule_sets_the_scope_controls_apart(explorer):
     assert explorer._separator.styleSheet() == ""
 
 
+def test_the_window_can_be_maximised_and_minimised(explorer):
+    flags = explorer.windowFlags()
+    assert flags & Qt.WindowType.WindowMaximizeButtonHint
+    assert flags & Qt.WindowType.WindowMinimizeButtonHint
+    assert flags & Qt.WindowType.WindowCloseButtonHint
+
+
 def test_the_dog_is_shown_at_the_top_right(explorer):
     branding = explorer._branding
     pixmap = branding.pixmap()
@@ -1293,16 +1401,129 @@ def read_csv(path) -> list[list[str]]:
 
 
 def test_export_offers_raw_numbers_first(explorer):
+    assert explorer._export.text() == "Export"
     menu = explorer._export.menu()
     assert [action.text() for action in menu.actions()] == [
-        "Raw Numbers…",
-        "As Shown…",
+        "Raw Numbers (CSV)…",
+        "As Shown (CSV)…",
+        "PDF Report…",
         "",
-        "Include Total Row",
+        "Include Total Row (CSV)",
+        "Landscape PDF",
     ]
-    # The Total row included unless unticked
+    # The Total row included unless unticked; portrait unless ticked
     assert explorer._export_total.isCheckable()
     assert explorer._export_total.isChecked()
+    assert explorer._pdf_landscape.isCheckable()
+    assert not explorer._pdf_landscape.isChecked()
+    assert all(action.toolTip() for action in menu.actions() if action.text())
+
+
+def export_pdf_to(explorer, path, monkeypatch) -> list[dict]:
+    """
+    Choose PDF Report… with the save dialog answering 'path' (None:
+    dismissed), returning what the dialog was asked.
+    """
+    asked: list[dict] = []
+
+    def save_file(**kwargs):
+        asked.append(kwargs)
+        return None if path is None else str(path)
+
+    monkeypatch.setattr(explorer._file_dialogs, "save_file", save_file)
+    explorer._export_pdf_action.trigger()
+    return asked
+
+
+def test_a_pdf_report_is_saved_and_logged(explorer, tmp_path, monkeypatch):
+    target = tmp_path / "usage.pdf"
+    asked = export_pdf_to(explorer, target, monkeypatch)
+    assert target.read_bytes().startswith(b"%PDF")
+    suggested = asked[0]["directory"]
+    assert os.path.dirname(suggested) == str(tmp_path)
+    assert re.fullmatch(r"usage-\d{8}-\d{6}\.pdf", os.path.basename(suggested))
+    assert explorer.log_lines[-1] == EXPORTED_PDF_LOG.format(path=target)
+
+
+def test_the_pdf_is_of_the_view_shown_not_the_controls(
+    explorer, children, tmp_path, monkeypatch
+):
+    made: list[dict] = []
+    real = usage_explorer.report_content
+
+    def spy(document, *args):
+        made.append(document)
+        return real(document, *args)
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    shown = explorer._shown_document
+    explorer._kept_items = []
+    explorer._namespace.setCurrentText("team-sim")
+    explorer._namespace.activated.emit(0)
+    QApplication.processEvents()
+    assert explorer._fetch_overlay.isVisible()
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert made == [shown]
+    assert made[0]["namespace"] is None
+
+
+def test_landscape_pdf_is_remembered(
+    explorer, tmp_path, monkeypatch, commander_dialog_settings
+):
+    written: list[bool] = []
+    monkeypatch.setattr(
+        usage_explorer,
+        "write_pdf",
+        lambda path, content, landscape: written.append(landscape) or 1,
+    )
+    explorer._pdf_landscape.trigger()
+    assert commander_dialog_settings.value(SETTING_EXPLORER_PDF_LANDSCAPE, type=bool)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert written == [True]
+    window = UsageExplorer(
+        "Usage Explorer", lambda: str(tmp_path), lambda: list(BASE_ARGS), QFont(), False
+    )
+    try:
+        assert window._pdf_landscape.isChecked()
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
+
+
+def test_a_pdf_that_cannot_be_saved_is_said(explorer, tmp_path, monkeypatch):
+    target = tmp_path / "missing" / "usage.pdf"
+    export_pdf_to(explorer, target, monkeypatch)
+    assert str(target) in explorer._notes.text()
+    assert str(target) in explorer.log_lines[-1]
+    assert not target.exists()
+
+
+def test_an_empty_view_says_so_once_in_its_report(
+    explorer, children, tmp_path, monkeypatch
+):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    children.answer = lambda c, a: (json.dumps(document(["namespace"], [])), "", 0, 0)
+    explorer._refresh.click()
+    settle(explorer)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    [content] = made
+    assert content.empty_text == "No Instances in this window"
+    assert "No Instances in this window" not in content.notes
+    assert (tmp_path / "usage.pdf").exists()
+
+
+def test_a_dismissed_pdf_export_writes_nothing(explorer, tmp_path, monkeypatch):
+    logged = len(explorer.log_lines)
+    export_pdf_to(explorer, None, monkeypatch)
+    assert len(explorer.log_lines) == logged
+    assert not list(tmp_path.glob("*.pdf"))
 
 
 @pytest.mark.parametrize("raw", [True, False])
@@ -1405,9 +1626,9 @@ def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
     assert rows[0] == [
         "Namespace",
         "Instances",
-        "Running",
-        "Stopped",
-        "Total",
+        "Running (h:mm)",
+        "Stopped (h:mm)",
+        "Total (h:mm)",
         "Est. cost (USD)",
     ]
     assert rows[1:] == [
@@ -1424,7 +1645,7 @@ def test_export_includes_a_status_column_shown(explorer, tmp_path, monkeypatch):
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch)
     with open(target, encoding="utf-8", newline="") as file:
-        assert next(csv.reader(file))[-1] == "Pending"
+        assert next(csv.reader(file))[-1] == "Pending (h:mm)"
 
 
 def test_a_dismissed_export_writes_nothing(explorer, tmp_path, monkeypatch):
@@ -1492,8 +1713,8 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     assert shown_headings(explorer) == [
         "Namespace",
         "Instances",
-        "Running",
-        "Total",
+        "Running (h:mm)",
+        "Total (h:mm)",
         "Est. cost (USD)",
     ]
     assert commander_dialog_settings.value(SETTING_EXPLORER_HIDDEN_COLUMNS) == (
@@ -1502,10 +1723,10 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     # Hidden at the next level, and with the cost column taken away
     double_click_row(explorer, 0)
     settle(explorer)
-    assert "Stopped" not in shown_headings(explorer)
+    assert "Stopped (h:mm)" not in shown_headings(explorer)
     explorer._cost.click()
     settle(explorer)
-    assert shown_headings(explorer)[-1] == "Total"
+    assert shown_headings(explorer)[-1] == "Total (h:mm)"
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch, raw=True)
     assert "Stopped (hours)" not in read_csv(target)[0]
@@ -1532,9 +1753,10 @@ def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
     explorer._kept.menu().actions()[0].trigger()
     QApplication.processEvents()
     assert explorer._preset.currentText() == "Custom"
+    # Written to the minute, as the report line shows times
     assert (explorer._from.text(), explorer._until.text()) == (
-        "2026-10-01T00:00:00Z",
-        "2026-11-01T00:00:00Z",
+        "2026-10-01 00:00 UTC",
+        "2026-11-01 00:00 UTC",
     )
     assert explorer._namespace.currentText() == "team-render"
     # No Fetch Report: it is used again, at the top level
@@ -1544,11 +1766,72 @@ def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
     args = usage_args(children)
     assert args[:4] == [
         "--from",
-        "2026-10-01T00:00:00Z",
+        "2026-10-01 00:00 UTC",
         "--until",
-        "2026-11-01T00:00:00Z",
+        "2026-11-01 00:00 UTC",
     ]
     assert value_of(args, "-n") == "team-render"
+
+
+def choose_namespace(explorer, namespace: str) -> None:
+    explorer._namespace.setCurrentText(namespace)
+    explorer._namespace.activated.emit(0)
+    QApplication.processEvents()
+
+
+def test_a_namespace_a_kept_report_covers_loads_at_once(explorer, children):
+    # The report shown is every namespace's, kept with its window (KEPT)
+    choose_namespace(explorer, "team-render")
+    assert not explorer._fetch_overlay.isVisible()
+    settle(explorer)
+    args = usage_args(children)
+    # In the shown report's own window, which yd usage matches to it
+    assert args[:4] == ["--from", FROM_TEXT, "--until", UNTIL_TEXT]
+    assert value_of(args, "-n") == "team-render"
+    assert explorer.breadcrumb_text() == "All"
+    # The controls keep what was typed, and name the report now shown
+    assert explorer._preset.currentText() == "Last 7 days"
+    assert not explorer._fetch_overlay.isVisible()
+    # Back to every namespace, whose report is kept too
+    choose_namespace(explorer, "All namespaces")
+    settle(explorer)
+    args = usage_args(children)
+    assert "-n" not in args and args[:2] == ["--from", FROM_TEXT]
+
+
+def test_a_namespace_no_kept_report_covers_awaits_fetch(explorer, children):
+    explorer._kept_items = [
+        {**KEPT[1], "namespaces": ["team-sim"]},
+    ]
+    started = len(children.started)
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+    assert len(children.started) == started
+
+
+def test_a_kept_report_of_another_window_does_not_cover_it(explorer, children):
+    explorer._kept_items = [{**KEPT[1], "until": "2026-11-25T15:03:00Z"}]
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_a_changed_window_still_awaits_fetch(explorer, children):
+    started = len(children.started)
+    explorer._preset.setCurrentText("Last 30 days")
+    QApplication.processEvents()
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+    assert len(children.started) == started
+
+
+def test_a_namespace_kept_on_its_own_loads_at_once(explorer, children):
+    explorer._kept_items = [
+        {**KEPT[1], "namespace": "team-sim", "namespaces": ["team-sim"]}
+    ]
+    choose_namespace(explorer, "team-sim")
+    settle(explorer)
+    assert value_of(usage_args(children), "-n") == "team-sim"
+    assert not explorer._fetch_overlay.isVisible()
 
 
 def test_kept_reports_is_listed_again_after_a_fetch_only(explorer, children):
@@ -1596,7 +1879,7 @@ def test_a_partial_account_report_says_which_namespaces(explorer, children):
     children.answer = named
     explorer._namespace.setCurrentText("team-render")
     explorer._namespace.activated.emit(0)
-    fetch(explorer)
+    settle(explorer)
     assert "Reporting on" not in explorer._notes.text()
 
 

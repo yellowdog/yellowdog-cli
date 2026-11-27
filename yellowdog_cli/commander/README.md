@@ -44,6 +44,7 @@
    * [Exploring Usage](#exploring-usage)
       * [Running the Explorer on Its Own](#running-the-explorer-on-its-own)
       * [Usage Explorer Details](#usage-explorer-details)
+         * [The PDF Report](#the-pdf-report)
    * [The Command Output](#the-command-output)
       * [Reading the Output](#reading-the-output)
          * [Reading Details](#reading-details)
@@ -63,7 +64,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 26 10:59:54 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 27 10:23:00 GMT 2026 -->
 
 <!--te-->
 
@@ -135,7 +136,7 @@ Pass `--usage-explorer` to open only the Usage Explorer (see [Running the Explor
 
 - **Size and place.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it.
 - **Dark Mode.** It opens in Dark Mode if you last turned it on (until you choose, it follows your system's appearance).
-- **The configuration file.** Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+- **The configuration file.** Started without a configuration file, it selects the one the CLI reads by default: `config.toml` in the directory you launched it in, else your own user configuration file, as the [Usage Explorer run on its own](#running-the-explorer-on-its-own) does. Failing both, it selects the one last selected, if it still exists. **Deselect...** on the configuration file forgets it.
 - **Forgetting.** `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
@@ -160,7 +161,7 @@ Hover over any button, checkbox or field for a one-line description of what it d
 
 **Without a configuration file.** If no configuration file is selected, Commander runs the `yd` commands with `--no-config`. They take their settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and Variables fields described below. Results and downloads are written under the launch directory.
 
-**No implicit `config.toml`.** Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it. Commander never picks one up implicitly.
+**No hidden `config.toml`.** Because `--no-config` is passed explicitly, a `config.toml` in the launch directory is ignored while nothing is selected. One found at launch is selected, and shown at the top of the window, rather than used unseen.
 
 **Default placeholders.** With no configuration file selected and nothing set in the environment either, the Namespace, Tag, and Path placeholders show the CLI's defaults: namespace `default`, your user name as the tag, and a Path of `<user name>*`. A failure to resolve them is reported in the Command Output window, whether or not a configuration file is selected.
 
@@ -288,7 +289,7 @@ Directories expand in place, as in the Finder's list view: click the triangle be
 
 ## Selecting a Configuration (Panel 1)
 
-Use the **Select** button to choose a `config.toml` file. All subsequent commands run in that file's directory and are passed it with `-c`. If you launched Commander with a file argument, it is pre-selected.
+Use the **Select** button to choose a `config.toml` file. All subsequent commands run in that file's directory and are passed it with `-c`. If you launched Commander with a file argument, it is pre-selected; otherwise the CLI's default file is, if there is one (see [What Commander remembers](#launch-details)).
 
 The selected file's full path is shown at the top of the right-hand column, level with the button. When the window is too narrow for it, it is shortened from the left, keeping the filename; hover over it for the whole path.
 
@@ -561,9 +562,9 @@ The **←** and **→** buttons step back and forth through your command history
 2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
 3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
 4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
-5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
+5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
 
-Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, which **Copy** puts on the clipboard. **Export CSV**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown.
+Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown, or the view as a PDF report for printing.
 
 ### Running the Explorer on Its Own
 
@@ -575,7 +576,11 @@ yd commander --usage-explorer ~/projects/render/config.toml
 
 The configuration is the file named (as an argument or with `-c`), else the one the CLI reads by default (`config.toml` in the current directory, else your own), else one you choose in a dialog as the window opens. A **Configuration** row at the top of the window names it, and its **Select…** chooses another, which starts the explorer again at the top, awaiting **Fetch Report**. `--property` is given to every run, as Commander's Properties field is, and `-n` sets the Namespace to start on; the other launch options belong to the main window, and are refused with `--usage-explorer`.
 
-Everything else is as in Commander: Dark Mode is the one last chosen there (else your system's), the explorer's own preferences are shared with it, and closing the window quits. With no output window, nothing is logged or printed to the terminal; a failure is said beneath the table, as in Commander.
+![The Usage Explorer run on its own on macOS, with the Configuration row, Select… and Dark Mode above the window and namespace controls](screenshots/screenshot_usage_explorer_standalone_macos.png)
+
+**Dark Mode**, in the Configuration row, switches the window between light and dark. It shares Commander's setting: the explorer opens as Dark Mode was last chosen in either, else as your system's appearance.
+
+Everything else is as in Commander: the explorer's own preferences are shared with it, and closing the window quits. With no output window, nothing is logged or printed to the terminal; a failure is said beneath the table, as in Commander.
 
 ### Usage Explorer Details
 
@@ -583,11 +588,11 @@ Everything else is as in Commander: Dark Mode is the one last chosen there (else
 
 **The window is pinned after its first run.** A relative window such as the last seven days moves on with the clock, so once a run of a window succeeds the explorer uses the report's own dates, and every drill-down, sort and **Total by** regroups that one kept report. Changing the window or namespace, **Refresh** or a new configuration starts again.
 
-**Totalling by several keys.** **Total by** lists the keys the breadcrumb leaves open (once you have drilled into a namespace, Namespace is no longer offered). Each key ticked adds a column after those already there, and each row is one combination of their values; unticking a key removes its column, though the last one stays. **Instance ID** is the last level, so ticking it replaces the other keys. Double-clicking a row of several keys filters on all of them, and its crumb names each value (`team-render · eu-west-2`).
+**Totalling by several keys.** **Total by** lists the keys the breadcrumb leaves open (once you have drilled into a namespace, Namespace is no longer offered). The menu stays open while you tick and untick, so several keys can be changed at once, and the table is regrouped in one run when it closes. Each key ticked adds a column after those already there, and each row is one combination of their values; unticking a key removes its column, though the last one stays. **Instance ID** gives one row per Instance, combined with any other keys ticked (by creator, then Instance ID, says whose each Instance was). It is the last level, so its rows are not drilled into, and they have no Instances column, each being one Instance. Drilling down to it ticks the keys that describe an Instance with it (instance type, provider, region, pricing and Compute Requirement, bar any already drilled into), which you can untick. Double-clicking a row of several keys filters on all of them, and its crumb names each value (`team-render · eu-west-2`).
 
 **Drill-downs match exactly.** Drilling into a row filters by its value with `--where key==value`, so the match is case-sensitive (`Render` does not match `render`) and a `*` or `?` in the value matches itself, not any characters. A creator row is filtered by the creator's ID.
 
-**Fetch Report.** Changing **Window**, **From**, **Until** or **Namespace** dims the table under **Fetch Report** rather than fetching at once, so several can be changed and fetched together; putting them back to the report shown clears it. Drilling, sorting, **Total by**, **Estimated cost** and **Back** regroup the report already fetched and run straight away. A new configuration also waits for **Fetch Report**.
+**Fetch Report.** Changing **Window**, **From**, **Until** or **Namespace** dims the table under **Fetch Report** rather than fetching at once, so several can be changed and fetched together; putting them back to the report shown clears it. **A namespace chosen with the window unchanged loads at once** when a report kept with exactly the shown report's window holds it: the namespace's own, or every namespace's that covered it. It is shown in that window, so the report is used again, not fetched. Drilling, sorting, **Total by**, **Estimated cost** and **Back** regroup the report already fetched and run straight away. A new configuration also waits for **Fetch Report**.
 
 **Waiting for a new window.** While a new window or namespace awaits **Fetch Report** or is loading, double-clicking, sorting, **Back**, the crumbs and **Total by** wait, since there is no report to regroup yet. After a short delay the table dims, saying how long the run has taken, with **Stop**.
 
@@ -599,10 +604,11 @@ Everything else is as in Commander: Dark Mode is the one last chosen there (else
 
 **Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
 
-**Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row**, ticked at first, is unticked in its menu. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
+**Exporting.** **Export**'s menu saves the view in three forms. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row (CSV)**, ticked at first, is unticked in the menu. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory.
 
-- **Raw Numbers…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
-- **As Shown…**: the headings and cells exactly as displayed (`47:12`, `248.10+`).
+- **Raw Numbers (CSV)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
+- **As Shown (CSV)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
+- **PDF Report…**: the view as a report to print or share, suggested as `usage-<date>-<time>.pdf`. See [The PDF Report](#the-pdf-report).
 
 **Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
 
@@ -615,6 +621,20 @@ Everything else is as in Commander: Dark Mode is the one last chosen there (else
 **Kept Reports.** The menu lists the reports `yd usage` keeps for this configuration's account and Application, the last fetched first, each by its window (in UTC) and namespace, its tooltip saying when it was fetched and last used. It is listed again whenever a report is fetched, and is disabled while none is kept. A report fetched for a window ending now is listed by its fixed dates, so choosing it shows that report as it was. Reports are kept for a week unused, at most 20 of them.
 
 **What is remembered.** Between sessions: the window's size and place, the window preset, whether **Estimated cost** is ticked, which figure columns are shown, the table's text size, and whether an export includes the Total row.
+
+#### The PDF Report
+
+**PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by and drilled into, and when the report was fetched. Three headline figures follow: the estimated cost, the running time and the Instances. Then comes the table, with its visible columns and every row, ending with the **Total** row.
+
+![The top of a PDF report's first page: the title, the period and namespace, the scope, the estimated cost, running time and Instances, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
+
+- **The table always fits the page's width.** Its type is reduced as far as 6pt for a wide view. Beyond that, long names are shortened in the middle with `…`. Nothing is cut off at the side.
+- **Rows continue on as many pages as they need.** Each later page repeats the column headings, and every page is numbered.
+- **Notes follow the table**: which namespaces are covered, any warning, and the instance types with no list price.
+- **Without Estimated cost**, nothing about cost appears: its figure, its column and the footer's note on list prices are left out, and the title is "Compute Usage".
+- **Pages are A4**, or US Letter where your system measures in US units. Tick **Landscape PDF** in the menu for landscape pages, which fit a wide view at a larger size; it is remembered.
+- **The report is of the view shown.** Controls changed since, awaiting **Fetch Report**, do not change it.
+
 
 ## The Command Output
 

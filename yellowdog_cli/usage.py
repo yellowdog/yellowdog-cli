@@ -51,7 +51,7 @@ from yellowdog_cli.utils.usage_report import (
     size_text,
     usage_report,
 )
-from yellowdog_cli.utils.usage_text import duration_text, heading
+from yellowdog_cli.utils.usage_text import duration_text, heading, report_time
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 _SECONDS_PER_HOUR = 3600
@@ -167,8 +167,14 @@ def show_usage(ctx: RunContext) -> None:
     if report.fetched_bytes is not None:
         when += f", {size_text(report.fetched_bytes)}"
     age += f" ({when})"
+    # A kept report of every namespace, read for the one asked for
+    reused = (
+        "Reusing the report of every namespace"
+        if report.only_namespace
+        else "Reusing report"
+    )
     print_info(
-        f"{'Reusing report' if report.from_cache else 'Report'} {age},"
+        f"{reused if report.from_cache else 'Report'} {age},"
         f" in '{shown_path(report.path)}'"
         + ("; '--refresh' fetches it again" if report.from_cache else "")
     )
@@ -553,7 +559,7 @@ def _shown_text(iso: str) -> str:
     shows it, or as it is if it cannot be read.
     """
     try:
-        return _shown(datetime.fromisoformat(iso.replace("Z", "+00:00")))
+        return _shown(report_time(iso))
     except ValueError:
         return iso
 

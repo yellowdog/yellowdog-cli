@@ -2,6 +2,32 @@
 
 The user-visible changes in each release of the YellowDog CLI, the newest first. Releases up to v13.1.0 are not recorded here.
 
+## 15.22.0 — 2026-11-27
+
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **The CLI's own requests to the Platform identify it in the SDK's User-Agent form**, `yd/1.1.0 yellowdog-cli/<version> python/<version>`, in place of `yellowdog-cli/<version> python-requests/<version>`: the usage report, raw Work Requirement submissions, event streams and `yd doctor`'s checks, the PAC file's fetch included. A proxy or firewall rule matching the old form needs updating.
+
+### yd usage
+
+- **`yd usage -n <namespace>` reuses a kept report of every namespace for the same window**, rather than fetching the namespace's report, saying `Reusing the report of every namespace`. The Usage Explorer's Namespace control does the same.
+
+### Commander
+
+- **The Usage Explorer's Instance ID combines with the other Total by keys**, rather than replacing them, and a view by Instance ID shows exactly the keys ticked: drilling down to Instances ticks the keys that describe them (instance type, provider, region, pricing, Compute Requirement), which can be unticked. Rows of single Instances have no Instances column.
+- **The Usage Explorer saves the view as a PDF report** (**Export** › **PDF Report…**): the YellowDog logo, the period and scope, headline figures, and the table fitted to the page's width on as many pages as it needs, A4 or US Letter, landscape if **Landscape PDF** is ticked. **Export CSV** is now **Export**, its CSV forms labelled **Raw Numbers (CSV)…** and **As Shown (CSV)…**.
+- **Commander started without a configuration file selects the CLI's default one**, `config.toml` where it was launched, else your own, as `yd commander --usage-explorer` does, rather than leaving none selected; the one last selected follows when neither exists.
+- **Ctrl+C in the terminal quits Commander or `yd commander --usage-explorer`** as Quit does, exiting 130, rather than aborting with a crash report when the window was next used or closed.
+- **Choosing a namespace in the Usage Explorer loads it at once** when a report kept for the window shown already holds it (its own, or every namespace's), rather than awaiting Fetch Report.
+- **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
+- **The Usage Explorer's Total by menu stays open while keys are ticked and unticked**, and regroups the table once, when it closes.
+- **`yd commander --usage-explorer` has a Dark Mode checkbox**, at the end of the Configuration row, sharing Commander's Dark Mode setting.
+- **The Usage Explorer's time columns are headed `(h:mm)`**, as `yd usage`'s own table heads them (`Running (h:mm)`), in the table and the As Shown export.
+- **The Usage Explorer's command line leaves out `--nf`, `-q` and `--json`**, which only the explorer needs, so a copied command prints its table in a terminal.
+- **The Usage Explorer writes fixed times as `2026-11-19 10:57 UTC`**, as its report line shows them: in From and Until for a kept report or a month window, and in the generated command line, in place of full ISO timestamps.
+
 ## 15.21.0 — 2026-11-26
 
 ### Upgrading

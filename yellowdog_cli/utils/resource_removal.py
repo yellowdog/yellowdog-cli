@@ -12,11 +12,12 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, cast
 
-from requests import Response, delete
+from requests import Response
 from requests.exceptions import HTTPError
 from yellowdog_client.model import MachineImageFamily
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import delete
 from yellowdog_cli.utils.entity_names import (
     RN_ALLOWANCE,
     RN_APPLICATION,

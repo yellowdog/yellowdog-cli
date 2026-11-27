@@ -2458,6 +2458,7 @@ A later run for the same `--namespace` uses a report kept rather than fetching t
 - **A report of a window of fixed dates in the past** is used for as long as it is kept, since its usage no longer changes.
 - **A report of a window ending now** (the default) is used for ten minutes after it was fetched, which is long enough to look at the same week `--by` several keys in turn.
 - **Of several kept reports that match**, the last fetched is used.
+- **A namespace with no report of its own** (`-n team-render`) is read from a kept report of every namespace for the same window, which holds the same rows, and the line above the table says `Reusing the report of every namespace`. Where the Application may read usage in some namespaces only, this is done only for a namespace that report covered; any other is fetched.
 - **`--refresh`** fetches a new one regardless.
 - **Each fetch removes** the reports not used for a week, and then the least recently used beyond 20, so the directory stays small on every platform.
 

@@ -36,6 +36,7 @@ from PyQt6.QtGui import (
     QFontMetrics,
     QKeyEvent,
     QKeySequence,
+    QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
@@ -79,6 +80,12 @@ from yellowdog_cli.commander.output_pane import (
     copy_to_clipboard,
 )
 from yellowdog_cli.commander.processes import child_process
+from yellowdog_cli.commander.usage_pdf import write_pdf
+from yellowdog_cli.commander.usage_report_layout import (
+    NO_INSTANCES,
+    NO_MATCHING_INSTANCES,
+    report_content,
+)
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
     STATUS_COLUMNS,
@@ -99,9 +106,10 @@ from yellowdog_cli.commander.usage_views import (
     preset_window,
     toggled_by,
     view_args,
+    window_time,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
-from yellowdog_cli.utils.usage_text import duration_text
+from yellowdog_cli.utils.usage_text import duration_text, report_time
 
 # The exit code and message of a run the user stopped
 STOPPED_EXIT_CODE = -1
@@ -330,12 +338,17 @@ SETTING_EXPLORER_COST = "usageExplorer/cost"
 SETTING_EXPLORER_HIDDEN_COLUMNS = "usageExplorer/hiddenColumns"
 SETTING_EXPLORER_FONT_SIZE = "usageExplorer/fontSize"
 SETTING_EXPLORER_EXPORT_TOTAL = "usageExplorer/exportTotal"
+SETTING_EXPLORER_PDF_LANDSCAPE = "usageExplorer/pdfLandscape"
 # The CSV export's suggested name (hyphenated, no colons, which Windows refuses
 # in a file name) and the save dialog's filter
 EXPORT_NAME_FORMAT = "usage-%Y%m%d-%H%M%S.csv"
 EXPORT_FILTER = "CSV files (*.csv);;All files (*)"
 EXPORTED_LOG = "Saved the Usage Explorer's table to '{path}'"
 EXPORT_FAILED = "Could not save the table to '{path}': {error}"
+EXPORT_PDF_NAME_FORMAT = "usage-%Y%m%d-%H%M%S.pdf"
+EXPORT_PDF_FILTER = "PDF files (*.pdf);;All files (*)"
+EXPORTED_PDF_LOG = "Saved the Usage Explorer's report to '{path}'"
+EXPORT_PDF_FAILED = "Could not save the report to '{path}': {error}"
 
 EXPLORER_SIZE = (1000, 640)
 # A new scope's first level: every namespace, totalled by namespace
@@ -370,8 +383,6 @@ NO_KEPT_TOOLTIP = "No reports are kept for this configuration yet"
 FETCH_TEXT = "Fetch the usage report for this window and namespace"
 FETCHED_LOG = "Fetched the usage report: {command}"
 FAILED_LOG = "{command} failed (exit {code}): {message}"
-NO_INSTANCES = "No Instances in this window"
-NO_MATCHING_INSTANCES = "No Instances in this window match the filters"
 PRICES_REFUSED = "This Application may not read cloud prices; no cost is estimated"
 
 # What an exit code means, said beneath the CLI's message (exit codes 2, 3
@@ -405,7 +416,7 @@ def _shown_time(iso: str) -> str:
     line gives it, in UTC to the minute, or as it is if it cannot be read.
     """
     try:
-        moment = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        moment = report_time(str(iso))
     except ValueError:
         return str(iso)
     if moment.tzinfo is not None:
@@ -442,6 +453,33 @@ def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
     widget.setLayout(row)
     row.setContentsMargins(0, 0, 0, 0)
     return widget
+
+
+class _TickMenu(QMenu):
+    """
+    A menu of ticks that stays open while they are ticked and unticked, by
+    click or by Return, Enter or Space, so that several can be changed in one
+    pass; it closes as any menu does otherwise (Esc, a click outside it).
+    """
+
+    def _ticked(self, action: QAction | None) -> bool:
+        if action is None or not action.isCheckable() or not action.isEnabled():
+            return False
+        action.trigger()
+        return True
+
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        if event is None or not self._ticked(self.actionAt(event.position().toPoint())):
+            super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event: QKeyEvent | None) -> None:
+        keys = (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)
+        if (
+            event is None
+            or event.key() not in keys
+            or not self._ticked(self.activeAction())
+        ):
+            super().keyPressEvent(event)
 
 
 class _Notes(QTextEdit):
@@ -674,6 +712,9 @@ class UsageExplorer(QDialog):
     # Select... beside the configuration, shown only when the explorer runs on
     # its own (show_configuration())
     select_configuration = pyqtSignal()
+    # Dark Mode ticked or unticked, shown only when the explorer runs on its
+    # own (offer_dark_mode()): in Commander the main window's checkbox sets it
+    dark_mode_chosen = pyqtSignal(bool)
 
     def __init__(
         self,
@@ -687,6 +728,9 @@ class UsageExplorer(QDialog):
         self.setWindowTitle(title)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setModal(False)
+        # A dialog on Windows has a close button alone: a window of this
+        # size wants maximising and minimising as any other does
+        self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
         self._base_args = base_args
         self._working_dir = working_dir
         # The export's save dialog, Commander's own
@@ -696,6 +740,16 @@ class UsageExplorer(QDialog):
         self._requested: _View | None = None
         self._requested_line = ""
         self._typed: tuple[str, str, str | None] | None = None
+        # The shown report's own window, as the document gives it, and the
+        # reports kept for this configuration as yd usage --reports lists
+        # them: what a namespace chosen is loaded from at once, when one
+        # kept covers it (_kept_report_covers())
+        self._shown_window: tuple[str, str] | None = None
+        # The shown view's document and its notes (the notes strip's lines,
+        # the CLI's warnings and the Details), for the PDF report
+        self._shown_document: dict | None = None
+        self._shown_notes: list[str] = []
+        self._kept_items: list[dict] = []
         # Whether the latest request is a new scope's first run, still
         # running (the view actions wait for it), and with '--refresh'
         self._resolving = False
@@ -788,10 +842,10 @@ class UsageExplorer(QDialog):
         self._namespace.addItem(ALL_NAMESPACES)
         self._namespace.setToolTip("The namespace to report on, or all of them")
         self._namespace.setMinimumContentsLength(16)
-        self._namespace.activated.connect(lambda *_: self._await_fetch())
+        self._namespace.activated.connect(lambda *_: self._namespace_chosen())
         line_edit = self._namespace.lineEdit()
         if line_edit is not None:
-            line_edit.editingFinished.connect(self._await_fetch)
+            line_edit.editingFinished.connect(self._namespace_chosen)
 
         self._cost = QCheckBox("Estimated cost", self)
         self._cost.setChecked(cost)
@@ -815,10 +869,14 @@ class UsageExplorer(QDialog):
         # _show_total_by() fills it for the view shown
         self._total_by = QPushButton(self)
         self._total_by.setAutoDefault(False)
-        self._total_by.setMenu(QMenu(self._total_by))
+        self._total_by.setMenu(_TickMenu(self._total_by))
+        # The keys ticked while the menu is open, applied as one regrouping
+        # when it closes
+        self._staged_by: tuple[str, ...] = TOP_LEVEL.by
+        cast(QMenu, self._total_by.menu()).aboutToHide.connect(self._apply_total_by)
         self._total_by.setToolTip(
             "What this level's rows total by (--by): tick keys to add columns,"
-            " each row one combination"
+            " each row one combination; applied when the menu closes"
         )
 
     def _build_table(self, font: QFont) -> None:
@@ -903,28 +961,35 @@ class UsageExplorer(QDialog):
         self._copy_command.clicked.connect(
             lambda: copy_to_clipboard(self._command_line.text())
         )
-        # Export CSV: a menu of the two forms, raw figures first
-        self._export = QPushButton("Export CSV", self)
+        # Export: the two CSV forms, raw figures first, then the PDF report
+        self._export = QPushButton("Export", self)
         self._export.setAutoDefault(False)
         self._export.setToolTip(
-            "Save the table's visible columns and rows, the Total row too,"
-            " as a CSV file"
+            "Save the table's visible columns and rows as a CSV file,"
+            " or the view as a PDF report"
         )
         self._export.setEnabled(False)
         export_menu = QMenu(self._export)
-        self._export_raw = QAction("Raw Numbers…", export_menu)
+        self._export_raw = QAction("Raw Numbers (CSV)…", export_menu)
         export_menu.addAction(self._export_raw)
         self._export_raw.setToolTip(
             "Instances, hours as decimals and the cost as a number,"
             " with the running hours no price covered"
         )
         self._export_raw.triggered.connect(partial(self._export_csv, True))
-        self._export_shown = QAction("As Shown…", export_menu)
+        self._export_shown = QAction("As Shown (CSV)…", export_menu)
         export_menu.addAction(self._export_shown)
         self._export_shown.setToolTip("Every cell as the table shows it")
         self._export_shown.triggered.connect(partial(self._export_csv, False))
+        self._export_pdf_action = QAction("PDF Report…", export_menu)
+        export_menu.addAction(self._export_pdf_action)
+        self._export_pdf_action.setToolTip(
+            "The view as a report for printing: the period, headline figures"
+            " and the table, on as many pages as it needs"
+        )
+        self._export_pdf_action.triggered.connect(self._export_pdf)
         export_menu.addSeparator()
-        self._export_total = QAction("Include Total Row", export_menu)
+        self._export_total = QAction("Include Total Row (CSV)", export_menu)
         self._export_total.setCheckable(True)
         self._export_total.setChecked(
             bool(
@@ -933,20 +998,40 @@ class UsageExplorer(QDialog):
                 )
             )
         )
-        self._export_total.setToolTip("End the file with the table's Total row")
+        self._export_total.setToolTip(
+            "End a CSV file with the table's Total row; a PDF report always has it"
+        )
         self._export_total.toggled.connect(
             lambda checked: file_dialogs.dialog_settings().setValue(
                 SETTING_EXPLORER_EXPORT_TOTAL, checked
             )
         )
         export_menu.addAction(self._export_total)
+        self._pdf_landscape = QAction("Landscape PDF", export_menu)
+        self._pdf_landscape.setCheckable(True)
+        self._pdf_landscape.setChecked(
+            bool(
+                file_dialogs.dialog_settings().value(
+                    SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
+                )
+            )
+        )
+        self._pdf_landscape.setToolTip(
+            "Lay the PDF report's pages out landscape, for a wide table"
+        )
+        self._pdf_landscape.toggled.connect(
+            lambda checked: file_dialogs.dialog_settings().setValue(
+                SETTING_EXPLORER_PDF_LANDSCAPE, checked
+            )
+        )
+        export_menu.addAction(self._pdf_landscape)
         export_menu.setToolTipsVisible(True)
         self._export.setMenu(export_menu)
 
     def _build_configuration_row(self) -> None:
         """
-        The configuration and Select..., hidden until show_configuration():
-        in Commander the main window chooses it.
+        The configuration, Dark Mode and Select..., hidden until
+        show_configuration(): in Commander the main window has them.
         """
         self._config_label = QLabel("Configuration:", self)
         self._config_path = QLabel(self)
@@ -963,6 +1048,10 @@ class UsageExplorer(QDialog):
         self._select_config.setAutoDefault(False)
         self._select_config.setToolTip("Choose another configuration file")
         self._select_config.clicked.connect(self.select_configuration.emit)
+        self._dark_mode = QCheckBox("Dark Mode", self)
+        self._dark_mode.setToolTip("Show the explorer in dark colours")
+        self._dark_mode.hide()
+        self._dark_mode.clicked.connect(self.dark_mode_chosen.emit)
 
     def _lay_out(self) -> None:
         window_row = QHBoxLayout()
@@ -995,8 +1084,9 @@ class UsageExplorer(QDialog):
         # right, as in the main window
         config_row = QHBoxLayout()
         config_row.addWidget(self._config_label)
-        config_row.addWidget(self._config_path, 1)
         config_row.addWidget(self._select_config)
+        config_row.addWidget(self._config_path, 1)
+        config_row.addWidget(self._dark_mode)
         # Each row in a widget of its own, so that the rows can be set close
         # together while each keeps the style's spacing between its controls
         # (a row's layout would otherwise take the column's spacing)
@@ -1066,6 +1156,10 @@ class UsageExplorer(QDialog):
         self._namespace.addItem(ALL_NAMESPACES)
         self._shown = None
         self._shown_inputs = None
+        self._shown_window = None
+        self._shown_document = None
+        self._shown_notes = []
+        self._kept_items = []
         self._model.clear()
         self._export.setEnabled(False)
         self._show_breadcrumb((TOP_LEVEL,))
@@ -1084,6 +1178,14 @@ class UsageExplorer(QDialog):
         self._config_path.setText(path)
         self._config_path.setToolTip(path)
         self._config_row.show()
+
+    def offer_dark_mode(self, dark: bool) -> None:
+        """
+        Show Dark Mode in the configuration row, ticked if 'dark': for the
+        explorer run on its own, which has no main window to set it from.
+        """
+        self._dark_mode.setChecked(dark)
+        self._dark_mode.show()
 
     def set_namespace(self, namespace: str) -> None:
         """
@@ -1213,6 +1315,7 @@ class UsageExplorer(QDialog):
             if result.exit_code == 0 and isinstance(document, list)
             else []
         )
+        self._kept_items = reports
         menu = cast(QMenu, self._kept.menu())
         menu.clear()
         for item in reports:
@@ -1242,8 +1345,8 @@ class UsageExplorer(QDialog):
         self._preset.blockSignals(True)
         self._preset.setCurrentText(CUSTOM_PRESET)
         self._preset.blockSignals(False)
-        self._from.setText(str(item.get("from", "")))
-        self._until.setText(str(item.get("until", "")))
+        self._from.setText(window_time(str(item.get("from", ""))))
+        self._until.setText(window_time(str(item.get("until", ""))))
         self._namespace.setCurrentText(str(item.get("namespace") or ALL_NAMESPACES))
         self._resolve(refresh=False)
 
@@ -1311,17 +1414,69 @@ class UsageExplorer(QDialog):
             None if namespace in ("", ALL_NAMESPACES) else namespace,
         )
 
-    def _resolve(self, refresh: bool) -> None:
+    def _resolve(self, refresh: bool, window: tuple[str, str] | None = None) -> None:
         """
-        A new first run: the window as typed, at the top level.
+        A new first run: the window as typed, or the one given, at the top
+        level.
         """
         self._pending = False
         self._fetch_overlay.hide()
         self._typed = self._typed_inputs()
         self._requested_inputs = self._control_inputs()
         from_text, until_text, namespace = self._typed
+        if window is not None:
+            from_text, until_text = window
         scope = Scope(from_text, until_text, namespace, self._cost.isChecked())
         self._request(_View(scope, (TOP_LEVEL,)), refresh=refresh)
+
+    def _namespace_chosen(self) -> None:
+        """
+        A namespace chosen: loaded at once, in the shown report's window, when
+        a report kept for that window covers it, since yd usage then reads
+        that report rather than fetching one; else awaiting Fetch Report, as
+        any other control changed is.
+        """
+        typed = self._typed_inputs()
+        if typed != self._typed and self._kept_report_covers(typed):
+            shown = cast(_View, self._shown)
+            self._resolve(
+                refresh=False, window=(shown.scope.from_text, shown.scope.until_text)
+            )
+            return
+        self._await_fetch()
+
+    def _kept_report_covers(self, typed: tuple[str, str, str | None]) -> bool:
+        """
+        Whether, with From and Until as they were for the report shown, a
+        report kept with exactly its window is the namespace's own (or every
+        namespace's, for All namespaces), or every namespace's covering it:
+        asked for every one, or naming it, a namespace refused being left out
+        of the names. Exact windows, so that yd usage's own rules for which
+        kept window matches stay its own.
+        """
+        if (
+            self._shown is None
+            or self._resolving
+            or self._typed is None
+            or self._shown_window is None
+            or typed[:2] != self._typed[:2]
+        ):
+            return False
+        namespace = typed[2]
+        for item in self._kept_items:
+            if (item.get("from"), item.get("until")) != self._shown_window:
+                continue
+            kept_namespace = item.get("namespace") or None
+            if kept_namespace == namespace:
+                return True
+            covered = item.get("namespaces")
+            if (
+                namespace is not None
+                and kept_namespace is None
+                and (covered is None or namespace in covered)
+            ):
+                return True
+        return False
 
     @property
     def _busy(self) -> bool:
@@ -1388,15 +1543,26 @@ class UsageExplorer(QDialog):
             return
         self._request(_View(replace(shown.scope, cost=checked), shown.levels))
 
-    def _total_by_toggled(self, key: str) -> None:
+    def _stage_total_by(self, key: str) -> None:
         """
-        A key ticked or unticked in Total by: the level regrouped by the keys
-        then ticked (toggled_by()); the last key unticked stays.
+        A key ticked or unticked in Total by's menu, which stays open: the
+        ticks staged (toggled_by()), the last key unticked staying ticked.
+        """
+        by = toggled_by(self._staged_by, key)
+        if by is not None:
+            self._staged_by = by
+        for action in cast(QMenu, self._total_by.menu()).actions():
+            action.setChecked(action.data() in self._staged_by)
+
+    def _apply_total_by(self) -> None:
+        """
+        Total by's menu closed: the level regrouped by the keys then ticked,
+        in one run, if they differ from those shown.
         """
         current = self._shown
         level = current.levels[-1] if current is not None else None
-        by = toggled_by(level.by, key) if level is not None else None
-        if current is None or level is None or by is None or self._busy:
+        by = self._staged_by
+        if current is None or level is None or by == level.by or self._busy:
             self._show_total_by()
             return
         # A sort by a key this level no longer shows is dropped
@@ -1519,6 +1685,62 @@ class UsageExplorer(QDialog):
             return
         self.logged.emit(EXPORTED_LOG.format(path=path))
 
+    def _export_pdf(self) -> None:
+        """
+        The view shown, saved as a PDF report to a file the user names: its
+        visible columns and rows with the Total row, the tiles from the Total
+        row of every column, the scope and notes of the view shown (never of
+        controls changed since), portrait unless Landscape PDF is ticked; the
+        outcome logged, and a failure shown too.
+        """
+        shown, document = self._shown, self._shown_document
+        if shown is None or document is None:
+            return
+        model = self._model
+        visible = [
+            column
+            for column in range(model.columnCount())
+            if not self._table.isColumnHidden(column)
+        ]
+        if not visible:
+            return
+        every = list(range(model.columnCount()))
+        rows = model.text_rows(visible)
+        headings, body = rows[0], rows[1:]
+        total = body.pop() if model.has_total else None
+        total_by_heading = None
+        if model.has_total:
+            all_rows = model.text_rows(every)
+            total_by_heading = dict(zip(all_rows[0], all_rows[-1], strict=True))
+        key_columns = len([column for column in visible if column < len(model.by)])
+        content = report_content(
+            document,
+            shown.levels,
+            headings,
+            key_columns,
+            body,
+            total,
+            total_by_heading,
+            bool(shown.scope.cost),
+            list(self._shown_notes),
+        )
+        name = datetime.now().strftime(EXPORT_PDF_NAME_FORMAT)
+        path = self._file_dialogs.save_file(
+            caption="Export PDF",
+            directory=os.path.join(self._working_dir(), name),
+            file_pattern=EXPORT_PDF_FILTER,
+        )
+        if path is None:
+            return
+        try:
+            write_pdf(path, content, landscape=self._pdf_landscape.isChecked())
+        except OSError as error:
+            message = EXPORT_PDF_FAILED.format(path=path, error=error)
+            self.logged.emit(message)
+            self._say([message], error=True)
+            return
+        self.logged.emit(EXPORTED_PDF_LOG.format(path=path))
+
     def _copy_cells(self) -> None:
         """
         The selected cells as tab-separated text, their headings first.
@@ -1603,6 +1825,14 @@ class UsageExplorer(QDialog):
         """
         notes, details = self._notes_of(document)
         notes.extend(warnings or [])
+        # What the PDF report prints: the document and the notes of the view
+        # shown, never of the controls; an empty view's line is the report's
+        # in the table's place, so not a note too
+        shown_notes = [
+            note
+            for note in (*notes, *details)
+            if note not in (NO_INSTANCES, NO_MATCHING_INSTANCES)
+        ]
         self._model.set_document(document, bool(view.scope.cost))
         self._export.setEnabled(True)
         scope = (
@@ -1617,6 +1847,12 @@ class UsageExplorer(QDialog):
             self._shown_inputs = self._requested_inputs
             self._resolving = False
         self._shown = self._requested = _View(scope, view.levels)
+        self._shown_window = (
+            str(document.get("from", "")),
+            str(document.get("until", "")),
+        )
+        self._shown_document = document
+        self._shown_notes = shown_notes
         self._apply_hidden_columns()
         self._table.resizeColumnsToContents()
         self._show_breadcrumb(view.levels)
@@ -1737,13 +1973,15 @@ class UsageExplorer(QDialog):
             levels = self._shown.levels if self._shown else (TOP_LEVEL,)
         by = levels[-1].by
         self._total_by.setText(", ".join(heading(key) for key in by))
+        self._staged_by = by
         menu = cast(QMenu, self._total_by.menu())
         menu.clear()
         for key in eligible_keys(levels):
             action = cast(QAction, menu.addAction(heading(key)))
+            action.setData(key)
             action.setCheckable(True)
             action.setChecked(key in by)
-            action.triggered.connect(partial(self._total_by_toggled, key))
+            action.triggered.connect(partial(self._stage_total_by, key))
 
     def _on_namespaces(self, result: RunResult) -> None:
         document = result.document

@@ -166,7 +166,7 @@ class _Run:
         config_wr = SimpleNamespace(task_batch_size=batch_size, parallel_batches=None)
         self.follow = MagicMock()
         with (
-            patch.object(json_raw_module.requests, "post", side_effect=self._post),
+            patch.object(json_raw_module.direct_http, "post", side_effect=self._post),
             patch.object(task_batches_module, "sleep"),
             patch.object(
                 resubmit_module, "get_work_requirement_summary_by_name_or_id"
@@ -322,7 +322,9 @@ class TestOutputFile:
             client=via_file.client,
         )
         with (
-            patch.object(json_raw_module.requests, "post", side_effect=via_file._post),
+            patch.object(
+                json_raw_module.direct_http, "post", side_effect=via_file._post
+            ),
             patch.object(task_batches_module, "sleep"),
             patch.object(
                 spec_loading_module,

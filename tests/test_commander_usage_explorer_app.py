@@ -2,7 +2,7 @@
 The Usage Explorer run on its own (commander/usage_explorer_app.py, `yd
 commander --usage-explorer`): the configuration chosen at launch, the base
 arguments and directory its runs get, Select..., its log on stderr and its
-appearance. The children are faked as in test_commander_usage_explorer.py.
+appearance, with its Dark Mode checkbox. The children are faked as in test_commander_usage_explorer.py.
 """
 
 import qt_guard
@@ -164,10 +164,31 @@ def test_dark_mode_is_commanders_remembered_choice(
     made = StandaloneExplorer(parse_args(["--usage-explorer"]), str(project))
     try:
         assert made.explorer._dark
+        assert made.explorer._dark_mode.isChecked()
         assert applied == [True]
     finally:
         made.explorer.shut_down()
         QApplication.processEvents()
+
+
+def test_dark_mode_ticked_switches_and_is_remembered(
+    standalone, commander_dialog_settings, monkeypatch
+):
+    applied: list[bool] = []
+    monkeypatch.setattr(
+        usage_explorer_app, "apply_application_appearance", applied.append
+    )
+    box = standalone.explorer._dark_mode
+    assert box.isVisible()
+    box.setChecked(False)
+    box.click()
+    assert applied == [True]
+    assert standalone.explorer._dark
+    assert commander_dialog_settings.value(SETTING_DARK_MODE, type=bool) is True
+    box.click()
+    assert applied == [True, False]
+    assert not standalone.explorer._dark
+    assert commander_dialog_settings.value(SETTING_DARK_MODE, type=bool) is False
 
 
 def test_inside_commander_the_configuration_row_is_hidden(qapp, children, tmp_path):
@@ -185,6 +206,7 @@ def test_inside_commander_the_configuration_row_is_hidden(qapp, children, tmp_pa
         explorer.show()
         assert not explorer._config_path.isVisible()
         assert not explorer._select_config.isVisible()
+        assert not explorer._dark_mode.isVisible()
     finally:
         explorer.shut_down()
         QApplication.processEvents()

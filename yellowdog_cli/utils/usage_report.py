@@ -19,7 +19,12 @@ there; however the window was written, so a window given as '24h' to
 'now' is found again by the dates its summary shows. A window of fixed
 past dates is used until it is removed, being one that no longer changes,
 and one ending now for ten minutes after it was fetched; of several that
-match, the one fetched last. The window, the time it was fetched and the
+match, the one fetched last. A namespace asked for with none kept of its
+own is read from a kept report of every namespace for the window, which
+asked for it and was not refused it, its rows held to that namespace as
+they are read (Report.only_namespace): the Platform's namespace filter is
+the Compute Requirement's Namespace, so the rows are the ones a report of
+that namespace holds. The window, the time it was fetched and the
 report's size are said with every summary. Each fetch removes the reports unused (neither fetched nor read)
 for USAGE_REPORTS_UNUSED_SECONDS, a week, and then the least recently used
 beyond USAGE_REPORTS_KEPT, so the directory stays bounded on any platform
@@ -52,6 +57,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
+from yellowdog_cli.utils import direct_http
 from yellowdog_cli.utils.completion_cache import cache_directory, cache_key
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import (
@@ -63,6 +69,7 @@ from yellowdog_cli.utils.limits import (
     USAGE_REPORTS_UNUSED_SECONDS,
 )
 from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.usage_text import report_time
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_cost import Costing
@@ -199,6 +206,9 @@ class Report:
     # not readable for usage
     namespaces: list[str] | None = None
     refused: list[str] = field(default_factory=list)
+    # A kept report of every namespace read for this one namespace alone
+    # (None: the report as the Platform sent it, for its own scope)
+    only_namespace: str | None = None
 
     @property
     def path(self) -> Path:
@@ -271,9 +281,10 @@ def usage_report(
 ) -> Report:
     """
     The report for the window: a kept one of the same scope whose window
-    matches it (window_matches()) unless refreshed, else fetched from the
-    Platform and kept. Without a usable cache directory, it is kept in a
-    fresh temporary one.
+    matches it (window_matches()) unless refreshed, else for a namespace one
+    of every namespace that covers it (kept_namespace_report()), else
+    fetched from the Platform and kept. Without a usable cache directory, it
+    is kept in a fresh temporary one.
     """
     now = now or datetime.now(timezone.utc)
     root = cache_directory(USAGE_CACHE_DIRECTORY_NAME)
@@ -282,6 +293,10 @@ def usage_report(
     if root is not None:
         if not refresh:
             cached = kept_report(root, scope, from_time, until_time, now)
+            if cached is None and namespace:
+                cached = kept_namespace_report(
+                    root, report_scope(ctx, None), namespace, from_time, until_time, now
+                )
             if cached is not None:
                 _LOG.debug("Using the usage report kept in %s", cached.directory)
                 _touch(cached.directory)
@@ -338,6 +353,46 @@ def kept_report(
                 report.until_time,
             )
     return max(matching, key=lambda report: report.fetched, default=None)
+
+
+def kept_namespace_report(
+    root: Path,
+    every_scope: str,
+    namespace: str,
+    from_time: datetime,
+    until_time: datetime,
+    now: datetime,
+) -> Report | None:
+    """
+    The kept report of every namespace (every_scope: report_scope() with
+    none) whose window matches, held to the one namespace given, as a
+    report fetched for it alone would be; None unless it asked for that
+    namespace (asking for every one, or naming it) and was not refused it,
+    so that a namespace usage may not be read in is still asked for, and
+    refused by the Platform.
+    """
+    report = kept_report(root, every_scope, from_time, until_time, now)
+    if report is None:
+        return None
+    if namespace in report.refused or (
+        report.namespaces is not None and namespace not in report.namespaces
+    ):
+        _LOG.debug(
+            "Not reading namespace %s from the usage report kept in %s,"
+            " which does not cover it",
+            namespace,
+            report.directory,
+        )
+        return None
+    _LOG.debug(
+        "Reading namespace %s from the usage report of every namespace kept in %s",
+        namespace,
+        report.directory,
+    )
+    report.only_namespace = namespace
+    report.namespaces = [namespace]
+    report.refused = []
+    return report
 
 
 @dataclass
@@ -499,7 +554,7 @@ def _instant(iso: str) -> datetime:
     """
     A time from the report ('2026-11-12T07:46:44.428279Z'), as UTC.
     """
-    when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    when = report_time(iso)
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
@@ -770,7 +825,7 @@ def _request(
     progress.waiting()
     try:
         # Streamed, so that the report's body can be read in chunks
-        return requests.put(
+        return direct_http.put(
             url=f"{ctx.config.url}/{REPORT_PATH}",
             headers={"Authorization": f"yd-key {ctx.config.key}:{ctx.config.secret}"},
             json=body,
@@ -1006,6 +1061,11 @@ def _counted(
         instances = _records(archive, INSTANCES)
     for instance in instances:
         requirement = requirements.get(instance["Compute Requirement ID"], {})
+        if (
+            report.only_namespace is not None
+            and requirement.get("Namespace") != report.only_namespace
+        ):
+            continue
         if where and not _matches(where, instance, requirement, creators):
             continue
         yield instance, requirement

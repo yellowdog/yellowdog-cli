@@ -474,7 +474,7 @@ def _cfg(**kw) -> SimpleNamespace:
 
 def _fake_pac(monkeypatch, proxy):
     """
-    A pac_context_for_url fake that sets HTTPS_PROXY while it is open.
+    A pac_context fake that sets HTTPS_PROXY while it is open.
     """
     entered = []
 
@@ -492,7 +492,7 @@ def _fake_pac(monkeypatch, proxy):
             else:
                 os.environ["HTTPS_PROXY"] = saved
 
-    monkeypatch.setattr(dc, "pac_context_for_url", fake)
+    monkeypatch.setattr(dc.direct_http, "pac_context", fake)
     return entered
 
 
@@ -630,7 +630,7 @@ class TestInstallation:
             raise RuntimeError("PAC file could not be fetched")
             yield
 
-        monkeypatch.setattr(dc, "pac_context_for_url", broken)
+        monkeypatch.setattr(dc.direct_http, "pac_context", broken)
         r = dc.check_proxy(self._loaded(use_pac=True))
         assert r.status is dc.Status.FAIL
         assert "PAC file could not be fetched" in r.detail
@@ -991,7 +991,7 @@ class TestLive:
 
     def test_reachable_any_http_status_is_ok(self, monkeypatch):
         monkeypatch.setattr(
-            dc.requests, "get", lambda url, timeout: SimpleNamespace(status_code=404)
+            dc.direct_http, "get", lambda url, timeout: SimpleNamespace(status_code=404)
         )
         r = dc.check_platform_reachable(
             _ctx(config_loaded=True, config_common=self._cfg())
@@ -1002,7 +1002,7 @@ class TestLive:
         def boom(url, timeout):
             raise dc.requests.ConnectionError("Name or service not known")
 
-        monkeypatch.setattr(dc.requests, "get", boom)
+        monkeypatch.setattr(dc.direct_http, "get", boom)
         r = dc.check_platform_reachable(
             _ctx(config_loaded=True, config_common=self._cfg())
         )
@@ -1014,7 +1014,7 @@ class TestLive:
         def slow(url, timeout):
             time.sleep(2)
 
-        monkeypatch.setattr(dc.requests, "get", slow)
+        monkeypatch.setattr(dc.direct_http, "get", slow)
         r = dc.check_platform_reachable(
             _ctx(config_loaded=True, config_common=self._cfg(), timeout=0.1)
         )
@@ -1031,7 +1031,7 @@ class TestLive:
             seen.append((url, os.environ.get("HTTPS_PROXY")))
             return SimpleNamespace(status_code=404)
 
-        monkeypatch.setattr(dc.requests, "get", get)
+        monkeypatch.setattr(dc.direct_http, "get", get)
         r = dc.check_platform_reachable(
             _ctx(config_loaded=True, config_common=self._cfg(use_pac=True))
         )
@@ -1046,7 +1046,7 @@ class TestLive:
         monkeypatch.delenv("https_proxy", raising=False)
         entered = _fake_pac(monkeypatch, "http://pac-proxy:3128")
         monkeypatch.setattr(
-            dc.requests, "get", lambda url, timeout: SimpleNamespace(status_code=404)
+            dc.direct_http, "get", lambda url, timeout: SimpleNamespace(status_code=404)
         )
         r = dc.check_platform_reachable(
             _ctx(config_loaded=True, config_common=self._cfg(use_pac=True))
@@ -1065,7 +1065,7 @@ class TestLive:
         def boom(url, timeout):
             raise dc.requests.ConnectionError("refused")
 
-        monkeypatch.setattr(dc.requests, "get", boom)
+        monkeypatch.setattr(dc.direct_http, "get", boom)
         checks = tuple(c for c in dc.CHECKS if c.name in ("Proxy", "Reachable"))
         rows = dc.run_checks(
             _ctx(config_loaded=True, config_common=self._cfg(use_pac=True)),
@@ -1084,7 +1084,7 @@ class TestLive:
         def never(cfg, timeout):
             raise AssertionError("_build_client called")
 
-        monkeypatch.setattr(dc.requests, "get", refused)
+        monkeypatch.setattr(dc.direct_http, "get", refused)
         monkeypatch.setattr(dc, "_build_client", never)
         checks = tuple(c for c in dc.CHECKS if c.name in ("Reachable", "Authenticated"))
         rows = dc.run_checks(
@@ -1384,7 +1384,7 @@ class TestLive:
 
     def test_a_server_error_from_the_platform_warns(self, monkeypatch):
         monkeypatch.setattr(
-            dc.requests, "get", lambda url, timeout: SimpleNamespace(status_code=503)
+            dc.direct_http, "get", lambda url, timeout: SimpleNamespace(status_code=503)
         )
         ctx = _ctx(config_loaded=True, config_common=self._cfg())
         r = dc.check_platform_reachable(ctx)

@@ -13,7 +13,12 @@ from yellowdog_cli.utils.command_registry import (
     USAGE_GROUP_KEYS,
     USAGE_SORT_VALUE_KEYS,
 )
-from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, heading
+from yellowdog_cli.utils.usage_text import (
+    cost_text_of,
+    duration_text,
+    heading,
+    report_time,
+)
 
 __all__ = [
     "DEFAULT_PRESET",
@@ -45,7 +50,8 @@ KEY_VALUE_SEPARATOR = " \u00b7 "
 # The key that makes a level the Instance level, the last
 INSTANCE_LEVEL = "instance-id"
 
-# What the Instance level totals by, so that each row says what the Instance was
+# The Instance level's keys when drilled into, so that each row says what the
+# Instance was; ticks like any others, which Total by may take away
 INSTANCE_KEYS: tuple[str, ...] = (
     "instance-id",
     "instance-type",
@@ -74,11 +80,32 @@ _RELATIVE_PRESETS = {
 _OTHER_STATE_KEYS = ("pending", "stopping", "terminating", "unknown")
 
 
+# How a fixed time is written in --from and --until: UTC, to the minute, as
+# the report line and Kept Reports show it, which yd usage reads back
+WINDOW_TIME_FORMAT = "%Y-%m-%d %H:%M UTC"
+
+
 def _month_start(year: int, month: int) -> str:
     """
-    The first instant of a calendar month, as a UTC ISO 8601 text.
+    The first instant of a calendar month, as a window time.
     """
-    return datetime(year, month, 1, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime(year, month, 1, tzinfo=timezone.utc).strftime(WINDOW_TIME_FORMAT)
+
+
+def window_time(iso: str) -> str:
+    """
+    A report's time ('2026-11-19T10:57:30.559218Z') as --from and --until
+    are written ('2026-11-19 10:57 UTC'), or as it is if it cannot be read.
+    The seconds dropped are well within the window a kept report is reused
+    for.
+    """
+    try:
+        moment = report_time(str(iso))
+    except ValueError:
+        return str(iso)
+    if moment.tzinfo is None:
+        return str(iso)
+    return moment.astimezone(timezone.utc).strftime(WINDOW_TIME_FORMAT)
 
 
 def preset_window(preset: str, now: datetime) -> tuple[str, str]:
@@ -103,8 +130,9 @@ def preset_window(preset: str, now: datetime) -> tuple[str, str]:
 class Scope:
     """
     What one fetched report covers. The window is as typed until a report has
-    been fetched, then pinned to the report's own ISO 'from' and 'until', so
-    that every later view regroups that same report.
+    been fetched, then pinned to the report's own 'from' and 'until' (to the
+    minute, window_time()), so that every later view regroups that same
+    report.
     """
 
     from_text: str
@@ -117,7 +145,13 @@ class Scope:
         """
         A copy pinned to the report's window.
         """
-        return Scope(from_iso, until_iso, self.namespace, self.cost, pinned=True)
+        return Scope(
+            window_time(from_iso),
+            window_time(until_iso),
+            self.namespace,
+            self.cost,
+            pinned=True,
+        )
 
 
 @dataclass(frozen=True)
@@ -150,7 +184,7 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
     args = ["--from", scope.from_text, "--until", scope.until_text]
     if scope.namespace:
         args += ["-n", scope.namespace]
-    args += ["--by", ",".join(INSTANCE_KEYS if current.leaf else current.by)]
+    args += ["--by", ",".join(current.by)]
     for level in levels:
         for key, value in level.filters:
             args += ["--where", f"{key}=={value}"]
@@ -187,14 +221,12 @@ def eligible_keys(levels: list[Level] | tuple[Level, ...]) -> tuple[str, ...]:
 def toggled_by(by: tuple[str, ...], key: str) -> tuple[str, ...] | None:
     """
     The keys to total by after ticking or unticking one: a key ticked is
-    added after the others, the Instance level's replacing them (and any
-    other replacing it); None for the last key unticked, which stays.
+    added after the others, Instance ID too; None for the last key
+    unticked, which stays.
     """
     if key in by:
         return None if len(by) == 1 else tuple(k for k in by if k != key)
-    if key == INSTANCE_LEVEL:
-        return (INSTANCE_LEVEL,)
-    return (*(k for k in by if k != INSTANCE_LEVEL), key)
+    return (*by, key)
 
 
 def drill(levels: list[Level], row: dict) -> list[Level] | None:
@@ -221,18 +253,33 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
     fixed.update(current.by)
     places = [DRILL_PATH.index(key) for key in current.by if key in DRILL_PATH]
     after = max(places) + 1 if places else 0
-    next_by = next(
-        (key for key in DRILL_PATH[after:] if key not in fixed), INSTANCE_LEVEL
+    next_by = next((key for key in DRILL_PATH[after:] if key not in fixed), None)
+    # The path's end, the Instance level: ticked with the keys that say what
+    # each Instance was, less those the filters fix
+    by = (
+        (next_by,)
+        if next_by not in (None, INSTANCE_LEVEL)
+        else tuple(
+            key for key in INSTANCE_KEYS if key == INSTANCE_LEVEL or key not in fixed
+        )
     )
     label = KEY_VALUE_SEPARATOR.join(shown)
-    return [*levels, Level((next_by,), tuple(filters), label)]
+    return [*levels, Level(by, tuple(filters), label)]
+
+
+# The options every run is given for the explorer to read its output, which
+# the command line shown leaves out: typed in a terminal, the command prints
+# its table
+EXPLORER_OUTPUT_OPTIONS = frozenset({"--nf", "-q", "--json"})
 
 
 def command_line(arguments: list[str]) -> str:
     """
-    The command as typed in a shell, for display and copying.
+    The command as typed in a shell, for display and copying, less
+    EXPLORER_OUTPUT_OPTIONS.
     """
-    return " ".join(["yd usage", *(shlex.quote(a) for a in arguments)])
+    shown = [a for a in arguments if a not in EXPLORER_OUTPUT_OPTIONS]
+    return " ".join(["yd usage", *(shlex.quote(a) for a in shown)])
 
 
 def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
