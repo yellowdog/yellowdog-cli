@@ -235,6 +235,13 @@ def test_command_line_quotes():
     assert command_line(["--where", "cr==a b"]) == "yd usage --where 'cr==a b'"
 
 
+def test_command_line_leaves_out_the_explorers_output_options():
+    assert (
+        command_line(["-c", "config.toml", "--nf", "-q", "--json", "--by", "cr"])
+        == "yd usage -c config.toml --by cr"
+    )
+
+
 def test_row_cells_format_as_the_cli():
     row = {
         "namespace": "team-a",

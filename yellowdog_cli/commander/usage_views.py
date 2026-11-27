@@ -256,11 +256,19 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
     return [*levels, Level((next_by,), tuple(filters), label)]
 
 
+# The options every run is given for the explorer to read its output, which
+# the command line shown leaves out: typed in a terminal, the command prints
+# its table
+EXPLORER_OUTPUT_OPTIONS = frozenset({"--nf", "-q", "--json"})
+
+
 def command_line(arguments: list[str]) -> str:
     """
-    The command as typed in a shell, for display and copying.
+    The command as typed in a shell, for display and copying, less
+    EXPLORER_OUTPUT_OPTIONS.
     """
-    return " ".join(["yd usage", *(shlex.quote(a) for a in arguments)])
+    shown = [a for a in arguments if a not in EXPLORER_OUTPUT_OPTIONS]
+    return " ".join(["yd usage", *(shlex.quote(a) for a in shown)])
 
 
 def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
