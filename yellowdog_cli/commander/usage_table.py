@@ -35,6 +35,8 @@ HIDEABLE_COLUMNS: tuple[str, ...] = (
     *STATUS_COLUMNS,
 )
 TOTAL_LABEL = "Total"
+# The row summing the groups '--top' left out, as yd usage's own table labels it
+MORE_LABEL = "({count:,} more)"
 # A time column's heading in the table and the shown export, saying how its
 # cells read, as yd usage's own table heads them
 DURATION_HEADING = "{heading} (h:mm)"
@@ -88,6 +90,8 @@ class UsageTableModel(QAbstractTableModel):
         self._sources: list[dict] = []
         self._headings: list[str] = []
         self._has_total = False
+        # The label of the row summing what '--top' left out (None for none)
+        self._more_label: str | None = None
         # The sort keys after the first (whose column the header's own
         # indicator marks): each key's place and whether the most or Z first
         self._sort_marks: dict[str, tuple[int, bool]] = {}
@@ -105,6 +109,14 @@ class UsageTableModel(QAbstractTableModel):
         counts = INSTANCE_LEVEL not in by
         rows = [self._cells(group, by, cost, counts) for group in groups]
         sources = list(groups)
+        more = document.get("more")
+        more_label = None
+        if isinstance(more, dict):
+            more_label = MORE_LABEL.format(count=int(more["groups"]))
+            cells = self._cells(more, by, cost, counts)
+            cells[: len(by)] = [more_label] + [""] * (len(by) - 1)
+            rows.append(cells)
+            sources.append(dict(more))
         total = document.get("total")
         if groups and isinstance(total, dict):
             cells = self._cells(total, by, cost, counts)
@@ -118,7 +130,8 @@ class UsageTableModel(QAbstractTableModel):
         self._by, self._cost, self._groups, self._rows = by, cost, groups, rows
         self._figures = figures
         self._sources = sources
-        self._has_total = len(rows) > len(groups)
+        self._more_label = more_label
+        self._has_total = len(rows) > len(groups) + (more_label is not None)
         self._headings = [heading(key) for key in by] + [
             self._figure_heading(key, document) for key in figures
         ]
@@ -173,14 +186,17 @@ class UsageTableModel(QAbstractTableModel):
         rows = [headings]
         for index, source in enumerate(self._sources):
             total = self._has_total and index == len(self._sources) - 1
+            label = TOTAL_LABEL if total else None
+            if self.is_more(index):
+                label = self._more_label
             row: list[str] = []
             for column in columns:
                 figure = self._figure(column)
                 if figure is None:
                     key = self._by[column]
                     row.append(
-                        (TOTAL_LABEL if column == 0 else "")
-                        if total
+                        (label if column == 0 else "")
+                        if label is not None
                         else str(source.get(key, ""))
                     )
                 elif figure == "instances":
@@ -208,6 +224,7 @@ class UsageTableModel(QAbstractTableModel):
         self._by, self._groups, self._rows, self._headings = [], [], [], []
         self._figures = []
         self._sources = []
+        self._more_label = None
         self._has_total = False
         self.endResetModel()
 
@@ -217,7 +234,8 @@ class UsageTableModel(QAbstractTableModel):
 
     def group(self, row: int) -> dict | None:
         """
-        The document's group a row shows; None for the Total row.
+        The document's group a row shows; None for the Total row and the
+        row summing what '--top' left out.
         """
         return self._groups[row] if 0 <= row < len(self._groups) else None
 
@@ -230,6 +248,16 @@ class UsageTableModel(QAbstractTableModel):
 
     def is_total(self, row: int) -> bool:
         return self._has_total and row == len(self._rows) - 1
+
+    def is_more(self, row: int) -> bool:
+        """
+        Whether a row is the one summing the groups '--top' left out.
+        """
+        return self._more_label is not None and row == len(self._groups)
+
+    @property
+    def more_label(self) -> str | None:
+        return self._more_label
 
     def sort_key(self, column: int) -> str | None:
         """
@@ -306,6 +334,10 @@ class UsageTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.FontRole and column == 0 and self.is_total(row):
             font = QFont()
             font.setBold(True)
+            return font
+        if role == Qt.ItemDataRole.FontRole and self.is_more(row):
+            font = QFont()
+            font.setItalic(True)
             return font
         return None
 

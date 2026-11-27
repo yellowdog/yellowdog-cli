@@ -92,6 +92,7 @@ from yellowdog_cli.commander.usage_report_layout import (
 )
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
+    MORE_LABEL,
     STATUS_COLUMNS,
     UsageTableModel,
     figure_heading,
@@ -101,6 +102,7 @@ from yellowdog_cli.commander.usage_views import (
     DRILL_PATH,
     PRESETS,
     USAGE_SORT_VALUE_KEYS,
+    VIEW_TOP_ROWS,
     Level,
     Scope,
     command_line,
@@ -974,6 +976,15 @@ class UsageExplorer(QDialog):
         self._details_button.setToolTip("List the instance types with no list price")
         self._details_button.clicked.connect(self._toggle_details)
         self._details_button.hide()
+        # Shown while the level's rows past the first VIEW_TOP_ROWS are summed
+        self._show_all = QPushButton("Show All", self)
+        self._show_all.setAutoDefault(False)
+        self._show_all.setToolTip(
+            "Show every row of this level, not the first"
+            f" {VIEW_TOP_ROWS:,} and the rest summed"
+        )
+        self._show_all.clicked.connect(self._show_all_rows)
+        self._show_all.hide()
         self._details = QLabel(self)
         self._details.setTextFormat(Qt.TextFormat.PlainText)
         self._details.setTextInteractionFlags(
@@ -1113,6 +1124,7 @@ class UsageExplorer(QDialog):
         crumb_row.addWidget(self._export)
         notes_row = QHBoxLayout()
         notes_row.addWidget(self._notes, 1)
+        notes_row.addWidget(self._show_all, 0, Qt.AlignmentFlag.AlignTop)
         notes_row.addWidget(self._details_button, 0, Qt.AlignmentFlag.AlignTop)
         command_row = QHBoxLayout()
         command_row.addWidget(self._command_line, 1)
@@ -1705,6 +1717,16 @@ class UsageExplorer(QDialog):
     def _toggle_details(self) -> None:
         self._details.setVisible(not self._details.isVisible())
 
+    def _show_all_rows(self) -> None:
+        """
+        Show All: the level shown again with every row.
+        """
+        current = self._shown
+        if current is None or self._busy:
+            return
+        level = current.levels[-1]
+        self._request_levels((*current.levels[:-1], replace(level, all_rows=True)))
+
     def _export_csv(self, raw: bool) -> None:
         """
         The table's visible columns, saved to a CSV file the user names, in
@@ -1887,6 +1909,7 @@ class UsageExplorer(QDialog):
         """
         notes, details = self._notes_of(document)
         notes.extend(warnings or [])
+        more = document.get("more")
         # What the PDF report prints: the document and the notes of the view
         # shown, never of the controls; an empty view's line is the report's
         # in the table's place, so not a note too
@@ -1926,6 +1949,7 @@ class UsageExplorer(QDialog):
         self._details_button.setVisible(bool(details))
         if not details:
             self._details.hide()
+        self._show_all.setVisible(isinstance(more, dict))
         reused = bool(document.get("reused", True))
         self._report.setText(
             f"Report: {_shown_time(document.get('from', ''))} →"
@@ -1945,6 +1969,13 @@ class UsageExplorer(QDialog):
         instance type with no list price.
         """
         lines: list[str] = []
+        more = document.get("more")
+        if isinstance(more, dict):
+            shown, cut = len(document["groups"]), int(more["groups"])
+            lines.append(
+                f"The first {shown:,} of {shown + cut:,} rows, the other {cut:,}"
+                f" summed in the '{MORE_LABEL.format(count=cut)}' row"
+            )
         covered = document.get("namespaces")
         if document.get("namespace") is None and isinstance(covered, list):
             # An Application allowed to read usage in some namespaces only

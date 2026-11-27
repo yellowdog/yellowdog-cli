@@ -574,6 +574,8 @@ def test_the_top_level_shows_namespaces_and_the_total(explorer, children):
         "now",
         "--by",
         "namespace",
+        "--top",
+        "500",
         "--cost",
     ]
     assert explorer._model.rowCount() == 3
@@ -820,7 +822,7 @@ def test_cost_notes_and_partial_costs(explorer, children):
 def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qapp):
     started = [a for c, a in children.started if is_view(c, a)][-1]
     assert explorer._command_line.text() == (
-        "yd usage -c config.toml --from '7 days ago' --until now --by namespace --cost"
+        "yd usage -c config.toml --from '7 days ago' --until now --by namespace --top 500 --cost"
     )
     assert explorer._command_line.isReadOnly()
     assert started == BASE_ARGS + usage_args(children)
@@ -835,7 +837,7 @@ def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qap
 def test_a_fetch_is_logged_and_a_regroup_is_not(explorer, children):
     assert explorer.log_lines == [
         "Fetched the usage report: yd usage -c config.toml"
-        " --from '7 days ago' --until now --by namespace --cost"
+        " --from '7 days ago' --until now --by namespace --top 500 --cost"
     ]
     assert "fetched" in explorer._report.text()
     double_click_row(explorer, 0)
@@ -1067,6 +1069,57 @@ def test_the_pdf_states_several_sort_keys(explorer, children, tmp_path, monkeypa
         .scope_lines[1]
         .endswith("sorted by Namespace, A to Z, then Running (h:mm), most first")
     )
+
+
+def cut_document(top: bool) -> dict:
+    """
+    Three namespaces: with '--top', two of them and the third summed in
+    'more', as yd usage --top 2 writes it.
+    """
+    groups = [
+        group({"namespace": f"team-{n}"}, 3 - n, 3.0 - n, 0.0, 10.0 - n)
+        for n in range(3)
+    ]
+    body = document(["namespace"], groups)
+    if top:
+        body["groups"] = groups[:2]
+        more = group({}, 1, 1.0, 0.0, 8.0)
+        body["more"] = {"groups": 1, **more}
+    return body
+
+
+def test_rows_past_the_first_are_summed_and_can_all_be_shown(explorer, children):
+    children.answer = lambda c, a: (
+        (json.dumps(NAMESPACES), "", 0, 0)
+        if c == "yd list"
+        else (json.dumps(KEPT), "", 0, 0)
+        if "--reports" in a
+        else (json.dumps(cut_document("--top" in a)), "", 0, 0)
+    )
+    explorer._refresh.click()
+    settle(explorer)
+    model = explorer._model
+    # Two rows, the rest summed, then the Total
+    assert model.rowCount() == 4
+    assert cells(explorer, 2)[:2] == ["(1 more)", "1"]
+    assert model.data(model.index(2, 0), Qt.ItemDataRole.FontRole).italic()
+    assert cells(explorer, 3)[0] == "Total"
+    assert "The first 2 of 3 rows" in explorer._notes.text()
+    # The CSV of raw numbers labels the summed row as the table does
+    assert model.raw_rows([0, 1])[3] == ["(1 more)", "1"]
+    # The summed row is no group to drill into
+    started = len(children.started)
+    double_click_row(explorer, 2)
+    QApplication.processEvents()
+    assert len(children.started) == started
+    assert explorer._show_all.isVisible()
+    explorer._show_all.click()
+    settle(explorer)
+    assert "--top" not in usage_args(children)
+    assert model.rowCount() == 4
+    assert cells(explorer, 2)[0] == "team-2"
+    assert not explorer._show_all.isVisible()
+    assert "The first" not in explorer._notes.text()
 
 
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):

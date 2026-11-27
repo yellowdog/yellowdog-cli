@@ -14,6 +14,7 @@ from yellowdog_cli.commander.usage_views import (
     INSTANCE_LEVEL,
     KEY_VALUE_SEPARATOR,
     PRESETS,
+    VIEW_TOP_ROWS,
     Level,
     Scope,
     command_line,
@@ -42,6 +43,8 @@ def test_first_view_passes_the_window_as_typed():
         "now",
         "--by",
         "namespace",
+        "--top",
+        "500",
         "--cost",
     ]
 
@@ -91,19 +94,25 @@ def test_namespace_filters_sort_and_refresh():
     assert view_args(Scope("a", "b", "team-*", True), levels, refresh=True) == [
         "--from", "a", "--until", "b", "-n", "team-*", "--by", "cr",
         "--where", "namespace==team-a", "--sort", "total", "--reverse",
-        "--cost", "--refresh",
+        "--top", "500", "--cost", "--refresh",
     ]  # fmt: skip
 
 
 def test_sort_without_reverse():
     args = view_args(Scope("a", "b", None, False), [Level(("cr",), sort=("cost",))])
-    assert args[-2:] == ["--sort", "cost"]
+    assert args[-4:-2] == ["--sort", "cost"]
+
+
+def test_a_view_shows_the_first_rows_unless_all_are_asked_for():
+    scope = Scope("a", "b", None, False)
+    assert view_args(scope, [Level(("cr",))])[-2:] == ["--top", str(VIEW_TOP_ROWS)]
+    assert "--top" not in view_args(scope, [Level(("cr",), all_rows=True)])
 
 
 def test_several_sort_keys_are_one_sort():
     level = Level(("cr", "region"), sort=("region", "total"), reverse=True)
     args = view_args(Scope("a", "b", None, False), [level])
-    assert args[-3:] == ["--sort", "region,total", "--reverse"]
+    assert args[-5:-2] == ["--sort", "region,total", "--reverse"]
 
 
 @pytest.mark.parametrize(
@@ -196,7 +205,7 @@ def test_several_keys_group_and_drill_on_all_of_them():
         (("namespace", "team-render"), ("region", "eu-west-2")),
         f"team-render{KEY_VALUE_SEPARATOR}eu-west-2",
     )
-    assert view_args(Scope("a", "b", None, False), levels)[-4:] == [
+    assert view_args(Scope("a", "b", None, False), levels)[-6:-2] == [
         "--where",
         "namespace==team-render",
         "--where",

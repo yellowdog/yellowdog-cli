@@ -29,6 +29,7 @@ __all__ = [
     "PRESETS",
     "USAGE_GROUP_KEYS",
     "USAGE_SORT_VALUE_KEYS",
+    "VIEW_TOP_ROWS",
     "Level",
     "Scope",
     "command_line",
@@ -155,13 +156,20 @@ class Scope:
         )
 
 
+# The rows a view asks for (--top), the rest summed in one row, so that a
+# level of a great many groups (an account's every Instance) arrives as a
+# table that can be shown; Show All asks for every row
+VIEW_TOP_ROWS = 500
+
+
 @dataclass(frozen=True)
 class Level:
     """
     One breadcrumb level: the keys it totals by (columns, in this order), the
     exact filters the row drilled into gave it, how it sorts: the '--sort'
     keys, the first the most significant ('total' when none), and whether
-    '--reverse' turns them all round.
+    '--reverse' turns them all round; and whether every row is shown, or the
+    first VIEW_TOP_ROWS with the rest summed.
     """
 
     by: tuple[str, ...]
@@ -169,6 +177,7 @@ class Level:
     label: str = "All"
     sort: tuple[str, ...] = ()
     reverse: bool = False
+    all_rows: bool = False
 
     @property
     def leaf(self) -> bool:
@@ -207,6 +216,8 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
         args += ["--sort", ",".join(current.sort)]
         if current.reverse:
             args.append("--reverse")
+    if not current.all_rows:
+        args += ["--top", str(VIEW_TOP_ROWS)]
     if scope.cost:
         args.append("--cost")
     if refresh:

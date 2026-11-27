@@ -369,6 +369,12 @@ def test_sort_text_of_several_keys_says_then():
     )
 
 
+def test_the_instances_tile_counts_every_group_those_cut_included():
+    # 500 rows shown of 1,200, the rest summed in a '(700 more)' row
+    document = dict(OCTOBER, namespace="team-render", total={"groups": 1200})
+    assert made(document=document).tiles[2].note == "in 1,200 groups"
+
+
 def test_tiles_with_cost_copy_the_total_row():
     assert made().tiles == [
         Tile("Estimated cost", "$1,238.47+", "USD, list prices"),

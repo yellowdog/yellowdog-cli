@@ -575,7 +575,7 @@ def report_content(
         ),
         subtitle=f"{period} · {namespace or 'all namespaces'}",
         scope_lines=scope_lines,
-        tiles=_tiles(document, total_by_heading, len(rows), cost),
+        tiles=_tiles(document, total_by_heading, _group_count(document, rows), cost),
         headings=headings,
         key_columns=key_columns,
         rows=rows,
@@ -586,6 +586,16 @@ def report_content(
         notes=notes,
         caveat=COST_CAVEAT if cost else None,
     )
+
+
+def _group_count(document: dict, rows: list[list[str]]) -> int:
+    """
+    The groups of the view: the document's total says, those '--top' summed
+    in its '(n more)' row included; the rows shown where it does not.
+    """
+    total = document.get("total")
+    groups = total.get("groups") if isinstance(total, dict) else None
+    return groups if isinstance(groups, int) else len(rows)
 
 
 def _tiles(
