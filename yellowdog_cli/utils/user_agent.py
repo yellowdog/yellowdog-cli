@@ -2,28 +2,25 @@
 The User-Agent of the CLI's outgoing HTTP requests, which distinguishes the
 CLI's own direct REST calls from calls made through the YellowDog SDK:
 
-  * Direct CLI calls:  yellowdog-cli/<ver> python-requests/<ver>
-  * SDK calls:         yd/<ver> yellowdog-sdk-python/<ver> python/<ver> yellowdog-cli/<ver>
+  * Direct CLI calls:  yd/1.1.0 yellowdog-cli/<ver> python/<ver>
+  * SDK calls:         yd/1.1.0 yellowdog-sdk-python/<ver> python/<ver> yellowdog-cli/<ver>
 
 The SDK writes its own header and adds the products a client is created
 with (PlatformClient.create()'s Product arguments), so every client the CLI
-builds is given cli_product(). The SDK sets the header on each request, over
-the session's default, so the baseline below never reaches SDK traffic.
+builds is given cli_product(). The Platform then knows SDK calls for the
+SDK's, and adapts its responses to the SDK's version.
 
-The direct calls (the usage report, the raw Work Requirement submission,
-yd-doctor's checks, an event stream reconnected by hand, the PAC file's
-fetch) are made with requests, which the SDK has no part in: for them,
-set_default_user_agent() replaces requests.utils.default_user_agent(), from
-which every requests.Session seeds its headers, so their call sites need no
-changes. It imports no SDK, so a command using none (yd-variables, under
-PAC) can set it.
+The direct calls are made through direct_http.py, which sends
+CLI_USER_AGENT. It has the SDKs' form, so the Platform reads it, but names
+the CLI as the client, which the Platform does not know and so never
+adapts for: the CLI reads those responses' JSON itself, not through the
+SDK's models.
 """
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
-
-import requests.utils
 
 from yellowdog_cli._version import __version__
 
@@ -33,20 +30,11 @@ if TYPE_CHECKING:
 # The name the CLI is known by in a User-Agent, on its own calls and the SDK's
 CLI_PRODUCT_NAME = "yellowdog-cli"
 
-# Captured once, at import: the original requests User-Agent (requests/urllib3
-# version), kept as the direct calls' suffix
-_REQUESTS_UA = requests.utils.default_user_agent()
-
-# Direct (non-SDK) CLI calls
-CLI_USER_AGENT = f"{CLI_PRODUCT_NAME}/{__version__} {_REQUESTS_UA}"
-
-
-def set_default_user_agent() -> None:
-    """
-    The User-Agent of every requests Session -- the CLI's direct calls --
-    without importing the SDK. Idempotent.
-    """
-    requests.utils.default_user_agent = lambda *_args, **_kwargs: CLI_USER_AGENT
+# Direct (non-SDK) CLI calls; yd/1.1.0 is the version of the header's form
+CLI_USER_AGENT = (
+    f"yd/1.1.0 {CLI_PRODUCT_NAME}/{__version__}"
+    f" python/{sys.version_info.major}.{sys.version_info.minor}"
+)
 
 
 def cli_product() -> Product:

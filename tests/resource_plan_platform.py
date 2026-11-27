@@ -4,15 +4,15 @@ the resources a test puts there, which the creators' own lookups find, and
 on which anything that would change the Platform fails the test.
 
 Every client method whose name starts with one of MUTATING_PREFIXES, and
-requests' post() and put() as the resource libraries call them, raise
+direct_http's post() and put() as the resource libraries call them, raise
 AssertionError("the plan changed something"). A resource type is supported by a
 lookup wiring in FakePlatform (_wire_templates() for the Compute Source and
 Requirement Templates, _wire_keyrings(), _wire_namespaces(),
 _wire_image_families(), _wire_accounts()) and, where it is searched, an entry
 in _NAME_OF; another type is added the same way. User Attribute Definitions,
-which the CLI reads with requests' get() rather than the SDK, are the dicts in
-'attribute_definitions', which the fixture's get() serves as the Platform's GET
-/compute/attributes/user lists them. A resource held without an ID is given a
+which the CLI reads with direct_http's get() rather than the SDK, are the
+dicts in 'attribute_definitions', which the fixture's get() serves as the
+Platform's GET /compute/attributes/user lists them. A resource held without an ID is given a
 well-formed YellowDog ID of its type (_TYPE_TOKENS), so the CLI's lookups
 recognise it as one.
 
@@ -719,7 +719,7 @@ def _clear_caches() -> None:
 @pytest.fixture
 def platform(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakePlatform]:
     """
-    A FakePlatform holding nothing, with requests' post() and put() failing
+    A FakePlatform holding nothing, with direct_http's post() and put() failing
     the test wherever the resource libraries call them, and their get()
     serving its 'attribute_definitions' alone.
     """

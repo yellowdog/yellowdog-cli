@@ -13,7 +13,7 @@ from functools import lru_cache
 from json import loads as json_loads
 from typing import Any, TypeVar, cast
 
-from requests import HTTPError, get
+from requests import HTTPError
 from yellowdog_client import PlatformClient
 from yellowdog_client.common import SearchClient
 from yellowdog_client.model import (
@@ -68,6 +68,7 @@ from yellowdog_client.model import (
     WorkRequirementSummary,
 )
 
+from yellowdog_cli.utils.direct_http import get
 from yellowdog_cli.utils.entity_names import PLATFORM_MODEL_PACKAGE
 from yellowdog_cli.utils.exit_codes import (
     SESSION_FAILURES,

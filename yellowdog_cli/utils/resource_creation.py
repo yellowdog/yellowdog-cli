@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import yellowdog_client.model as model
 from dateparser import parse as date_parse
-from requests import Response, post, put
+from requests import Response
 from requests.exceptions import HTTPError
 from yellowdog_client.common.json import Json
 from yellowdog_client.model import (
@@ -47,6 +47,7 @@ from yellowdog_client.model import (
 from yellowdog_client.model.exceptions import InvalidRequestException
 
 from yellowdog_cli.utils.context import RunContext
+from yellowdog_cli.utils.direct_http import post, put
 from yellowdog_cli.utils.entity_names import (
     RN_ADD_APPLICATION_REQUEST,
     RN_ALLOWANCE,

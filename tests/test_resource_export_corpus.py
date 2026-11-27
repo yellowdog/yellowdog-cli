@@ -173,7 +173,7 @@ def _plan(platform: FakePlatform, specifications: list[dict]) -> list[dict]:
 
 def _guarded(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
     """
-    requests' post() and put() as the resource libraries call them, each
+    direct_http's post() and put() as the resource libraries call them, each
     recorded and failing the test; gives the record.
     """
     posted: list[tuple] = []
