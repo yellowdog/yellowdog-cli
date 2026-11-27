@@ -100,6 +100,19 @@ def children(monkeypatch):
     return holder
 
 
+PROGRESS_SCRIPT = """
+import json, os, sys, time
+def say(line):
+    sys.stderr.write(line + "\\n")
+    sys.stderr.flush()
+    time.sleep(0.3)
+say("yd-usage-progress: waiting")
+say("yd-usage-progress: received 23400000")
+sys.stderr.write("WARNING: kept\\n")
+print(json.dumps({"asked": os.environ.get("YD_USAGE_PROGRESS_LINES")}))
+"""
+
+
 @pytest.fixture
 def runner(qapp, tmp_path):
     parent = QObject()
@@ -2666,3 +2679,34 @@ def test_the_heading_has_the_tables_style(explorer):
     assert header.style() is explorer._grid_style
     explorer.set_dark(True)
     assert header.style() is explorer._grid_style
+
+
+def test_the_runner_reads_the_progress_as_it_arrives(runner, children):
+    children.scripts = [PROGRESS_SCRIPT]
+    progress: list = []
+    results: list = []
+    runner.progress.connect(progress.append)
+    runner.finished.connect(results.append)
+    runner.run([])
+    wait_for(lambda: results)
+    # The progress asked for, read line by line, and kept out of the warnings
+    assert progress == [None, 23_400_000]
+    [result] = results
+    assert result.document == {"asked": "1"}
+    assert result.warnings == ["WARNING: kept"]
+
+
+def test_the_wait_says_how_far_the_fetch_has_got(explorer):
+    explorer._runner.progress.emit(None)
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith(
+        "Waiting for the Platform to build the report…"
+    )
+    explorer._runner.progress.emit(23_400_000)
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith("Downloading the report… 23.4 MB")
+    # A new request starts again from yd usage running
+    explorer._refresh.click()
+    explorer._show_elapsed()
+    assert explorer._overlay_text.text().startswith("Running yd usage…")
+    settle(explorer)

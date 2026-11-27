@@ -7,6 +7,7 @@ loop and drops stderr: the explorer is modeless and shows the CLI's error.
 Commander groups, sorts and adds up nothing: every figure shown is the CLI's.
 """
 
+import codecs
 import csv
 import json
 import os
@@ -119,7 +120,8 @@ from yellowdog_cli.commander.usage_views import (
     window_time,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
-from yellowdog_cli.utils.usage_text import duration_text, report_time
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
+from yellowdog_cli.utils.usage_text import duration_text, report_time, size_text
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
 
 # How long Find waits after a key before running the view
@@ -159,6 +161,13 @@ class _Run:
     started: float
     timer: QTimer
     stopped: bool = False
+    # Standard error read as it arrives: its lines but the progress, and
+    # the text after the last line break, decoded across reads
+    errors: list[str] = field(default_factory=list)
+    unfinished: str = ""
+    decoder: codecs.IncrementalDecoder = field(
+        default_factory=lambda: codecs.getincrementaldecoder("utf-8")("replace")
+    )
 
 
 def _disconnect(process: QProcess) -> None:
@@ -186,6 +195,9 @@ class UsageRunner(QObject):
     finished = pyqtSignal(object)
     # The latest run has taken longer than WAIT_DELAY_MS
     started_waiting = pyqtSignal()
+    # The latest run's fetch: None while the Platform builds the report,
+    # then the bytes received (USAGE_PROGRESS_LINES)
+    progress = pyqtSignal(object)
 
     WAIT_DELAY_MS = 300
 
@@ -227,6 +239,11 @@ class UsageRunner(QObject):
             return request
         program, args = cli_program(self._command, [*base, *arguments])
         process = child_process(self._working_dir(), self)
+        # The fetch's progress as plain lines on standard error, read as they
+        # come (_on_errors())
+        environment = process.processEnvironment()
+        environment.insert(USAGE_PROGRESS_LINES, "1")
+        process.setProcessEnvironment(environment)
         # Parented to the process, so it dies with it and never fires into
         # a destroyed runner (a bare QTimer.singleShot would)
         timer = QTimer(process)
@@ -236,6 +253,7 @@ class UsageRunner(QObject):
         self._runs[request] = run
         process.finished.connect(partial(self._on_finished, request))
         process.errorOccurred.connect(partial(self._on_error, request))
+        process.readyReadStandardError.connect(partial(self._on_errors, request))
         process.start(program, args)
         timer.start(self.WAIT_DELAY_MS)
         return request
@@ -298,10 +316,36 @@ class UsageRunner(QObject):
         out = bytes(run.process.readAllStandardOutput().data()).decode(
             "utf-8", errors="replace"
         )
-        err = bytes(run.process.readAllStandardError().data()).decode(
-            "utf-8", errors="replace"
-        )
-        self._complete(request, exit_code, out, err.strip())
+        self._on_errors(request, final=True)
+        self._complete(request, exit_code, out, "\n".join(run.errors).strip())
+
+    def _on_errors(self, request: int, final: bool = False) -> None:
+        """
+        A run's standard error as it arrives: each progress line emitted
+        (for the latest request), every other line kept for its result;
+        with 'final', the text after the last line break too.
+        """
+        run = self._runs.get(request)
+        if run is None:
+            return
+        data = bytes(run.process.readAllStandardError().data())
+        text = run.unfinished + run.decoder.decode(data, final=final)
+        *lines, run.unfinished = text.split("\n")
+        if final and run.unfinished:
+            lines.append(run.unfinished)
+            run.unfinished = ""
+        for line in lines:
+            line = line.rstrip("\r")
+            if not line.startswith(USAGE_PROGRESS_PREFIX):
+                run.errors.append(line)
+                continue
+            if request != self._latest:
+                continue
+            state = line[len(USAGE_PROGRESS_PREFIX) :].split()
+            if state[:1] == ["waiting"]:
+                self.progress.emit(None)
+            elif state[:1] == ["received"] and len(state) > 1 and state[1].isdigit():
+                self.progress.emit(int(state[1]))
 
     def _complete(
         self,
@@ -395,6 +439,9 @@ DARK_SEPARATOR_STYLE = "background-color: #555555; border: none; max-height: 2px
 # How much of the text colour tints the headings
 HEADING_TINT = 0.15
 RUNNING_TEXT = "Running yd usage… {elapsed}"
+# A fetch's progress, as yd usage reports it (USAGE_PROGRESS_LINES)
+WAITING_TEXT = "Waiting for the Platform to build the report… {elapsed}"
+DOWNLOADING_TEXT = "Downloading the report… {size} · {elapsed}"
 FETCH_BUTTON = "Fetch Report"
 KEPT_SEPARATOR = " \u00b7 "
 KEPT_TOOLTIP = (
@@ -863,6 +910,10 @@ class UsageExplorer(QDialog):
         self._runner = UsageRunner(self, working_dir, base_args)
         self._runner.finished.connect(self._on_result)
         self._runner.started_waiting.connect(self._on_waiting)
+        self._runner.progress.connect(self._on_progress)
+        # The latest run's fetch (_on_progress()): None while nothing is
+        # heard, -1 while the Platform builds the report, then the bytes
+        self._fetch_progress: int | None = None
         self._namespace_runner = UsageRunner(
             self, working_dir, base_args, command="yd list"
         )
@@ -1489,6 +1540,8 @@ class UsageExplorer(QDialog):
 
     def _request(self, view: _View, refresh: bool = False) -> None:
         arguments = view_args(view.scope, list(view.levels), refresh)
+        # Nothing heard of this run's fetch yet
+        self._fetch_progress = None
         self._requested = view
         self._resolving = not view.scope.pinned
         self._resolving_refresh = refresh
@@ -2042,12 +2095,25 @@ class UsageExplorer(QDialog):
         self._overlay.show_over_table()
         self._tick.start()
 
+    def _on_progress(self, received: int | None) -> None:
+        """
+        The latest run's fetch: None while the Platform builds the report,
+        then the bytes received.
+        """
+        self._fetch_progress = received if received is not None else -1
+        if self._overlay.isVisible():
+            self._show_elapsed()
+
     def _show_elapsed(self) -> None:
-        self._overlay_text.setText(
-            RUNNING_TEXT.format(
-                elapsed=_minutes_and_seconds(self._runner.elapsed_seconds())
-            )
-        )
+        elapsed = _minutes_and_seconds(self._runner.elapsed_seconds())
+        progress = self._fetch_progress
+        if progress is None:
+            text = RUNNING_TEXT.format(elapsed=elapsed)
+        elif progress < 0:
+            text = WAITING_TEXT.format(elapsed=elapsed)
+        else:
+            text = DOWNLOADING_TEXT.format(size=size_text(progress), elapsed=elapsed)
+        self._overlay_text.setText(text)
 
     def _idle(self) -> None:
         self._tick.stop()

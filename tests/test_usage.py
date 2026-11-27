@@ -37,6 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
 from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, report_time
 
 URL = "https://api.example.com"
@@ -361,6 +362,29 @@ class TestFetchProgress:
         with output_settings.configured(ctx.args):
             _report(ctx, refresh=True)
         assert "Waiting for the Platform" not in terminal.getvalue()
+
+    def test_progress_lines_for_a_program_reading_them(
+        self, platform, monkeypatch, capsys
+    ):
+        # As the Usage Explorer asks: under --json, off a terminal
+        monkeypatch.setenv(USAGE_PROGRESS_LINES, "1")
+        ctx = _ctx(json_output=True, json=True)
+        with output_settings.configured(ctx.args):
+            _report(ctx, refresh=True)
+        lines = [
+            line
+            for line in capsys.readouterr().err.splitlines()
+            if line.startswith(USAGE_PROGRESS_PREFIX)
+        ]
+        assert lines[0] == f"{USAGE_PROGRESS_PREFIX} waiting"
+        assert lines[-1] == f"{USAGE_PROGRESS_PREFIX} received {len(platform.content)}"
+
+    def test_no_progress_lines_unasked(self, platform, monkeypatch, capsys):
+        monkeypatch.delenv(USAGE_PROGRESS_LINES, raising=False)
+        ctx = _ctx(json_output=True, json=True)
+        with output_settings.configured(ctx.args):
+            _report(ctx, refresh=True)
+        assert USAGE_PROGRESS_PREFIX not in capsys.readouterr().err
 
     def test_no_progress_off_a_terminal(self, platform, monkeypatch):
         from rich.console import Console

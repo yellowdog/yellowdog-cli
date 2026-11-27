@@ -1,5 +1,5 @@
 """
-How `yd usage` writes a duration and a cost, and reads the report's times,
+How `yd usage` writes a duration, a cost and a size, and reads the report's times,
 shared by the command and Commander's Usage Explorer so that both read
 alike. Stdlib only: Commander imports it, and may import neither the SDK nor
 the command's own modules.
@@ -65,3 +65,18 @@ def cost_text_of(cost: float | None, partial: bool) -> str:
     if cost is None:
         return "-"
     return f"{cost:,.2f}" + ("+" if partial else "")
+
+
+def size_text(size: int) -> str:
+    """
+    A size in bytes in powers of 1000, as Finder and Windows Explorer give
+    it (and Commander's file previews), one decimal place above a kilobyte.
+    """
+    if size < 1000:
+        return f"{size} byte{'' if size == 1 else 's'}"
+    scaled = float(size)
+    for unit in ("kB", "MB"):
+        scaled /= 1000
+        if scaled < 1000:
+            return f"{scaled:,.1f} {unit}"
+    return f"{scaled / 1000:,.1f} GB"

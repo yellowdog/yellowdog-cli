@@ -31,6 +31,12 @@ YD_ENV_VAR_PREFIX = "YD_VAR_"
 ENV_OFF_VALUES = frozenset({"0", "false", "no", "off"})
 # Tab completion's Platform lookups (yd-completion) are on unless this is off
 YD_COMPLETION_LOOKUPS = "YD_COMPLETION_LOOKUPS"
+# Set to 1 by a program running 'yd usage' (Commander's Usage Explorer): the
+# fetch's progress written to standard error as plain lines beginning
+# USAGE_PROGRESS_PREFIX, 'waiting' and then 'received <bytes>', whatever the
+# output settings, for it to read as they come
+USAGE_PROGRESS_LINES = "YD_USAGE_PROGRESS_LINES"
+USAGE_PROGRESS_PREFIX = "yd-usage-progress:"
 # '.env' values override the environment's when this is set and not off
 YD_ENV_OVERRIDE = "YD_ENV_OVERRIDE"
 # Alternative env.var names

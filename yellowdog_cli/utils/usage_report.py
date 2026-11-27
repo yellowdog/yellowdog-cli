@@ -56,6 +56,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import time
 import zipfile
 from collections.abc import Iterator
@@ -73,6 +74,7 @@ from yellowdog_cli.utils.completion_cache import cache_directory, cache_key
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.limits import (
     RAW_CONNECT_TIMEOUT,
+    USAGE_PROGRESS_LINE_SECONDS,
     USAGE_REPORT_CHUNK_BYTES,
     USAGE_REPORT_READ_TIMEOUT,
     USAGE_REPORT_REUSE_SECONDS,
@@ -80,7 +82,8 @@ from yellowdog_cli.utils.limits import (
     USAGE_REPORTS_UNUSED_SECONDS,
 )
 from yellowdog_cli.utils.printing import print_info
-from yellowdog_cli.utils.usage_text import report_time
+from yellowdog_cli.utils.settings import USAGE_PROGRESS_LINES, USAGE_PROGRESS_PREFIX
+from yellowdog_cli.utils.usage_text import report_time, size_text
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_cost import Costing
@@ -723,7 +726,9 @@ class _FetchProgress:
     fetched: how long the Platform has taken to answer, then how much of
     the report has arrived and how fast; removed when the fetch ends, done
     or failed. Nothing at all where it is not shown (_progress_shown()).
-    The wait and the size are logged under --debug either way.
+    The wait and the size are logged under --debug either way. With
+    USAGE_PROGRESS_LINES set to 1, plain lines for a program to read
+    instead (_line()), whatever else is shown.
     """
 
     def __init__(self) -> None:
@@ -731,6 +736,8 @@ class _FetchProgress:
         self._task = None
         self._since = time.monotonic()
         self._received = 0
+        self._lines = os.environ.get(USAGE_PROGRESS_LINES) == "1"
+        self._last_line = 0.0
 
     def __enter__(self) -> _FetchProgress:
         if _progress_shown():
@@ -778,6 +785,7 @@ class _FetchProgress:
         self._since = time.monotonic()
         self._received = 0
         self._show(downloading=False, completed=0, since=self._since)
+        self._line("waiting")
 
     def answered(self) -> None:
         _LOG.debug("The Platform answered after %.1fs", time.monotonic() - self._since)
@@ -788,9 +796,24 @@ class _FetchProgress:
         """
         self._received += count
         self._show(downloading=True, completed=self._received)
+        if time.monotonic() - self._last_line >= USAGE_PROGRESS_LINE_SECONDS:
+            self._line(f"received {self._received}")
 
     def done(self) -> None:
         _LOG.debug("Received %s", size_text(self._received))
+        self._line(f"received {self._received}")
+
+    def _line(self, text: str) -> None:
+        """
+        A progress line for the program that asked for them, written to
+        standard error as it is, flushed: a protocol, never a message for
+        a reader, so not through printing.py, whose settings would change it.
+        """
+        if not self._lines:
+            return
+        self._last_line = time.monotonic()
+        sys.stderr.write(f"{USAGE_PROGRESS_PREFIX} {text}\n")
+        sys.stderr.flush()
 
     def _show(self, **fields) -> None:
         if self._progress is None or self._task is None:
@@ -1380,21 +1403,6 @@ def _seconds(text: str | None) -> float:
         return float(text) if text else 0.0
     except ValueError:
         return 0.0
-
-
-def size_text(size: int) -> str:
-    """
-    A size in bytes in powers of 1000, as Finder and Windows Explorer give
-    it (and Commander's file previews), one decimal place above a kilobyte.
-    """
-    if size < 1000:
-        return f"{size} byte{'' if size == 1 else 's'}"
-    scaled = float(size)
-    for unit in ("kB", "MB"):
-        scaled /= 1000
-        if scaled < 1000:
-            return f"{scaled:,.1f} {unit}"
-    return f"{scaled / 1000:,.1f} GB"
 
 
 # The environment variables naming the temporary directory, as a shell
