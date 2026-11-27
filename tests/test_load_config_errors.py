@@ -299,6 +299,18 @@ class TestAMissingCredentialSaysWhy:
         _exits_3(load_config.load_config_common)
         assert f"'{url}'" in loading[-1] and "https://" in loading[-1]
 
+    @pytest.mark.parametrize(
+        "url", ["https://api.example.com/", "https://api.example.com//"]
+    )
+    def test_a_trailing_slash_is_dropped_from_the_url(self, loading, monkeypatch, url):
+        # Kept reports and prices are keyed on the URL, and requests built as
+        # f"{url}/path"; one written with a '/' would be another Platform
+        args = self._common_args()
+        args.key, args.secret, args.url = "k", "s", url
+        monkeypatch.setattr(load_config, "_ARGS", args)
+        load_config._load_config_file()
+        assert load_config.load_config_common().url == "https://api.example.com"
+
 
 class TestTheProvisioningPriority:
     def _loaded(self, monkeypatch, section: dict, overrides=None):

@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Configuration
+
+- **A trailing `/` on the API URL is dropped** (`url`, `YD_URL`, `--url`), so `https://api.yellowdog.ai/` is the same Platform as `https://api.yellowdog.ai`: `yd usage` reuses its kept reports and prices, and the CLI's own requests no longer carry a `//`.
+
 ### yd usage
 
 - **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
