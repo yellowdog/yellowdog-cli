@@ -10,6 +10,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **Choosing a namespace in the Usage Explorer loads it at once** when a report kept for the window shown already holds it (its own, or every namespace's), rather than awaiting Fetch Report.
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
 - **The Usage Explorer's Total by menu stays open while keys are ticked and unticked**, and regroups the table once, when it closes.
 - **`yd commander --usage-explorer` has a Dark Mode checkbox**, at the end of the Configuration row, sharing Commander's Dark Mode setting.

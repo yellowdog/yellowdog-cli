@@ -731,6 +731,12 @@ class UsageExplorer(QDialog):
         self._requested: _View | None = None
         self._requested_line = ""
         self._typed: tuple[str, str, str | None] | None = None
+        # The shown report's own window, as the document gives it, and the
+        # reports kept for this configuration as yd usage --reports lists
+        # them: what a namespace chosen is loaded from at once, when one
+        # kept covers it (_kept_report_covers())
+        self._shown_window: tuple[str, str] | None = None
+        self._kept_items: list[dict] = []
         # Whether the latest request is a new scope's first run, still
         # running (the view actions wait for it), and with '--refresh'
         self._resolving = False
@@ -823,10 +829,10 @@ class UsageExplorer(QDialog):
         self._namespace.addItem(ALL_NAMESPACES)
         self._namespace.setToolTip("The namespace to report on, or all of them")
         self._namespace.setMinimumContentsLength(16)
-        self._namespace.activated.connect(lambda *_: self._await_fetch())
+        self._namespace.activated.connect(lambda *_: self._namespace_chosen())
         line_edit = self._namespace.lineEdit()
         if line_edit is not None:
-            line_edit.editingFinished.connect(self._await_fetch)
+            line_edit.editingFinished.connect(self._namespace_chosen)
 
         self._cost = QCheckBox("Estimated cost", self)
         self._cost.setChecked(cost)
@@ -1110,6 +1116,8 @@ class UsageExplorer(QDialog):
         self._namespace.addItem(ALL_NAMESPACES)
         self._shown = None
         self._shown_inputs = None
+        self._shown_window = None
+        self._kept_items = []
         self._model.clear()
         self._export.setEnabled(False)
         self._show_breadcrumb((TOP_LEVEL,))
@@ -1265,6 +1273,7 @@ class UsageExplorer(QDialog):
             if result.exit_code == 0 and isinstance(document, list)
             else []
         )
+        self._kept_items = reports
         menu = cast(QMenu, self._kept.menu())
         menu.clear()
         for item in reports:
@@ -1363,17 +1372,69 @@ class UsageExplorer(QDialog):
             None if namespace in ("", ALL_NAMESPACES) else namespace,
         )
 
-    def _resolve(self, refresh: bool) -> None:
+    def _resolve(self, refresh: bool, window: tuple[str, str] | None = None) -> None:
         """
-        A new first run: the window as typed, at the top level.
+        A new first run: the window as typed, or the one given, at the top
+        level.
         """
         self._pending = False
         self._fetch_overlay.hide()
         self._typed = self._typed_inputs()
         self._requested_inputs = self._control_inputs()
         from_text, until_text, namespace = self._typed
+        if window is not None:
+            from_text, until_text = window
         scope = Scope(from_text, until_text, namespace, self._cost.isChecked())
         self._request(_View(scope, (TOP_LEVEL,)), refresh=refresh)
+
+    def _namespace_chosen(self) -> None:
+        """
+        A namespace chosen: loaded at once, in the shown report's window, when
+        a report kept for that window covers it, since yd usage then reads
+        that report rather than fetching one; else awaiting Fetch Report, as
+        any other control changed is.
+        """
+        typed = self._typed_inputs()
+        if typed != self._typed and self._kept_report_covers(typed):
+            shown = cast(_View, self._shown)
+            self._resolve(
+                refresh=False, window=(shown.scope.from_text, shown.scope.until_text)
+            )
+            return
+        self._await_fetch()
+
+    def _kept_report_covers(self, typed: tuple[str, str, str | None]) -> bool:
+        """
+        Whether, with From and Until as they were for the report shown, a
+        report kept with exactly its window is the namespace's own (or every
+        namespace's, for All namespaces), or every namespace's covering it:
+        asked for every one, or naming it, a namespace refused being left out
+        of the names. Exact windows, so that yd usage's own rules for which
+        kept window matches stay its own.
+        """
+        if (
+            self._shown is None
+            or self._resolving
+            or self._typed is None
+            or self._shown_window is None
+            or typed[:2] != self._typed[:2]
+        ):
+            return False
+        namespace = typed[2]
+        for item in self._kept_items:
+            if (item.get("from"), item.get("until")) != self._shown_window:
+                continue
+            kept_namespace = item.get("namespace") or None
+            if kept_namespace == namespace:
+                return True
+            covered = item.get("namespaces")
+            if (
+                namespace is not None
+                and kept_namespace is None
+                and (covered is None or namespace in covered)
+            ):
+                return True
+        return False
 
     @property
     def _busy(self) -> bool:
@@ -1680,6 +1741,10 @@ class UsageExplorer(QDialog):
             self._shown_inputs = self._requested_inputs
             self._resolving = False
         self._shown = self._requested = _View(scope, view.levels)
+        self._shown_window = (
+            str(document.get("from", "")),
+            str(document.get("until", "")),
+        )
         self._apply_hidden_columns()
         self._table.resizeColumnsToContents()
         self._show_breadcrumb(view.levels)

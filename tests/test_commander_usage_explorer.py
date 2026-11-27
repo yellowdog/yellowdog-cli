@@ -692,7 +692,8 @@ def test_changing_the_window_resets_the_breadcrumb(explorer, children):
     explorer._from.editingFinished.emit()
     fetch(explorer)
     assert usage_args(children)[:2] == ["--from", "2 days ago"]
-    # Choosing a namespace awaits it too
+    # Choosing a namespace awaits it too, with no report kept covering it
+    explorer._kept_items = []
     explorer._namespace.setCurrentText("team-sim")
     explorer._namespace.activated.emit(2)
     fetch(explorer)
@@ -1176,9 +1177,10 @@ def test_a_new_scopes_failed_first_run_puts_the_controls_back(explorer, children
         return usage_answer(command, args)
 
     children.answer = missing_namespace
+    # Covered by the report of every namespace kept, so run at once
     explorer._namespace.setCurrentText("team-gone")
     explorer._namespace.activated.emit(0)
-    fetch(explorer)
+    settle(explorer)
     assert "The namespace does not exist" in explorer._notes.text()
     assert explorer._namespace.currentText() == "All namespaces"
     assert explorer._preset.currentText() == "Last 7 days"
@@ -1624,6 +1626,67 @@ def test_choosing_a_kept_report_shows_it_at_once(explorer, children):
     assert value_of(args, "-n") == "team-render"
 
 
+def choose_namespace(explorer, namespace: str) -> None:
+    explorer._namespace.setCurrentText(namespace)
+    explorer._namespace.activated.emit(0)
+    QApplication.processEvents()
+
+
+def test_a_namespace_a_kept_report_covers_loads_at_once(explorer, children):
+    # The report shown is every namespace's, kept with its window (KEPT)
+    choose_namespace(explorer, "team-render")
+    assert not explorer._fetch_overlay.isVisible()
+    settle(explorer)
+    args = usage_args(children)
+    # In the shown report's own window, which yd usage matches to it
+    assert args[:4] == ["--from", FROM_TEXT, "--until", UNTIL_TEXT]
+    assert value_of(args, "-n") == "team-render"
+    assert explorer.breadcrumb_text() == "All"
+    # The controls keep what was typed, and name the report now shown
+    assert explorer._preset.currentText() == "Last 7 days"
+    assert not explorer._fetch_overlay.isVisible()
+    # Back to every namespace, whose report is kept too
+    choose_namespace(explorer, "All namespaces")
+    settle(explorer)
+    args = usage_args(children)
+    assert "-n" not in args and args[:2] == ["--from", FROM_TEXT]
+
+
+def test_a_namespace_no_kept_report_covers_awaits_fetch(explorer, children):
+    explorer._kept_items = [
+        {**KEPT[1], "namespaces": ["team-sim"]},
+    ]
+    started = len(children.started)
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+    assert len(children.started) == started
+
+
+def test_a_kept_report_of_another_window_does_not_cover_it(explorer, children):
+    explorer._kept_items = [{**KEPT[1], "until": "2026-11-25T15:03:00Z"}]
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+
+
+def test_a_changed_window_still_awaits_fetch(explorer, children):
+    started = len(children.started)
+    explorer._preset.setCurrentText("Last 30 days")
+    QApplication.processEvents()
+    choose_namespace(explorer, "team-render")
+    assert explorer._fetch_overlay.isVisible()
+    assert len(children.started) == started
+
+
+def test_a_namespace_kept_on_its_own_loads_at_once(explorer, children):
+    explorer._kept_items = [
+        {**KEPT[1], "namespace": "team-sim", "namespaces": ["team-sim"]}
+    ]
+    choose_namespace(explorer, "team-sim")
+    settle(explorer)
+    assert value_of(usage_args(children), "-n") == "team-sim"
+    assert not explorer._fetch_overlay.isVisible()
+
+
 def test_kept_reports_is_listed_again_after_a_fetch_only(explorer, children):
     listed = reports_runs(children)
     # A regroup of the report shown reuses it: no new report kept
@@ -1669,7 +1732,7 @@ def test_a_partial_account_report_says_which_namespaces(explorer, children):
     children.answer = named
     explorer._namespace.setCurrentText("team-render")
     explorer._namespace.activated.emit(0)
-    fetch(explorer)
+    settle(explorer)
     assert "Reporting on" not in explorer._notes.text()
 
 
