@@ -44,6 +44,7 @@
    * [Exploring Usage](#exploring-usage)
       * [Running the Explorer on Its Own](#running-the-explorer-on-its-own)
       * [Usage Explorer Details](#usage-explorer-details)
+         * [The PDF Report](#the-pdf-report)
    * [The Command Output](#the-command-output)
       * [Reading the Output](#reading-the-output)
          * [Reading Details](#reading-details)
@@ -63,7 +64,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Thu Nov 26 10:59:54 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 27 10:23:00 GMT 2026 -->
 
 <!--te-->
 
@@ -563,7 +564,7 @@ The **←** and **→** buttons step back and forth through your command history
 4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
 5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
 
-Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export CSV**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown.
+Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown, or the view as a PDF report for printing.
 
 ### Running the Explorer on Its Own
 
@@ -603,10 +604,11 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 **Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
 
-**Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row**, ticked at first, is unticked in its menu. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
+**Exporting.** **Export**'s menu saves the view in three forms. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row (CSV)**, ticked at first, is unticked in the menu. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory.
 
-- **Raw Numbers…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
-- **As Shown…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
+- **Raw Numbers (CSV)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
+- **As Shown (CSV)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
+- **PDF Report…**: the view as a report to print or share, suggested as `usage-<date>-<time>.pdf`. See [The PDF Report](#the-pdf-report).
 
 **Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
 
@@ -619,6 +621,20 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 **Kept Reports.** The menu lists the reports `yd usage` keeps for this configuration's account and Application, the last fetched first, each by its window (in UTC) and namespace, its tooltip saying when it was fetched and last used. It is listed again whenever a report is fetched, and is disabled while none is kept. A report fetched for a window ending now is listed by its fixed dates, so choosing it shows that report as it was. Reports are kept for a week unused, at most 20 of them.
 
 **What is remembered.** Between sessions: the window's size and place, the window preset, whether **Estimated cost** is ticked, which figure columns are shown, the table's text size, and whether an export includes the Total row.
+
+#### The PDF Report
+
+**PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by and drilled into, and when the report was fetched. Three headline figures follow: the estimated cost, the running time and the Instances. Then comes the table, with its visible columns and every row, ending with the **Total** row.
+
+![The top of a PDF report's first page: the title, the period and namespace, the scope, the estimated cost, running time and Instances, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
+
+- **The table always fits the page's width.** Its type is reduced as far as 6pt for a wide view. Beyond that, long names are shortened in the middle with `…`. Nothing is cut off at the side.
+- **Rows continue on as many pages as they need.** Each later page repeats the column headings, and every page is numbered.
+- **Notes follow the table**: which namespaces are covered, any warning, and the instance types with no list price.
+- **Without Estimated cost**, nothing about cost appears: its figure, its column and the footer's note on list prices are left out, and the title is "Compute Usage".
+- **Pages are A4**, or US Letter where your system measures in US units. Tick **Landscape PDF** in the menu for landscape pages, which fit a wide view at a larger size; it is remembered.
+- **The report is of the view shown.** Controls changed since, awaiting **Fetch Report**, do not change it.
+
 
 ## The Command Output
 

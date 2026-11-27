@@ -80,6 +80,12 @@ from yellowdog_cli.commander.output_pane import (
     copy_to_clipboard,
 )
 from yellowdog_cli.commander.processes import child_process
+from yellowdog_cli.commander.usage_pdf import write_pdf
+from yellowdog_cli.commander.usage_report_layout import (
+    NO_INSTANCES,
+    NO_MATCHING_INSTANCES,
+    report_content,
+)
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
     STATUS_COLUMNS,
@@ -332,12 +338,17 @@ SETTING_EXPLORER_COST = "usageExplorer/cost"
 SETTING_EXPLORER_HIDDEN_COLUMNS = "usageExplorer/hiddenColumns"
 SETTING_EXPLORER_FONT_SIZE = "usageExplorer/fontSize"
 SETTING_EXPLORER_EXPORT_TOTAL = "usageExplorer/exportTotal"
+SETTING_EXPLORER_PDF_LANDSCAPE = "usageExplorer/pdfLandscape"
 # The CSV export's suggested name (hyphenated, no colons, which Windows refuses
 # in a file name) and the save dialog's filter
 EXPORT_NAME_FORMAT = "usage-%Y%m%d-%H%M%S.csv"
 EXPORT_FILTER = "CSV files (*.csv);;All files (*)"
 EXPORTED_LOG = "Saved the Usage Explorer's table to '{path}'"
 EXPORT_FAILED = "Could not save the table to '{path}': {error}"
+EXPORT_PDF_NAME_FORMAT = "usage-%Y%m%d-%H%M%S.pdf"
+EXPORT_PDF_FILTER = "PDF files (*.pdf);;All files (*)"
+EXPORTED_PDF_LOG = "Saved the Usage Explorer's report to '{path}'"
+EXPORT_PDF_FAILED = "Could not save the report to '{path}': {error}"
 
 EXPLORER_SIZE = (1000, 640)
 # A new scope's first level: every namespace, totalled by namespace
@@ -372,8 +383,6 @@ NO_KEPT_TOOLTIP = "No reports are kept for this configuration yet"
 FETCH_TEXT = "Fetch the usage report for this window and namespace"
 FETCHED_LOG = "Fetched the usage report: {command}"
 FAILED_LOG = "{command} failed (exit {code}): {message}"
-NO_INSTANCES = "No Instances in this window"
-NO_MATCHING_INSTANCES = "No Instances in this window match the filters"
 PRICES_REFUSED = "This Application may not read cloud prices; no cost is estimated"
 
 # What an exit code means, said beneath the CLI's message (exit codes 2, 3
@@ -736,6 +745,10 @@ class UsageExplorer(QDialog):
         # them: what a namespace chosen is loaded from at once, when one
         # kept covers it (_kept_report_covers())
         self._shown_window: tuple[str, str] | None = None
+        # The shown view's document and its notes (the notes strip's lines,
+        # the CLI's warnings and the Details), for the PDF report
+        self._shown_document: dict | None = None
+        self._shown_notes: list[str] = []
         self._kept_items: list[dict] = []
         # Whether the latest request is a new scope's first run, still
         # running (the view actions wait for it), and with '--refresh'
@@ -948,28 +961,35 @@ class UsageExplorer(QDialog):
         self._copy_command.clicked.connect(
             lambda: copy_to_clipboard(self._command_line.text())
         )
-        # Export CSV: a menu of the two forms, raw figures first
-        self._export = QPushButton("Export CSV", self)
+        # Export: the two CSV forms, raw figures first, then the PDF report
+        self._export = QPushButton("Export", self)
         self._export.setAutoDefault(False)
         self._export.setToolTip(
-            "Save the table's visible columns and rows, the Total row too,"
-            " as a CSV file"
+            "Save the table's visible columns and rows as a CSV file,"
+            " or the view as a PDF report"
         )
         self._export.setEnabled(False)
         export_menu = QMenu(self._export)
-        self._export_raw = QAction("Raw Numbers…", export_menu)
+        self._export_raw = QAction("Raw Numbers (CSV)…", export_menu)
         export_menu.addAction(self._export_raw)
         self._export_raw.setToolTip(
             "Instances, hours as decimals and the cost as a number,"
             " with the running hours no price covered"
         )
         self._export_raw.triggered.connect(partial(self._export_csv, True))
-        self._export_shown = QAction("As Shown…", export_menu)
+        self._export_shown = QAction("As Shown (CSV)…", export_menu)
         export_menu.addAction(self._export_shown)
         self._export_shown.setToolTip("Every cell as the table shows it")
         self._export_shown.triggered.connect(partial(self._export_csv, False))
+        self._export_pdf_action = QAction("PDF Report…", export_menu)
+        export_menu.addAction(self._export_pdf_action)
+        self._export_pdf_action.setToolTip(
+            "The view as a report for printing: the period, headline figures"
+            " and the table, on as many pages as it needs"
+        )
+        self._export_pdf_action.triggered.connect(self._export_pdf)
         export_menu.addSeparator()
-        self._export_total = QAction("Include Total Row", export_menu)
+        self._export_total = QAction("Include Total Row (CSV)", export_menu)
         self._export_total.setCheckable(True)
         self._export_total.setChecked(
             bool(
@@ -978,13 +998,33 @@ class UsageExplorer(QDialog):
                 )
             )
         )
-        self._export_total.setToolTip("End the file with the table's Total row")
+        self._export_total.setToolTip(
+            "End a CSV file with the table's Total row; a PDF report always has it"
+        )
         self._export_total.toggled.connect(
             lambda checked: file_dialogs.dialog_settings().setValue(
                 SETTING_EXPLORER_EXPORT_TOTAL, checked
             )
         )
         export_menu.addAction(self._export_total)
+        self._pdf_landscape = QAction("Landscape PDF", export_menu)
+        self._pdf_landscape.setCheckable(True)
+        self._pdf_landscape.setChecked(
+            bool(
+                file_dialogs.dialog_settings().value(
+                    SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
+                )
+            )
+        )
+        self._pdf_landscape.setToolTip(
+            "Lay the PDF report's pages out landscape, for a wide table"
+        )
+        self._pdf_landscape.toggled.connect(
+            lambda checked: file_dialogs.dialog_settings().setValue(
+                SETTING_EXPLORER_PDF_LANDSCAPE, checked
+            )
+        )
+        export_menu.addAction(self._pdf_landscape)
         export_menu.setToolTipsVisible(True)
         self._export.setMenu(export_menu)
 
@@ -1117,6 +1157,8 @@ class UsageExplorer(QDialog):
         self._shown = None
         self._shown_inputs = None
         self._shown_window = None
+        self._shown_document = None
+        self._shown_notes = []
         self._kept_items = []
         self._model.clear()
         self._export.setEnabled(False)
@@ -1643,6 +1685,62 @@ class UsageExplorer(QDialog):
             return
         self.logged.emit(EXPORTED_LOG.format(path=path))
 
+    def _export_pdf(self) -> None:
+        """
+        The view shown, saved as a PDF report to a file the user names: its
+        visible columns and rows with the Total row, the tiles from the Total
+        row of every column, the scope and notes of the view shown (never of
+        controls changed since), portrait unless Landscape PDF is ticked; the
+        outcome logged, and a failure shown too.
+        """
+        shown, document = self._shown, self._shown_document
+        if shown is None or document is None:
+            return
+        model = self._model
+        visible = [
+            column
+            for column in range(model.columnCount())
+            if not self._table.isColumnHidden(column)
+        ]
+        if not visible:
+            return
+        every = list(range(model.columnCount()))
+        rows = model.text_rows(visible)
+        headings, body = rows[0], rows[1:]
+        total = body.pop() if model.has_total else None
+        total_by_heading = None
+        if model.has_total:
+            all_rows = model.text_rows(every)
+            total_by_heading = dict(zip(all_rows[0], all_rows[-1], strict=True))
+        key_columns = len([column for column in visible if column < len(model.by)])
+        content = report_content(
+            document,
+            shown.levels,
+            headings,
+            key_columns,
+            body,
+            total,
+            total_by_heading,
+            bool(shown.scope.cost),
+            list(self._shown_notes),
+        )
+        name = datetime.now().strftime(EXPORT_PDF_NAME_FORMAT)
+        path = self._file_dialogs.save_file(
+            caption="Export PDF",
+            directory=os.path.join(self._working_dir(), name),
+            file_pattern=EXPORT_PDF_FILTER,
+        )
+        if path is None:
+            return
+        try:
+            write_pdf(path, content, landscape=self._pdf_landscape.isChecked())
+        except OSError as error:
+            message = EXPORT_PDF_FAILED.format(path=path, error=error)
+            self.logged.emit(message)
+            self._say([message], error=True)
+            return
+        self.logged.emit(EXPORTED_PDF_LOG.format(path=path))
+
     def _copy_cells(self) -> None:
         """
         The selected cells as tab-separated text, their headings first.
@@ -1727,6 +1825,14 @@ class UsageExplorer(QDialog):
         """
         notes, details = self._notes_of(document)
         notes.extend(warnings or [])
+        # What the PDF report prints: the document and the notes of the view
+        # shown, never of the controls; an empty view's line is the report's
+        # in the table's place, so not a note too
+        shown_notes = [
+            note
+            for note in (*notes, *details)
+            if note not in (NO_INSTANCES, NO_MATCHING_INSTANCES)
+        ]
         self._model.set_document(document, bool(view.scope.cost))
         self._export.setEnabled(True)
         scope = (
@@ -1745,6 +1851,8 @@ class UsageExplorer(QDialog):
             str(document.get("from", "")),
             str(document.get("until", "")),
         )
+        self._shown_document = document
+        self._shown_notes = shown_notes
         self._apply_hidden_columns()
         self._table.resizeColumnsToContents()
         self._show_breadcrumb(view.levels)

@@ -11,6 +11,7 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget
 
+from yellowdog_cli.commander.usage_report_layout import COST_NOTE
 from yellowdog_cli.commander.usage_views import heading, row_cells
 
 # The value columns after the key columns, and the '--sort' key of each
@@ -24,10 +25,7 @@ VALUE_COLUMNS: tuple[tuple[str, str], ...] = (
 COST_HEADING = "Est. cost ({currency})"
 COST_SORT_KEY = "cost"
 # What the estimate leaves out, said on its heading
-COST_TOOLTIP = (
-    "Linux list prices today; spot Instances at the region's mean spot price;"
-    " no discounts, savings plans, licences or disks; running time only"
-)
+COST_TOOLTIP = COST_NOTE
 # The status columns after the cost, in row_cells()'s order, hidden at first
 STATUS_COLUMNS: tuple[str, ...] = ("pending", "stopping", "terminating", "unknown")
 # The figure columns a right-click may hide, in the order shown: all but the

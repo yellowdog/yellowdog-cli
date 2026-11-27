@@ -26,7 +26,7 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QStyle
 
 import yellowdog_cli.commander.usage_explorer as usage_explorer
-from yellowdog_cli.commander import commander
+from yellowdog_cli.commander import commander, usage_explorer
 from yellowdog_cli.commander.branding import BRANDING_IMAGE_SIZE
 from yellowdog_cli.commander.commander import YellowDogApp
 from yellowdog_cli.commander.output_pane import (
@@ -36,12 +36,14 @@ from yellowdog_cli.commander.output_pane import (
 from yellowdog_cli.commander.usage_explorer import (
     CRUMB_SEPARATOR,
     DARK_SEPARATOR_STYLE,
+    EXPORTED_PDF_LOG,
     KEPT_SEPARATOR,
     SETTING_EXPLORER_COST,
     SETTING_EXPLORER_EXPORT_TOTAL,
     SETTING_EXPLORER_FONT_SIZE,
     SETTING_EXPLORER_GEOMETRY,
     SETTING_EXPLORER_HIDDEN_COLUMNS,
+    SETTING_EXPLORER_PDF_LANDSCAPE,
     SETTING_EXPLORER_PRESET,
     TABLE_INDENT,
     RunResult,
@@ -1367,16 +1369,129 @@ def read_csv(path) -> list[list[str]]:
 
 
 def test_export_offers_raw_numbers_first(explorer):
+    assert explorer._export.text() == "Export"
     menu = explorer._export.menu()
     assert [action.text() for action in menu.actions()] == [
-        "Raw Numbers…",
-        "As Shown…",
+        "Raw Numbers (CSV)…",
+        "As Shown (CSV)…",
+        "PDF Report…",
         "",
-        "Include Total Row",
+        "Include Total Row (CSV)",
+        "Landscape PDF",
     ]
-    # The Total row included unless unticked
+    # The Total row included unless unticked; portrait unless ticked
     assert explorer._export_total.isCheckable()
     assert explorer._export_total.isChecked()
+    assert explorer._pdf_landscape.isCheckable()
+    assert not explorer._pdf_landscape.isChecked()
+    assert all(action.toolTip() for action in menu.actions() if action.text())
+
+
+def export_pdf_to(explorer, path, monkeypatch) -> list[dict]:
+    """
+    Choose PDF Report… with the save dialog answering 'path' (None:
+    dismissed), returning what the dialog was asked.
+    """
+    asked: list[dict] = []
+
+    def save_file(**kwargs):
+        asked.append(kwargs)
+        return None if path is None else str(path)
+
+    monkeypatch.setattr(explorer._file_dialogs, "save_file", save_file)
+    explorer._export_pdf_action.trigger()
+    return asked
+
+
+def test_a_pdf_report_is_saved_and_logged(explorer, tmp_path, monkeypatch):
+    target = tmp_path / "usage.pdf"
+    asked = export_pdf_to(explorer, target, monkeypatch)
+    assert target.read_bytes().startswith(b"%PDF")
+    suggested = asked[0]["directory"]
+    assert os.path.dirname(suggested) == str(tmp_path)
+    assert re.fullmatch(r"usage-\d{8}-\d{6}\.pdf", os.path.basename(suggested))
+    assert explorer.log_lines[-1] == EXPORTED_PDF_LOG.format(path=target)
+
+
+def test_the_pdf_is_of_the_view_shown_not_the_controls(
+    explorer, children, tmp_path, monkeypatch
+):
+    made: list[dict] = []
+    real = usage_explorer.report_content
+
+    def spy(document, *args):
+        made.append(document)
+        return real(document, *args)
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    shown = explorer._shown_document
+    explorer._kept_items = []
+    explorer._namespace.setCurrentText("team-sim")
+    explorer._namespace.activated.emit(0)
+    QApplication.processEvents()
+    assert explorer._fetch_overlay.isVisible()
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert made == [shown]
+    assert made[0]["namespace"] is None
+
+
+def test_landscape_pdf_is_remembered(
+    explorer, tmp_path, monkeypatch, commander_dialog_settings
+):
+    written: list[bool] = []
+    monkeypatch.setattr(
+        usage_explorer,
+        "write_pdf",
+        lambda path, content, landscape: written.append(landscape) or 1,
+    )
+    explorer._pdf_landscape.trigger()
+    assert commander_dialog_settings.value(SETTING_EXPLORER_PDF_LANDSCAPE, type=bool)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert written == [True]
+    window = UsageExplorer(
+        "Usage Explorer", lambda: str(tmp_path), lambda: list(BASE_ARGS), QFont(), False
+    )
+    try:
+        assert window._pdf_landscape.isChecked()
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
+
+
+def test_a_pdf_that_cannot_be_saved_is_said(explorer, tmp_path, monkeypatch):
+    target = tmp_path / "missing" / "usage.pdf"
+    export_pdf_to(explorer, target, monkeypatch)
+    assert str(target) in explorer._notes.text()
+    assert str(target) in explorer.log_lines[-1]
+    assert not target.exists()
+
+
+def test_an_empty_view_says_so_once_in_its_report(
+    explorer, children, tmp_path, monkeypatch
+):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    children.answer = lambda c, a: (json.dumps(document(["namespace"], [])), "", 0, 0)
+    explorer._refresh.click()
+    settle(explorer)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    [content] = made
+    assert content.empty_text == "No Instances in this window"
+    assert "No Instances in this window" not in content.notes
+    assert (tmp_path / "usage.pdf").exists()
+
+
+def test_a_dismissed_pdf_export_writes_nothing(explorer, tmp_path, monkeypatch):
+    logged = len(explorer.log_lines)
+    export_pdf_to(explorer, None, monkeypatch)
+    assert len(explorer.log_lines) == logged
+    assert not list(tmp_path.glob("*.pdf"))
 
 
 @pytest.mark.parametrize("raw", [True, False])
