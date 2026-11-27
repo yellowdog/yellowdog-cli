@@ -26,8 +26,10 @@ from PyQt6.QtCore import (
     QModelIndex,
     QObject,
     QPoint,
+    QPointF,
     QProcess,
     QRect,
+    QRectF,
     QSize,
     Qt,
     QTimer,
@@ -40,12 +42,15 @@ from PyQt6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QIcon,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
+    QPen,
+    QPixmap,
     QShortcut,
     QTextOption,
 )
@@ -132,6 +137,13 @@ from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
 
 # How long Find waits after a key before running the view
 FIND_DELAY_MS = 400
+# Find's width beyond its placeholder's: its margins and the clear button
+FIND_FIELD_ROOM = 40
+# The calendar icon at the end of From and Until, in points (drawn at twice
+# that for high-resolution screens), and its strokes' colour in each mode
+CALENDAR_ICON_SIZE = 16
+CALENDAR_ICON_LIGHT = "#5a5a5a"
+CALENDAR_ICON_DARK = "#c8c8c8"
 
 # The longest a value is named in a row's right-click menu, longer ones
 # shortened in the middle
@@ -531,6 +543,53 @@ def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
     return widget
 
 
+def _with_aligned_figures(font: QFont) -> QFont:
+    """
+    The font with its figures each one width (OpenType 'tnum'), so that a
+    column of numbers lines up, where this Qt can ask for it (6.7 on).
+    """
+    if hasattr(QFont, "setFeature"):
+        font.setFeature(QFont.Tag("tnum"), 1)
+    return font
+
+
+def _calendar_icon(dark: bool) -> QIcon:
+    """
+    A small calendar, drawn: a page with its binding rings, a header band
+    and three rows of days, in the text's grey for the mode.
+    """
+    scale = 2
+    size = CALENDAR_ICON_SIZE * scale
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    colour = QColor(CALENDAR_ICON_DARK if dark else CALENDAR_ICON_LIGHT)
+    pen = QPen(colour)
+    pen.setWidthF(1.2 * scale)
+    painter.setPen(pen)
+    page = QRectF(2.5 * scale, 3.5 * scale, 11 * scale, 10 * scale)
+    painter.drawRoundedRect(page, 1.5 * scale, 1.5 * scale)
+    painter.fillRect(QRectF(page.left(), page.top(), page.width(), 2.5 * scale), colour)
+    for x in (5.5, 10.5):
+        painter.drawLine(QPointF(x * scale, 2 * scale), QPointF(x * scale, 4.5 * scale))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(colour)
+    for row in range(3):
+        for column in range(4):
+            painter.drawRect(
+                QRectF(
+                    (4.4 + column * 2.2) * scale,
+                    (7.4 + row * 1.9) * scale,
+                    1.2 * scale,
+                    1.1 * scale,
+                )
+            )
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
+
+
 def _menu_value(text: str) -> str:
     """
     A value as a menu names it, shortened in the middle past MENU_VALUE_CHARS.
@@ -897,9 +956,11 @@ class UsageExplorer(QDialog):
         self._build_controls(
             preset, bool(settings.value(SETTING_EXPLORER_COST, True, type=bool))
         )
-        # Commander's text at its default size, at the size last left here
+        # The window's own font, its figures of one width so that a column of
+        # them lines up, at Commander's text size by default, at the size
+        # last left here
         self._default_font_size = font.pointSize()
-        table_font = QFont(font)
+        table_font = _with_aligned_figures(QFont(QApplication.font()))
         size = settings.value(SETTING_EXPLORER_FONT_SIZE, font.pointSize(), type=int)
         table_font.setPointSize(
             max(MIN_OUTPUT_FONT_SIZE, min(MAX_OUTPUT_FONT_SIZE, int(size)))
@@ -1045,6 +1106,8 @@ class UsageExplorer(QDialog):
     def _build_table(self, font: QFont) -> None:
         self._model = UsageTableModel(self)
         self._table = QTableView(self)
+        # Each column's width for its contents (_fit_columns())
+        self._natural_widths: dict[int, int] = {}
         self._table.setHorizontalHeader(_UsageHeader(self._table))
         self._grid_style = _GridStyle(self._dark)
         self._table.setStyle(self._grid_style)
@@ -1086,6 +1149,10 @@ class UsageExplorer(QDialog):
         # Return drills and Cmd/Ctrl+C copies: taken here, before the view's
         # own handling (which copies one cell) or the dialog's
         self._table.installEventFilter(self)
+        viewport = self._table.viewport()
+        if viewport is not None:
+            # Its resizes refit the columns to its width (_fill_width())
+            viewport.installEventFilter(self)
         self._overlay = _TableOverlay(
             self._table, "Stop", "Stop this yd usage run; the previous view stays"
         )
@@ -1241,10 +1308,8 @@ class UsageExplorer(QDialog):
         window_row.addWidget(self._preset)
         window_row.addWidget(QLabel("From", self))
         window_row.addWidget(self._from, 1)
-        window_row.addWidget(self._from_pick)
         window_row.addWidget(QLabel("Until", self))
         window_row.addWidget(self._until, 1)
-        window_row.addWidget(self._until_pick)
         window_row.addWidget(self._kept)
         scope_row = QHBoxLayout()
         scope_row.addWidget(QLabel("Namespace:", self))
@@ -1415,7 +1480,7 @@ class UsageExplorer(QDialog):
         font.setPointSize(size)
         self._table.setFont(font)
         self._fit_rows()
-        self._table.resizeColumnsToContents()
+        self._fit_columns()
         file_dialogs.dialog_settings().setValue(SETTING_EXPLORER_FONT_SIZE, size)
 
     def _fit_rows(self) -> None:
@@ -1429,6 +1494,8 @@ class UsageExplorer(QDialog):
 
     def set_dark(self, dark: bool) -> None:
         self._dark = dark
+        for pick in (self._from_pick, self._until_pick):
+            pick.setIcon(_calendar_icon(dark))
         self._colour_notes()
         self._style_separator()
         self._grid_style = _GridStyle(dark)
@@ -1477,6 +1544,12 @@ class UsageExplorer(QDialog):
         super().keyPressEvent(a0)
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        # Find's filter is installed before the table is built
+        table = getattr(self, "_table", None)
+        if a0 is not None and table is not None and a0 is table.viewport():
+            if a1 is not None and a1.type() == QEvent.Type.Resize:
+                self._fill_width()
+            return super().eventFilter(a0, a1)
         if (
             a0 is self._find
             and isinstance(a1, QKeyEvent)
@@ -1758,32 +1831,39 @@ class UsageExplorer(QDialog):
 
     def _day_picker(
         self, field: QLineEdit, until: bool
-    ) -> tuple[QToolButton, QCalendarWidget]:
+    ) -> tuple[QAction, QCalendarWidget]:
         """
-        The arrow beside From or Until, opening a calendar: a day chosen is
-        its start (From) or its end (Until), in UTC, as if typed.
+        A calendar icon at the end of From or Until, opening a calendar: a
+        day chosen is its start (From) or its end (Until), in UTC, as if
+        typed.
         """
-        button = QToolButton(self)
-        button.setArrowType(Qt.ArrowType.DownArrow)
-        button.setAutoRaise(True)
-        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        # The arrow says it opens: no second indicator beside it
-        button.setStyleSheet("QToolButton::menu-indicator { image: none; }")
-        button.setToolTip(
+        action = field.addAction(
+            _calendar_icon(self._dark), QLineEdit.ActionPosition.TrailingPosition
+        )
+        assert action is not None
+        action.setToolTip(
             "Choose the last day of the window: it ends at the day's end (UTC)"
             if until
             else "Choose the first day of the window: it starts at midnight (UTC)"
         )
-        menu = QMenu(button)
+        menu = QMenu(field)
         calendar = QCalendarWidget(menu)
-        action = QWidgetAction(menu)
-        action.setDefaultWidget(calendar)
-        menu.addAction(action)
+        widget = QWidgetAction(menu)
+        widget.setDefaultWidget(calendar)
+        menu.addAction(widget)
         menu.aboutToShow.connect(partial(self._open_calendar, field, calendar, until))
         calendar.clicked.connect(partial(self._day_chosen, field, menu, until))
         calendar.activated.connect(partial(self._day_chosen, field, menu, until))
-        button.setMenu(menu)
-        return button, calendar
+        action.setMenu(menu)
+        # Opened beneath the field, its right edge at the field's
+        action.triggered.connect(
+            lambda _checked=False: menu.popup(
+                field.mapToGlobal(
+                    QPoint(field.width() - menu.sizeHint().width(), field.height())
+                )
+            )
+        )
+        return action, calendar
 
     @staticmethod
     def _open_calendar(
@@ -1917,7 +1997,12 @@ class UsageExplorer(QDialog):
         self._find_timer.stop()
         if self._find.text() != level.match:
             self._find.setText(level.match)
-        self._find.setPlaceholderText(f"Find in {heading(level.by[0])}…")
+        placeholder = f"Find in {heading(level.by[0])}…"
+        self._find.setPlaceholderText(placeholder)
+        # Wide enough to read its placeholder, the clear button beside it
+        self._find.setMinimumWidth(
+            self._find.fontMetrics().horizontalAdvance(placeholder) + FIND_FIELD_ROOM
+        )
 
     def _show_row_menu(self, position: QPoint) -> None:
         index = self._table.indexAt(position)
@@ -2060,6 +2145,7 @@ class UsageExplorer(QDialog):
             ",".join(k for k in HIDEABLE_COLUMNS if k in self._hidden),
         )
         self._apply_hidden_columns()
+        self._fit_columns()
 
     def _apply_hidden_columns(self) -> None:
         """
@@ -2069,6 +2155,48 @@ class UsageExplorer(QDialog):
         hidden = {self._model.figure_column(key) for key in self._hidden}
         for column in range(self._model.columnCount()):
             self._table.setColumnHidden(column, column in hidden)
+
+    def _fit_columns(self) -> None:
+        """
+        The columns as wide as their contents, the spare width the table's
+        given to its last key column (_fill_width()).
+        """
+        self._table.resizeColumnsToContents()
+        header = self._table.horizontalHeader()
+        if header is not None:
+            self._natural_widths = {
+                column: header.sectionSize(column)
+                for column in range(self._model.columnCount())
+            }
+        self._fill_width()
+
+    def _fill_width(self) -> None:
+        """
+        The last key column widened by the width the visible columns leave
+        of the table's, so that they fill it; as wide as its contents where
+        they leave none. Run again as the table changes width.
+        """
+        header = self._table.horizontalHeader()
+        viewport = self._table.viewport()
+        if header is None or viewport is None:
+            return
+        visible = [
+            column
+            for column in range(self._model.columnCount())
+            if not self._table.isColumnHidden(column)
+        ]
+        keys = [column for column in visible if column < len(self._model.by)]
+        if not keys:
+            return
+        natural = self._natural_widths
+        spare = viewport.width() - sum(
+            natural.get(column, header.sectionSize(column)) for column in visible
+        )
+        stretched = keys[-1]
+        header.resizeSection(
+            stretched,
+            natural.get(stretched, header.sectionSize(stretched)) + max(0, spare),
+        )
 
     def _toggle_details(self) -> None:
         self._details.setVisible(not self._details.isVisible())
@@ -2306,7 +2434,7 @@ class UsageExplorer(QDialog):
         self._forward_levels = self._requested_forward
         self._apply_hidden_columns()
         self._model.set_row_tooltip(self._row_tooltip(view.levels))
-        self._table.resizeColumnsToContents()
+        self._fit_columns()
         self._show_breadcrumb(view.levels)
         self._sync_controls_to_shown()
         self._command_line.setText(self._requested_line)

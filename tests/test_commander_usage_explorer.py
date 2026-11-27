@@ -2805,3 +2805,59 @@ def test_another_configuration_clears_forward(explorer, children):
     settle(explorer)
     explorer.reset("Usage Explorer — other.toml")
     assert not explorer._forward.isEnabled()
+
+
+def test_the_table_reads_in_the_windows_font_with_its_figures_aligned(explorer):
+    def check(font: QFont) -> None:
+        assert font.family() == QApplication.font().family()
+        if hasattr(QFont, "setFeature"):
+            assert font.isFeatureSet(QFont.Tag("tnum"))
+            assert font.featureValue(QFont.Tag("tnum")) == 1
+
+    check(explorer._table.font())
+    # Zoomed, the same font larger
+    size = explorer._table.font().pointSize()
+    explorer._zoom(1)
+    check(explorer._table.font())
+    assert explorer._table.font().pointSize() == size + 1
+
+
+def filled(explorer) -> bool:
+    """
+    Whether the visible columns are exactly as wide as the table's viewport.
+    """
+    table = explorer._table
+    header = table.horizontalHeader()
+    widths = sum(
+        header.sectionSize(c)
+        for c in range(explorer._model.columnCount())
+        if not table.isColumnHidden(c)
+    )
+    return widths == table.viewport().width()
+
+
+def test_the_columns_fill_the_tables_width(explorer, children):
+    assert filled(explorer)
+    explorer.resize(1400, 640)
+    QApplication.processEvents()
+    assert filled(explorer)
+    explorer._show_column("pending", True)
+    QApplication.processEvents()
+    assert filled(explorer)
+    explorer._zoom(1)
+    QApplication.processEvents()
+    assert filled(explorer)
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert filled(explorer)
+
+
+def test_the_fields_calendar_icon_opens_its_calendar(explorer):
+    assert explorer._from_pick in explorer._from.actions()
+    explorer._from_pick.trigger()
+    menu = QApplication.activePopupWidget()
+    try:
+        assert menu is explorer._from_pick.menu()
+    finally:
+        if menu is not None:
+            menu.close()

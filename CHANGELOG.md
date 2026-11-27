@@ -16,6 +16,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **The Usage Explorer's table reads in the window's own font**, its figures lined up, and its columns fill the table's width.
 - **Forward in the Usage Explorer** (Alt+Right; Cmd+] on macOS) goes down again to the levels Back or a crumb left.
 - **A calendar beside the Usage Explorer's From and Until**: the day chosen starts the window, or for Until ends it at the day's end (UTC); typing still works as before.
 - **The Usage Explorer says how far a report's fetch has got**: waiting for the Platform to build it, then how much has been downloaded.
