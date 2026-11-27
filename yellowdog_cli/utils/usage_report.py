@@ -209,6 +209,9 @@ class Report:
     # A kept report of every namespace read for this one namespace alone
     # (None: the report as the Platform sent it, for its own scope)
     only_namespace: str | None = None
+    # The account's name, looked up as it was fetched (None if it could not
+    # be, or for a report kept without it)
+    account_name: str | None = None
 
     @property
     def path(self) -> Path:
@@ -311,6 +314,7 @@ def usage_report(
     fetched.scope = scope
     fetched.account = report_account(ctx)
     fetched.namespace = namespace
+    fetched.account_name = account_name(ctx)
     _keep(root, directory, fetched)
     prune(root, keep=directory)
     report = _read_kept(directory)
@@ -575,6 +579,8 @@ class Fetched:
     # kept readable for yd usage --reports
     account: str = ""
     namespace: str | None = None
+    # The account's name (account_name())
+    account_name: str | None = None
 
 
 def _fetch(
@@ -916,6 +922,7 @@ def _keep(root: Path, directory: Path, fetched: Fetched) -> None:
                     "bytes": len(fetched.content),
                     "namespaces": fetched.namespaces,
                     "refused": fetched.refused,
+                    "accountName": fetched.account_name,
                     "scope": fetched.scope,
                     "account": fetched.account,
                     "namespace": fetched.namespace,
@@ -950,7 +957,32 @@ def _read_kept(directory: Path) -> Report | None:
         fetched_bytes=_bytes(fetched.get("bytes")),
         namespaces=_names(fetched.get("namespaces")),
         refused=_names(fetched.get("refused")) or [],
+        account_name=_non_empty_text(fetched.get("accountName")),
     )
+
+
+def _non_empty_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def account_name(ctx: RunContext) -> str | None:
+    """
+    The name of the account the Application is in, for the report to say
+    whose it is: None if it cannot be read, which leaves the report as it
+    is. An authentication or connection failure is raised, as any other
+    request's would be.
+    """
+    from yellowdog_cli.utils import entity_utils
+    from yellowdog_cli.utils.exit_codes import SESSION_FAILURES, classify
+
+    try:
+        name = entity_utils.get_application_details(ctx.client).accountName
+    except Exception as error:
+        if classify(error) in SESSION_FAILURES:
+            raise
+        _LOG.debug("Cannot read the account's name", exc_info=True)
+        return None
+    return _non_empty_text(name)
 
 
 def _names(value: object) -> list[str] | None:

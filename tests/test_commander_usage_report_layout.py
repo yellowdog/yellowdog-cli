@@ -61,6 +61,7 @@ def content(
         total = total[: len(keys) + len(figures)]
     return ReportContent(
         title="Compute Usage and Cost",
+        account_line="YellowDog Production · https://api.yellowdog.ai",
         subtitle="October 2026 · all namespaces",
         scope_lines=["Window: ...", "Totalled by Namespace", "Report fetched ..."],
         tiles=[Tile("Running", "48:00", "hours:minutes")],
@@ -443,3 +444,19 @@ def test_at_the_instance_level_the_instances_tile_counts_the_rows():
     total = ["Total", *CR_TOTAL[2:]]
     report = made(headings=headings, rows=rows, total=total)
     assert report.tiles[2] == Tile("Instances", "1,200", "in 1,200 groups")
+
+
+def test_the_account_line_names_the_account_and_the_platform():
+    document = dict(
+        OCTOBER,
+        namespace="team-render",
+        accountName="YellowDog Production",
+        url="https://api.yellowdog.ai",
+    )
+    assert made(document=document).account_line == (
+        "Account: YellowDog Production · https://api.yellowdog.ai"
+    )
+    # A report kept without the account's name: the URL alone
+    unnamed = dict(document, accountName=None)
+    assert made(document=unnamed).account_line == "https://api.yellowdog.ai"
+    assert made(document=dict(unnamed, url=None)).account_line == ""

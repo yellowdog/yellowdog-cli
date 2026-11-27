@@ -220,6 +220,8 @@ def show_usage(ctx: RunContext) -> None:
             {
                 "from": report.from_time,
                 "until": report.until_time,
+                "accountName": report.account_name,
+                "url": ctx.config.url,
                 "namespace": namespace,
                 "namespaces": report.namespaces,
                 "by": by,

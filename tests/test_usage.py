@@ -2627,3 +2627,63 @@ def test_report_time_reads_any_fraction(text, instant):
 def test_report_time_refuses_what_is_not_a_time():
     with pytest.raises(ValueError):
         report_time("not a time")
+
+
+class TestTheAccount:
+    """
+    The document names the account the report is of, and the Platform's
+    URL: the account name looked up as the report is fetched and kept with
+    it, so a reused report names it without asking again.
+    """
+
+    def _ctx(self, details=None, fails=None, **args) -> RunContext:
+        ctx = _ctx(json_output=True, json=True, **args)
+        lookup = ctx.client.application_client.get_application_details
+        if fails is not None:
+            lookup.side_effect = fails
+        else:
+            lookup.return_value = details or SimpleNamespace(
+                accountName="YellowDog Production",
+                allNamespacesReadable=True,
+                readableNamespaces=None,
+            )
+        return ctx
+
+    def _document(self, capsys, ctx) -> dict:
+        with output_settings.configured(ctx.args):
+            usage.show_usage(ctx)
+        return loads(capsys.readouterr().out)
+
+    def test_the_document_names_the_account_and_the_url(self, platform, capsys):
+        document = self._document(capsys, self._ctx())
+        assert document["accountName"] == "YellowDog Production"
+        assert document["url"] == URL
+
+    def test_a_reused_report_keeps_the_name(self, platform, capsys):
+        self._document(capsys, self._ctx())
+        ctx = self._ctx(fails=AssertionError("not asked again"))
+        document = self._document(capsys, ctx)
+        assert document["reused"] is True
+        assert document["accountName"] == "YellowDog Production"
+
+    def test_a_failed_lookup_leaves_the_name_out(self, platform, capsys):
+        ctx = self._ctx(namespace="team-render", fails=RuntimeError("no"))
+        document = self._document(capsys, ctx)
+        assert document["accountName"] is None
+        assert document["groups"]
+
+    def test_a_lost_session_still_fails(self, platform, capsys):
+        from requests.exceptions import ConnectionError as RequestsConnectionError
+
+        ctx = self._ctx(namespace="team-render", fails=RequestsConnectionError("down"))
+        with pytest.raises(RequestsConnectionError):
+            self._document(capsys, ctx)
+
+    def test_a_report_kept_without_the_name_has_none(self, platform, capsys):
+        report = _report(self._ctx())
+        kept = report.directory / "fetched.json"
+        data = loads(kept.read_text(encoding="utf-8"))
+        del data["accountName"]
+        kept.write_text(dumps(data), encoding="utf-8")
+        capsys.readouterr()
+        assert self._document(capsys, self._ctx())["accountName"] is None

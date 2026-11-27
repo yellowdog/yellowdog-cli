@@ -67,7 +67,8 @@ HEADING_LEADING = 1.25
 # The page's parts, top to bottom
 TITLE_SIZE = 16.0
 SUBTITLE_SIZE = 9.5
-HEADER_HEIGHT = 46.0
+ACCOUNT_SIZE = 8.5
+HEADER_HEIGHT = 60.0
 SLIM_HEADER_HEIGHT = 30.0
 SCOPE_SIZE = 7.5
 SCOPE_LINE_HEIGHT = 11.0
@@ -93,7 +94,8 @@ class Tile:
 @dataclass(frozen=True)
 class ReportContent:
     """
-    Everything a report shows, as text: the header, the scope lines, the
+    Everything a report shows, as text: the header (the title, the account
+    line naming the account and the Platform, the subtitle), the scope lines, the
     tiles, the table (the first key_columns columns keys, the rest figures;
     the Total row apart from the rows, None with no groups), the line shown
     in the table's place when it is empty, the notes after it and the
@@ -101,6 +103,7 @@ class ReportContent:
     """
 
     title: str
+    account_line: str
     subtitle: str
     scope_lines: list[str]
     tiles: list[Tile]
@@ -534,6 +537,16 @@ def report_content(
     )
     return ReportContent(
         title=REPORT_TITLE if cost else REPORT_TITLE_WITHOUT_COST,
+        account_line=" · ".join(
+            part
+            for part in (
+                f"Account: {document['accountName']}"
+                if document.get("accountName")
+                else "",
+                str(document.get("url") or ""),
+            )
+            if part
+        ),
         subtitle=f"{period} · {namespace or 'all namespaces'}",
         scope_lines=scope_lines,
         tiles=_tiles(document, total_by_heading, len(rows), cost),

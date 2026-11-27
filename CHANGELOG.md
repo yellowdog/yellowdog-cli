@@ -4,6 +4,14 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### yd usage
+
+- **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
+
+### Commander
+
+- **The Usage Explorer's PDF report names the account and the Platform's URL** beneath its title.
+
 ## 15.22.0 — 2026-11-27
 
 ### Upgrading
