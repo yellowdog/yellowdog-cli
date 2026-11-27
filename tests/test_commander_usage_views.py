@@ -307,15 +307,23 @@ def test_row_cells_format_as_the_cli():
         },
         "estimatedCost": 216.4,
         "unpricedRunningHours": 0.5,
+        "share": {"hours": 0.4123, "cost": 0.25},
     }
     assert row_cells(row, ["namespace"], True) == [
-        "team-a", "1,234", "41:10", "<0:01", "1,500:00", "216.40+",
+        "team-a", "1,234", "41:10", "<0:01", "1,500:00", "216.40+", "25.0%",
         "0:00", "<0:01", "0:00", "0:01",
     ]  # fmt: skip
     row["unpricedRunningHours"] = 0
     row["estimatedCost"] = None
     assert row_cells(row, ["namespace"], True)[5] == "-"
-    assert len(row_cells(row, ["namespace"], False)) == 9
+    # Without the cost, the share of the time
+    assert len(row_cells(row, ["namespace"], False)) == 10
+    assert row_cells(row, ["namespace"], False)[5] == "41.2%"
+    # No share to give: none of anything
+    row["share"] = {"hours": None, "cost": None}
+    assert row_cells(row, ["namespace"], True)[6] == "-"
+    del row["share"]
+    assert row_cells(row, ["namespace"], False)[5] == "-"
 
 
 def test_heading_reads_as_the_command():

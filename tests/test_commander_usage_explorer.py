@@ -358,6 +358,19 @@ def document(
     total["estimatedCost"] = round(sum(costs), 2) if costs else None
     total["unpricedRunningHours"] = sum(g["unpricedRunningHours"] for g in groups)
     total["groups"] = len(groups)
+    # Each group's share of the total, as yd usage writes it
+    for each in (*groups, total):
+        each.setdefault(
+            "share",
+            {
+                "hours": round(each["seconds"]["total"] / total["seconds"]["total"], 4)
+                if total["seconds"]["total"]
+                else None,
+                "cost": round(each["estimatedCost"] / total["estimatedCost"], 4)
+                if each["estimatedCost"] is not None and total["estimatedCost"]
+                else None,
+            },
+        )
     return {
         "from": FROM_ISO,
         "until": UNTIL_ISO,
@@ -1307,6 +1320,38 @@ def test_find_is_focused_by_its_shortcut(explorer):
     assert explorer.focusWidget() is explorer._find
 
 
+def test_the_share_column_follows_the_cost(explorer, children):
+    model = explorer._model
+    column = column_of(explorer, "Share of cost")
+    # team-render's 248.10 of 279.80
+    assert cells(explorer, 0)[column] == "88.7%"
+    assert cells(explorer, model.rowCount() - 1)[column] == "100.0%"
+    # Sorting by it is sorting by the cost
+    click_heading(explorer, "Share of cost")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "cost"
+    # The raw export gives the fraction
+    raw = model.raw_rows([0, column])
+    assert raw[0] == ["Namespace", "Share of cost (fraction)"]
+    assert raw[1][1] == "0.8867"
+    # Without the cost, the share of the time
+    explorer._cost.click()
+    settle(explorer)
+    assert "Share of time" in shown_headings(explorer)
+    assert "Share of cost" not in shown_headings(explorer)
+
+
+def test_each_figure_sorts_by_itself_with_no_instances_column(explorer, children):
+    tick(explorer, "instance-id")
+    settle(explorer)
+    tick(explorer, "namespace")
+    settle(explorer)
+    assert "Instances" not in shown_headings(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "running"
+
+
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
     for _ in range(3):
         double_click_row(explorer, 0)
@@ -1955,6 +2000,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
         "Total (hours)",
         "Est. cost (USD)",
         "Unpriced running (hours)",
+        "Share of cost (fraction)",
     ]
     body = json.loads(usage_answer("yd usage", ["--by", "namespace"])[0])
     expected = [
@@ -1966,6 +2012,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
             str(source["hours"]["total"]),
             str(source["estimatedCost"]),
             str(source["unpricedRunningHours"]),
+            str(source["share"]["cost"]),
         ]
         for name, source in (
             *((g["namespace"], g) for g in body["groups"]),
@@ -1974,7 +2021,7 @@ def test_export_of_raw_numbers(explorer, tmp_path, monkeypatch):
     ]
     assert rows[1:] == expected
     assert rows[1][1:3] == ["17", "47.2"]
-    assert rows[1][5:] == ["248.1", "0.7"]
+    assert rows[1][5:] == ["248.1", "0.7", "0.8867"]
 
 
 def test_a_raw_status_column_is_in_hours(explorer, tmp_path, monkeypatch):
@@ -1991,7 +2038,7 @@ def test_a_raw_export_without_cost_has_no_cost_columns(explorer, tmp_path, monke
     settle(explorer)
     target = tmp_path / "raw.csv"
     export_to(explorer, target, monkeypatch, raw=True)
-    assert read_csv(target)[0][-1] == "Total (hours)"
+    assert read_csv(target)[0][-2:] == ["Total (hours)", "Share of time (fraction)"]
 
 
 def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
@@ -2011,13 +2058,14 @@ def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
         "Stopped (h:mm)",
         "Total (h:mm)",
         "Est. cost (USD)",
+        "Share of cost",
     ]
     assert rows[1:] == [
         cells(explorer, row)[: len(rows[0])]
         for row in range(explorer._model.rowCount())
     ]
     assert rows[-1][0] == "Total"
-    assert rows[1][-1] == "248.10+"
+    assert rows[1][-2:] == ["248.10+", "88.7%"]
     assert explorer.log_lines[-1] == f"Saved the Usage Explorer's table to '{target}'"
 
 
@@ -2068,6 +2116,7 @@ def test_the_column_menu_offers_every_figure_but_the_cost(explorer):
         "Running",
         "Stopped",
         "Total",
+        "Share",
         "",
         "Pending",
         "Stopping",
@@ -2075,6 +2124,7 @@ def test_the_column_menu_offers_every_figure_but_the_cost(explorer):
         "Unknown",
     ]
     assert [a.isChecked() for a in menu.actions() if not a.isSeparator()] == [
+        True,
         True,
         True,
         True,
@@ -2121,6 +2171,7 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
         "Running (h:mm)",
         "Total (h:mm)",
         "Est. cost (USD)",
+        "Share of cost",
     ]
     assert commander_dialog_settings.value(SETTING_EXPLORER_HIDDEN_COLUMNS) == (
         "stopped,pending,stopping,terminating,unknown"
@@ -2131,7 +2182,7 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     assert "Stopped (h:mm)" not in shown_headings(explorer)
     explorer._cost.click()
     settle(explorer)
-    assert shown_headings(explorer)[-1] == "Total (h:mm)"
+    assert shown_headings(explorer)[-2:] == ["Total (h:mm)", "Share of time"]
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch, raw=True)
     assert "Stopped (hours)" not in read_csv(target)[0]

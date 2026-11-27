@@ -1036,6 +1036,8 @@ class TestTheCommand:
                 "unknown": 0,
                 "total": 7200,
             },
+            # 7,200 of the 13,860 seconds the two namespaces spent
+            "share": {"hours": 0.5195},
         }
 
     def test_no_instances_is_a_warning(self, platform, capsys):
@@ -2040,6 +2042,49 @@ def _show_priced(capsys, rows=PRICES, **args) -> tuple[str, str, MagicMock]:
         usage.show_usage(ctx)
     captured = capsys.readouterr()
     return captured.out, captured.err, search
+
+
+class TestShare:
+    """
+    Each group's share of the total, in the JSON: of the time, and with
+    --cost of the estimated cost, as fractions to four places.
+    """
+
+    def test_each_group_holds_its_share_of_the_time(self, platform, capsys):
+        document = loads(_show(capsys, json_output=True, json=True)[0])
+        shares = {g["namespace"]: g["share"] for g in document["groups"]}
+        assert shares == {
+            "team-render": {"hours": 0.5195},
+            "team-train": {"hours": 0.4805},
+        }
+        assert document["total"]["share"] == {"hours": 1.0}
+
+    def test_with_cost_the_share_of_the_cost_too(self, platform, capsys):
+        out, _, _ = _show_priced(capsys, usage_cost=True, json_output=True, json=True)
+        document = loads(out)
+        shares = {g["namespace"]: g["share"] for g in document["groups"]}
+        # team-render's Instance never ran, so cost nothing
+        assert shares == {
+            "team-render": {"hours": 0.5195, "cost": 0.0},
+            "team-train": {"hours": 0.4805, "cost": 1.0},
+        }
+        assert document["total"]["share"] == {"hours": 1.0, "cost": 1.0}
+
+    def test_nothing_priced_is_no_share_of_the_cost(self, platform, capsys):
+        out, _, _ = _show_priced(
+            capsys, _refused(), usage_cost=True, json_output=True, json=True
+        )
+        document = loads(out)
+        assert all(g["share"]["cost"] is None for g in document["groups"])
+        assert document["total"]["share"]["cost"] is None
+
+    def test_the_rest_top_cut_holds_its_share(self, platform, capsys):
+        document = loads(_show(capsys, usage_top=1, json_output=True, json=True)[0])
+        assert document["more"]["share"] == {"hours": 0.4805}
+
+    def test_a_share_of_nothing_is_none(self):
+        assert usage.share_of(0.0, 0.0) is None
+        assert usage.share_of(1.0, 3.0) == 0.3333
 
 
 class TestTheCommandWithCost:

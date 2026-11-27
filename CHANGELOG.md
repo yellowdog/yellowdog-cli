@@ -10,11 +10,14 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### yd usage
 
+- **`yd usage --json` gives each group's `share` of the total**: of the time (`hours`), and with `--cost` of the estimated cost (`cost`), as fractions to four places, in `groups`, `more` and `total`.
 - **A large usage report is read again in a moment.** The first read sums its Instances into one row per Compute Requirement, provider, region, instance type, source and pricing, kept beside the report, which later runs and every Usage Explorer view read instead: a report of 1.5 million Instances takes 0.2 seconds rather than 5 to 15, and much less memory. `--by instance-id` and `--where instance-id=` still read every Instance.
 - **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
 
 ### Commander
 
+- **A Share column in the Usage Explorer** gives each row's share of the total cost (or, without the cost, of the time), and the PDF report and exports carry it.
+- **Fixed: at a Usage Explorer level grouped by Instance ID, clicking a figure's heading sorted by the column beside it.**
 - **A Columns button in the Usage Explorer** shows or hides figure columns, as right-clicking a heading does; both menus stay open while you tick.
 - **Find in the Usage Explorer**: type in **Find** to show only the rows whose first column holds the text (`--where <key>=*text*`), the Total row being theirs; Cmd/Ctrl+F goes to it.
 - **Right-click a row in the Usage Explorer** to drill into it, filter to a value of one of several keys, copy the cell or the selection, or (inside Commander) show a YellowDog ID with `yd show`. Each row's tooltip says what double-clicking it shows, and copied headings no longer carry the sort's numbers.

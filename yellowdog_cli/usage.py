@@ -214,6 +214,7 @@ def show_usage(ctx: RunContext) -> None:
         bool(ctx.args.reverse),
     )
     shown, rest = top_groups(groups, ctx.args.usage_top)
+    whole = _total_group(groups, {})
 
     if ctx.args.json_output:
         print_json(
@@ -229,10 +230,10 @@ def show_usage(ctx: RunContext) -> None:
                 "fetched": report.fetched.isoformat().replace("+00:00", "Z"),
                 "reused": report.from_cache,
                 "reportFile": str(report.path),
-                "groups": [_group_json(group, costing) for group in shown],
-                "total": _total_json(_total_group(groups, {}), len(groups), costing),
+                "groups": [_group_json(group, costing, whole) for group in shown],
+                "total": _total_json(whole, len(groups), costing),
                 **(
-                    {"more": _more_json(rest, len(groups) - len(shown), costing)}
+                    {"more": _more_json(rest, len(groups) - len(shown), costing, whole)}
                     if ctx.args.usage_top
                     else {}
                 ),
@@ -461,18 +462,18 @@ def _total_json(total: UsageGroup, count: int, costing: Costing | None) -> dict:
     """
     The document's 'total': every group, those '--top' cut included.
     """
-    return {"groups": count, **_group_json(total, costing)}
+    return {"groups": count, **_group_json(total, costing, total)}
 
 
 def _more_json(
-    rest: UsageGroup | None, count: int, costing: Costing | None
+    rest: UsageGroup | None, count: int, costing: Costing | None, whole: UsageGroup
 ) -> dict | None:
     """
     '--top''s remainder in the document: the groups cut and their sums.
     """
     if rest is None:
         return None
-    summed = _group_json(rest, costing)
+    summed = _group_json(rest, costing, whole)
     for key in rest.keys:
         summed.pop(key, None)
     summed.pop("creatorId", None)
@@ -601,7 +602,30 @@ def _unpriced_json(costing: Costing) -> dict:
     }
 
 
-def _group_json(group: UsageGroup, costing: Costing | None = None) -> dict:
+def share_of(part: float, whole: float) -> float | None:
+    """
+    A part's share of a whole, a fraction to four places; None of nothing.
+    """
+    return round(part / whole, 4) if whole else None
+
+
+def _share_json(group: UsageGroup, whole: UsageGroup, cost: bool) -> dict:
+    """
+    A group's share of every group's total: of the time, and with '--cost'
+    of the estimated cost (None where either has no estimate).
+    """
+    share: dict = {"hours": share_of(group.total_seconds, whole.total_seconds)}
+    if cost:
+        part, total = estimated_cost(group), estimated_cost(whole)
+        share["cost"] = (
+            share_of(part, total) if part is not None and total is not None else None
+        )
+    return share
+
+
+def _group_json(
+    group: UsageGroup, costing: Costing | None = None, whole: UsageGroup | None = None
+) -> dict:
     keys: dict = {}
     for key, value in group.keys.items():
         keys[key] = value
@@ -624,6 +648,11 @@ def _group_json(group: UsageGroup, costing: Costing | None = None) -> dict:
             "total": round(group.total_seconds),
         },
         **(_cost_json(group) if costing is not None else {}),
+        **(
+            {"share": _share_json(group, whole, costing is not None)}
+            if whole is not None
+            else {}
+        ),
     }
 
 

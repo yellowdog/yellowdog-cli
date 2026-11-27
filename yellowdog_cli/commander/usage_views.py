@@ -39,6 +39,8 @@ __all__ = [
     "narrowed",
     "preset_window",
     "row_cells",
+    "share_basis",
+    "share_text",
     "sort_order",
     "toggled_by",
     "view_args",
@@ -353,7 +355,8 @@ def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
     """
     A row's cell texts, as `yd usage` writes them: the `--by` keys' values,
     Instances, the running, stopped and total times, the cost when asked for,
-    then the pending, stopping, terminating and unknown times.
+    its share of the total (share_text()), then the pending, stopping,
+    terminating and unknown times.
     """
     seconds = row.get("seconds", {})
     cells = [str(row.get(key, "-")) for key in by]
@@ -367,5 +370,23 @@ def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
                 row.get("estimatedCost"), row.get("unpricedRunningHours", 0) > 0
             )
         )
+    cells.append(share_text(row, cost))
     cells += [duration_text(seconds.get(key, 0)) for key in _OTHER_STATE_KEYS]
     return cells
+
+
+def share_basis(cost: bool) -> str:
+    """
+    What a share is of: the estimated cost where the view has it, else the
+    time (the key under a group's 'share').
+    """
+    return "cost" if cost else "hours"
+
+
+def share_text(row: dict, cost: bool) -> str:
+    """
+    A row's share of the total as a percentage to one place, '-' where it
+    has none (nothing to share, or nothing priced).
+    """
+    share = (row.get("share") or {}).get(share_basis(cost))
+    return f"{share * 100:.1f}%" if isinstance(share, int | float) else "-"
