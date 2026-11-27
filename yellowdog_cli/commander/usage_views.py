@@ -393,12 +393,26 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
 EXPLORER_OUTPUT_OPTIONS = frozenset({"--nf", "-q", "--json"})
 
 
+# The options every view is given with a value, which the command line shown
+# leaves out with it: the row limit (VIEW_TOP_ROWS), since typed in a
+# terminal the command shows every row
+EXPLORER_VALUE_OPTIONS = frozenset({"--top"})
+
+
 def command_line(arguments: list[str]) -> str:
     """
     The command as typed in a shell, for display and copying, less
-    EXPLORER_OUTPUT_OPTIONS.
+    EXPLORER_OUTPUT_OPTIONS and EXPLORER_VALUE_OPTIONS with their values.
     """
-    shown = [a for a in arguments if a not in EXPLORER_OUTPUT_OPTIONS]
+    shown: list[str] = []
+    skip = False
+    for argument in arguments:
+        if skip:
+            skip = False
+        elif argument in EXPLORER_VALUE_OPTIONS:
+            skip = True
+        elif argument not in EXPLORER_OUTPUT_OPTIONS:
+            shown.append(argument)
     return " ".join(["yd usage", *(shlex.quote(a) for a in shown)])
 
 

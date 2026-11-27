@@ -296,6 +296,13 @@ def test_command_line_leaves_out_the_explorers_output_options():
     )
 
 
+def test_command_line_leaves_out_the_views_row_limit():
+    # Typed in a terminal, the command shows every row
+    assert command_line(["--by", "cr", "--top", "500", "--cost"]) == (
+        "yd usage --by cr --cost"
+    )
+
+
 def test_row_cells_format_as_the_cli():
     row = {
         "namespace": "team-a",

@@ -854,7 +854,7 @@ def test_cost_notes_and_partial_costs(explorer, children):
 def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qapp):
     started = [a for c, a in children.started if is_view(c, a)][-1]
     assert explorer._command_line.text() == (
-        "yd usage -c config.toml --from '7 days ago' --until now --by namespace --top 500 --cost"
+        "yd usage -c config.toml --from '7 days ago' --until now --by namespace --cost"
     )
     assert explorer._command_line.isReadOnly()
     assert started == BASE_ARGS + usage_args(children)
@@ -869,7 +869,7 @@ def test_the_command_line_is_the_views_and_can_be_copied(explorer, children, qap
 def test_a_fetch_is_logged_and_a_regroup_is_not(explorer, children):
     assert explorer.log_lines == [
         "Fetched the usage report: yd usage -c config.toml"
-        " --from '7 days ago' --until now --by namespace --top 500 --cost"
+        " --from '7 days ago' --until now --by namespace --cost"
     ]
     assert "fetched" in explorer._report.text()
     double_click_row(explorer, 0)
