@@ -43,6 +43,7 @@ __all__ = [
     "narrowed",
     "preset_window",
     "row_cells",
+    "row_count_text",
     "share_basis",
     "share_text",
     "sort_order",
@@ -423,6 +424,17 @@ def row_cells(row: dict, by: list[str], cost: bool) -> list[str]:
     cells.append(share_text(row, cost))
     cells += [duration_text(seconds.get(key, 0)) for key in _OTHER_STATE_KEYS]
     return cells
+
+
+def row_count_text(shown: int, total: int) -> str:
+    """
+    How many rows a view has: '4 rows', or with rows '--top' summed in the
+    '(n more)' row, '500 of 1,234 rows'.
+    """
+    noun = "row" if total == 1 else "rows"
+    if shown < total:
+        return f"{shown:,} of {total:,} {noun}"
+    return f"{total:,} {noun}"
 
 
 def share_basis(cost: bool) -> str:

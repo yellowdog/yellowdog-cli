@@ -2339,7 +2339,7 @@ yd usage --from '2026-11-01' --until '2026-11-08' --by namespace,instance-type
     │ team-render  │ g4dn.xlarge     │ 1           │ 0:00             │ 168:00           │ 168:00         │
     │ team-train   │ t3a.2xlarge     │ 121         │ 11:12            │ 0:00             │ 12:00          │
     └──────────────┴─────────────────┴─────────────┴──────────────────┴──────────────────┴────────────────┘
-2026-11-19 07:48:26 : Total: 122 Instances, 11:12 running of 180:00 in all statuses
+2026-11-19 07:48:26 : Total: 2 rows, 122 Instances, 11:12 running of 180:00 in all statuses
 ```
 
 Key options:

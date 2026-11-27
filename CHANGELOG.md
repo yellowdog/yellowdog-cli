@@ -10,12 +10,14 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### yd usage
 
+- **`yd usage`'s total line starts with the table's row count** (`Total: 4 rows, 43 Instances, …`), counting every row, those `--top` summed included.
 - **`yd usage --json` gives each group's `share` of the total**: of the time (`hours`), and with `--cost` of the estimated cost (`cost`), as fractions to four places, in `groups`, `more` and `total`.
 - **A large usage report is read again in a moment.** The first read sums its Instances into one row per Compute Requirement, provider, region, instance type, source and pricing, kept beside the report, which later runs and every Usage Explorer view read instead: a report of 1.5 million Instances takes 0.2 seconds rather than 5 to 15, and much less memory. `--by instance-id` and `--where instance-id=` still read every Instance.
 - **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
 
 ### Commander
 
+- **The Usage Explorer counts a view's rows** beneath the table (`4 rows`, or `500 of 1,234 rows` with **Show All** beside it), and the PDF report's Instances tile says `in 4 rows`.
 - **The Usage Explorer's table reads in the window's own font**, its figures lined up, and its columns fill the table's width.
 - **Forward in the Usage Explorer** (Alt+Right; Cmd+] on macOS) goes down again to the levels Back or a crumb left.
 - **A calendar beside the Usage Explorer's From and Until**: the day chosen starts the window, or for Until ends it at the day's end (UTC); typing still works as before.

@@ -290,7 +290,8 @@ def show_usage(ctx: RunContext) -> None:
         print_warning(line)
     total = _total_group(groups, {})
     print_info(
-        f"Total: {counted(total.instances, 'Instance')},"
+        f"Total: {counted(len(groups), 'row')},"
+        f" {counted(total.instances, 'Instance')},"
         f" {duration_text(total.seconds['running'])} running of"
         f" {duration_text(total.total_seconds)} in all statuses"
         + (_total_cost_text(total) if costing is not None else "")

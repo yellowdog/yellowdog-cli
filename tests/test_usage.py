@@ -1022,7 +1022,7 @@ class TestTheCommand:
         row = next(line for line in out.splitlines() if "team-render" in line)
         assert "2:00" in row  # the stopped hours
         # 6,300 seconds running; 13,860 in all
-        assert "Total: 4 Instances, 1:45 running of 3:51 in all statuses" in out
+        assert "Total: 2 rows, 4 Instances, 1:45 running of 3:51 in all statuses" in out
 
     def test_a_kept_report_says_so_and_how_to_refresh(self, platform, capsys):
         _show(capsys)
@@ -1496,7 +1496,7 @@ class TestFilters:
         where = [("provider", "aws"), ("instance-type", "t3a.*"), ("provider", "oci")]
         out, _ = _show(capsys, usage_where=where)
         assert ", by namespace, where provider=aws or oci, instance-type=t3a.*" in out
-        assert "Total: 2 Instances" in out
+        assert "Total: 1 row, 2 Instances" in out
         document = loads(
             _show(capsys, usage_where=where, json_output=True, json=True)[0]
         )
@@ -2223,6 +2223,10 @@ class TestTop:
         capsys.readouterr()  # the fetch's own lines
         out, _ = _show(capsys, usage_top=5, json_output=True, json=True)
         assert loads(out)["more"] is None
+
+    def test_the_total_counts_every_row_those_cut_included(self, platform, capsys):
+        out, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
+        assert "Total: 4 rows, 4 Instances" in out
 
     def test_no_more_key_without_top(self, platform, capsys):
         out, _ = _show(capsys, json_output=True, json=True)

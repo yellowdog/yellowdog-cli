@@ -617,7 +617,7 @@ def _tiles(
     instances = Tile(
         "Instances",
         by_name.get("Instances", f"{groups:,}"),
-        f"in {groups:,} group{'' if groups == 1 else 's'}",
+        f"in {groups:,} row{'' if groups == 1 else 's'}",
     )
     running = Tile("Running", by_name.get("Running", "0:00"), "hours:minutes")
     if not cost:

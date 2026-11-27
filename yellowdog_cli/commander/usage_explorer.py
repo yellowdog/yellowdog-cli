@@ -103,7 +103,6 @@ from yellowdog_cli.commander.usage_report_layout import (
 )
 from yellowdog_cli.commander.usage_table import (
     HIDEABLE_COLUMNS,
-    MORE_LABEL,
     STATUS_COLUMNS,
     UsageTableModel,
     figure_heading,
@@ -125,6 +124,7 @@ from yellowdog_cli.commander.usage_views import (
     heading,
     narrowed,
     preset_window,
+    row_count_text,
     sort_order,
     toggled_by,
     view_args,
@@ -1177,6 +1177,12 @@ class UsageExplorer(QDialog):
         self._details_button.setToolTip("List the instance types with no list price")
         self._details_button.clicked.connect(self._toggle_details)
         self._details_button.hide()
+        # The view's rows, beneath the table: '4 rows', or '500 of 1,234 rows'
+        # where the rest are summed, with Show All beside it
+        self._row_count = QLabel(self)
+        self._row_count.setTextFormat(Qt.TextFormat.PlainText)
+        self._row_count.setForegroundRole(QPalette.ColorRole.PlaceholderText)
+        self._row_count.hide()
         # Shown while the level's rows past the first VIEW_TOP_ROWS are summed
         self._show_all = QPushButton("Show All", self)
         self._show_all.setAutoDefault(False)
@@ -1328,8 +1334,11 @@ class UsageExplorer(QDialog):
         crumb_row.addWidget(self._export)
         notes_row = QHBoxLayout()
         notes_row.addWidget(self._notes, 1)
-        notes_row.addWidget(self._show_all, 0, Qt.AlignmentFlag.AlignTop)
         notes_row.addWidget(self._details_button, 0, Qt.AlignmentFlag.AlignTop)
+        count_row = QHBoxLayout()
+        count_row.addWidget(self._row_count)
+        count_row.addWidget(self._show_all)
+        count_row.addStretch(1)
         command_row = QHBoxLayout()
         command_row.addWidget(self._command_line, 1)
         command_row.addWidget(self._copy_command)
@@ -1368,6 +1377,7 @@ class UsageExplorer(QDialog):
         layout.addWidget(self._separator)
         layout.addLayout(crumb_row)
         layout.addWidget(_TableFrame(self._table, self), 1)
+        layout.addLayout(count_row)
         layout.addLayout(notes_row)
         layout.addWidget(self._details)
         layout.addWidget(self._report)
@@ -1432,6 +1442,7 @@ class UsageExplorer(QDialog):
         self._show_breadcrumb((TOP_LEVEL,))
         self._show_find(TOP_LEVEL)
         self._show_all.hide()
+        self._row_count.hide()
         self._say([])
         self._report.clear()
         self._command_line.clear()
@@ -2201,6 +2212,19 @@ class UsageExplorer(QDialog):
     def _toggle_details(self) -> None:
         self._details.setVisible(not self._details.isVisible())
 
+    def _show_row_count(self, document: dict) -> None:
+        """
+        The view's row count beneath the table, every row counted, those
+        '--top' summed included (the document's total says); none for a view
+        with no rows, which its note says.
+        """
+        shown = len(document["groups"])
+        total = document.get("total")
+        every = total.get("groups") if isinstance(total, dict) else None
+        every = every if isinstance(every, int) else shown
+        self._row_count.setText(row_count_text(shown, every))
+        self._row_count.setVisible(shown > 0)
+
     def _show_all_rows(self) -> None:
         """
         Show All: the level shown again with every row.
@@ -2445,6 +2469,7 @@ class UsageExplorer(QDialog):
         if not details:
             self._details.hide()
         self._show_all.setVisible(isinstance(more, dict))
+        self._show_row_count(document)
         reused = bool(document.get("reused", True))
         self._report.setText(
             f"Report: {_shown_time(document.get('from', ''))} →"
@@ -2464,13 +2489,6 @@ class UsageExplorer(QDialog):
         instance type with no list price.
         """
         lines: list[str] = []
-        more = document.get("more")
-        if isinstance(more, dict):
-            shown, cut = len(document["groups"]), int(more["groups"])
-            lines.append(
-                f"The first {shown:,} of {shown + cut:,} rows, the other {cut:,}"
-                f" summed in the '{MORE_LABEL.format(count=cut)}' row"
-            )
         covered = document.get("namespaces")
         if document.get("namespace") is None and isinstance(covered, list):
             # An Application allowed to read usage in some namespaces only

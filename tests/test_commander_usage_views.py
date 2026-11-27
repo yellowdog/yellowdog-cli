@@ -27,6 +27,7 @@ from yellowdog_cli.commander.usage_views import (
     narrowed,
     preset_window,
     row_cells,
+    row_count_text,
     sort_order,
     toggled_by,
     view_args,
@@ -396,3 +397,17 @@ def test_a_day_starts_and_ends_at_midnight_utc():
 )
 def test_the_day_a_field_names(text, until, day):
     assert day_of(text, until) == day
+
+
+@pytest.mark.parametrize(
+    "shown, total, text",
+    [
+        (1, 1, "1 row"),
+        (4, 4, "4 rows"),
+        (1234, 1234, "1,234 rows"),
+        # Rows left out by --top, summed in the '(n more)' row
+        (500, 1234, "500 of 1,234 rows"),
+    ],
+)
+def test_row_count_text(shown, total, text):
+    assert row_count_text(shown, total) == text

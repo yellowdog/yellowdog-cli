@@ -1136,7 +1136,8 @@ def test_rows_past_the_first_are_summed_and_can_all_be_shown(explorer, children)
     assert cells(explorer, 2)[:2] == ["(1 more)", "1"]
     assert model.data(model.index(2, 0), Qt.ItemDataRole.FontRole).italic()
     assert cells(explorer, 3)[0] == "Total"
-    assert "The first 2 of 3 rows" in explorer._notes.text()
+    assert explorer._row_count.text() == "2 of 3 rows"
+    assert "rows" not in explorer._notes.text()
     # The CSV of raw numbers labels the summed row as the table does
     assert model.raw_rows([0, 1])[3] == ["(1 more)", "1"]
     # The summed row is no group to drill into
@@ -1151,7 +1152,7 @@ def test_rows_past_the_first_are_summed_and_can_all_be_shown(explorer, children)
     assert model.rowCount() == 4
     assert cells(explorer, 2)[0] == "team-2"
     assert not explorer._show_all.isVisible()
-    assert "The first" not in explorer._notes.text()
+    assert explorer._row_count.text() == "3 rows"
 
 
 def row_menu(explorer, row: int, column: int = 0) -> dict:
@@ -2867,3 +2868,24 @@ def test_the_fields_calendar_icon_opens_its_calendar(explorer):
     finally:
         if menu is not None:
             menu.close()
+
+
+def test_the_row_count_is_beneath_the_table(explorer):
+    count = explorer._row_count
+    assert count.isVisible() and count.text() == "2 rows"
+    frame = explorer._table.parentWidget()
+    below_table = frame.mapTo(explorer, frame.rect().bottomLeft()).y()
+    above_notes = explorer._notes.mapTo(explorer, explorer._notes.rect().topLeft()).y()
+    top = count.mapTo(explorer, count.rect().topLeft()).y()
+    assert below_table <= top < above_notes
+    # It follows the view: a level drilled into counts its own rows
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert count.text() == "2 rows"
+
+
+def test_an_empty_view_counts_no_rows(explorer, children):
+    children.answer = lambda c, a: (json.dumps(document(["namespace"], [])), "", 0, 0)
+    explorer._refresh.click()
+    settle(explorer)
+    assert not explorer._row_count.isVisible()
