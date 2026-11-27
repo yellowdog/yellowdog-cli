@@ -5,6 +5,8 @@ test has a settings file of its own (conftest's commander_dialog_settings),
 empty unless it fills it.
 """
 
+import os
+
 import pytest
 import qt_guard
 
@@ -58,9 +60,14 @@ def no_config_of_its_own(tmp_path, monkeypatch):
     in the directory, and none of the user's (conftest empties
     XDG_CONFIG_HOME for the session).
     """
+    from yellowdog_cli.commander import commander
+    from yellowdog_cli.utils import paths
+
     launch = tmp_path / "launch"
     launch.mkdir()
     monkeypatch.chdir(launch)
+    # The CLI's own default, which conftest otherwise keeps out of GUI tests
+    monkeypatch.setattr(commander, "default_config_file", paths.default_config_file)
     return launch
 
 
@@ -120,14 +127,32 @@ def test_a_file_named_at_launch_wins(
     assert window._config_file.endswith("other.toml")
 
 
-def test_not_over_a_config_toml_where_launched(
+def test_a_config_toml_where_launched_comes_first(
     made, commander_dialog_settings, no_config_of_its_own, tmp_path
 ):
-    # Commander's commands use it when none is selected; a remembered file
-    # would silently replace it
+    # The CLI's default, as the Usage Explorer run on its own chooses
     commander_dialog_settings.setValue(SETTING_CONFIG_FILE, config_file(tmp_path))
-    (no_config_of_its_own / "config.toml").write_text("", encoding="utf-8")
-    assert made()._config_file is None
+    launched = no_config_of_its_own / "config.toml"
+    launched.write_text("", encoding="utf-8")
+    window = made()
+    assert window._config_file is not None
+    assert os.path.abspath(window._config_file) == str(launched)
+    # Selected, so remembered in its turn
+    assert commander_dialog_settings.value(SETTING_CONFIG_FILE) == str(launched)
+
+
+def test_the_users_own_config_comes_next(
+    made, commander_dialog_settings, no_config_of_its_own, tmp_path, monkeypatch
+):
+    commander_dialog_settings.setValue(SETTING_CONFIG_FILE, config_file(tmp_path))
+    home = tmp_path / "xdg"
+    users = home / "yellowdog" / "config.toml"
+    users.parent.mkdir(parents=True)
+    users.write_text("", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
+    window = made()
+    assert window._config_file is not None
+    assert os.path.abspath(window._config_file) == str(users)
 
 
 def test_not_once_it_is_gone(
@@ -151,16 +176,16 @@ def test_selecting_remembers_and_deselecting_forgets(
 
 
 def test_starting_with_nothing_selected_forgets_nothing(
-    made, commander_dialog_settings, tmp_path, monkeypatch
+    made, commander_dialog_settings, no_config_of_its_own, tmp_path
 ):
-    # Launched where the CLI has a configuration of its own, nothing is
-    # selected, but the remembered file is kept for a launch elsewhere
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "config.toml").write_text("", encoding="utf-8")
-    remembered = config_file(tmp_path)
-    commander_dialog_settings.setValue(SETTING_CONFIG_FILE, remembered)
+    # Nothing found at all: nothing is selected, and nothing forgotten
+    commander_dialog_settings.setValue(
+        SETTING_CONFIG_FILE, str(tmp_path / "gone" / "config.toml")
+    )
     assert made()._config_file is None
-    assert commander_dialog_settings.value(SETTING_CONFIG_FILE) == remembered
+    assert commander_dialog_settings.value(SETTING_CONFIG_FILE) == str(
+        tmp_path / "gone" / "config.toml"
+    )
 
 
 # --- The window ------------------------------------------------------------

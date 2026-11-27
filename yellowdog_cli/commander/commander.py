@@ -368,7 +368,7 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
 
         # Defer config parse until after the window is shown, so the GUI is
         # visible before yd variables runs
-        config_file = settings.config_file or self._remembered_config_file()
+        config_file = settings.config_file or self._startup_config_file()
         QTimer.singleShot(0, lambda: self._set_config_file(config_file))
 
         self._any_command_history = CommandHistory()
@@ -424,16 +424,16 @@ class YellowDogApp(WorkPanel, ComputePanel, ResultsPanel):
             self._set_cursor_to_end(self.properties)
 
     @staticmethod
-    def _remembered_config_file() -> str | None:
+    def _startup_config_file() -> str | None:
         """
-        The configuration file selected last time, to select again when none
-        is named at launch: unless the CLI would find one of its own there
-        (config.toml in the launch directory, else the user's own), which
-        Commander's commands use when none is selected and which a
-        remembered file would silently replace; and only while it exists.
+        The configuration file to select when none is named at launch, as the
+        Usage Explorer run on its own chooses: the one the CLI reads by
+        default (config.toml in the launch directory, else the user's own),
+        else the one selected last time, while it exists; else none.
         """
-        if isfile(default_config_file()):
-            return None
+        default = default_config_file()
+        if isfile(default):
+            return abspath(default)
         remembered = file_dialogs.dialog_settings().value(SETTING_CONFIG_FILE)
         if isinstance(remembered, str) and isfile(remembered):
             return remembered

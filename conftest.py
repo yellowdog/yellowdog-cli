@@ -286,6 +286,29 @@ def _no_config_discovery(request, monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_launch_directory_config(request, monkeypatch, tmp_path):
+    """
+    Keep the CLI's default configuration file out of the GUI unit tests.
+
+    Launched with no configuration named, Commander selects the one the CLI
+    reads by default (_startup_config_file(): ./config.toml, else the user's
+    own), so a window built in a test run from a directory holding a
+    config.toml (a developer's checkout) would select it, and pass or fail
+    by where the suite was run. Commander's 'default_config_file' names a
+    file that does not exist instead; a test about the default itself puts
+    the real one back (test_commander_session.py's no_config_of_its_own).
+    """
+    if "qapp" not in request.fixturenames:
+        return
+
+    from yellowdog_cli.commander import commander
+
+    monkeypatch.setattr(
+        commander, "default_config_file", lambda: str(tmp_path / "no-config.toml")
+    )
+
+
 # Qt's own file-dialog settings, which Commander deliberately does not read (it
 # keeps its own; see file_dialogs.dialog_settings). Named here because the only code
 # that cares is the fixtures below and the one case that proves they are ignored.

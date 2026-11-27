@@ -10,6 +10,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **Commander started without a configuration file selects the CLI's default one**, `config.toml` where it was launched, else your own, as `yd commander --usage-explorer` does, rather than leaving none selected; the one last selected follows when neither exists.
 - **Ctrl+C in the terminal quits Commander or `yd commander --usage-explorer`** as Quit does, exiting 130, rather than aborting with a crash report when the window was next used or closed.
 - **Choosing a namespace in the Usage Explorer loads it at once** when a report kept for the window shown already holds it (its own, or every namespace's), rather than awaiting Fetch Report.
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.

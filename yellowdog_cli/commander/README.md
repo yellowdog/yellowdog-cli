@@ -135,7 +135,7 @@ Pass `--usage-explorer` to open only the Usage Explorer (see [Running the Explor
 
 - **Size and place.** Commander opens at the size and place it was last closed at, with the Command Output text at the size you last left it.
 - **Dark Mode.** It opens in Dark Mode if you last turned it on (until you choose, it follows your system's appearance).
-- **The configuration file.** Started without a configuration file, it selects the one last selected, if it still exists, unless the directory you launched it in has a `config.toml`, or you have your own user configuration file: the `yd` commands use that one when none is selected, and Commander leaves it to them. **Deselect...** on the configuration file forgets it.
+- **The configuration file.** Started without a configuration file, it selects the one the CLI reads by default: `config.toml` in the directory you launched it in, else your own user configuration file, as the [Usage Explorer run on its own](#running-the-explorer-on-its-own) does. Failing both, it selects the one last selected, if it still exists. **Deselect...** on the configuration file forgets it.
 - **Forgetting.** `--reset-appearance` at launch, or Cmd+Shift+0 (Ctrl+Shift+0 on Windows and Linux) in the window, forgets the size and place, Dark Mode and text size, but not the configuration file.
 
 **Several windows.** Multiple instances of Commander can run simultaneously.
@@ -160,7 +160,7 @@ Hover over any button, checkbox or field for a one-line description of what it d
 
 **Without a configuration file.** If no configuration file is selected, Commander runs the `yd` commands with `--no-config`. They take their settings from environment variables (`YD_KEY`, `YD_SECRET`, `YD_NAMESPACE`, `YD_TAG`, `YD_URL`) together with the Namespace, Tag, and Variables fields described below. Results and downloads are written under the launch directory.
 
-**No implicit `config.toml`.** Because `--no-config` is passed explicitly, any `config.toml` present in the launch directory is ignored unless you select it. Commander never picks one up implicitly.
+**No hidden `config.toml`.** Because `--no-config` is passed explicitly, a `config.toml` in the launch directory is ignored while nothing is selected. One found at launch is selected, and shown at the top of the window, rather than used unseen.
 
 **Default placeholders.** With no configuration file selected and nothing set in the environment either, the Namespace, Tag, and Path placeholders show the CLI's defaults: namespace `default`, your user name as the tag, and a Path of `<user name>*`. A failure to resolve them is reported in the Command Output window, whether or not a configuration file is selected.
 
@@ -288,7 +288,7 @@ Directories expand in place, as in the Finder's list view: click the triangle be
 
 ## Selecting a Configuration (Panel 1)
 
-Use the **Select** button to choose a `config.toml` file. All subsequent commands run in that file's directory and are passed it with `-c`. If you launched Commander with a file argument, it is pre-selected.
+Use the **Select** button to choose a `config.toml` file. All subsequent commands run in that file's directory and are passed it with `-c`. If you launched Commander with a file argument, it is pre-selected; otherwise the CLI's default file is, if there is one (see [What Commander remembers](#launch-details)).
 
 The selected file's full path is shown at the top of the right-hand column, level with the button. When the window is too narrow for it, it is shortened from the left, keeping the filename; hover over it for the whole path.
 
