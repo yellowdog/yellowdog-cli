@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### yd usage
+
+- **With `--top`, `yd usage`'s total line says how many rows are shown of them all**: `Total: 5 of 872 rows, …`.
+
 ## 15.23.0 — 2026-11-27
 
 ### Upgrading

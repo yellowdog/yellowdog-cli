@@ -290,12 +290,21 @@ def show_usage(ctx: RunContext) -> None:
         print_warning(line)
     total = _total_group(groups, {})
     print_info(
-        f"Total: {counted(len(groups), 'row')},"
+        f"Total: {_rows_text(len(shown), len(groups))},"
         f" {counted(total.instances, 'Instance')},"
         f" {duration_text(total.seconds['running'])} running of"
         f" {duration_text(total.total_seconds)} in all statuses"
         + (_total_cost_text(total) if costing is not None else "")
     )
+
+
+def _rows_text(shown: int, total: int) -> str:
+    """
+    The total line's row count: '872 rows', or where '--top' summed some in
+    the '(n more)' row, how many are shown of them all, '5 of 872 rows'.
+    """
+    rows = counted(total, "row")
+    return f"{shown:,} of {rows}" if shown < total else rows
 
 
 def _unpriced_lines(costing: Costing | None) -> list[str]:

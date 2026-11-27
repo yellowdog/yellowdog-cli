@@ -2224,8 +2224,11 @@ class TestTop:
         out, _ = _show(capsys, usage_top=5, json_output=True, json=True)
         assert loads(out)["more"] is None
 
-    def test_the_total_counts_every_row_those_cut_included(self, platform, capsys):
+    def test_the_total_says_how_many_rows_are_shown_of_all(self, platform, capsys):
         out, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
+        assert "Total: 1 of 4 rows, 4 Instances" in out
+        # A --top beyond the rows cuts none: every row is shown
+        out, _ = _show(capsys, usage_by=("instance-id",), usage_top=10)
         assert "Total: 4 rows, 4 Instances" in out
 
     def test_no_more_key_without_top(self, platform, capsys):
@@ -2236,10 +2239,11 @@ class TestTop:
         whole, _ = _show(capsys, usage_by=("instance-id",))
         cut, _ = _show(capsys, usage_by=("instance-id",), usage_top=1)
         assert "(3 more)" in cut and "i-2" not in cut
-        # The text from 'Total:' on: the timestamps before it may differ
+        # The figures after the row count, which says how many are shown: the
+        # timestamps before it may differ
         totals = [
             [
-                line[line.index("Total:") :]
+                line[line.index("Instances") :]
                 for line in out.splitlines()
                 if "Total:" in line
             ]

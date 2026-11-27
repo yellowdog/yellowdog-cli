@@ -2352,7 +2352,7 @@ Key options:
 - `--cost` — add each group's estimated cost at the cloud providers' list prices (see **Cost** below)
 - `--sort <key>[,...]` — the order of the groups, one key or several separated by commas, the most significant first: any `--by` key, in alphabetical order, or `instances`, `running`, `stopped`, `total` or `cost` (with `--cost`), the most first; `total` if not given. A key that is not one of the `--by` keys, or `cost` without `--cost`, is a usage error (exit code 2)
 - `--reverse` — invert the whole order `--sort` gives
-- `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row
+- `--top <n>` — show the first `<n>` groups in the order `--sort` gives, the most total time first if not given, and the rest summed in one row, the total line saying how many are shown of them all (`Total: 5 of 872 rows, …`)
 - `--csv` — print the table's rows as CSV, with the hours as decimal hours; not with `--json`
 - `--json`/`-J` — print one JSON document holding the window, the account's name and the Platform's URL, when the report was fetched, whether it was reused from an earlier run (`reused`) and where it is kept, each group's Instance count, its time in every status, in hours and in exact seconds, and its `share` of the total, and `total`, every group summed:
 
