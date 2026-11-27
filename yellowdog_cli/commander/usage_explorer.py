@@ -24,6 +24,8 @@ from PyQt6.QtCore import (
     QObject,
     QPoint,
     QProcess,
+    QRect,
+    QSize,
     Qt,
     QTimer,
     pyqtSignal,
@@ -332,6 +334,10 @@ class UsageRunner(QObject):
 
 
 # Commander's own settings (file_dialogs.dialog_settings()) for the explorer
+# The Qt styles drawing a heading's sort indicator as a chevron at its top,
+# over the text unless the heading has room for it (lower case), and the room
+SORT_CHEVRON_ABOVE_STYLES = frozenset({"windowsvista", "windows11"})
+SORT_CHEVRON_ROOM = 6
 SETTING_EXPLORER_GEOMETRY = "usageExplorer/geometry"
 SETTING_EXPLORER_PRESET = "usageExplorer/preset"
 SETTING_EXPLORER_COST = "usageExplorer/cost"
@@ -566,25 +572,45 @@ class _TableOverlay(QWidget):
 class _GridStyle(QProxyStyle):
     """
     The application's style with the table's grid in the command output's
-    table-outline blue (TABLE_OUTLINE_RGB_*), one per appearance. Built over
-    a fresh copy of the application's style, since the proxy owns its base
+    table-outline blue (TABLE_OUTLINE_RGB_*), one per appearance, for the
+    table and its heading. Built over a fresh copy of the application's
+    style ('base_name' another, for a test), since the proxy owns its base
     and the application's own must not be handed over; rebuilt as the
     appearance changes, which on Linux changes the application's style too.
+
+    Under the Windows styles (SORT_CHEVRON_ABOVE_STYLES), which draw the
+    sort indicator as a chevron at the top of the heading, the heading is
+    SORT_CHEVRON_ROOM taller and its text that much lower, so that the
+    chevron, drawn as Windows draws it, sits above the text, not over it.
     """
 
-    def __init__(self, dark: bool) -> None:
-        application = cast(QApplication, QApplication.instance())
-        base = QStyleFactory.create(cast(QStyle, application.style()).name())
-        super().__init__(base)
+    def __init__(self, dark: bool, base_name: str | None = None) -> None:
+        if base_name is None:
+            application = cast(QApplication, QApplication.instance())
+            base_name = cast(QStyle, application.style()).name()
+        super().__init__(QStyleFactory.create(base_name))
         rgb = TABLE_OUTLINE_RGB_DARK if dark else TABLE_OUTLINE_RGB_LIGHT
         # styleHint() returns a signed int, so the colour's ARGB as one
         argb = QColor(*rgb).rgba()
         self._grid = argb - (1 << 32) if argb >= 1 << 31 else argb
+        self._chevron_above = base_name.lower() in SORT_CHEVRON_ABOVE_STYLES
 
     def styleHint(self, hint, option=None, widget=None, returnData=None) -> int:
         if hint == QStyle.StyleHint.SH_Table_GridLineColor:
             return self._grid
         return super().styleHint(hint, option, widget, returnData)
+
+    def sizeFromContents(self, type, option, size, widget=None) -> QSize:
+        needed = super().sizeFromContents(type, option, size, widget)
+        if self._chevron_above and type == QStyle.ContentsType.CT_HeaderSection:
+            return QSize(needed.width(), needed.height() + SORT_CHEVRON_ROOM)
+        return needed
+
+    def subElementRect(self, element, option, widget=None) -> QRect:
+        rect = super().subElementRect(element, option, widget)
+        if self._chevron_above and element == QStyle.SubElement.SE_HeaderLabel:
+            rect.setTop(rect.top() + SORT_CHEVRON_ROOM)
+        return rect
 
 
 def grid_colour(table: QTableView) -> QColor:
@@ -885,6 +911,7 @@ class UsageExplorer(QDialog):
         self._table.setHorizontalHeader(_UsageHeader(self._table))
         self._grid_style = _GridStyle(self._dark)
         self._table.setStyle(self._grid_style)
+        cast(QHeaderView, self._table.horizontalHeader()).setStyle(self._grid_style)
         self._table.setModel(self._model)
         self._table.setFont(font)
         vertical = self._table.verticalHeader()
@@ -1231,6 +1258,7 @@ class UsageExplorer(QDialog):
         self._table.setStyle(self._grid_style)
         header = self._table.horizontalHeader()
         if header is not None:
+            header.setStyle(self._grid_style)
             header.update()
         frame = self._table.parentWidget()
         if frame is not None:

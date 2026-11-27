@@ -11,6 +11,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **The Usage Explorer's PDF report names the account and the Platform's URL** beneath its title.
+- **On Windows, the Usage Explorer's column headings leave room for the sort chevron** above their text, where Windows draws it, rather than over it.
 
 ## 15.22.0 — 2026-11-27
 

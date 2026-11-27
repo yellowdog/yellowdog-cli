@@ -20,10 +20,10 @@ import qt_guard
 qt_guard.require_qt()
 
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QPoint, QProcess, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtCore import QObject, QPoint, QProcess, QRect, QSize, Qt
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QStyle
+from PyQt6.QtWidgets import QApplication, QStyle, QStyleFactory, QStyleOptionHeader
 
 import yellowdog_cli.commander.usage_explorer as usage_explorer
 from yellowdog_cli.commander import commander, usage_explorer
@@ -2161,3 +2161,52 @@ def test_an_older_runs_result_does_not_replace_the_unusable_failure(
     assert explorer._error_showing
     assert [cells(explorer, row) for row in range(explorer._model.rowCount())] == rows
     assert explorer.breadcrumb_text() == crumbs
+
+
+def heading_option() -> QStyleOptionHeader:
+    option = QStyleOptionHeader()
+    option.rect = QRect(0, 0, 120, 30)
+    option.text = "Total (h:mm)"
+    option.fontMetrics = QFontMetrics(QFont())
+    return option
+
+
+def test_on_windows_a_heading_has_room_above_for_the_sort_chevron(qapp, monkeypatch):
+    # The Windows styles ('windowsvista', 'windows11') draw it at the top,
+    # centred; neither exists off Windows, so the plain one stands in
+    base = QStyleFactory.create("Windows")
+    monkeypatch.setattr(
+        usage_explorer, "SORT_CHEVRON_ABOVE_STYLES", frozenset({"windows"})
+    )
+    style = usage_explorer._GridStyle(False, base_name="Windows")
+    option = heading_option()
+    content = QSize(80, 20)
+    kind = QStyle.ContentsType.CT_HeaderSection
+    room = usage_explorer.SORT_CHEVRON_ROOM
+    assert (
+        style.sizeFromContents(kind, option, content, None).height()
+        == base.sizeFromContents(kind, option, content, None).height() + room
+    )
+    label = QStyle.SubElement.SE_HeaderLabel
+    assert (
+        style.subElementRect(label, option, None).top()
+        == base.subElementRect(label, option, None).top() + room
+    )
+
+
+def test_other_styles_keep_their_headings(qapp, monkeypatch):
+    base = QStyleFactory.create("Windows")
+    monkeypatch.setattr(usage_explorer, "SORT_CHEVRON_ABOVE_STYLES", frozenset())
+    style = usage_explorer._GridStyle(False, base_name="Windows")
+    option = heading_option()
+    kind = QStyle.ContentsType.CT_HeaderSection
+    assert style.sizeFromContents(kind, option, QSize(80, 20), None) == (
+        base.sizeFromContents(kind, option, QSize(80, 20), None)
+    )
+
+
+def test_the_heading_has_the_tables_style(explorer):
+    header = explorer._table.horizontalHeader()
+    assert header.style() is explorer._grid_style
+    explorer.set_dark(True)
+    assert header.style() is explorer._grid_style
