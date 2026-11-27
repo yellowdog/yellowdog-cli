@@ -513,10 +513,7 @@ def column_of(explorer, name: str) -> int:
     'Running (h:mm)').
     """
     model = explorer._model
-    headings = [
-        model.headerData(c, Qt.Orientation.Horizontal)
-        for c in range(model.columnCount())
-    ]
+    headings = [model.heading(c) for c in range(model.columnCount())]
     return next(
         c
         for c, h in enumerate(headings)
@@ -524,14 +521,15 @@ def column_of(explorer, name: str) -> int:
     )
 
 
-def click_heading(explorer, name: str) -> None:
+def click_heading(explorer, name: str, shift: bool = False) -> None:
     header = explorer._table.horizontalHeader()
     column = column_of(explorer, name)
     x = header.sectionViewportPosition(column) + header.sectionSize(column) // 2
     QTest.mouseClick(
         header.viewport(),
         Qt.MouseButton.LeftButton,
-        pos=QPoint(x, header.height() // 2),
+        Qt.KeyboardModifier.ShiftModifier if shift else Qt.KeyboardModifier.NoModifier,
+        QPoint(x, header.height() // 2),
     )
 
 
@@ -965,6 +963,110 @@ def test_instance_id_combines_with_the_keys_ticked(explorer, children):
     args = usage_args(children)
     assert value_of(args, "--sort") == "region"
     assert value_of(args, "--by") == "cr,instance-id,region,tag"
+
+
+def shown_heading(explorer, name: str, role=Qt.ItemDataRole.DisplayRole):
+    return explorer._model.headerData(
+        column_of(explorer, name), Qt.Orientation.Horizontal, role
+    )
+
+
+def test_shift_click_adds_a_column_as_the_next_sort_key(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    click_heading(explorer, heading("cr"))
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "cr,running" and "--reverse" not in args
+    # The first key has the arrow, the next its number and a tooltip
+    header = explorer._table.horizontalHeader()
+    assert header.sortIndicatorSection() == column_of(explorer, heading("cr"))
+    assert shown_heading(explorer, "Running").endswith(" ²")
+    assert shown_heading(explorer, "Running", Qt.ItemDataRole.ToolTipRole) == (
+        "Sorted second, most first"
+    )
+    assert shown_heading(explorer, heading("cr")) == heading("cr")
+    # The command line shows the sort; an export's headings carry no number
+    assert "--sort cr,running" in explorer._command_line.text()
+    assert (
+        "Running (h:mm)"
+        in explorer._model.text_rows(list(range(explorer._model.columnCount())))[0]
+    )
+
+
+def test_shift_click_on_a_sort_key_drops_it(explorer, children):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "namespace"
+    assert not shown_heading(explorer, "Running").endswith(" ²")
+
+
+def test_shift_click_with_the_default_sort_adds_after_total(explorer, children):
+    click_heading(explorer, "Namespace", shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "total,namespace"
+
+
+def test_clicking_the_first_key_reverses_every_key(explorer, children):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "namespace,running" and "--reverse" in args
+    assert shown_heading(explorer, "Running", Qt.ItemDataRole.ToolTipRole) == (
+        "Sorted second, least first"
+    )
+    # Any other column, clicked alone, is the one sort
+    click_heading(explorer, "Running")
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--sort") == "running" and "--reverse" not in args
+
+
+def test_a_key_no_longer_totalled_by_leaves_the_sort(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    tick(explorer, "region")
+    settle(explorer)
+    click_heading(explorer, "Region")
+    settle(explorer)
+    click_heading(explorer, heading("cr"), shift=True)
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "region,cr"
+    tick(explorer, "region")
+    settle(explorer)
+    assert value_of(usage_args(children), "--sort") == "cr"
+
+
+def test_the_pdf_states_several_sort_keys(explorer, children, tmp_path, monkeypatch):
+    made = []
+    real = usage_explorer.report_content
+
+    def spy(*args):
+        made.append(real(*args))
+        return made[-1]
+
+    monkeypatch.setattr(usage_explorer, "report_content", spy)
+    monkeypatch.setattr(usage_explorer, "write_pdf", lambda *args, **kwargs: 1)
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    export_pdf_to(explorer, tmp_path / "usage.pdf", monkeypatch)
+    assert (
+        made[-1]
+        .scope_lines[1]
+        .endswith("sorted by Namespace, A to Z, then Running (h:mm), most first")
+    )
 
 
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):

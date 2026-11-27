@@ -360,7 +360,13 @@ def test_the_sort_is_stated_with_what_it_totals_by():
     ],
 )
 def test_sort_text(figure, most_first, expected):
-    assert sort_text("Total (h:mm)", figure, most_first) == expected
+    assert sort_text([("Total (h:mm)", figure, most_first)]) == expected
+
+
+def test_sort_text_of_several_keys_says_then():
+    assert sort_text([("Namespace", False, False), ("Total (h:mm)", True, True)]) == (
+        "Namespace, A to Z, then Total (h:mm), most first"
+    )
 
 
 def test_tiles_with_cost_copy_the_total_row():

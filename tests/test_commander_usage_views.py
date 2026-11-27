@@ -6,6 +6,8 @@ preset, the arguments of a view, drilling and a row's cells. Needs no Qt.
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from yellowdog_cli.commander.usage_views import (
     DRILL_PATH,
     INSTANCE_KEYS,
@@ -20,6 +22,7 @@ from yellowdog_cli.commander.usage_views import (
     heading,
     preset_window,
     row_cells,
+    sort_order,
     toggled_by,
     view_args,
     window_time,
@@ -82,7 +85,7 @@ def test_namespace_filters_sort_and_refresh():
     levels = [
         Level(("namespace",)),
         Level(
-            ("cr",), (("namespace", "team-a"),), "team-a", sort="total", reverse=True
+            ("cr",), (("namespace", "team-a"),), "team-a", sort=("total",), reverse=True
         ),
     ]
     assert view_args(Scope("a", "b", "team-*", True), levels, refresh=True) == [
@@ -93,8 +96,31 @@ def test_namespace_filters_sort_and_refresh():
 
 
 def test_sort_without_reverse():
-    args = view_args(Scope("a", "b", None, False), [Level(("cr",), sort="cost")])
+    args = view_args(Scope("a", "b", None, False), [Level(("cr",), sort=("cost",))])
     assert args[-2:] == ["--sort", "cost"]
+
+
+def test_several_sort_keys_are_one_sort():
+    level = Level(("cr", "region"), sort=("region", "total"), reverse=True)
+    args = view_args(Scope("a", "b", None, False), [level])
+    assert args[-3:] == ["--sort", "region,total", "--reverse"]
+
+
+@pytest.mark.parametrize(
+    "level, expected",
+    [
+        (None, [("total", True)]),
+        (Level(("cr",)), [("total", True)]),
+        (Level(("cr",), sort=("cr", "running")), [("cr", False), ("running", True)]),
+        # --reverse turns every key round
+        (
+            Level(("cr",), sort=("cr", "running"), reverse=True),
+            [("cr", True), ("running", False)],
+        ),
+    ],
+)
+def test_sort_order_is_each_key_and_whether_the_most_or_z_is_first(level, expected):
+    assert sort_order(level) == expected
 
 
 def test_drill_filters_exactly_and_moves_down_the_path():

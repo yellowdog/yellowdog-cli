@@ -497,14 +497,26 @@ def period_text(from_iso: str, until_iso: str) -> str:
     return f"{shown_from} → {window_time(until_iso)}"
 
 
-def sort_text(heading: str, figure: bool, most_first: bool) -> str:
+def sort_text(keys: list[tuple[str, bool, bool]]) -> str:
     """
-    How a report's rows are sorted: by the column headed 'heading', a figure
-    the most or the least first, a key's value A to Z or Z to A.
+    How a report's rows are sorted, from each sort key's (heading, whether a
+    figure, whether the most or Z first), the most significant first: a
+    figure the most or the least first, a key's value A to Z or Z to A.
+    """
+    return ", then ".join(
+        f"{heading}, {direction_text(figure, most_first)}"
+        for heading, figure, most_first in keys
+    )
+
+
+def direction_text(figure: bool, most_first: bool) -> str:
+    """
+    A sort key's direction: a figure's 'most first' or 'least first', a
+    key's value 'A to Z' or 'Z to A'.
     """
     if figure:
-        return f"{heading}, {'most' if most_first else 'least'} first"
-    return f"{heading}, {'Z to A' if most_first else 'A to Z'}"
+        return "most first" if most_first else "least first"
+    return "Z to A" if most_first else "A to Z"
 
 
 def report_content(

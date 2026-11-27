@@ -159,13 +159,15 @@ class Scope:
 class Level:
     """
     One breadcrumb level: the keys it totals by (columns, in this order), the
-    exact filters the row drilled into gave it, how it sorts.
+    exact filters the row drilled into gave it, how it sorts: the '--sort'
+    keys, the first the most significant ('total' when none), and whether
+    '--reverse' turns them all round.
     """
 
     by: tuple[str, ...]
     filters: tuple[tuple[str, str], ...] = ()
     label: str = "All"
-    sort: str | None = None
+    sort: tuple[str, ...] = ()
     reverse: bool = False
 
     @property
@@ -176,15 +178,16 @@ class Level:
         return INSTANCE_LEVEL in self.by
 
 
-def sort_order(level: Level | None) -> tuple[str, bool]:
+def sort_order(level: Level | None) -> list[tuple[str, bool]]:
     """
-    The key a level sorts by ('total' unless set) and whether the most, or
-    for a key's value Z, comes first: the CLI's order is a figure the most
-    first and a value A to Z, '--reverse' the other way.
+    Each key a level sorts by ('total' unless set), the most significant
+    first, with whether the most, or for a key's value Z, comes first: the
+    CLI's order is a figure the most first and a value A to Z, '--reverse'
+    turning every key the other way.
     """
-    key = (level.sort if level else None) or "total"
-    most_first = key in USAGE_SORT_VALUE_KEYS
-    return key, most_first != bool(level and level.reverse)
+    keys = (level.sort if level else ()) or ("total",)
+    reverse = bool(level and level.reverse)
+    return [(key, (key in USAGE_SORT_VALUE_KEYS) != reverse) for key in keys]
 
 
 def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[str]:
@@ -201,7 +204,7 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
         for key, value in level.filters:
             args += ["--where", f"{key}=={value}"]
     if current.sort:
-        args += ["--sort", current.sort]
+        args += ["--sort", ",".join(current.sort)]
         if current.reverse:
             args.append("--reverse")
     if scope.cost:

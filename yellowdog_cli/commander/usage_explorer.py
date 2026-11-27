@@ -1595,11 +1595,9 @@ class UsageExplorer(QDialog):
         if current is None or level is None or by == level.by or self._busy:
             self._show_total_by()
             return
-        # A sort by a key this level no longer shows is dropped
-        sort = (
-            level.sort
-            if level.sort in USAGE_SORT_VALUE_KEYS or level.sort in by
-            else None
+        # A sort key this level no longer shows is dropped
+        sort = tuple(
+            key for key in level.sort if key in USAGE_SORT_VALUE_KEYS or key in by
         )
         changed = replace(
             level, by=by, sort=sort, reverse=level.reverse if sort else False
@@ -1607,15 +1605,34 @@ class UsageExplorer(QDialog):
         self._request_levels((*current.levels[:-1], changed))
 
     def _heading_clicked(self, column: int) -> None:
+        """
+        A heading clicked: the view sorted by its column alone, or by the
+        same keys reversed where it is the first of them; with Shift, its
+        column added as the next sort key, or dropped where it is one (the
+        last key left reversed instead). One '--reverse' turns every key.
+        """
         key = self._model.sort_key(column)
         current = self._shown
         if key is None or current is None or self._busy:
             self._show_sort_indicator()
             return
         level = current.levels[-1]
-        reverse = not level.reverse if (level.sort or "total") == key else False
+        keys: tuple[str, ...] = level.sort or ("total",)
+        first = keys[0]
+        reverse = level.reverse
+        shift = bool(
+            QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier
+        )
+        if shift and key not in keys:
+            keys = (*keys, key)
+        elif shift and len(keys) > 1:
+            keys = tuple(k for k in keys if k != key)
+        elif first == key:
+            reverse = not reverse
+        else:
+            keys, reverse = (key,), False
         self._request_levels(
-            (*current.levels[:-1], replace(level, sort=key, reverse=reverse))
+            (*current.levels[:-1], replace(level, sort=keys, reverse=reverse))
         )
 
     def _drill(self, row: int) -> None:
@@ -1743,17 +1760,12 @@ class UsageExplorer(QDialog):
             all_rows = model.text_rows(every)
             total_by_heading = dict(zip(all_rows[0], all_rows[-1], strict=True))
         key_columns = len([column for column in visible if column < len(model.by)])
-        key, most_first = sort_order(shown.levels[-1])
-        sort_column = model.column_of_sort_key(key)
-        sort = (
-            None
-            if sort_column is None
-            else sort_text(
-                str(model.headerData(sort_column, Qt.Orientation.Horizontal)),
-                key in USAGE_SORT_VALUE_KEYS,
-                most_first,
-            )
-        )
+        sort_keys = [
+            (model.heading(column), key in USAGE_SORT_VALUE_KEYS, most_first)
+            for key, most_first in sort_order(shown.levels[-1])
+            if (column := model.column_of_sort_key(key)) is not None
+        ]
+        sort = sort_text(sort_keys) if sort_keys else None
         content = report_content(
             document,
             shown.levels,
@@ -2097,7 +2109,9 @@ class UsageExplorer(QDialog):
         header = self._table.horizontalHeader()
         if header is None:
             return
-        key, most_first = sort_order(self._shown.levels[-1] if self._shown else None)
+        order = sort_order(self._shown.levels[-1] if self._shown else None)
+        self._model.set_sort_order(order)
+        key, most_first = order[0]
         column = self._model.column_of_sort_key(key)
         header.setSortIndicator(
             -1 if column is None else column,

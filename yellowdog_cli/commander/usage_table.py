@@ -11,7 +11,7 @@ from PyQt6.QtCore import QAbstractTableModel, QModelIndex, QPersistentModelIndex
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QWidget
 
-from yellowdog_cli.commander.usage_report_layout import COST_NOTE
+from yellowdog_cli.commander.usage_report_layout import COST_NOTE, direction_text
 from yellowdog_cli.commander.usage_views import INSTANCE_LEVEL, heading, row_cells
 
 # The value columns after the key columns, and the '--sort' key of each
@@ -54,6 +54,21 @@ def figure_heading(key: str) -> str:
     return dict((k, name) for name, k in VALUE_COLUMNS).get(key) or heading(key)
 
 
+_SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+_ORDINALS = ("first", "second", "third", "fourth", "fifth", "sixth", "seventh")
+
+
+def superscript(number: int) -> str:
+    return str(number).translate(_SUPERSCRIPT)
+
+
+def ordinal(number: int) -> str:
+    """
+    'second' for 2, up to 'seventh'; '8th' and on past it.
+    """
+    return _ORDINALS[number - 1] if number <= len(_ORDINALS) else f"{number}th"
+
+
 class UsageTableModel(QAbstractTableModel):
     """
     A document's groups as rows, then its total. Key columns are aligned left
@@ -73,6 +88,9 @@ class UsageTableModel(QAbstractTableModel):
         self._sources: list[dict] = []
         self._headings: list[str] = []
         self._has_total = False
+        # The sort keys after the first (whose column the header's own
+        # indicator marks): each key's place and whether the most or Z first
+        self._sort_marks: dict[str, tuple[int, bool]] = {}
 
     def set_document(self, document: dict, cost: bool) -> None:
         """
@@ -226,6 +244,35 @@ class UsageTableModel(QAbstractTableModel):
         )
         return keys[column] if column < len(keys) else None
 
+    def set_sort_order(self, order: list[tuple[str, bool]]) -> None:
+        """
+        The view's sort keys (usage_views.sort_order()): the second and later
+        each marked in its heading by its place (' ²') and a tooltip, the
+        header's own indicator showing only one column.
+        """
+        marks = {
+            key: (place, most_first)
+            for place, (key, most_first) in enumerate(order, start=1)
+            if place > 1
+        }
+        if marks != self._sort_marks:
+            self._sort_marks = marks
+            if self._headings:
+                self.headerDataChanged.emit(
+                    Qt.Orientation.Horizontal, 0, len(self._headings) - 1
+                )
+
+    def heading(self, column: int) -> str:
+        """
+        A column's heading as written, without its sort mark: what an export
+        heads it with.
+        """
+        return self._headings[column]
+
+    def _sort_mark(self, column: int) -> tuple[int, bool] | None:
+        key = self.sort_key(column)
+        return None if key is None else self._sort_marks.get(key)
+
     def column_of_sort_key(self, key: str) -> int | None:
         for column in range(len(self._headings)):
             if self.sort_key(column) == key:
@@ -272,14 +319,23 @@ class UsageTableModel(QAbstractTableModel):
             0 <= section < len(self._headings)
         ):
             return None
+        mark = self._sort_mark(section)
         if role == Qt.ItemDataRole.DisplayRole:
-            return self._headings[section]
+            heading = self._headings[section]
+            return heading if mark is None else f"{heading} {superscript(mark[0])}"
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alignment(section)
-        if role == Qt.ItemDataRole.ToolTipRole and self.sort_key(section) == (
-            COST_SORT_KEY
-        ):
-            return COST_TOOLTIP
+        if role == Qt.ItemDataRole.ToolTipRole:
+            lines = []
+            if mark is not None:
+                place, most_first = mark
+                figure = section >= len(self._by)
+                lines.append(
+                    f"Sorted {ordinal(place)}, {direction_text(figure, most_first)}"
+                )
+            if self.sort_key(section) == COST_SORT_KEY:
+                lines.append(COST_TOOLTIP)
+            return "\n".join(lines) or None
         return None
 
     def _alignment(self, column: int) -> Qt.AlignmentFlag:

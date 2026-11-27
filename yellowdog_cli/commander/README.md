@@ -64,7 +64,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 27 14:35:06 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 27 14:44:09 GMT 2026 -->
 
 <!--te-->
 
@@ -563,7 +563,7 @@ The **←** and **→** buttons step back and forth through your command history
 1. Select a configuration file and click **Usage Explorer...**. The window opens on the last seven days for all namespaces on first use (it then opens on the window preset last chosen), and fetches nothing until you click **Fetch Report** at the centre of the table, so you can choose the window and namespace first. The table then has one row per namespace and a **Total** row beneath.
 2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
 3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
-4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse.
+4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse. Shift-click another heading to sort by it next, within the first.
 5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
 
 Beneath the table, notes say when the report covers only the namespaces the Application can read usage in, and repeat any warning the CLI gave. The line beneath them names the report's window and when it was fetched, and the last line is the `yd usage` command of the view, as you would run it in a terminal, which **Copy** puts on the clipboard. **Export**, at the right of the breadcrumb, saves the table to a CSV file, with raw numbers or as shown, or the view as a PDF report for printing.
@@ -603,6 +603,8 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 **Overlapping runs.** If you change the view, change a control or press **Refresh** or Cmd/Ctrl+R while a run is going, only the latest request's result is shown. The older run is left to finish, so a report it was fetching is kept for the views that follow, and its result is discarded.
 
 **Estimated cost.** The **Estimated cost** checkbox, ticked when the window first opens and remembered after that, adds the cost column (`--cost`). Instance types with no list price are not costed: a line says how many, and **Details** lists them. An Application that may not read cloud prices gets no estimate, and says so.
+
+**Sorting by several columns.** Each column Shift-clicked is the next sort key, and Shift-clicking a sort key drops it. The first key's heading carries the sort arrow, and each later one its place as a small number (`Running (h:mm) ²`), with a tooltip giving its order. Names sort A to Z and figures the most first, as `yd usage --sort` sorts. Clicking the first key's heading again reverses every key together, since `--reverse` turns them all round. Clicking any other heading sorts by it alone. A key no longer totalled by leaves the sort.
 
 **Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
 
