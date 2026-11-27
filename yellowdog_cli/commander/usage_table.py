@@ -37,6 +37,9 @@ HIDEABLE_COLUMNS: tuple[str, ...] = (
     *STATUS_COLUMNS,
 )
 TOTAL_LABEL = "Total"
+# A time column's heading in the table and the shown export, saying how its
+# cells read, as yd usage's own table heads them
+DURATION_HEADING = "{heading} (h:mm)"
 # The raw export's headings beyond the key columns: the figures as yd usage
 # --json gives them, hours as decimals and the cost as a number, and the
 # running time no price covered, which the shown cost's '+' marks
@@ -93,9 +96,12 @@ class UsageTableModel(QAbstractTableModel):
         self._has_total = len(rows) > len(groups)
         self._headings = (
             [heading(key) for key in by]
-            + [name for name, _ in VALUE_COLUMNS]
+            + [
+                name if key == "instances" else DURATION_HEADING.format(heading=name)
+                for name, key in VALUE_COLUMNS
+            ]
             + ([COST_HEADING.format(currency=document["currency"])] if cost else [])
-            + [heading(key) for key in STATUS_COLUMNS]
+            + [DURATION_HEADING.format(heading=heading(key)) for key in STATUS_COLUMNS]
         )
         self.endResetModel()
 
@@ -118,11 +124,12 @@ class UsageTableModel(QAbstractTableModel):
         headings: list[str] = []
         for column in columns:
             figure = self._figure(column)
-            name = self._headings[column]
             if figure in (None, "instances", COST_SORT_KEY):
-                headings.append(name)
+                headings.append(self._headings[column])
             else:
-                headings.append(RAW_HOURS_HEADING.format(heading=name))
+                headings.append(
+                    RAW_HOURS_HEADING.format(heading=figure_heading(figure))
+                )
             if figure == COST_SORT_KEY:
                 headings.append(UNPRICED_HEADING)
         rows = [headings]

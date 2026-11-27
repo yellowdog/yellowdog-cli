@@ -49,7 +49,7 @@ from yellowdog_cli.commander.usage_explorer import (
     UsageRunner,
     grid_colour,
 )
-from yellowdog_cli.commander.usage_table import STATUS_COLUMNS
+from yellowdog_cli.commander.usage_table import DURATION_HEADING, STATUS_COLUMNS
 from yellowdog_cli.commander.usage_views import (
     KEY_VALUE_SEPARATOR,
     USAGE_GROUP_KEYS,
@@ -506,11 +506,20 @@ def cells(explorer, row: int) -> list[str]:
 
 
 def column_of(explorer, name: str) -> int:
+    """
+    The column headed name, a time column's by its name alone ('Running' for
+    'Running (h:mm)').
+    """
     model = explorer._model
-    return [
+    headings = [
         model.headerData(c, Qt.Orientation.Horizontal)
         for c in range(model.columnCount())
-    ].index(name)
+    ]
+    return next(
+        c
+        for c, h in enumerate(headings)
+        if h in (name, DURATION_HEADING.format(heading=name))
+    )
 
 
 def click_heading(explorer, name: str) -> None:
@@ -1468,9 +1477,9 @@ def test_export_saves_the_table_as_shown(explorer, tmp_path, monkeypatch):
     assert rows[0] == [
         "Namespace",
         "Instances",
-        "Running",
-        "Stopped",
-        "Total",
+        "Running (h:mm)",
+        "Stopped (h:mm)",
+        "Total (h:mm)",
         "Est. cost (USD)",
     ]
     assert rows[1:] == [
@@ -1487,7 +1496,7 @@ def test_export_includes_a_status_column_shown(explorer, tmp_path, monkeypatch):
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch)
     with open(target, encoding="utf-8", newline="") as file:
-        assert next(csv.reader(file))[-1] == "Pending"
+        assert next(csv.reader(file))[-1] == "Pending (h:mm)"
 
 
 def test_a_dismissed_export_writes_nothing(explorer, tmp_path, monkeypatch):
@@ -1555,8 +1564,8 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     assert shown_headings(explorer) == [
         "Namespace",
         "Instances",
-        "Running",
-        "Total",
+        "Running (h:mm)",
+        "Total (h:mm)",
         "Est. cost (USD)",
     ]
     assert commander_dialog_settings.value(SETTING_EXPLORER_HIDDEN_COLUMNS) == (
@@ -1565,10 +1574,10 @@ def test_a_figure_column_can_be_hidden_and_stays_so(
     # Hidden at the next level, and with the cost column taken away
     double_click_row(explorer, 0)
     settle(explorer)
-    assert "Stopped" not in shown_headings(explorer)
+    assert "Stopped (h:mm)" not in shown_headings(explorer)
     explorer._cost.click()
     settle(explorer)
-    assert shown_headings(explorer)[-1] == "Total"
+    assert shown_headings(explorer)[-1] == "Total (h:mm)"
     target = tmp_path / "out.csv"
     export_to(explorer, target, monkeypatch, raw=True)
     assert "Stopped (hours)" not in read_csv(target)[0]

@@ -606,7 +606,7 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 **Exporting.** **Export CSV** writes the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row**, ticked at first, is unticked in its menu. The file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory. Its menu offers two forms:
 
 - **Raw Numbers…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
-- **As Shown…**: the headings and cells exactly as displayed (`47:12`, `248.10+`).
+- **As Shown…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
 
 **Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
 
