@@ -4,6 +4,12 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Upgrading
+
+These changes alter what an existing script or configuration will see:
+
+- **The CLI's own requests to the Platform identify it in the SDK's User-Agent form**, `yd/1.1.0 yellowdog-cli/<version> python/<version>`, in place of `yellowdog-cli/<version> python-requests/<version>`: the usage report, raw Work Requirement submissions, event streams and `yd doctor`'s checks, the PAC file's fetch included. A proxy or firewall rule matching the old form needs updating.
+
 ### yd usage
 
 - **`yd usage -n <namespace>` reuses a kept report of every namespace for the same window**, rather than fetching the namespace's report, saying `Reusing the report of every namespace`. The Usage Explorer's Namespace control does the same.
@@ -33,7 +39,7 @@ These changes alter what an existing script or configuration will see:
 ### Commands
 
 - The CLI requires `yellowdog-sdk` 16.4.0 or later.
-- **Requests made through the YellowDog SDK identify the CLI with the SDK's own User-Agent**, `yd/1.1.0 yellowdog-sdk-python/<version> python/<version> yellowdog-cli/<version>`, in place of the CLI's own form; `yd doctor`'s requests now identify the CLI too. The CLI's direct requests, the PAC file's fetch included, send `yd/1.1.0 yellowdog-cli/<version> python/<version>`, in place of `yellowdog-cli/<version> python-requests/<version>`.
+- **Requests made through the YellowDog SDK identify the CLI with the SDK's own User-Agent**, `yd/1.1.0 yellowdog-sdk-python/<version> python/<version> yellowdog-cli/<version>`, in place of the CLI's own form; `yd doctor`'s requests now identify the CLI too. The CLI's direct requests keep `yellowdog-cli/<version> python-requests/<version>`.
 
 ### yd usage
 
