@@ -549,6 +549,184 @@ class TestGrouping:
         }
 
 
+# Two Instances alike in everything but their IDs and times, and two others
+ALIKE = [
+    INSTANCES_HEADER,
+    _instance(CR_TRAIN, "t3a.small", running=3600, pending=360, instance_id="i-1"),
+    _instance(CR_TRAIN, "t3a.small", running=1800, stopped=60, instance_id="i-2"),
+    _instance(CR_TRAIN, "t3a.small", running=900, spot=True, instance_id="i-3"),
+    _instance(CR_RENDER, "g4dn.xlarge", running=0, stopped=7200, instance_id="i-4"),
+]
+
+
+def _without_instances(report: usage_report.Report) -> None:
+    """
+    The kept zip rewritten with its instances file empty, so that only a
+    summed copy kept beside it can still give the report's figures.
+    """
+    report.path.write_bytes(_zip(instances=[INSTANCES_HEADER]))
+
+
+def _figures(groups: list[usage_report.UsageGroup]) -> dict:
+    return {
+        tuple(g.keys.values()): (g.instances, dict(g.seconds), g.cost) for g in groups
+    }
+
+
+class TestTheSummedCopy:
+    """
+    Instances alike in every column but their ID are summed into one row the
+    first time a report is read, and kept beside its zip, so that a report
+    of a million Instances is read again in a moment: every grouping and
+    filter but by Instance ID is answered from it.
+    """
+
+    def test_alike_instances_are_one_row_with_their_count_and_seconds(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        groups = {
+            tuple(g.keys.values()): g
+            for g in usage_report.grouped_usage(
+                report, ["cr", "pricing", "instance-type"]
+            )
+        }
+        alike = groups[("train-1", "on-demand", "t3a.small")]
+        assert alike.instances == 2
+        assert alike.seconds["running"] == 5400
+        assert alike.seconds["pending"] == 360
+        assert alike.seconds["stopped"] == 60
+        assert groups[("train-1", "spot", "t3a.small")].instances == 1
+        assert groups[("render-1", "on-demand", "g4dn.xlarge")].instances == 1
+        assert (report.directory / usage_report.SUMMED_CSV).is_file()
+
+    def test_a_later_run_reads_the_summed_copy(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        first = usage_report.grouped_usage(_report(_ctx()), ["namespace", "region"])
+        again = _report(_ctx())
+        _without_instances(again)
+        assert _figures(usage_report.grouped_usage(again, ["namespace", "region"])) == (
+            _figures(first)
+        )
+
+    @pytest.mark.parametrize(
+        "by, where",
+        [(["instance-id"], None), (["namespace"], [("instance-id", "i-1")])],
+    )
+    def test_by_or_where_instance_id_reads_every_instance(self, platform, by, where):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        usage_report.grouped_usage(report, ["namespace"])
+        groups = usage_report.grouped_usage(
+            _report(_ctx()), by, usage_report.filter_of(where)
+        )
+        if where is None:
+            assert sorted(g.keys["instance-id"] for g in groups) == [
+                "i-1",
+                "i-2",
+                "i-3",
+                "i-4",
+            ]
+        else:
+            (group,) = groups
+            assert group.instances == 1 and group.seconds["running"] == 3600
+
+    def test_the_figures_are_those_of_every_instance(self, platform):
+        # Each key and a filter, from the summed copy, against the same
+        # report read Instance by Instance (by instance-id, then re-totalled)
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        keys = ["namespace", "cr", "region", "instance-type", "pricing", "source"]
+        summed = usage_report.grouped_usage(report, keys)
+        each = usage_report.grouped_usage(report, [*keys, "instance-id"])
+        totals: dict[tuple, list] = {}
+        for g in each:
+            key = tuple(v for k, v in g.keys.items() if k != "instance-id")
+            entry = totals.setdefault(key, [0, 0.0])
+            entry[0] += g.instances
+            entry[1] += g.total_seconds
+        assert {
+            tuple(g.keys.values()): [g.instances, g.total_seconds] for g in summed
+        } == totals
+
+    def test_one_run_reads_the_zip_once(self, platform, monkeypatch):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        opened: list[str] = []
+        real = zipfile.ZipFile
+
+        def counted(path, *args, **kwargs):
+            opened.append(str(path))
+            return real(path, *args, **kwargs)
+
+        monkeypatch.setattr(usage_report.zipfile, "ZipFile", counted)
+        # As yd usage -n ... --cost reads it: the namespace's check, the
+        # places to price and the grouping
+        usage_report.grouped_usage(report, [])
+        usage_report.counted_places(report)
+        usage_report.grouped_usage(report, ["namespace"])
+        assert opened == [str(report.path)]
+
+    def test_a_summed_copy_that_cannot_be_read_is_made_again(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        expected = _figures(
+            usage_report.grouped_usage(_report(_ctx()), ["instance-type"])
+        )
+        report = _report(_ctx())
+        summed = report.directory / usage_report.SUMMED_CSV
+        summed.write_text("Not,the,heading\n1,2,3\n", encoding="utf-8")
+        assert _figures(usage_report.grouped_usage(report, ["instance-type"])) == (
+            expected
+        )
+        assert summed.read_text(encoding="utf-8").startswith("Compute Requirement ID,")
+
+    def test_a_summed_copy_that_cannot_be_written_is_no_failure(
+        self, platform, monkeypatch
+    ):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+
+        def refused(*_args, **_kwargs):
+            raise PermissionError("read-only")
+
+        monkeypatch.setattr(usage_report, "write_text_atomically", refused)
+        (group,) = usage_report.grouped_usage(report, [])
+        assert group.instances == 4
+        assert not (report.directory / usage_report.SUMMED_CSV).exists()
+
+    def test_a_refetched_report_is_summed_afresh(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        usage_report.grouped_usage(_report(_ctx()), [])
+        platform.content = _zip(instances=ALIKE[:2])
+        (group,) = usage_report.grouped_usage(_report(_ctx(), refresh=True), [])
+        assert group.instances == 1
+
+    @pytest.mark.parametrize("by", [["source", "pricing"], ["instance-id", "source"]])
+    def test_a_column_or_cell_missing_reads_as_empty(self, platform, by):
+        # No 'Spot' column, and a row cut short before its 'Source Name'
+        header = INSTANCES_HEADER.removesuffix(",Spot")
+        rows = [row.rsplit(",", 1)[0] for row in ALIKE[1:3]]
+        platform.content = _zip(
+            instances=[header, rows[0], "host,AWS,eu-west-2,t3a.small"]
+        )
+        groups = usage_report.grouped_usage(_report(_ctx()), by)
+        assert sorted(g.keys["source"] for g in groups) == ["-", "source-a"]
+        assert all(g.keys.get("pricing", "on-demand") == "on-demand" for g in groups)
+
+    def test_the_cost_is_that_of_every_instance(self, platform):
+        platform.content = _zip(instances=ALIKE)
+        report = _report(_ctx())
+        prices = {
+            ("AWS", "eu-west-2", "t3a.small", "on-demand"): 0.02,
+            ("AWS", "eu-west-2", "t3a.small", "spot"): 0.01,
+        }
+        summed = usage_cost.Costing(prices)
+        (group,) = usage_report.grouped_usage(report, [], costing=summed)
+        assert group.cost == pytest.approx(1.5 * 0.02 + 0.25 * 0.01)
+        assert group.priced_seconds == 5400 + 900
+        # g4dn.xlarge never ran: nothing unpriced
+        assert group.unpriced_seconds == 0 and not summed.unpriced
+
+
 NAMES = usage_report.CreatorNames(
     names={APP_RENDER: "render-farm", USER_ALICE: "alice"}
 )

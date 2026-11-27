@@ -2453,6 +2453,8 @@ What else to expect:
 
 The report is a zip of three CSV files (a summary, the Compute Requirements, and one row per Instance), kept as it arrives in a directory of your own under the system's temporary directory. The line above the table names the zip, the temporary directory written as the variable that names it (`$TMPDIR`, or `%TEMP%` on Windows), and `reportFile` under `--json` gives its full path.
 
+The first time a report is read, its Instances alike in everything but their IDs are summed into one row each, kept beside the zip (`summed-v1.csv`), so a report of a million Instances is read again in under a second. Only `--by instance-id`, or `--where instance-id=`, reads every Instance from the zip.
+
 A later run for the same `--namespace` uses a report kept rather than fetching the report again while its `--from` and `--until` cover that report's window to within ten minutes at each end, however they are written. A report fetched with `--from 24h --until now` is used again by `--from '2026-11-24 10:52 UTC' --until '2026-11-25 10:52 UTC'`, the window its summary showed.
 
 - **A report of a window of fixed dates in the past** is used for as long as it is kept, since its usage no longer changes.

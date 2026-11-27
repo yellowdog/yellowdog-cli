@@ -10,6 +10,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### yd usage
 
+- **A large usage report is read again in a moment.** The first read sums its Instances into one row per Compute Requirement, provider, region, instance type, source and pricing, kept beside the report, which later runs and every Usage Explorer view read instead: a report of 1.5 million Instances takes 0.2 seconds rather than 5 to 15, and much less memory. `--by instance-id` and `--where instance-id=` still read every Instance.
 - **`yd usage --json` names the account and the Platform**: `accountName`, looked up as the report is fetched and kept with it (`null` where it cannot be read, or for a report kept by an earlier version), and `url`.
 
 ### Commander

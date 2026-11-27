@@ -208,21 +208,19 @@ class Costing:
         self.refused = refused
         self.unpriced: dict[PriceKey, float] = defaultdict(float)
 
-    def add(self, group: UsageGroup, instance: dict[str, str]) -> None:
+    def add(self, group: UsageGroup, values: dict[str, str], running: float) -> None:
         """
-        Add the Instance's running time, priced or not, to its group.
+        Add the running seconds of Instances alike in what prices them (a
+        usage_report summed row, or one Instance), priced or not, to their
+        group, their provider, region, type and spot being in 'values'.
         """
-        try:
-            running = float(instance.get("Running (s)") or 0)
-        except ValueError:
-            running = 0.0
         if running <= 0:
             return
         key: PriceKey = (
-            instance.get("Provider") or "",
-            instance.get("Region") or "",
-            instance.get("Instance Type") or "",
-            _SPOT if instance.get("Spot") == "true" else _ON_DEMAND,
+            values.get("Provider") or "",
+            values.get("Region") or "",
+            values.get("Instance Type") or "",
+            _SPOT if values.get("Spot") == "true" else _ON_DEMAND,
         )
         price = self.prices.get(key)
         if price is None:
