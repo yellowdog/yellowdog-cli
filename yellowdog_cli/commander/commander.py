@@ -14,6 +14,7 @@ command box, quitting, and run_app().
 """
 
 import os
+import signal
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -96,6 +97,7 @@ from yellowdog_cli.commander.window_base import (
     WINDOW_TITLE,
 )
 from yellowdog_cli.commander.work_panel import WorkPanel
+from yellowdog_cli.utils.exit_codes import ExitCode
 from yellowdog_cli.utils.noun_registry import typed_command
 from yellowdog_cli.utils.output_style import ERROR_MARKER
 from yellowdog_cli.utils.paths import default_config_file, relative_if_possible
@@ -1337,7 +1339,28 @@ def make_application() -> QApplication:
         install_stderr_filter()
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(ICON_IMAGE))
+    quit_on_interrupt(app)
     return app
+
+
+# How often Python is given the chance to see Ctrl+C while Qt is idle
+INTERRUPT_POLL_MS = 250
+
+
+def quit_on_interrupt(app: QApplication) -> None:
+    """
+    Ctrl+C in the terminal quits as Quit does (aboutToQuit, so every run is
+    stopped and the window's state kept), exiting 130 as the CLI does.
+    Python runs a signal handler only between Python calls, which Qt's loop
+    makes none of while idle, so a timer that does nothing gives it the
+    chance; left to Python's own handler, the KeyboardInterrupt is raised
+    inside the next Qt callback (closing the window, say), which PyQt6
+    turns into an abort.
+    """
+    signal.signal(signal.SIGINT, lambda *_: app.exit(ExitCode.INTERRUPTED))
+    poll = QTimer(app)
+    poll.timeout.connect(lambda: None)
+    poll.start(INTERRUPT_POLL_MS)
 
 
 def run_app(settings: StartupSettings | None = None):

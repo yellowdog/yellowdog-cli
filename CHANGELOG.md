@@ -10,6 +10,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **Ctrl+C in the terminal quits Commander or `yd commander --usage-explorer`** as Quit does, exiting 130, rather than aborting with a crash report when the window was next used or closed.
 - **Choosing a namespace in the Usage Explorer loads it at once** when a report kept for the window shown already holds it (its own, or every namespace's), rather than awaiting Fetch Report.
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
 - **The Usage Explorer's Total by menu stays open while keys are ticked and unticked**, and regroups the table once, when it closes.
