@@ -438,9 +438,10 @@ class TestTheReportIsFetchedAndKept:
         assert not report.from_cache
 
     def test_another_window_or_namespace_is_another_report(self, platform):
+        # A namespace's report first: one of every namespace would serve it
+        _report(_ctx(namespace="team-render"))
         _report(_ctx())
         _report(_ctx(usage_from="2026-10-01"))
-        _report(_ctx(namespace="team-render"))
         assert len(platform.calls) == 3
 
     def test_the_directory_name_holds_no_credential(self, platform):
@@ -992,10 +993,13 @@ class TestWhenAKeptReportIsUsed:
         assert len(platform.calls) == 2
 
     def test_a_matching_window_of_another_namespace_is_not_used(self, platform):
-        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
+        self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-train")
         assert not self._run(
             KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL, namespace="team-render"
         ).from_cache
+        # Nor is one namespace's report used for every namespace
+        assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+        assert len(platform.calls) == 3
 
     def test_a_report_kept_without_its_scope_is_not_used(self, platform):
         report = self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL)
@@ -1003,6 +1007,107 @@ class TestWhenAKeptReportIsUsed:
             dumps({"fetched": 1795000000.0}), encoding="utf-8"
         )
         assert not self._run(KEPT_FROM, KEPT_UNTIL, KEPT_UNTIL).from_cache
+
+
+class TestANamespaceFromTheReportOfEvery:
+    """
+    A namespace with no report of its own read from a kept report of every
+    namespace for the window, which holds the same rows (checked live).
+    """
+
+    def test_it_is_read_for_that_namespace_alone(self, platform):
+        every = _report(_ctx())
+        report = _report(_ctx(namespace="team-render"))
+        assert len(platform.calls) == 1
+        assert report.from_cache and report.directory == every.directory
+        assert (report.only_namespace, report.namespaces) == (
+            "team-render",
+            ["team-render"],
+        )
+        groups = usage_report.grouped_usage(report, ["namespace"])
+        assert [group.keys for group in groups] == [{"namespace": "team-render"}]
+        assert groups[0].instances == 1
+
+    def test_its_own_report_comes_first(self, platform):
+        _report(_ctx())
+        own = _report(_ctx(namespace="team-render"), refresh=True)
+        again = _report(_ctx(namespace="team-render"))
+        assert again.directory == own.directory and again.only_namespace is None
+        assert len(platform.calls) == 2
+
+    def test_refresh_fetches_the_namespace(self, platform):
+        _report(_ctx())
+        report = _report(_ctx(namespace="team-render"), refresh=True)
+        assert not report.from_cache
+        assert platform.calls[-1]["json"]["namespaces"] == ["team-render"]
+
+    def test_another_window_is_fetched(self, platform):
+        _report(_ctx())
+        assert not _report(
+            _ctx(namespace="team-render", usage_from="2026-10-01")
+        ).from_cache
+
+    def test_the_command_says_so(self, platform, capsys):
+        _show(capsys)
+        out, _ = _show(capsys, namespace="team-render")
+        assert "Reusing the report of every namespace from an earlier run" in out
+        assert "team-train" not in out
+        document = loads(
+            _show(capsys, namespace="team-render", json_output=True, json=True)[0]
+        )
+        assert document["reused"] is True
+        assert (document["namespace"], document["namespaces"]) == (
+            "team-render",
+            ["team-render"],
+        )
+        assert [group["namespace"] for group in document["groups"]] == ["team-render"]
+
+    def test_a_namespace_that_does_not_exist_is_still_not_found(self, platform, capsys):
+        _report(_ctx())
+        ctx = _ctx(namespace="team-x")
+        search = ctx.client.namespaces_client.get_namespaces.return_value
+        search.list_all.return_value = []
+        with output_settings.configured(ctx.args):
+            with pytest.raises(NotFoundError, match="No namespace 'team-x' exists"):
+                usage.show_usage(ctx)
+        assert len(platform.calls) == 1
+
+
+class TestANamespaceAScopedReportDidNotCover:
+    @pytest.fixture
+    def scoped(self, monkeypatch, tmp_path):
+        from yellowdog_cli.utils import entity_utils
+
+        monkeypatch.setattr(completion_cache, "_temp_root", lambda: tmp_path)
+        fake = _ScopedPlatform({"team-render", "team-train"})
+        monkeypatch.setattr(usage_report.direct_http, "put", fake)
+        monkeypatch.setattr(
+            entity_utils,
+            "search_namespaces",
+            lambda client, namespace: ["team-render", "team-x"],
+        )
+        return fake
+
+    def test_a_refused_namespace_is_asked_for_and_refused(self, scoped):
+        # Every namespace's report asked for team-x and was refused it
+        assert _report(_ctx()).refused == ["team-x"]
+        with pytest.raises(HTTPError) as raised:
+            _report(_ctx(namespace="team-x"))
+        assert classify(raised.value) == ExitCode.PERMISSION
+        assert scoped.calls[-1]["json"]["namespaces"] == ["team-x"]
+
+    def test_a_namespace_not_asked_for_is_fetched(self, scoped):
+        _report(_ctx())
+        report = _report(_ctx(namespace="team-train"))
+        assert not report.from_cache
+        assert scoped.calls[-1]["json"]["namespaces"] == ["team-train"]
+
+    def test_a_namespace_asked_for_is_read_from_it(self, scoped):
+        _report(_ctx())
+        calls = len(scoped.calls)
+        report = _report(_ctx(namespace="team-render"))
+        assert report.from_cache and report.only_namespace == "team-render"
+        assert len(scoped.calls) == calls
 
 
 def test_a_report_kept_without_its_size_is_shown_without_it(platform, capsys):
@@ -1078,7 +1183,7 @@ class TestPruning:
         first = _report(_ctx())
         week_ago = time.time() - 8 * self.DAY
         os.utime(first.directory, (week_ago, week_ago))
-        _report(_ctx(namespace="team-render"))
+        _report(_ctx(namespace="team-render"), refresh=True)
         assert not first.directory.exists()
 
 
@@ -2372,7 +2477,8 @@ def _kept_two(platform) -> None:
     """
     _report(_ctx())
     time.sleep(0.02)
-    _report(_ctx(namespace="team-a"))
+    # Refreshed, or the report of every namespace would serve it
+    _report(_ctx(namespace="team-a"), refresh=True)
     assert len(platform.calls) == 2
 
 

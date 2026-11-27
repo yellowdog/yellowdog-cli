@@ -167,8 +167,14 @@ def show_usage(ctx: RunContext) -> None:
     if report.fetched_bytes is not None:
         when += f", {size_text(report.fetched_bytes)}"
     age += f" ({when})"
+    # A kept report of every namespace, read for the one asked for
+    reused = (
+        "Reusing the report of every namespace"
+        if report.only_namespace
+        else "Reusing report"
+    )
     print_info(
-        f"{'Reusing report' if report.from_cache else 'Report'} {age},"
+        f"{reused if report.from_cache else 'Report'} {age},"
         f" in '{shown_path(report.path)}'"
         + ("; '--refresh' fetches it again" if report.from_cache else "")
     )

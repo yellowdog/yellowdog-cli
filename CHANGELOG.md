@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### yd usage
+
+- **`yd usage -n <namespace>` reuses a kept report of every namespace for the same window**, rather than fetching the namespace's report, saying `Reusing the report of every namespace`. The Usage Explorer's Namespace control does the same.
+
 ### Commander
 
 - **The Usage Explorer can be maximised and minimised on Windows**, whose title bar showed a close button alone.
