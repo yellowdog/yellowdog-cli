@@ -2744,3 +2744,64 @@ def test_the_calendar_opens_at_the_fields_day(explorer):
     explorer._from.setText("7 days ago")
     explorer._from_pick.menu().aboutToShow.emit()
     assert explorer._from_calendar.selectedDate() == QDate.currentDate()
+
+
+def test_forward_reenters_the_level_back_left(explorer, children):
+    assert not explorer._forward.isEnabled()
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    assert explorer._forward.isEnabled()
+    explorer._forward.click()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    assert not explorer._forward.isEnabled()
+
+
+def test_forward_reenters_the_levels_a_crumb_left_one_at_a_time(explorer, children):
+    for _ in range(2):
+        double_click_row(explorer, 0)
+        settle(explorer)
+    deepest = explorer.breadcrumb_text()
+    explorer._crumb_buttons[0].click()
+    settle(explorer)
+    explorer._forward.click()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    assert explorer._forward.isEnabled()
+    explorer._forward.click()
+    settle(explorer)
+    assert explorer.breadcrumb_text() == deepest
+    assert not explorer._forward.isEnabled()
+
+
+def test_another_step_clears_forward(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    click_heading(explorer, "Running")
+    settle(explorer)
+    assert not explorer._forward.isEnabled()
+
+
+def test_forward_has_its_keys(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    explorer._forward_shortcut.activated.emit()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    keys = {k.toString() for k in explorer._forward_shortcut.keys()}
+    assert "Alt+Right" in keys
+
+
+def test_another_configuration_clears_forward(explorer, children):
+    double_click_row(explorer, 0)
+    settle(explorer)
+    explorer._back.click()
+    settle(explorer)
+    explorer.reset("Usage Explorer — other.toml")
+    assert not explorer._forward.isEnabled()

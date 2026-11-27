@@ -428,6 +428,7 @@ TOP_LEVEL = Level((DRILL_PATH[0],))
 CUSTOM_PRESET = "Custom"
 # A single left-pointing angle quotation mark, then Back
 BACK_TEXT = "\u2039 Back"
+FORWARD_TEXT = "Forward \u203a"
 ALL_NAMESPACES = "All namespaces"
 # A single right-pointing angle quotation mark, spaced
 CRUMB_SEPARATOR = " \u203a "
@@ -989,6 +990,16 @@ class UsageExplorer(QDialog):
         self._back.setToolTip("Back to the level above")
         self._back.clicked.connect(self._step_back)
         self._back.setEnabled(False)
+        # The levels Back and the crumbs left, the next to re-enter first,
+        # as the view shown has them; any other step clears them
+        self._forward_levels: list[Level] = []
+        self._requested_forward: list[Level] = []
+        self._forward = QToolButton(self)
+        self._forward.setText(FORWARD_TEXT)
+        self._forward.setAutoRaise(True)
+        self._forward.setToolTip("Forward to the level Back left")
+        self._forward.clicked.connect(self._step_forward)
+        self._forward.setEnabled(False)
         self._crumbs = QHBoxLayout()
         self._crumbs.setSpacing(6)
         self._crumb_buttons: list[QToolButton] = []
@@ -1242,6 +1253,7 @@ class UsageExplorer(QDialog):
         scope_row.addWidget(self._refresh)
         crumb_row = QHBoxLayout()
         crumb_row.addWidget(self._back)
+        crumb_row.addWidget(self._forward)
         crumb_row.addLayout(self._crumbs)
         crumb_row.addStretch(1)
         crumb_row.addWidget(self._find, 1)
@@ -1310,6 +1322,16 @@ class UsageExplorer(QDialog):
         # ambiguous to Qt, and neither would fire
         back.setKeys(list(unique.values()))
         back.activated.connect(self._step_back)
+        forward_keys: list[QKeySequence] = [
+            *QKeySequence.keyBindings(QKeySequence.StandardKey.Forward),
+            QKeySequence("Alt+Right"),
+        ]
+        if MACOS:
+            forward_keys.append(QKeySequence("Ctrl+]"))
+        unique = {key.toString(): key for key in forward_keys if not key.isEmpty()}
+        self._forward_shortcut = QShortcut(self)
+        self._forward_shortcut.setKeys(list(unique.values()))
+        self._forward_shortcut.activated.connect(self._step_forward)
         QShortcut(QKeySequence("Ctrl+R"), self, self._rerun)
         self._find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
         self._find_shortcut.activated.connect(self._focus_find)
@@ -1340,6 +1362,8 @@ class UsageExplorer(QDialog):
         self._kept_items = []
         self._model.clear()
         self._export.setEnabled(False)
+        self._forward_levels = []
+        self._requested_forward = []
         self._show_breadcrumb((TOP_LEVEL,))
         self._show_find(TOP_LEVEL)
         self._show_all.hide()
@@ -1551,8 +1575,18 @@ class UsageExplorer(QDialog):
             return
         self._namespace_runner.run(["namespaces"])
 
-    def _request(self, view: _View, refresh: bool = False) -> None:
+    def _request(
+        self,
+        view: _View,
+        refresh: bool = False,
+        forward: list[Level] | None = None,
+    ) -> None:
+        """
+        Run a view; 'forward' the levels Forward re-enters once it is shown
+        (none: any step but Back, a crumb or Forward clears them).
+        """
         arguments = view_args(view.scope, list(view.levels), refresh)
+        self._requested_forward = list(forward or [])
         # Nothing heard of this run's fetch yet
         self._fetch_progress = None
         self._requested = view
@@ -1568,9 +1602,13 @@ class UsageExplorer(QDialog):
         if viewport is not None:
             viewport.setCursor(Qt.CursorShape.BusyCursor)
 
-    def _request_levels(self, levels: list[Level] | tuple[Level, ...]) -> None:
+    def _request_levels(
+        self,
+        levels: list[Level] | tuple[Level, ...],
+        forward: list[Level] | None = None,
+    ) -> None:
         if self._shown is not None:
-            self._request(_View(self._shown.scope, tuple(levels)))
+            self._request(_View(self._shown.scope, tuple(levels)), forward=forward)
 
     def _control_inputs(self) -> tuple[str, str, str, str]:
         return (
@@ -1962,12 +2000,27 @@ class UsageExplorer(QDialog):
     def _step_back(self) -> None:
         shown = self._shown
         if shown is not None and not self._busy and len(shown.levels) > 1:
-            self._request_levels(shown.levels[:-1])
+            self._request_levels(
+                shown.levels[:-1],
+                forward=[shown.levels[-1], *self._forward_levels],
+            )
 
     def _crumb_clicked(self, depth: int) -> None:
         shown = self._shown
         if shown is not None and not self._busy:
-            self._request_levels(shown.levels[: depth + 1])
+            self._request_levels(
+                shown.levels[: depth + 1],
+                forward=[*shown.levels[depth + 1 :], *self._forward_levels],
+            )
+
+    def _step_forward(self) -> None:
+        """
+        Forward: the next level Back or a crumb left, entered again.
+        """
+        shown = self._shown
+        if shown is not None and not self._busy and self._forward_levels:
+            following, *rest = self._forward_levels
+            self._request_levels((*shown.levels, following), forward=rest)
 
     def _show_column_menu(self, position: QPoint) -> None:
         header = self._table.horizontalHeader()
@@ -2250,6 +2303,7 @@ class UsageExplorer(QDialog):
         )
         self._shown_document = document
         self._shown_notes = shown_notes
+        self._forward_levels = self._requested_forward
         self._apply_hidden_columns()
         self._model.set_row_tooltip(self._row_tooltip(view.levels))
         self._table.resizeColumnsToContents()
@@ -2456,6 +2510,7 @@ class UsageExplorer(QDialog):
             self._crumbs.addWidget(button)
             self._crumb_buttons.append(button)
         self._back.setEnabled(len(levels) > 1)
+        self._forward.setEnabled(bool(self._forward_levels))
         self._show_total_by(levels)
 
     def _show_sort_indicator(self) -> None:
