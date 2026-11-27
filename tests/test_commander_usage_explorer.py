@@ -2824,19 +2824,25 @@ def test_the_table_reads_in_the_windows_font_with_its_figures_aligned(explorer):
 
 def filled(explorer) -> bool:
     """
-    Whether the visible columns are exactly as wide as the table's viewport.
+    Whether the visible columns are exactly as wide as the table's viewport,
+    or, where their contents need more (wider fonts, more columns), each as
+    wide as its contents: never squeezed.
     """
     table = explorer._table
     header = table.horizontalHeader()
-    widths = sum(
-        header.sectionSize(c)
-        for c in range(explorer._model.columnCount())
-        if not table.isColumnHidden(c)
-    )
-    return widths == table.viewport().width()
+    visible = [
+        c for c in range(explorer._model.columnCount()) if not table.isColumnHidden(c)
+    ]
+    widths = sum(header.sectionSize(c) for c in visible)
+    natural = sum(explorer._natural_widths[c] for c in visible)
+    return widths == max(natural, table.viewport().width())
 
 
 def test_the_columns_fill_the_tables_width(explorer, children):
+    assert filled(explorer)
+    # Narrow, every column keeps its contents' width
+    explorer.resize(400, 640)
+    QApplication.processEvents()
     assert filled(explorer)
     explorer.resize(1400, 640)
     QApplication.processEvents()
