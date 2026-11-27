@@ -37,6 +37,10 @@ HIDEABLE_COLUMNS: tuple[str, ...] = (
 TOTAL_LABEL = "Total"
 # The row summing the groups '--top' left out, as yd usage's own table labels it
 MORE_LABEL = "({count:,} more)"
+MORE_TOOLTIP = (
+    "The rows past the first, summed: Show All shows them, and sorting by"
+    " another column brings others to the top"
+)
 # A time column's heading in the table and the shown export, saying how its
 # cells read, as yd usage's own table heads them
 DURATION_HEADING = "{heading} (h:mm)"
@@ -92,6 +96,8 @@ class UsageTableModel(QAbstractTableModel):
         self._has_total = False
         # The label of the row summing what '--top' left out (None for none)
         self._more_label: str | None = None
+        # What a group's row says it leads to (None: nowhere)
+        self._row_tooltip: str | None = None
         # The sort keys after the first (whose column the header's own
         # indicator marks): each key's place and whether the most or Z first
         self._sort_marks: dict[str, tuple[int, bool]] = {}
@@ -249,6 +255,12 @@ class UsageTableModel(QAbstractTableModel):
     def is_total(self, row: int) -> bool:
         return self._has_total and row == len(self._rows) - 1
 
+    def set_row_tooltip(self, text: str | None) -> None:
+        """
+        The tooltip of every group's row: what double-clicking it shows.
+        """
+        self._row_tooltip = text
+
     def is_more(self, row: int) -> bool:
         """
         Whether a row is the one summing the groups '--top' left out.
@@ -339,6 +351,10 @@ class UsageTableModel(QAbstractTableModel):
             font = QFont()
             font.setItalic(True)
             return font
+        if role == Qt.ItemDataRole.ToolTipRole:
+            if self.is_more(row):
+                return MORE_TOOLTIP
+            return self._row_tooltip if row < len(self._groups) else None
         return None
 
     def headerData(

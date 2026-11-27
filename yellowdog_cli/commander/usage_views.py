@@ -36,6 +36,7 @@ __all__ = [
     "drill",
     "eligible_keys",
     "heading",
+    "narrowed",
     "preset_window",
     "row_cells",
     "sort_order",
@@ -255,6 +256,38 @@ def toggled_by(by: tuple[str, ...], key: str) -> tuple[str, ...] | None:
     return (*by, key)
 
 
+def _exact_filter(key: str, row: dict) -> tuple[str, str]:
+    """
+    The '--where key==value' filter matching a row's value of a key: a
+    creator by its ID, no creator (null) as '-', as the CLI shows and
+    matches it.
+    """
+    if key == "creator":
+        return "creator-id", str(row.get("creatorId") or "-")
+    return key, str(row.get(key, ""))
+
+
+def narrowed(levels: list[Level], key: str, row: dict) -> list[Level]:
+    """
+    The levels after filtering to a row's value of one key of several: a
+    level totalled by the others, filtered to that value, sorted as before
+    less that key.
+    """
+    current = levels[-1]
+    filter_ = _exact_filter(key, row)
+    sort = tuple(k for k in current.sort if k != key)
+    return [
+        *levels,
+        Level(
+            tuple(k for k in current.by if k != key),
+            (filter_,),
+            str(row.get(key, filter_[1])),
+            sort=sort,
+            reverse=current.reverse if sort else False,
+        ),
+    ]
+
+
 def drill(levels: list[Level], row: dict) -> list[Level] | None:
     """
     The levels after drilling into a row: each of the row's keys as an
@@ -268,11 +301,7 @@ def drill(levels: list[Level], row: dict) -> list[Level] | None:
     filters: list[tuple[str, str]] = []
     shown: list[str] = []
     for key in current.by:
-        if key == "creator":
-            # No creator (null) is '-', as the CLI shows and matches it
-            filter_ = ("creator-id", str(row.get("creatorId") or "-"))
-        else:
-            filter_ = (key, str(row.get(key, "")))
+        filter_ = _exact_filter(key, row)
         filters.append(filter_)
         shown.append(str(row.get(key, filter_[1])))
     fixed = _fixed_keys([*levels, Level(current.by, tuple(filters))])

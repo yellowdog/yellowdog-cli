@@ -21,6 +21,7 @@ from yellowdog_cli.commander.usage_views import (
     drill,
     eligible_keys,
     heading,
+    narrowed,
     preset_window,
     row_cells,
     sort_order,
@@ -320,3 +321,27 @@ def test_row_cells_format_as_the_cli():
 def test_heading_reads_as_the_command():
     assert heading("cr") == "Compute Requirement"
     assert heading("instance-type") == "Instance type"
+
+
+def test_narrowing_to_a_value_drops_its_key_and_filters_by_it():
+    level = Level(("namespace", "region"), sort=("region", "total"), reverse=True)
+    row = {"namespace": "team-a", "region": "eu-west-2"}
+    levels = narrowed([level], "region", row)
+    assert levels == [
+        level,
+        Level(
+            ("namespace",),
+            (("region", "eu-west-2"),),
+            "eu-west-2",
+            sort=("total",),
+            reverse=True,
+        ),
+    ]
+
+
+def test_narrowing_to_a_creator_filters_by_its_id():
+    level = Level(("creator", "region"))
+    row = {"creator": "alice (User)", "creatorId": "ydid:user:1", "region": "r"}
+    [_, narrow] = narrowed([level], "creator", row)
+    assert narrow.filters == (("creator-id", "ydid:user:1"),)
+    assert narrow.label == "alice (User)"

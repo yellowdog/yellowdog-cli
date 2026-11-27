@@ -21,6 +21,7 @@ from typing import Any, cast
 from PyQt6.QtCore import (
     QByteArray,
     QEvent,
+    QModelIndex,
     QObject,
     QPoint,
     QProcess,
@@ -72,6 +73,7 @@ from PyQt6.QtWidgets import (
 
 from yellowdog_cli.commander import file_dialogs
 from yellowdog_cli.commander.branding import BRANDING_IMAGE_SIZE, branding_pixmap
+from yellowdog_cli.commander.elision import elide_middle
 from yellowdog_cli.commander.host import MACOS, cli_program
 from yellowdog_cli.commander.output_pane import (
     ERROR_RGB_DARK,
@@ -109,6 +111,7 @@ from yellowdog_cli.commander.usage_views import (
     drill,
     eligible_keys,
     heading,
+    narrowed,
     preset_window,
     sort_order,
     toggled_by,
@@ -117,6 +120,11 @@ from yellowdog_cli.commander.usage_views import (
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
 from yellowdog_cli.utils.usage_text import duration_text, report_time
+from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
+
+# The longest a value is named in a row's right-click menu, longer ones
+# shortened in the middle
+MENU_VALUE_CHARS = 40
 
 # The exit code and message of a run the user stopped
 STOPPED_EXIT_CODE = -1
@@ -466,6 +474,26 @@ def _row_of(row: QHBoxLayout, parent: QWidget) -> QWidget:
     return widget
 
 
+def _menu_value(text: str) -> str:
+    """
+    A value as a menu names it, shortened in the middle past MENU_VALUE_CHARS.
+    """
+    return elide_middle(text, MENU_VALUE_CHARS)
+
+
+def _menu_action(
+    menu: QMenu, text: str, slot: Callable[[], object], enabled: bool = True
+) -> QAction:
+    """
+    An action added to a menu, running 'slot' when chosen.
+    """
+    action = QAction(text, menu)
+    action.setEnabled(enabled)
+    action.triggered.connect(lambda _checked=False: slot())
+    menu.addAction(action)
+    return action
+
+
 class _TickMenu(QMenu):
     """
     A menu of ticks that stays open while they are ticked and unticked, by
@@ -754,6 +782,7 @@ class UsageExplorer(QDialog):
         base_args: Callable[[], list[str]],
         font: QFont,
         dark: bool,
+        show_ydid: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(None)
         self.setWindowTitle(title)
@@ -764,6 +793,8 @@ class UsageExplorer(QDialog):
         self.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
         self._base_args = base_args
         self._working_dir = working_dir
+        # Commander's 'yd show' of a YellowDog ID; None run on its own
+        self._show_ydid = show_ydid
         # The export's save dialog, Commander's own
         self._file_dialogs = file_dialogs.FileDialogs(self, font)
         self._dark = dark
@@ -945,6 +976,8 @@ class UsageExplorer(QDialog):
         header.sectionClicked.connect(self._heading_clicked)
         header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         header.customContextMenuRequested.connect(self._show_column_menu)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_row_menu)
         header.setToolTip(
             "Click a heading to sort by it; right-click to show or hide columns"
         )
@@ -1655,6 +1688,76 @@ class UsageExplorer(QDialog):
             (*current.levels[:-1], replace(level, sort=keys, reverse=reverse))
         )
 
+    def _show_row_menu(self, position: QPoint) -> None:
+        index = self._table.indexAt(position)
+        viewport = self._table.viewport()
+        if index.isValid() and viewport is not None:
+            self._row_menu(index).popup(viewport.mapToGlobal(position))
+
+    def _row_menu(self, index: QModelIndex) -> QMenu:
+        """
+        A cell's right-click menu: drill into its row, filter to its value
+        (a key of several), copy it or the selection, and, inside Commander,
+        show a YellowDog ID it holds.
+        """
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        row, column = index.row(), index.column()
+        model = self._model
+        group = model.group(row)
+        current = self._shown
+        idle = current is not None and not self._busy
+        if group is not None and current is not None:
+            levels = drill(list(current.levels), group)
+            if levels is not None:
+                _menu_action(
+                    menu,
+                    f"Drill Into '{_menu_value(levels[-1].label)}'",
+                    partial(self._drill, row),
+                    idle,
+                )
+            by = model.by
+            if column < len(by) and len(by) > 1:
+                narrower = narrowed(list(current.levels), by[column], group)
+                _menu_action(
+                    menu,
+                    f"Filter to '{_menu_value(narrower[-1].label)}'",
+                    partial(self._request_levels, narrower),
+                    idle,
+                )
+        if not menu.isEmpty():
+            menu.addSeparator()
+        text = str(model.data(index) or "")
+        _menu_action(
+            menu,
+            f"Copy '{_menu_value(text)}'",
+            partial(copy_to_clipboard, text),
+            bool(text),
+        )
+        _menu_action(menu, "Copy Selected Cells", self._copy_cells)
+        if self._show_ydid is not None and YDID_HIGHLIGHT_RE.fullmatch(text):
+            menu.addSeparator()
+            _menu_action(
+                menu,
+                f"Show '{_menu_value(text)}' in Commander",
+                partial(self._show_ydid, text),
+            )
+        return menu
+
+    def _row_tooltip(self, levels: tuple[Level, ...]) -> str | None:
+        """
+        What a row of this level leads to, said on it: the key the next
+        level totals by (the same for every row), nothing at the last.
+        """
+        group = self._model.group(0)
+        deeper = drill(list(levels), group) if group is not None else None
+        if deeper is None:
+            return None
+        return (
+            f"Double-click to show it by {heading(deeper[-1].by[0])};"
+            " right-click for more"
+        )
+
     def _drill(self, row: int) -> None:
         group = self._model.group(row)
         if group is None or self._shown is None or self._busy:
@@ -1838,12 +1941,8 @@ class UsageExplorer(QDialog):
             {i.column() for i in indexes if not self._table.isColumnHidden(i.column())}
         )
         chosen = {(index.row(), index.column()) for index in indexes}
-        lines = [
-            "\t".join(
-                str(self._model.headerData(c, Qt.Orientation.Horizontal))
-                for c in columns
-            )
-        ]
+        # The headings as written, without the sort marks the header shows
+        lines = ["\t".join(self._model.heading(c) for c in columns)]
         for row in rows:
             lines.append(
                 "\t".join(
@@ -1939,6 +2038,7 @@ class UsageExplorer(QDialog):
         self._shown_document = document
         self._shown_notes = shown_notes
         self._apply_hidden_columns()
+        self._model.set_row_tooltip(self._row_tooltip(view.levels))
         self._table.resizeColumnsToContents()
         self._show_breadcrumb(view.levels)
         self._sync_controls_to_shown()

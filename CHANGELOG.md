@@ -15,6 +15,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **Right-click a row in the Usage Explorer** to drill into it, filter to a value of one of several keys, copy the cell or the selection, or (inside Commander) show a YellowDog ID with `yd show`. Each row's tooltip says what double-clicking it shows, and copied headings no longer carry the sort's numbers.
 - **The Usage Explorer shows a level's first 500 rows**, the rest summed in one `(n more)` row, so a level of many thousands of Instances opens quickly; **Show All** shows every row.
 - **A save dialog opens where the last save went**, for the rest of the session: Save Command Output and the Usage Explorer's CSV and PDF exports, each with its own suggested name. A new session starts in the configuration file's directory again.
 - **The Usage Explorer's Export menu is grouped by format**: **Save CSV (Raw Numbers)…**, **Save CSV (As Shown)…** and **Include Total Row**, then **Save PDF Report…** and the page orientation, a choice of **Portrait** or **Landscape** with one always marked.

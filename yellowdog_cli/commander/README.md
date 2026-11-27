@@ -561,7 +561,7 @@ The **←** and **→** buttons step back and forth through your command history
 ![The Usage Explorer on macOS, drilled into the team-render namespace and totalled by Compute Requirement, with estimated costs](screenshots/screenshot_usage_explorer_macos.png)
 
 1. Select a configuration file and click **Usage Explorer...**. The window opens on the last seven days for all namespaces on first use (it then opens on the window preset last chosen), and fetches nothing until you click **Fetch Report** at the centre of the table, so you can choose the window and namespace first. The table then has one row per namespace and a **Total** row beneath.
-2. Double-click a namespace (or select it and press Return). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
+2. Double-click a namespace (or select it and press Return, or right-click it and choose **Drill Into**). The table now shows that namespace's Compute Requirements, with the breadcrumb above it reading `All › <namespace>`.
 3. Drill again, to instance types, then to single Instances, which are the last level. Each row shows Instances, running, stopped and total time, and an estimated cost.
 4. Click a crumb or press **Back** (Alt+Left; Cmd+[ on macOS) to go back up, or tick keys in **Total by** to regroup the level you are on: tick **Region** beside **Namespace**, for example, for a row per namespace and region. Click a heading to sort by it, and again to reverse. Shift-click another heading to sort by it next, within the first.
 5. Change **Window** (a preset, or type **From** and **Until** as `yd usage --from` and `--until` read them) or **Namespace**, then click **Fetch Report** to start again at the top. A namespace whose usage for the window shown is already kept loads at once. **Kept Reports**, at the end of the Window row, lists the reports kept from earlier runs (`yd usage --reports`); choosing one sets the window and namespace to its own and shows it at once, without fetching it. **Refresh** fetches the report again straight away, and Cmd/Ctrl+R runs the latest view again (or fetches the report awaited).
@@ -615,6 +615,8 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 - **Save CSV (Raw Numbers)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
 - **Save CSV (As Shown)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
 - **Save PDF Report…**: the view as a report to print or share, suggested as `usage-<date>-<time>.pdf`. See [The PDF Report](#the-pdf-report).
+
+**A row's menu.** Right-click a cell for **Drill Into** its row, **Filter to** its value (a key column, where the level is totalled by several keys: the level is totalled by the others, for that value alone, as a crumb of its own), **Copy** the cell or the selected cells, and, inside Commander, **Show** a YellowDog ID it holds, which runs `yd show` in the output window. A row's tooltip says what double-clicking it shows.
 
 **Copying.** Cmd/Ctrl+C copies the selected cells as tab-separated text, with their headings. Esc does nothing in this window; close it with its own close button.
 

@@ -23,7 +23,13 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QPoint, QProcess, QRect, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPalette
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QStyle, QStyleFactory, QStyleOptionHeader
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QStyle,
+    QStyleFactory,
+    QStyleOptionHeader,
+)
 
 import yellowdog_cli.commander.usage_explorer as usage_explorer
 from yellowdog_cli.commander import commander, usage_explorer
@@ -1120,6 +1126,126 @@ def test_rows_past_the_first_are_summed_and_can_all_be_shown(explorer, children)
     assert cells(explorer, 2)[0] == "team-2"
     assert not explorer._show_all.isVisible()
     assert "The first" not in explorer._notes.text()
+
+
+def row_menu(explorer, row: int, column: int = 0) -> dict:
+    """
+    The right-click menu of a cell, by its actions' texts.
+    """
+    menu = explorer._row_menu(explorer._model.index(row, column))
+    return {a.text(): a for a in menu.actions() if not a.isSeparator()}
+
+
+def test_a_rows_menu_drills_into_it(explorer, children):
+    menu = row_menu(explorer, 0)
+    assert list(menu)[:3] == [
+        "Drill Into 'team-render'",
+        "Copy 'team-render'",
+        "Copy Selected Cells",
+    ]
+    menu["Drill Into 'team-render'"].trigger()
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+
+
+def test_a_right_click_on_a_row_opens_its_menu(explorer):
+    rect = explorer._table.visualRect(explorer._model.index(0, 0))
+    explorer._table.customContextMenuRequested.emit(rect.center())
+    menu = QApplication.activePopupWidget()
+    try:
+        assert isinstance(menu, QMenu)
+        assert menu.actions()[0].text() == "Drill Into 'team-render'"
+    finally:
+        if menu is not None:
+            menu.close()
+
+
+def test_the_total_and_summed_rows_offer_no_drill(explorer):
+    total = explorer._model.rowCount() - 1
+    menu = row_menu(explorer, total)
+    assert not any(text.startswith("Drill Into") for text in menu)
+    assert "Copy 'Total'" in menu
+
+
+def test_a_rows_menu_copies_the_cell_and_the_selection(explorer, qapp):
+    row_menu(explorer, 0, 1)["Copy '17'"].trigger()
+    assert qapp.clipboard().text() == "17"
+    explorer._table.selectAll()
+    row_menu(explorer, 0)["Copy Selected Cells"].trigger()
+    assert qapp.clipboard().text().startswith("Namespace\tInstances\t")
+
+
+def test_copied_headings_carry_no_sort_mark(explorer, children, qapp):
+    click_heading(explorer, "Namespace")
+    settle(explorer)
+    click_heading(explorer, "Running", shift=True)
+    settle(explorer)
+    explorer._table.selectAll()
+    explorer._copy_cells()
+    assert "\tRunning (h:mm)\t" in qapp.clipboard().text().splitlines()[0]
+
+
+def test_a_key_of_several_filters_to_its_value(explorer, children):
+    tick(explorer, "region")
+    settle(explorer)
+    menu = row_menu(explorer, 0, 1)
+    menu["Filter to 'x'"].trigger()
+    settle(explorer)
+    args = usage_args(children)
+    assert value_of(args, "--by") == "namespace" and wheres(args) == ["region==x"]
+    assert explorer.breadcrumb_text().endswith("x")
+    # A key alone is drilled into instead
+    assert not any(t.startswith("Filter to") for t in row_menu(explorer, 0, 0))
+
+
+def test_rows_say_they_can_be_drilled_into(explorer):
+    model = explorer._model
+    tooltip = model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+    assert tooltip == (
+        f"Double-click to show it by {heading('cr')}; right-click for more"
+    )
+    total = model.rowCount() - 1
+    assert model.data(model.index(total, 0), Qt.ItemDataRole.ToolTipRole) is None
+
+
+def test_a_yellowdog_id_can_be_shown_in_commander(qapp, children, tmp_path):
+    ydid = "ydid:compreq:000000:AAAAAA:00000000-0000-0000-0000-000000000001"
+    children.answer = lambda c, a: (
+        (json.dumps(NAMESPACES), "", 0, 0)
+        if c == "yd list"
+        else (json.dumps(KEPT), "", 0, 0)
+        if "--reports" in a
+        else (
+            json.dumps(document(["cr-id"], [group({"cr-id": ydid}, 1, 1.0)])),
+            "",
+            0,
+            0,
+        )
+    )
+    shown: list[str] = []
+    window = UsageExplorer(
+        "Usage Explorer",
+        lambda: str(tmp_path),
+        lambda: list(BASE_ARGS),
+        QFont(),
+        False,
+        show_ydid=shown.append,
+    )
+    try:
+        window.show()
+        settle(window)
+        fetch(window)
+        menu = row_menu(window, 0)
+        [text] = [t for t in menu if t.endswith("in Commander")]
+        menu[text].trigger()
+        assert shown == [ydid]
+    finally:
+        window.shut_down()
+        QApplication.processEvents()
+
+
+def test_without_commander_no_show_is_offered(explorer):
+    assert not any(t.endswith("in Commander") for t in row_menu(explorer, 0))
 
 
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
