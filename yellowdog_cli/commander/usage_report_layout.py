@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import timezone
 
 from yellowdog_cli.commander.elision import elide_middle
-from yellowdog_cli.commander.usage_views import Level, window_time
+from yellowdog_cli.commander.usage_views import Level, heading, window_time
 from yellowdog_cli.utils.usage_text import report_time
 
 # Width in points of a text at a point size, bold or not
@@ -557,6 +557,10 @@ def report_content(
     if len(levels) > 1:
         scope_lines.append(
             "Within: " + DRILL_SEPARATOR.join(level.label for level in levels[1:])
+        )
+    if levels and levels[-1].match:
+        scope_lines.append(
+            f"Where: {heading(levels[-1].by[0])} contains '{levels[-1].match}'"
         )
     scope_lines.append(
         f"Report fetched {window_time(str(document.get('fetched', '')))}"

@@ -343,6 +343,16 @@ def test_scope_lines():
     assert not any(line.startswith("Within") for line in top.scope_lines)
 
 
+def test_a_find_is_stated_with_the_scope():
+    levels = (
+        DRILLED[0],
+        Level(("cr",), (("namespace", "team-render"),), "team-render", match="night"),
+    )
+    assert (
+        "Where: Compute Requirement contains 'night'" in made(levels=levels).scope_lines
+    )
+
+
 def test_the_sort_is_stated_with_what_it_totals_by():
     content = made(sort="Total (h:mm), most first")
     assert content.scope_lines[1] == (

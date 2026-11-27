@@ -345,3 +345,16 @@ def test_narrowing_to_a_creator_filters_by_its_id():
     [_, narrow] = narrowed([level], "creator", row)
     assert narrow.filters == (("creator-id", "ydid:user:1"),)
     assert narrow.label == "alice (User)"
+
+
+def test_find_matches_the_first_key_anywhere_in_its_value():
+    args = view_args(
+        Scope("a", "b", None, False), [Level(("cr", "region"), match="rend")]
+    )
+    where = [args[i + 1] for i, arg in enumerate(args) if arg == "--where"]
+    assert where == ["cr=*rend*"]
+
+
+def test_a_bracket_found_matches_itself():
+    args = view_args(Scope("a", "b", None, False), [Level(("cr",), match="a[1]")])
+    assert args[args.index("--where") + 1] == "cr=*a[[]1]*"

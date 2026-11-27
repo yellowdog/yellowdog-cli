@@ -169,8 +169,9 @@ class Level:
     One breadcrumb level: the keys it totals by (columns, in this order), the
     exact filters the row drilled into gave it, how it sorts: the '--sort'
     keys, the first the most significant ('total' when none), and whether
-    '--reverse' turns them all round; and whether every row is shown, or the
-    first VIEW_TOP_ROWS with the rest summed.
+    '--reverse' turns them all round; whether every row is shown, or the
+    first VIEW_TOP_ROWS with the rest summed; and the text Find looks for
+    in its first key's values ('' for none).
     """
 
     by: tuple[str, ...]
@@ -179,6 +180,7 @@ class Level:
     sort: tuple[str, ...] = ()
     reverse: bool = False
     all_rows: bool = False
+    match: str = ""
 
     @property
     def leaf(self) -> bool:
@@ -186,6 +188,14 @@ class Level:
         Whether this is the Instance level, the last.
         """
         return INSTANCE_LEVEL in self.by
+
+
+def glob_literal(text: str) -> str:
+    """
+    Text in a '--where' pattern, a '[' matching itself rather than opening a
+    class; a '*' or '?' typed is a wildcard still.
+    """
+    return text.replace("[", "[[]")
 
 
 def sort_order(level: Level | None) -> list[tuple[str, bool]]:
@@ -213,6 +223,8 @@ def view_args(scope: Scope, levels: list[Level], refresh: bool = False) -> list[
     for level in levels:
         for key, value in level.filters:
             args += ["--where", f"{key}=={value}"]
+    if current.match:
+        args += ["--where", f"{current.by[0]}=*{glob_literal(current.match)}*"]
     if current.sort:
         args += ["--sort", ",".join(current.sort)]
         if current.reverse:

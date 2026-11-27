@@ -122,6 +122,9 @@ from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
 from yellowdog_cli.utils.usage_text import duration_text, report_time
 from yellowdog_cli.utils.ydid_utils import YDID_HIGHLIGHT_RE
 
+# How long Find waits after a key before running the view
+FIND_DELAY_MS = 400
+
 # The longest a value is named in a row's right-click menu, longer ones
 # shortened in the middle
 MENU_VALUE_CHARS = 40
@@ -928,6 +931,21 @@ class UsageExplorer(QDialog):
         self._crumbs.setSpacing(6)
         self._crumb_buttons: list[QToolButton] = []
         # A menu of the keys this level may total by, each ticked or not;
+        # Find: the level's rows whose first key holds the text (--where)
+        self._find = QLineEdit(self)
+        self._find.setClearButtonEnabled(True)
+        self._find.setToolTip(
+            "Show the rows whose first column holds this text, in any case"
+            " (* and ? are wildcards); Esc empties it"
+        )
+        self._find_timer = QTimer(self)
+        self._find_timer.setSingleShot(True)
+        self._find_timer.setInterval(FIND_DELAY_MS)
+        self._find_timer.timeout.connect(self._apply_find)
+        self._find.textEdited.connect(lambda _text: self._find_timer.start())
+        self._find.returnPressed.connect(self._apply_find)
+        self._find.installEventFilter(self)
+        self._show_find(TOP_LEVEL)
         # _show_total_by() fills it for the view shown
         self._total_by = QPushButton(self)
         self._total_by.setAutoDefault(False)
@@ -1152,6 +1170,7 @@ class UsageExplorer(QDialog):
         crumb_row.addWidget(self._back)
         crumb_row.addLayout(self._crumbs)
         crumb_row.addStretch(1)
+        crumb_row.addWidget(self._find, 1)
         crumb_row.addWidget(QLabel("Total by:", self))
         crumb_row.addWidget(self._total_by)
         crumb_row.addWidget(self._export)
@@ -1217,6 +1236,8 @@ class UsageExplorer(QDialog):
         back.setKeys(list(unique.values()))
         back.activated.connect(self._step_back)
         QShortcut(QKeySequence("Ctrl+R"), self, self._rerun)
+        self._find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        self._find_shortcut.activated.connect(self._focus_find)
         for keys, step in (
             (QKeySequence(QKeySequence.StandardKey.ZoomIn), 1),
             # Cmd/Ctrl+=, the unshifted key, which ZoomIn does not include
@@ -1245,6 +1266,8 @@ class UsageExplorer(QDialog):
         self._model.clear()
         self._export.setEnabled(False)
         self._show_breadcrumb((TOP_LEVEL,))
+        self._show_find(TOP_LEVEL)
+        self._show_all.hide()
         self._say([])
         self._report.clear()
         self._command_line.clear()
@@ -1355,6 +1378,15 @@ class UsageExplorer(QDialog):
         super().keyPressEvent(a0)
 
     def eventFilter(self, a0: QObject | None, a1: QEvent | None) -> bool:
+        if (
+            a0 is self._find
+            and isinstance(a1, QKeyEvent)
+            and a1.type() == QEvent.Type.KeyPress
+            and a1.key() == Qt.Key.Key_Escape
+        ):
+            self._find.clear()
+            self._apply_find()
+            return True
         if (
             a0 is self._table
             and isinstance(a1, QKeyEvent)
@@ -1653,7 +1685,13 @@ class UsageExplorer(QDialog):
             key for key in level.sort if key in USAGE_SORT_VALUE_KEYS or key in by
         )
         changed = replace(
-            level, by=by, sort=sort, reverse=level.reverse if sort else False
+            level,
+            by=by,
+            sort=sort,
+            reverse=level.reverse if sort else False,
+            # Find looks in the first key's column: another first key, another
+            # column, so it is emptied
+            match=level.match if by[0] == level.by[0] else "",
         )
         self._request_levels((*current.levels[:-1], changed))
 
@@ -1687,6 +1725,31 @@ class UsageExplorer(QDialog):
         self._request_levels(
             (*current.levels[:-1], replace(level, sort=keys, reverse=reverse))
         )
+
+    def _focus_find(self) -> None:
+        self._find.setFocus()
+        self._find.selectAll()
+
+    def _apply_find(self) -> None:
+        """
+        Find's text applied to the level shown, unless it holds it already.
+        """
+        self._find_timer.stop()
+        current = self._shown
+        text = self._find.text()
+        if current is None or self._busy or current.levels[-1].match == text:
+            return
+        level = current.levels[-1]
+        self._request_levels((*current.levels[:-1], replace(level, match=text)))
+
+    def _show_find(self, level: Level) -> None:
+        """
+        Find as a level has it: its text, and the column it looks in.
+        """
+        self._find_timer.stop()
+        if self._find.text() != level.match:
+            self._find.setText(level.match)
+        self._find.setPlaceholderText(f"Find in {heading(level.by[0])}…")
 
     def _show_row_menu(self, position: QPoint) -> None:
         index = self._table.indexAt(position)
@@ -2149,6 +2212,7 @@ class UsageExplorer(QDialog):
         self._show_total_by()
         shown = self._shown
         if shown is not None:
+            self._show_find(shown.levels[-1])
             cost = bool(shown.scope.cost)
             self._cost.blockSignals(True)
             self._cost.setChecked(cost)

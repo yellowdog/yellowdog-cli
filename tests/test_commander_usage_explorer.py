@@ -1248,6 +1248,65 @@ def test_without_commander_no_show_is_offered(explorer):
     assert not any(t.endswith("in Commander") for t in row_menu(explorer, 0))
 
 
+def find(explorer, text: str) -> None:
+    explorer._find.clear()
+    QTest.keyClicks(explorer._find, text)
+    QTest.keyClick(explorer._find, Qt.Key.Key_Return)
+    settle(explorer)
+
+
+def test_find_filters_the_first_key_column(explorer, children):
+    assert explorer._find.placeholderText() == "Find in Namespace…"
+    find(explorer, "rend")
+    assert wheres(usage_args(children)) == ["namespace=*rend*"]
+    assert explorer._find.text() == "rend"
+
+
+def test_find_runs_once_typing_stops(explorer, children):
+    QTest.keyClicks(explorer._find, "sim")
+    wait_for(lambda: "namespace=*sim*" in wheres(usage_args(children)))
+    settle(explorer)
+
+
+def test_escape_in_find_empties_it(explorer, children):
+    find(explorer, "rend")
+    QTest.keyClick(explorer._find, Qt.Key.Key_Escape)
+    settle(explorer)
+    assert explorer._find.text() == ""
+    assert wheres(usage_args(children)) == []
+
+
+def test_find_belongs_to_its_level(explorer, children):
+    find(explorer, "team")
+    # Another key after the first keeps it
+    tick(explorer, "region")
+    settle(explorer)
+    assert wheres(usage_args(children)) == ["namespace=*team*"]
+    tick(explorer, "region")
+    settle(explorer)
+    # Drilling starts the next level unfound, and Back finds it again
+    double_click_row(explorer, 0)
+    settle(explorer)
+    assert explorer._find.text() == ""
+    assert explorer._find.placeholderText() == f"Find in {heading('cr')}…"
+    assert wheres(usage_args(children)) == ["namespace==team-render"]
+    explorer._back.click()
+    settle(explorer)
+    assert explorer._find.text() == "team"
+
+
+def test_another_configuration_empties_find(explorer, children):
+    find(explorer, "rend")
+    explorer.reset("Usage Explorer — other.toml")
+    assert explorer._find.text() == ""
+    assert explorer._find.placeholderText() == "Find in Namespace…"
+
+
+def test_find_is_focused_by_its_shortcut(explorer):
+    explorer._find_shortcut.activated.emit()
+    assert explorer.focusWidget() is explorer._find
+
+
 def test_the_instance_level_is_drilled_into_with_its_keys_ticked(explorer, children):
     for _ in range(3):
         double_click_row(explorer, 0)
