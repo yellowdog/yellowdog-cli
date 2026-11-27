@@ -1502,28 +1502,30 @@ def read_csv(path) -> list[list[str]]:
         return list(csv.reader(file))
 
 
-def test_export_offers_raw_numbers_first(explorer):
+def test_export_offers_raw_numbers_first_each_format_with_its_tick(explorer):
     assert explorer._export.text() == "Export"
     menu = explorer._export.menu()
     assert [action.text() for action in menu.actions()] == [
-        "Raw Numbers (CSV)…",
-        "As Shown (CSV)…",
-        "PDF Report…",
+        "Save CSV (Raw Numbers)…",
+        "Save CSV (As Shown)…",
+        "Include Total Row",
         "",
-        "Include Total Row (CSV)",
-        "Landscape PDF",
+        "Save PDF Report…",
+        "Portrait",
+        "Landscape",
     ]
     # The Total row included unless unticked; portrait unless ticked
     assert explorer._export_total.isCheckable()
     assert explorer._export_total.isChecked()
-    assert explorer._pdf_landscape.isCheckable()
+    # The orientation a choice, one always marked: portrait at first
+    assert explorer._pdf_portrait.isChecked()
     assert not explorer._pdf_landscape.isChecked()
     assert all(action.toolTip() for action in menu.actions() if action.text())
 
 
 def export_pdf_to(explorer, path, monkeypatch) -> list[dict]:
     """
-    Choose PDF Report… with the save dialog answering 'path' (None:
+    Choose Save PDF Report… with the save dialog answering 'path' (None:
     dismissed), returning what the dialog was asked.
     """
     asked: list[dict] = []
@@ -1618,6 +1620,14 @@ def test_landscape_pdf_is_remembered(
     )
     try:
         assert window._pdf_landscape.isChecked()
+        assert not window._pdf_portrait.isChecked()
+        # Portrait chosen again is remembered too
+        window._pdf_portrait.trigger()
+        assert window._pdf_portrait.isChecked()
+        assert not window._pdf_landscape.isChecked()
+        assert not commander_dialog_settings.value(
+            SETTING_EXPLORER_PDF_LANDSCAPE, type=bool
+        )
     finally:
         window.shut_down()
         QApplication.processEvents()

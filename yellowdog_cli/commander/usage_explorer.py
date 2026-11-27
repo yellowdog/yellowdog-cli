@@ -32,6 +32,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QAction,
+    QActionGroup,
     QCloseEvent,
     QColor,
     QFont,
@@ -999,26 +1000,24 @@ class UsageExplorer(QDialog):
         )
         self._export.setEnabled(False)
         export_menu = QMenu(self._export)
-        self._export_raw = QAction("Raw Numbers (CSV)…", export_menu)
+        self._export_raw = QAction("Save CSV (Raw Numbers)…", export_menu)
         export_menu.addAction(self._export_raw)
         self._export_raw.setToolTip(
             "Instances, hours as decimals and the cost as a number,"
             " with the running hours no price covered"
         )
         self._export_raw.triggered.connect(partial(self._export_csv, True))
-        self._export_shown = QAction("As Shown (CSV)…", export_menu)
+        self._export_shown = QAction("Save CSV (As Shown)…", export_menu)
         export_menu.addAction(self._export_shown)
         self._export_shown.setToolTip("Every cell as the table shows it")
         self._export_shown.triggered.connect(partial(self._export_csv, False))
-        self._export_pdf_action = QAction("PDF Report…", export_menu)
-        export_menu.addAction(self._export_pdf_action)
+        self._export_pdf_action = QAction("Save PDF Report…", export_menu)
         self._export_pdf_action.setToolTip(
             "The view as a report for printing: the period, headline figures"
             " and the table, on as many pages as it needs"
         )
         self._export_pdf_action.triggered.connect(self._export_pdf)
-        export_menu.addSeparator()
-        self._export_total = QAction("Include Total Row (CSV)", export_menu)
+        self._export_total = QAction("Include Total Row", export_menu)
         self._export_total.setCheckable(True)
         self._export_total.setChecked(
             bool(
@@ -1035,25 +1034,34 @@ class UsageExplorer(QDialog):
                 SETTING_EXPLORER_EXPORT_TOTAL, checked
             )
         )
+        # Each format's exports, then the tick that changes them
         export_menu.addAction(self._export_total)
-        self._pdf_landscape = QAction("Landscape PDF", export_menu)
-        self._pdf_landscape.setCheckable(True)
-        self._pdf_landscape.setChecked(
-            bool(
-                file_dialogs.dialog_settings().value(
-                    SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
-                )
-            )
-        )
+        export_menu.addSeparator()
+        export_menu.addAction(self._export_pdf_action)
+        # The orientation a choice of two, one always marked, so that it
+        # reads as a setting rather than as something the menu would do
+        orientation = QActionGroup(export_menu)
+        orientation.setExclusive(True)
+        self._pdf_portrait = QAction("Portrait", orientation)
+        self._pdf_portrait.setToolTip("Lay the PDF report's pages out portrait")
+        self._pdf_landscape = QAction("Landscape", orientation)
         self._pdf_landscape.setToolTip(
             "Lay the PDF report's pages out landscape, for a wide table"
         )
+        for action in (self._pdf_portrait, self._pdf_landscape):
+            action.setCheckable(True)
+            export_menu.addAction(action)
+        landscape = bool(
+            file_dialogs.dialog_settings().value(
+                SETTING_EXPLORER_PDF_LANDSCAPE, False, type=bool
+            )
+        )
+        (self._pdf_landscape if landscape else self._pdf_portrait).setChecked(True)
         self._pdf_landscape.toggled.connect(
             lambda checked: file_dialogs.dialog_settings().setValue(
                 SETTING_EXPLORER_PDF_LANDSCAPE, checked
             )
         )
-        export_menu.addAction(self._pdf_landscape)
         export_menu.setToolTipsVisible(True)
         self._export.setMenu(export_menu)
 
@@ -1737,7 +1745,7 @@ class UsageExplorer(QDialog):
         The view shown, saved as a PDF report to a file the user names: its
         visible columns and rows with the Total row, the tiles from the Total
         row of every column, the scope and notes of the view shown (never of
-        controls changed since), portrait unless Landscape PDF is ticked; the
+        controls changed since), portrait unless Landscape is chosen; the
         outcome logged, and a failure shown too.
         """
         shown, document = self._shown, self._shown_document

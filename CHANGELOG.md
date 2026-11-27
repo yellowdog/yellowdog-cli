@@ -16,6 +16,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 ### Commander
 
 - **A save dialog opens where the last save went**, for the rest of the session: Save Command Output and the Usage Explorer's CSV and PDF exports, each with its own suggested name. A new session starts in the configuration file's directory again.
+- **The Usage Explorer's Export menu is grouped by format**: **Save CSV (Raw Numbers)…**, **Save CSV (As Shown)…** and **Include Total Row**, then **Save PDF Report…** and the page orientation, a choice of **Portrait** or **Landscape** with one always marked.
 - **The Usage Explorer sorts by several columns**: Shift-click a heading to sort by it next, or to drop it from the sort. Later keys are numbered in their headings, and the command line and PDF report name every key.
 - **The Usage Explorer's PDF report says how its rows are sorted**, beside what it is totalled by: `sorted by Total (h:mm), most first`.
 - **The Usage Explorer's PDF report names the account and the Platform's URL** beneath its title.
