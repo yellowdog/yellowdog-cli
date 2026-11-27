@@ -946,6 +946,16 @@ class UsageExplorer(QDialog):
         self._find.returnPressed.connect(self._apply_find)
         self._find.installEventFilter(self)
         self._show_find(TOP_LEVEL)
+        # Columns: the figure columns to show, as the heading's right-click
+        # menu offers them, filled as it opens
+        self._columns = QPushButton("Columns", self)
+        self._columns.setAutoDefault(False)
+        self._columns.setToolTip(
+            "Show or hide figure columns (also by right-clicking a heading)"
+        )
+        columns_menu = _TickMenu(self._columns)
+        columns_menu.aboutToShow.connect(lambda: self._fill_column_menu(columns_menu))
+        self._columns.setMenu(columns_menu)
         # _show_total_by() fills it for the view shown
         self._total_by = QPushButton(self)
         self._total_by.setAutoDefault(False)
@@ -1173,6 +1183,7 @@ class UsageExplorer(QDialog):
         crumb_row.addWidget(self._find, 1)
         crumb_row.addWidget(QLabel("Total by:", self))
         crumb_row.addWidget(self._total_by)
+        crumb_row.addWidget(self._columns)
         crumb_row.addWidget(self._export)
         notes_row = QHBoxLayout()
         notes_row.addWidget(self._notes, 1)
@@ -1846,11 +1857,19 @@ class UsageExplorer(QDialog):
 
     def _column_menu(self) -> QMenu:
         """
-        The heading's right-click menu: a tick for each figure column but
-        the cost (which Estimated cost adds), the status columns after a
-        separator.
+        The heading's right-click menu: Columns' ticks (_fill_column_menu()).
         """
-        menu = QMenu(self)
+        menu = _TickMenu(self)
+        self._fill_column_menu(menu)
+        return menu
+
+    def _fill_column_menu(self, menu: QMenu) -> None:
+        """
+        A tick for each figure column but the cost (which Estimated cost
+        adds), the status columns after a separator, ticked as shown now:
+        the heading's right-click menu and Columns' alike.
+        """
+        menu.clear()
         for key in HIDEABLE_COLUMNS:
             if key == STATUS_COLUMNS[0]:
                 menu.addSeparator()
@@ -1858,7 +1877,6 @@ class UsageExplorer(QDialog):
             action.setCheckable(True)
             action.setChecked(key not in self._hidden)
             action.toggled.connect(partial(self._show_column, key))
-        return menu
 
     def _show_column(self, key: str, shown: bool) -> None:
         if shown:

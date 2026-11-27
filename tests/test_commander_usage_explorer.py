@@ -2086,6 +2086,30 @@ def test_the_column_menu_offers_every_figure_but_the_cost(explorer):
     ]
 
 
+def test_the_columns_button_offers_the_same_ticks(explorer):
+    assert explorer._columns.text() == "Columns"
+    menu = explorer._columns.menu()
+    assert isinstance(menu, usage_explorer._TickMenu)
+    menu.aboutToShow.emit()
+    heading_menu = explorer._column_menu()
+    assert [a.text() for a in menu.actions()] == [
+        a.text() for a in heading_menu.actions()
+    ]
+    [running] = [a for a in menu.actions() if a.text() == "Running"]
+    running.trigger()
+    assert "Running (h:mm)" not in shown_headings(explorer)
+    # Shown again, its ticks are the columns' as they are now
+    menu.aboutToShow.emit()
+    [running] = [a for a in menu.actions() if a.text() == "Running"]
+    assert not running.isChecked()
+    running.trigger()
+    assert "Running (h:mm)" in shown_headings(explorer)
+
+
+def test_the_headings_menu_stays_open_while_ticking(explorer):
+    assert isinstance(explorer._column_menu(), usage_explorer._TickMenu)
+
+
 def test_a_figure_column_can_be_hidden_and_stays_so(
     explorer, children, tmp_path, monkeypatch, commander_dialog_settings
 ):

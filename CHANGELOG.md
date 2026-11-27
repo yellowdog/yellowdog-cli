@@ -15,6 +15,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
+- **A Columns button in the Usage Explorer** shows or hides figure columns, as right-clicking a heading does; both menus stay open while you tick.
 - **Find in the Usage Explorer**: type in **Find** to show only the rows whose first column holds the text (`--where <key>=*text*`), the Total row being theirs; Cmd/Ctrl+F goes to it.
 - **Right-click a row in the Usage Explorer** to drill into it, filter to a value of one of several keys, copy the cell or the selection, or (inside Commander) show a YellowDog ID with `yd show`. Each row's tooltip says what double-clicking it shows, and copied headings no longer carry the sort's numbers.
 - **The Usage Explorer shows a level's first 500 rows**, the rest summed in one `(n more)` row, so a level of many thousands of Instances opens quickly; **Show All** shows every row.
