@@ -103,7 +103,7 @@ from yellowdog_cli.commander.usage_views import (
     window_time,
 )
 from yellowdog_cli.utils.output_style import ERROR_MARKER, WARNING_MARKER
-from yellowdog_cli.utils.usage_text import duration_text
+from yellowdog_cli.utils.usage_text import duration_text, report_time
 
 # The exit code and message of a run the user stopped
 STOPPED_EXIT_CODE = -1
@@ -407,7 +407,7 @@ def _shown_time(iso: str) -> str:
     line gives it, in UTC to the minute, or as it is if it cannot be read.
     """
     try:
-        moment = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        moment = report_time(str(iso))
     except ValueError:
         return str(iso)
     if moment.tzinfo is not None:

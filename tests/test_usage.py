@@ -37,7 +37,7 @@ from yellowdog_cli.utils.command_registry import (
 from yellowdog_cli.utils.context import RunContext
 from yellowdog_cli.utils.exit_codes import ExitCode, NotFoundError, classify
 from yellowdog_cli.utils.limits import RAW_CONNECT_TIMEOUT
-from yellowdog_cli.utils.usage_text import cost_text_of, duration_text
+from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, report_time
 
 URL = "https://api.example.com"
 KEY = "key-id"
@@ -2586,3 +2586,44 @@ def test_reports_takes_no_report_option(extra, flag, capsys):
 
 def test_reports_takes_the_output_options():
     assert _parsed_usage("--reports", "--json").usage_reports
+
+
+@pytest.mark.parametrize(
+    "text, instant",
+    [
+        # The Platform's forms, any length of fraction, on every Python
+        (
+            "2026-11-12T07:46:44Z",
+            datetime(2026, 11, 12, 7, 46, 44, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.4Z",
+            datetime(2026, 11, 12, 7, 46, 44, 400000, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428000, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428279Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428279, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T07:46:44.428279123Z",
+            datetime(2026, 11, 12, 7, 46, 44, 428279, tzinfo=timezone.utc),
+        ),
+        (
+            "2026-11-12T08:46:44.5+01:00",
+            datetime(2026, 11, 12, 7, 46, 44, 500000, tzinfo=timezone.utc),
+        ),
+        ("2026-11-12T07:46:44", datetime(2026, 11, 12, 7, 46, 44)),
+    ],
+)
+def test_report_time_reads_any_fraction(text, instant):
+    assert report_time(text) == instant
+    assert (report_time(text).tzinfo is None) is (instant.tzinfo is None)
+
+
+def test_report_time_refuses_what_is_not_a_time():
+    with pytest.raises(ValueError):
+        report_time("not a time")

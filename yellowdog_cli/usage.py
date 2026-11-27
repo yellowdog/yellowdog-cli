@@ -51,7 +51,7 @@ from yellowdog_cli.utils.usage_report import (
     size_text,
     usage_report,
 )
-from yellowdog_cli.utils.usage_text import duration_text, heading
+from yellowdog_cli.utils.usage_text import duration_text, heading, report_time
 from yellowdog_cli.utils.wrapper import main_wrapper
 
 _SECONDS_PER_HOUR = 3600
@@ -559,7 +559,7 @@ def _shown_text(iso: str) -> str:
     shows it, or as it is if it cannot be read.
     """
     try:
-        return _shown(datetime.fromisoformat(iso.replace("Z", "+00:00")))
+        return _shown(report_time(iso))
     except ValueError:
         return iso
 

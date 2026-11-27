@@ -69,6 +69,7 @@ from yellowdog_cli.utils.limits import (
     USAGE_REPORTS_UNUSED_SECONDS,
 )
 from yellowdog_cli.utils.printing import print_info
+from yellowdog_cli.utils.usage_text import report_time
 
 if TYPE_CHECKING:
     from yellowdog_cli.utils.usage_cost import Costing
@@ -553,7 +554,7 @@ def _instant(iso: str) -> datetime:
     """
     A time from the report ('2026-11-12T07:46:44.428279Z'), as UTC.
     """
-    when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    when = report_time(iso)
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 

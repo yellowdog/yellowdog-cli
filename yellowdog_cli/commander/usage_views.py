@@ -13,7 +13,12 @@ from yellowdog_cli.utils.command_registry import (
     USAGE_GROUP_KEYS,
     USAGE_SORT_VALUE_KEYS,
 )
-from yellowdog_cli.utils.usage_text import cost_text_of, duration_text, heading
+from yellowdog_cli.utils.usage_text import (
+    cost_text_of,
+    duration_text,
+    heading,
+    report_time,
+)
 
 __all__ = [
     "DEFAULT_PRESET",
@@ -94,7 +99,7 @@ def window_time(iso: str) -> str:
     for.
     """
     try:
-        moment = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        moment = report_time(str(iso))
     except ValueError:
         return str(iso)
     if moment.tzinfo is None:
