@@ -6,7 +6,7 @@ store the dialogs' preferences are kept in.
 
 import re
 from codecs import getincrementaldecoder
-from os.path import basename, exists, getsize, isdir
+from os.path import basename, dirname, exists, getsize, isdir, join
 from shlex import quote
 from typing import cast
 
@@ -46,6 +46,11 @@ elif WINDOWS:
     from os import (
         startfile as os_startfile,  # pyright: ignore[reportAttributeAccessIssue]
     )
+
+# The directory the last save went to, offered by every save dialog after it
+# while the process runs (Commander and its Usage Explorer alike), never
+# kept beyond it: a new session starts where the configuration is
+_last_save_directory: str | None = None
 
 PREVIEW_PANE_WIDTH = 300  # px: the width a file dialog's preview pane opens at
 PREVIEW_MIN_WIDTH = 120  # px: how narrow the user may drag that pane
@@ -471,6 +476,17 @@ NATIVE_VIEWER_BUTTON_TEXT = (
 )
 
 
+def _in_last_save_directory(suggested: str) -> str:
+    """
+    'suggested' (a directory, or a file to suggest) moved into the directory
+    the last save went to, where there is one that still exists.
+    """
+    remembered = _last_save_directory
+    if remembered is None or not isdir(remembered):
+        return suggested
+    return remembered if isdir(suggested) else join(remembered, basename(suggested))
+
+
 class FileDialogs:
     """
     Commander's file dialogs: Qt's own, non-native, each with the names-only
@@ -535,13 +551,22 @@ class FileDialogs:
         No preview pane, unlike every other file dialog here: this one names a
         file that does not exist yet, so all a preview could show is a file the
         user is not saving to, at the cost of the width the pane takes up.
+
+        Once a save has been made, the dialog opens in the directory it went
+        to (_last_save_directory), with the suggested file name, while that
+        directory exists.
         """
+        global _last_save_directory
+        directory = _in_last_save_directory(directory)
         dialog = QFileDialog(self._parent, caption, directory, file_pattern)
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dialog.setFileMode(QFileDialog.FileMode.AnyFile)
         self._apply_dialog_preferences(dialog)
-        return self._run_file_dialog(dialog)
+        path = self._run_file_dialog(dialog)
+        if path is not None:
+            _last_save_directory = dirname(path)
+        return path
 
     def browse(self, caption: str, directory: str) -> str | None:
         """

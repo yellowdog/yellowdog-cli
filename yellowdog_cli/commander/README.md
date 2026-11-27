@@ -64,7 +64,7 @@
    * [Troubleshooting](#troubleshooting)
 
 <!-- Created by https://github.com/ekalinin/github-markdown-toc -->
-<!-- Added by: pwt, at: Fri Nov 27 10:23:00 GMT 2026 -->
+<!-- Added by: pwt, at: Fri Nov 27 14:35:06 GMT 2026 -->
 
 <!--te-->
 
@@ -286,6 +286,8 @@ Directories expand in place, as in the Finder's list view: click the triangle be
 **Remembered preferences.** Whichever view you leave a dialog in, and whatever width you drag the sidebar to, is how the next dialog opens, whichever button opened it and after a restart.
 
 **Saving output.** The **Save Command Output** dialog carries no preview pane: it names a file that does not exist yet, so there is nothing worth previewing. It lists files the same way as the others, and shares the same sidebar width.
+
+**Where a save is suggested.** A save dialog first suggests the configuration file's directory. Once you have saved something, every save dialog (Save Command Output and the Usage Explorer's exports alike) opens in the directory that save went to, with its own suggested name, until Commander is closed.
 
 ## Selecting a Configuration (Panel 1)
 
@@ -604,7 +606,7 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 **Choosing columns.** Right-click a heading to show or hide any figure column: Instances, Running, Stopped, Total, and the pending, stopping, terminating and unknown times, which are hidden at first. The cost column comes and goes with **Estimated cost**. A hidden column stays hidden at every level, and an export leaves it out.
 
-**Exporting.** **Export**'s menu saves the view in three forms. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row (CSV)**, ticked at first, is unticked in the menu. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory.
+**Exporting.** **Export**'s menu saves the view in three forms. The CSV forms write the table's visible columns, with any hidden column left out, and every row in the order shown, ending with the **Total** row unless **Include Total Row (CSV)**, ticked at first, is unticked in the menu. A PDF report always ends with it. A CSV file is UTF-8, suggested as `usage-<date>-<time>.csv` in the configuration file's directory, or the directory you last saved to this session.
 
 - **Raw Numbers (CSV)…** for a spreadsheet: Instances as a count, each time in decimal hours (its heading says `(hours)`), and the cost as a plain number, empty where nothing was priced. An `Unpriced running (hours)` column follows the cost, giving the running time no list price covered, which the table marks with `+`.
 - **As Shown (CSV)…**: the headings and cells exactly as displayed (`Running (h:mm)`, `47:12`, `248.10+`).
