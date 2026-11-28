@@ -209,7 +209,8 @@ def test_a_tiles_figure_too_long_for_the_floor_is_wrapped_whole(
         tmp_path, monkeypatch, "$123,456,789,012,345,678.90+"
     )
     assert size == usage_pdf.TILE_VALUE_FLOOR
+    # Two lines here, three in the Windows runner's wider font
     lines = text.split("\n")
-    assert len(lines) == 2
-    assert lines[0].endswith(",")
+    assert len(lines) >= 2
+    assert all(line.endswith(",") for line in lines[:-1])
     assert width <= room + 0.5
