@@ -20,6 +20,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     Tile,
     fit_table,
     fitted_text,
+    fitting_size,
     heading_lines,
     period_text,
     plan_pages,
@@ -65,7 +66,7 @@ def content(
         account_line="YellowDog Production · https://api.yellowdog.ai",
         subtitle="October 2026 · all namespaces",
         scope_lines=["Window: ...", "Totalled by Namespace", "Report fetched ..."],
-        tiles=[Tile("Running", "48:00", "hours:minutes")],
+        tiles=[Tile("Running time", "48:00", "hours:minutes")],
         headings=keys + figures,
         key_columns=len(keys),
         rows=rows,
@@ -382,14 +383,21 @@ def test_sort_text_of_several_keys_says_then():
 def test_the_instances_tile_counts_every_row_those_cut_included():
     # 500 rows shown of 1,200, the rest summed in a '(700 more)' row
     document = dict(OCTOBER, namespace="team-render", total={"groups": 1200})
-    assert made(document=document).tiles[2].note == "in 1,200 rows"
+    assert tile(made(document=document), "Instances").note == "in 1,200 rows"
+
+
+def tile(report: ReportContent, label: str) -> Tile:
+    [found] = [t for t in report.tiles if t.label == label]
+    return found
 
 
 def test_tiles_with_cost_copy_the_total_row():
+    # The Instances, the running time, the time in every status, the cost
     assert made().tiles == [
-        Tile("Estimated cost", "$1,238.47+", "USD, list prices"),
-        Tile("Running", "254:06", "hours:minutes"),
         Tile("Instances", "43", "in 4 rows"),
+        Tile("Running time", "254:06", "hours:minutes"),
+        Tile("Total time", "270:48", "hours:minutes, all statuses"),
+        Tile("Estimated cost", "$1,238.47+", "USD, list prices"),
     ]
     assert made().caveat == COST_CAVEAT
     assert made().title == "Compute Usage and Cost"
@@ -409,7 +417,8 @@ def test_tiles_follow_the_scope_not_the_visible_columns():
         True,
         [],
     )
-    assert report.tiles[1] == Tile("Running", "254:06", "hours:minutes")
+    assert report.tiles[1] == Tile("Running time", "254:06", "hours:minutes")
+    assert tile(report, "Total time").value == "270:48"
 
 
 def test_without_cost_nothing_of_cost_appears():
@@ -420,7 +429,12 @@ def test_without_cost_nothing_of_cost_appears():
         total=CR_TOTAL[:-1],
         cost=False,
     )
-    assert report.tiles[0] == Tile("Total time", "270:48", "hours:minutes")
+    # The same tiles in the same order as with the cost, less the cost's
+    assert report.tiles == [
+        Tile("Instances", "43", "in 4 rows"),
+        Tile("Running time", "254:06", "hours:minutes"),
+        Tile("Total time", "270:48", "hours:minutes, all statuses"),
+    ]
     assert report.title == "Compute Usage"
     assert report.caveat is None
     texts = [
@@ -448,8 +462,8 @@ def test_an_empty_view():
         rows=[],
         total=None,
     )
-    assert [tile.value for tile in report.tiles] == ["$0.00", "0:00", "0"]
-    assert report.tiles[2].note == "in 0 rows"
+    assert [t.value for t in report.tiles] == ["0", "0:00", "0:00", "$0.00"]
+    assert tile(report, "Instances").note == "in 0 rows"
     assert report.empty_text == NO_INSTANCES
     assert report.total is None
     filtered = made(
@@ -461,7 +475,7 @@ def test_an_empty_view():
 
 
 def test_one_row_is_one_row():
-    assert made(rows=CR_ROWS[:1]).tiles[2].note == "in 1 row"
+    assert tile(made(rows=CR_ROWS[:1]), "Instances").note == "in 1 row"
 
 
 def test_notes_are_carried():
@@ -488,7 +502,7 @@ def test_at_the_instance_level_the_instances_tile_counts_the_rows():
     rows = [[f"i-{n}", *row[2:]] for n, row in enumerate(CR_ROWS * 300)]
     total = ["Total", *CR_TOTAL[2:]]
     report = made(headings=headings, rows=rows, total=total)
-    assert report.tiles[2] == Tile("Instances", "1,200", "in 1,200 rows")
+    assert tile(report, "Instances") == Tile("Instances", "1,200", "in 1,200 rows")
 
 
 def test_the_account_line_names_the_account_and_the_platform():
@@ -505,3 +519,13 @@ def test_the_account_line_names_the_account_and_the_platform():
     unnamed = dict(document, accountName=None)
     assert made(document=unnamed).account_line == "https://api.yellowdog.ai"
     assert made(document=dict(unnamed, url=None)).account_line == ""
+
+
+def test_a_figure_is_made_smaller_to_fit_never_below_the_floor():
+    # Each character as wide as the size
+    def measure(text: str, size: float, bold: bool) -> float:
+        return len(text) * size
+
+    assert fitting_size("1,234", measure, 14.0, 8.0, True, 100.0) == 14.0
+    assert fitting_size("12,345,678", measure, 14.0, 8.0, True, 100.0) == 10.0
+    assert fitting_size("$12,345,678.90+", measure, 14.0, 8.0, True, 100.0) == 8.0

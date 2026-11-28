@@ -638,9 +638,9 @@ Everything else is as in Commander: the explorer's own preferences are shared wi
 
 #### The PDF Report
 
-**Save PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the account and the Platform's URL beneath the title, then the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by, sorted by and drilled into, and when the report was fetched. Three headline figures follow: the estimated cost, the running time and the Instances. Then comes the table, with its visible columns and every row, ending with the **Total** row.
+**Save PDF Report…** saves the view shown as a printable report, with the YellowDog logo. Its first page names the account and the Platform's URL beneath the title, then the period (`October 2026` for a calendar month), the namespace, the window in UTC, what the table is totalled by, sorted by and drilled into, and when the report was fetched. Headline figures follow: the Instances, the running time, the total time in every status beside it, and the estimated cost. A long figure is set in smaller type rather than shortened. Then comes the table, with its visible columns and every row, ending with the **Total** row.
 
-![The top of a PDF report's first page: the title, the account and Platform URL, the period and namespace, the scope, the estimated cost, running time and Instances, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
+![The top of a PDF report's first page: the title, the account and Platform URL, the period and namespace, the scope, the Instances, running time, total time and estimated cost, then the table by Compute Requirement with its Total row and notes](screenshots/screenshot_usage_explorer_pdf.png)
 
 - **The table always fits the page's width.** Its type is reduced as far as 6pt for a wide view. Beyond that, long names are shortened in the middle with `…`. Nothing is cut off at the side.
 - **Rows continue on as many pages as they need.** Each later page repeats the column headings, and every page is numbered.

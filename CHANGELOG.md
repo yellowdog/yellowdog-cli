@@ -4,6 +4,10 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ## Unreleased
 
+### Commander
+
+- **The Usage Explorer's PDF report shows the total time in every status** in a tile beside the running time, and sets a long figure in smaller type rather than shortening it.
+
 ### yd usage
 
 - **With `--top`, `yd usage`'s total line says how many rows are shown of them all**: `Total: 5 of 872 rows, …`.

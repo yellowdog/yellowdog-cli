@@ -45,6 +45,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     TableFit,
     fit_table,
     fitted_text,
+    fitting_size,
     heading_height,
     plan_pages,
     row_height,
@@ -70,6 +71,9 @@ LOGO_GAP = 12.0
 LOGO_ASPECT = 44 / 49
 TILE_GAP = 8.0
 TILE_RADIUS = 4.0
+# A tile's figure, in points: smaller, to the floor, where it is too long
+TILE_VALUE_SIZE = 14.0
+TILE_VALUE_FLOOR = 8.0
 
 
 def system_locale() -> QLocale:
@@ -334,8 +338,17 @@ class _Drawing:
                 6.5,
                 "#777777",
             )
+            # A figure is never shortened: smaller type where it is long
+            size = fitting_size(
+                tile.value,
+                self.measure,
+                TILE_VALUE_SIZE,
+                TILE_VALUE_FLOOR,
+                True,
+                inner_width,
+            )
             self._text(
-                QRectF(inner, top + 15, inner_width, 20), tile.value, 14.0, bold=True
+                QRectF(inner, top + 15, inner_width, 20), tile.value, size, bold=True
             )
             self._text(QRectF(inner, top + 35, inner_width, 10), tile.note, 6.5, FAINT)
         return top + TILES_HEIGHT + SECTION_GAP

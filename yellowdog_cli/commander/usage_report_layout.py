@@ -361,6 +361,19 @@ def wrap_text(text: str, measure: Measure, size: float, width: float) -> list[st
     return lines
 
 
+def fitting_size(
+    text: str, measure: Measure, size: float, floor: float, bold: bool, width: float
+) -> float:
+    """
+    The largest size, from 'size' down to 'floor' by half points, at which
+    'text' fits 'width': for a figure, which is never shortened, only made
+    smaller (at the floor it is as small as it gets).
+    """
+    while size > floor and measure(text, size, bold) > width:
+        size -= 0.5
+    return max(size, floor)
+
+
 def fitted_text(
     text: str, measure: Measure, size: float, bold: bool, width: float
 ) -> str:
@@ -607,8 +620,8 @@ def _tiles(
 ) -> list[Tile]:
     """
     The headline tiles from the Total row's cells, found by their headings'
-    names ('Running' of 'Running (h:mm)'): the cost (or, without it, the
-    total time), the running time and the Instances.
+    names ('Running' of 'Running (h:mm)'): the Instances, the running time,
+    the total time in every status beside it, and the cost (with it).
     """
     by_name = {
         heading_lines(heading)[0]: cell for heading, cell in (total or {}).items()
@@ -619,18 +632,19 @@ def _tiles(
         by_name.get("Instances", f"{groups:,}"),
         f"in {groups:,} row{'' if groups == 1 else 's'}",
     )
-    running = Tile("Running", by_name.get("Running", "0:00"), "hours:minutes")
+    running = Tile("Running time", by_name.get("Running", "0:00"), "hours:minutes")
+    # Beside the running time, the time in every status
+    total_time = Tile(
+        "Total time", by_name.get("Total", "0:00"), "hours:minutes, all statuses"
+    )
     if not cost:
-        return [
-            Tile("Total time", by_name.get("Total", "0:00"), "hours:minutes"),
-            running,
-            instances,
-        ]
+        return [instances, running, total_time]
     currency = str(document.get("currency") or "USD")
     figure = by_name.get("Est. cost", "0.00")
     value = f"${figure}" if currency == "USD" else f"{figure} {currency}"
     return [
-        Tile("Estimated cost", value, f"{currency}, list prices"),
-        running,
         instances,
+        running,
+        total_time,
+        Tile("Estimated cost", value, f"{currency}, list prices"),
     ]

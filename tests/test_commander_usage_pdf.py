@@ -48,7 +48,7 @@ def report(rows: int = 4, cost: bool = True) -> ReportContent:
         ],
         tiles=[
             Tile("Estimated cost", "$245.72", "USD, list prices"),
-            Tile("Running", "48:00", "hours:minutes"),
+            Tile("Running time", "48:00", "hours:minutes"),
             Tile("Instances", "12", f"in {rows} groups"),
         ],
         headings=headings,
@@ -152,3 +152,34 @@ def test_no_line_is_wider_than_its_space(qapp, tmp_path, monkeypatch):
     write_pdf(str(tmp_path / "usage.pdf"), content, landscape=False)
     write_pdf(str(tmp_path / "usage-wide.pdf"), report(rows=300), landscape=False)
     assert overflows == []
+
+
+def test_a_tiles_long_figure_is_drawn_whole_in_smaller_type(
+    qapp, tmp_path, monkeypatch
+):
+    from dataclasses import replace
+
+    from PyQt6.QtGui import QFontMetricsF
+
+    long = "$12,345,678.90+"
+    content = replace(
+        report(),
+        tiles=[
+            Tile("Estimated cost", long, "USD, list prices"),
+            Tile("Running time", "1,234,567:00", "hours:minutes"),
+            Tile("Total time", "1,234,567:00", "hours:minutes, all statuses"),
+            Tile("Instances", "1,508,498", "in 872 rows"),
+        ],
+    )
+    drawn: list[tuple[str, float, float]] = []
+    real = usage_pdf._Drawing._draw
+
+    def recorded(self, rect, flags, text, wrap):
+        metrics = QFontMetricsF(self.painter.font(), self.painter.device())
+        drawn.append((text, metrics.horizontalAdvance(text), rect.width()))
+        real(self, rect, flags, text, wrap)
+
+    monkeypatch.setattr(usage_pdf._Drawing, "_draw", recorded)
+    write_pdf(str(tmp_path / "usage.pdf"), content, landscape=False)
+    [(_, width, room)] = [d for d in drawn if d[0] == long]
+    assert width <= room + 0.5
