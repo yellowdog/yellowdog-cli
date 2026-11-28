@@ -6,7 +6,7 @@ The user-visible changes in each release of the YellowDog CLI, the newest first.
 
 ### Commander
 
-- **The Usage Explorer's PDF report shows the total time in every status** in a tile beside the running time, and sets a long figure in smaller type rather than shortening it.
+- **The Usage Explorer's PDF report shows the total time in every status** in a tile beside the running time, and sets a long figure in smaller type, wrapping it if it still does not fit, rather than shortening it.
 - **The Usage Explorer's Total row is bold in every column**, not only its label.
 
 ### yd usage

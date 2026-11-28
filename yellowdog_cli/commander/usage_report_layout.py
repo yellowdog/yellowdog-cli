@@ -7,6 +7,7 @@ tested without a screen; usage_pdf.py measures with Qt and draws the plan.
 All lengths are points.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timezone
@@ -372,6 +373,32 @@ def fitting_size(
     while size > floor and measure(text, size, bold) > width:
         size -= 0.5
     return max(size, floor)
+
+
+def wrapped_figure(
+    text: str, measure: Measure, size: float, bold: bool, width: float
+) -> str:
+    """
+    A figure within 'width', never shortened: as it is if it fits, else on
+    as many lines as it needs ('\\n' between them), broken after a thousands
+    separator, and a run still too wide for a line broken where it must.
+    """
+
+    def fits(line: str) -> bool:
+        return measure(line, size, bold) <= width
+
+    if fits(text):
+        return text
+    pieces: list[str] = []
+    for piece in re.findall(r"[^,]*,|[^,]+", text):
+        pieces.extend([piece] if fits(piece) else list(piece))
+    lines = [""]
+    for piece in pieces:
+        if lines[-1] and not fits(lines[-1] + piece):
+            lines.append(piece)
+        else:
+            lines[-1] += piece
+    return "\n".join(lines)
 
 
 def fitted_text(

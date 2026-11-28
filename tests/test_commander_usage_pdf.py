@@ -158,8 +158,9 @@ def _tile_figures_drawn(
     tmp_path, monkeypatch, figure: str
 ) -> list[tuple[str, float, float, float]]:
     """
-    Each text drawn as 'figure' (an Estimated cost tile's), with its width,
-    its room and its size, from a report whose other tiles are long too.
+    Each text drawn that is 'figure' (an Estimated cost tile's), on one line
+    or several, with its widest line's width, its room and its size, from a
+    report whose other tiles are long too.
     """
     from dataclasses import replace
 
@@ -180,33 +181,35 @@ def _tile_figures_drawn(
     def recorded(self, rect, flags, text, wrap):
         font = self.painter.font()
         metrics = QFontMetricsF(font, self.painter.device())
-        drawn.append(
-            (text, metrics.horizontalAdvance(text), rect.width(), font.pointSizeF())
-        )
+        widest = max(metrics.horizontalAdvance(line) for line in text.split("\n"))
+        drawn.append((text, widest, rect.width(), font.pointSizeF()))
         real(self, rect, flags, text, wrap)
 
     monkeypatch.setattr(usage_pdf._Drawing, "_draw", recorded)
     write_pdf(str(tmp_path / "usage.pdf"), content, landscape=False)
-    return drawn
+    return [d for d in drawn if d[0].replace("\n", "") == figure]
 
 
 def test_a_tiles_long_figure_is_drawn_whole_in_smaller_type(
     qapp, tmp_path, monkeypatch
 ):
-    long = "$12,345,678.90+"
-    drawn = _tile_figures_drawn(tmp_path, monkeypatch, long)
-    [(_, width, room, size)] = [d for d in drawn if d[0] == long]
+    # Fonts differ by platform: where even the floor is too wide, as on
+    # Windows, the figure is wrapped there
+    [(_, width, room, size)] = _tile_figures_drawn(
+        tmp_path, monkeypatch, "$12,345,678.90+"
+    )
     assert size < usage_pdf.TILE_VALUE_SIZE
-    # Fonts differ by platform: where even the floor is too wide, the figure
-    # is still drawn whole, at the floor
-    assert width <= room + 0.5 or size == usage_pdf.TILE_VALUE_FLOOR
+    assert width <= room + 0.5
 
 
-def test_a_tiles_figure_too_long_for_the_floor_is_still_drawn_whole(
+def test_a_tiles_figure_too_long_for_the_floor_is_wrapped_whole(
     qapp, tmp_path, monkeypatch
 ):
-    longest = "$123,456,789,012,345,678.90+"
-    drawn = _tile_figures_drawn(tmp_path, monkeypatch, longest)
-    [(_, width, room, size)] = [d for d in drawn if d[0] == longest]
+    [(text, width, room, size)] = _tile_figures_drawn(
+        tmp_path, monkeypatch, "$123,456,789,012,345,678.90+"
+    )
     assert size == usage_pdf.TILE_VALUE_FLOOR
-    assert width > room
+    lines = text.split("\n")
+    assert len(lines) == 2
+    assert lines[0].endswith(",")
+    assert width <= room + 0.5

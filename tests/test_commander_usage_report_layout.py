@@ -27,6 +27,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     report_content,
     sort_text,
     wrap_text,
+    wrapped_figure,
 )
 from yellowdog_cli.commander.usage_views import Level
 
@@ -529,3 +530,25 @@ def test_a_figure_is_made_smaller_to_fit_never_below_the_floor():
     assert fitting_size("1,234", measure, 14.0, 8.0, True, 100.0) == 14.0
     assert fitting_size("12,345,678", measure, 14.0, 8.0, True, 100.0) == 10.0
     assert fitting_size("$12,345,678.90+", measure, 14.0, 8.0, True, 100.0) == 8.0
+
+
+def test_a_figure_too_wide_is_broken_after_its_thousands_separators():
+    # Each character as wide as the size: ten 10pt characters to a line
+    def measure(text: str, size: float, bold: bool) -> float:
+        return len(text) * size
+
+    assert wrapped_figure("$1,234.56+", measure, 10.0, True, 100.0) == "$1,234.56+"
+    assert (
+        wrapped_figure("$123,456,789,012.90+", measure, 10.0, True, 100.0)
+        == "$123,456,\n789,\n012.90+"
+    )
+
+
+def test_a_figure_is_never_shortened_by_wrapping():
+    def measure(text: str, size: float, bold: bool) -> float:
+        return len(text) * size
+
+    for figure in ["$123,456,789,012.90+", "1234567890123456", "12,3456789012345,6"]:
+        lines = wrapped_figure(figure, measure, 10.0, True, 100.0).split("\n")
+        assert "".join(lines) == figure
+        assert all(measure(line, 10.0, True) <= 100.0 for line in lines)

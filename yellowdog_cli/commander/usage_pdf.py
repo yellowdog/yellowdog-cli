@@ -49,6 +49,7 @@ from yellowdog_cli.commander.usage_report_layout import (
     heading_height,
     plan_pages,
     row_height,
+    wrapped_figure,
 )
 
 # A unit is a point
@@ -200,7 +201,8 @@ class _Drawing:
     ) -> None:
         """
         A text in 'rect': wrapped, or on one line shortened in the middle to
-        fit, or with 'whole' (a figure) drawn as it is and never clipped.
+        fit, or with 'whole' (a figure, on the lines wrapped_figure() gave
+        it) drawn as it is and never clipped.
         """
         self.painter.setFont(_font(self.family, size, bold))
         self.painter.setPen(QColor(colour))
@@ -346,7 +348,7 @@ class _Drawing:
                 "#777777",
             )
             # A figure is never shortened: smaller type where it is long, and
-            # whole at the floor where even that is too wide for the tile
+            # wrapped at the floor where even that is too wide for the tile
             size = fitting_size(
                 tile.value,
                 self.measure,
@@ -357,7 +359,7 @@ class _Drawing:
             )
             self._text(
                 QRectF(inner, top + 15, inner_width, 20),
-                tile.value,
+                wrapped_figure(tile.value, self.measure, size, True, inner_width),
                 size,
                 bold=True,
                 whole=True,
