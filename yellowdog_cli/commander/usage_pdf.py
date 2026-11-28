@@ -196,12 +196,19 @@ class _Drawing:
         bold: bool = False,
         align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft,
         wrap: bool = False,
+        whole: bool = False,
     ) -> None:
+        """
+        A text in 'rect': wrapped, or on one line shortened in the middle to
+        fit, or with 'whole' (a figure) drawn as it is and never clipped.
+        """
         self.painter.setFont(_font(self.family, size, bold))
         self.painter.setPen(QColor(colour))
         flags = align | Qt.AlignmentFlag.AlignVCenter
         if wrap:
             flags |= Qt.TextFlag.TextWordWrap
+        elif whole:
+            flags |= Qt.TextFlag.TextDontClip
         else:
             # A single line is never clipped: shortened in the middle instead
             text = fitted_text(text, self.measure, size, bold, rect.width())
@@ -338,7 +345,8 @@ class _Drawing:
                 6.5,
                 "#777777",
             )
-            # A figure is never shortened: smaller type where it is long
+            # A figure is never shortened: smaller type where it is long, and
+            # whole at the floor where even that is too wide for the tile
             size = fitting_size(
                 tile.value,
                 self.measure,
@@ -348,7 +356,11 @@ class _Drawing:
                 inner_width,
             )
             self._text(
-                QRectF(inner, top + 15, inner_width, 20), tile.value, size, bold=True
+                QRectF(inner, top + 15, inner_width, 20),
+                tile.value,
+                size,
+                bold=True,
+                whole=True,
             )
             self._text(QRectF(inner, top + 35, inner_width, 10), tile.note, 6.5, FAINT)
         return top + TILES_HEIGHT + SECTION_GAP

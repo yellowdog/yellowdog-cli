@@ -154,32 +154,59 @@ def test_no_line_is_wider_than_its_space(qapp, tmp_path, monkeypatch):
     assert overflows == []
 
 
-def test_a_tiles_long_figure_is_drawn_whole_in_smaller_type(
-    qapp, tmp_path, monkeypatch
-):
+def _tile_figures_drawn(
+    tmp_path, monkeypatch, figure: str
+) -> list[tuple[str, float, float, float]]:
+    """
+    Each text drawn as 'figure' (an Estimated cost tile's), with its width,
+    its room and its size, from a report whose other tiles are long too.
+    """
     from dataclasses import replace
 
     from PyQt6.QtGui import QFontMetricsF
 
-    long = "$12,345,678.90+"
     content = replace(
         report(),
         tiles=[
-            Tile("Estimated cost", long, "USD, list prices"),
+            Tile("Estimated cost", figure, "USD, list prices"),
             Tile("Running time", "1,234,567:00", "hours:minutes"),
             Tile("Total time", "1,234,567:00", "hours:minutes, all statuses"),
             Tile("Instances", "1,508,498", "in 872 rows"),
         ],
     )
-    drawn: list[tuple[str, float, float]] = []
+    drawn: list[tuple[str, float, float, float]] = []
     real = usage_pdf._Drawing._draw
 
     def recorded(self, rect, flags, text, wrap):
-        metrics = QFontMetricsF(self.painter.font(), self.painter.device())
-        drawn.append((text, metrics.horizontalAdvance(text), rect.width()))
+        font = self.painter.font()
+        metrics = QFontMetricsF(font, self.painter.device())
+        drawn.append(
+            (text, metrics.horizontalAdvance(text), rect.width(), font.pointSizeF())
+        )
         real(self, rect, flags, text, wrap)
 
     monkeypatch.setattr(usage_pdf._Drawing, "_draw", recorded)
     write_pdf(str(tmp_path / "usage.pdf"), content, landscape=False)
-    [(_, width, room)] = [d for d in drawn if d[0] == long]
-    assert width <= room + 0.5
+    return drawn
+
+
+def test_a_tiles_long_figure_is_drawn_whole_in_smaller_type(
+    qapp, tmp_path, monkeypatch
+):
+    long = "$12,345,678.90+"
+    drawn = _tile_figures_drawn(tmp_path, monkeypatch, long)
+    [(_, width, room, size)] = [d for d in drawn if d[0] == long]
+    assert size < usage_pdf.TILE_VALUE_SIZE
+    # Fonts differ by platform: where even the floor is too wide, the figure
+    # is still drawn whole, at the floor
+    assert width <= room + 0.5 or size == usage_pdf.TILE_VALUE_FLOOR
+
+
+def test_a_tiles_figure_too_long_for_the_floor_is_still_drawn_whole(
+    qapp, tmp_path, monkeypatch
+):
+    longest = "$123,456,789,012,345,678.90+"
+    drawn = _tile_figures_drawn(tmp_path, monkeypatch, longest)
+    [(_, width, room, size)] = [d for d in drawn if d[0] == longest]
+    assert size == usage_pdf.TILE_VALUE_FLOOR
+    assert width > room
