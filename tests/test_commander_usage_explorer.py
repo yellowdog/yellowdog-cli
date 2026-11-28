@@ -621,9 +621,12 @@ def test_the_top_level_shows_namespaces_and_the_total(explorer, children):
     ]
     assert cells(explorer, 1)[0] == "team-sim"
     assert cells(explorer, 2)[:2] == ["Total", "20"]
-    assert explorer._model.data(
-        explorer._model.index(2, 0), Qt.ItemDataRole.FontRole
-    ).bold()
+    assert all(
+        explorer._model.data(
+            explorer._model.index(2, column), Qt.ItemDataRole.FontRole
+        ).bold()
+        for column in range(explorer._model.columnCount())
+    )
     assert (
         explorer._model.data(explorer._model.index(0, 0), Qt.ItemDataRole.FontRole)
         is None

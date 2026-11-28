@@ -93,7 +93,7 @@ def ordinal(number: int) -> str:
 class UsageTableModel(QAbstractTableModel):
     """
     A document's groups as rows, then its total. Key columns are aligned left
-    and figures right; only the Total row's label is bold.
+    and figures right; the Total row is bold, the summed row italic.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -369,7 +369,9 @@ class UsageTableModel(QAbstractTableModel):
             return self._rows[row][column]
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alignment(column)
-        if role == Qt.ItemDataRole.FontRole and column == 0 and self.is_total(row):
+        if role == Qt.ItemDataRole.FontRole and self.is_total(row):
+            # Only bold set, so the view's font (its size and tabular figures)
+            # supplies the rest
             font = QFont()
             font.setBold(True)
             return font
